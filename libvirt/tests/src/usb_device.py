@@ -62,15 +62,20 @@ def run(test, params, env):
     coldunplug = "yes" == params.get("coldunplug", "no")
     usb_alias = "yes" == params.get("usb_alias", "no")
     redirdev_alias = "yes" == params.get("redirdev_alias", "no")
+    set_addr = params.get("set_addr", "yes")
+    ctrl_addr_domain = params.get("ctrl_addr_domain", "")
+    ctrl_addr_slot = params.get("ctrl_addr_slot", "")
+    ctrl_addr_function = params.get("ctrl_addr_function", "")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
 
-    def get_usb_source(lsusb_list):
+    def get_usb_source(lsusb_list, session=None):
         """
         calculate a dict of the source xml of usb device based on the output from command lsusb
 
         :param lsusb_list: a list of the output from command lsusb
+        :param session: a console session of guest
         :return: a dict of the source xml of usb device
         """
 
@@ -81,12 +86,21 @@ def run(test, params, env):
             source = {}
             product = {}
             src = {}
+            # filter out the usb hub device without vendor/product id
             if re.search("hub", line, re.IGNORECASE):
                 continue
             if len(line.split()[5].split(':')) == 2:
                 vendor_id, product_id = line.split()[5].split(':')
             if not (vendor_id and product_id):
                 test.fail("vendor/product id is not available")
+            # filter out the remaining usb hub device not caught above
+            cmd = "lsusb -v -d {}:{}".format(vendor_id, product_id)
+            if session:
+                output = session.get_command_output(cmd)
+            else:
+                output = process.run(cmd).stdout_text
+            if "hub" in output:
+                continue
             product['vendor_id'] = "0x" + vendor_id
             product['product_id'] = "0x" + product_id
             product_list.append(product.copy())
@@ -129,7 +143,6 @@ def run(test, params, env):
                   (src_guest['product'], output))
 
     def usb_device_check(session, src_host):
-
         """
         check usb devices passed from host with xml file, output of lsusb, and
         usb storage disk.
@@ -154,7 +167,7 @@ def run(test, params, env):
 
         if device_name == "hostdev" or device_type == "tcp":
             # check the pid and vid of usb passthrough device in guest
-            src_guest = get_usb_source(output.strip().splitlines())
+            src_guest = get_usb_source(output.strip().splitlines(), session)
             for host in src_host['product']:
                 flag = False
                 for guest in src_guest['product']:
@@ -210,31 +223,45 @@ def run(test, params, env):
         for hub in hubs:
             if hub.type_name == "usb":
                 vmxml.del_device(hub)
-
         # assemble the xml of pci/pcie bus
         for model in bus_controller.split(','):
             pci_bridge = Controller('pci')
             pci_bridge.type = "pci"
             pci_bridge.model = model
             vmxml.add_device(pci_bridge)
-
-        device_alias = {}
-        random_id = process.run("uuidgen").stdout_text.strip()
-        # assemble the xml of usb controller
-        for i, model in enumerate(usb_model.split(',')):
-            controller = Controller("controller")
-            controller.type = "usb"
-            controller.index = usb_index
-            controller.model = model
-            if usb_alias:
-                alias_str = "ua-usb" + str(i) + random_id
-                device_alias[model] = alias_str
-                alias = {"name": alias_str}
-                if "ich9" not in model:
-                    controller.index = i
-                controller.alias = alias
-            vmxml.add_device(controller)
-
+        # find the pci endpoint's name that usb controller will attach
+        pci_endpoint = bus_controller.split(",")[-1]
+        # find the pci's index that usb controller will attach
+        pci_index_for_usb_controller = len(bus_controller.split(",")) - 1
+        if usb_model != "none":
+            logging.debug("usb_model is not none")
+            device_alias = {}
+            random_id = process.run("uuidgen").stdout_text.strip()
+            # assemble the xml of usb controller
+            for i, model in enumerate(usb_model.split(',')):
+                controller = Controller("controller")
+                controller.type = "usb"
+                controller.index = usb_index
+                controller.model = model
+                if usb_alias:
+                    alias_str = "ua-usb" + str(i) + random_id
+                    device_alias[model] = alias_str
+                    alias = {"name": alias_str}
+                    if "ich9" not in model:
+                        controller.index = i
+                    controller.alias = alias
+                # for 'usb_all' case, will not set addr
+                if set_addr == "yes":
+                    ctrl_addr_dict = {'type': 'pci', 'domain': ctrl_addr_domain, 'bus': '0x0'+str(pci_index_for_usb_controller), 'slot': ctrl_addr_slot, 'function': ctrl_addr_function}
+                    if "uhci" in controller.model:
+                        ctrl_addr_dict['function'] = "0x0"+str(i)
+                    # pcie-switch-downstream-port only supports slot 0
+                    if pci_endpoint == "pcie-switch-downstream-port":
+                        ctrl_addr_dict['slot'] = "0x00"
+                    controller.address = controller.new_controller_address(attrs=ctrl_addr_dict)
+                vmxml.add_device(controller)
+        else:
+            logging.debug("usb_model is none")
         if usb_hub:
             hub = Hub("usb")
             vmxml.add_device(hub)
@@ -310,7 +337,9 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug("vm xml after starting up {}".format(vmxml))
 
-        # check usb controller in guest
+        # Check usb controller in guest. By default, usb3(xhci) controller will be added into q35 guest.
+        if usb_model == "none" and "q35" in vmxml.os.machine:
+            usb_model = "xhci"
         for model_type in usb_model.split(','):
             model_type = model_type.split('-')[-1].rstrip("1,2,3")
             logging.debug("check usb controller {} in guest".format(model_type))

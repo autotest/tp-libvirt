@@ -49,7 +49,7 @@ def run(test, params, env):
     # Record time for comparison when finished
     start_time = datetime.datetime.now()
     status_error = bool('yes' == params.get('status_error', 'no'))
-    # list of sandbox agregation managers (list of lists of list of sandboxes)
+    # list of sandbox aggregation managers (list of lists of list of sandboxes)
     sb_agg_list = make_sandboxes(params, env)
     # Number of sandboxes for each aggregate type
     agg_count = [agg.count for agg in sb_agg_list]

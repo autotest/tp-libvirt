@@ -9,7 +9,7 @@ from virttest import libvirt_storage
 from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -55,7 +55,7 @@ def run(test, params, env):
         if src_pool_type != dest_pool_type:
             pvt.pre_pool(dest_pool_name, dest_pool_type, dest_pool_target,
                          dest_emulated_image, image_size="100M",
-                         pre_disk_vol=["1M"])
+                         pre_disk_vol=["2M"])
 
         # Print current pools for debugging
         logging.debug("Current pools:%s",
@@ -99,7 +99,7 @@ def run(test, params, env):
 
         # iSCSI and SCSI type pool can't create vols via virsh
         if dest_pool_type in ["iscsi", "scsi"]:
-            test.fail("Unsupport create vol for %s type pool"
+            test.fail("Unsupported create vol for %s type pool"
                       % dest_pool_type)
         # Metadata preallocation is not supported for block volumes
         if dest_pool_type in ["disk", "logical"]:

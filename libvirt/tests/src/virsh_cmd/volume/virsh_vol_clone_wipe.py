@@ -16,8 +16,9 @@ from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
 from virttest import libvirt_xml
+from virttest import utils_split_daemons
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def create_luks_secret(vol_path, password, test):
@@ -99,6 +100,10 @@ def run(test, params, env):
     encryption_password = params.get("encryption_password", "redhat")
     secret_uuids = []
     wipe_old_vol = False
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    vol_clusterSize = params.get("vol_clusterSize", "64")
+    vol_clusterSize_unit = params.get("vol_clusterSize_unit")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     if virsh.has_command_help_match("vol-clone", "--prealloc-metadata") is None:
         if "prealloc-metadata" in clone_option:
@@ -111,6 +116,8 @@ def run(test, params, env):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unpri_user = params.get('unprivileged_user')
     if unpri_user:
         if unpri_user.count('EXAMPLE'):
@@ -157,10 +164,13 @@ def run(test, params, env):
         libvirt_vol = libvirt_storage.PoolVolume(pool_name)
         # Create a new volume
         if vol_format in ['raw', 'qcow2', 'qed', 'vmdk']:
-            if (b_luks_encrypted and vol_format in ['raw']):
+            if (b_luks_encrypted and vol_format in ['raw', 'qcow2']):
                 if not libvirt_version.version_compare(2, 0, 0):
                     test.cancel("LUKS is not supported in current"
                                 " libvirt version")
+                if vol_format == "qcow2" and not libvirt_version.version_compare(6, 10, 0):
+                    test.cancel("Qcow2 format with luks encryption is not"
+                                " supported in current libvirt version")
                 luks_sec_uuid = create_luks_secret(os.path.join(pool_target,
                                                                 vol_name),
                                                    encryption_password, test)
@@ -169,6 +179,10 @@ def run(test, params, env):
                 vol_arg['name'] = vol_name
                 vol_arg['capacity'] = int(vol_capability)
                 vol_arg['allocation'] = int(vol_allocation)
+                vol_arg['format'] = vol_format
+                if with_clusterSize:
+                    vol_arg['clusterSize'] = int(vol_clusterSize)
+                    vol_arg['clusterSize_unit'] = vol_clusterSize_unit
                 create_luks_vol(pool_name, vol_name, luks_sec_uuid, vol_arg)
             else:
                 libvirt_pvt.pre_vol(vol_name=vol_name,

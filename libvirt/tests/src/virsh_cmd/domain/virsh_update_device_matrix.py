@@ -2,12 +2,15 @@ import os
 import time
 import shutil
 import logging
+
 from avocado.core import exceptions
 from avocado.utils import process
+
 from virttest import virsh
 from virttest import data_dir
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import VMXML
-from provider import libvirt_version
 from virttest.utils_test import libvirt
 
 
@@ -327,7 +330,7 @@ def run(test, params, env):
                 if host_rhel6:
                     raise exceptions.TestSkipError("Default option not supported"
                                                    " on this host")
-            logging.info("Shuting down %s..." % vm_name)
+            logging.info("Shutting down %s..." % vm_name)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
         elif pre_vm_state == "paused":
@@ -340,13 +343,13 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login().close()
             if not vm.pause():
-                raise exceptions.TestSkipError("Cann't pause the domain")
+                raise exceptions.TestSkipError("Can't pause the domain")
         elif pre_vm_state == "transient":
             logging.info("Creating %s..." % vm_name)
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                raise exceptions.TestSkipError("Cann't create the domain")
+                raise exceptions.TestSkipError("Can't create the domain")
             vm.wait_for_login().close()
     except Exception as e:
         logging.error(str(e))
@@ -401,7 +404,7 @@ def run(test, params, env):
         # Then attach the disk.
         if pre_vm_state == "paused":
             if not vm.pause():
-                raise exceptions.TestFail("Cann't pause the domain")
+                raise exceptions.TestFail("Can't pause the domain")
         create_attach_xml(update_xmlfile, disk_type, target_bus,
                           target_dev, test_iso, disk_mode, disk_alias)
         ret = virsh.update_device(vm_ref, filearg=update_xmlfile,

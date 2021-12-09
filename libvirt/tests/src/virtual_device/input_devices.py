@@ -7,7 +7,7 @@ from virttest.libvirt_xml.devices.input import Input
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import virsh
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -23,6 +23,8 @@ def run(test, params, env):
         Check whether the added devices are shown in the guest xml
         """
         pattern = "<input bus=\"%s\" type=\"%s\">" % (bus_type, input_type)
+        if with_packed:
+            pattern = "<driver packed=\"%s\"" % (driver_packed)
         logging.debug('Searching for %s in vm xml', pattern)
         xml_after_adding_device = VMXML.new_from_dumpxml(vm_name)
         logging.debug('xml_after_adding_device:\n%s', xml_after_adding_device)
@@ -49,14 +51,21 @@ def run(test, params, env):
         if not re.search(pattern, cmdline):
             test.fail("Can not find the %s input device "
                       "in qemu cmd line." % input_type)
+        if with_packed:
+            pattern = r"packed=%s" % driver_packed
+            if not re.search(pattern, cmdline):
+                test.fail("Can not find the packed driver "
+                          "in qemu cmd line")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     machine_type = params.get('machine_type', '')
     status_error = params.get("status_error", "no") == "yes"
+    with_packed = params.get("with_packed", "no") == "yes"
+    driver_packed = params.get("driver_packed", "on")
     bus_type = params.get("bus_type")
     input_type = params.get("input_type")
 
-    check_preconditions(bus_type, input_type, test)
+    check_preconditions(bus_type, input_type, with_packed, test)
 
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_dumpxml(vm_name)
@@ -79,6 +88,8 @@ def run(test, params, env):
                 logging.debug("keyboard %s is going to be passthrough "
                               "to the host.", kbd_dev_name[0])
                 input_dev.source_evdev = kbd_dev_name[0]
+            if with_packed:
+                input_dev.driver_packed = driver_packed
             vm_xml.add_device(input_dev)
             try:
                 vm_xml.sync()
@@ -100,7 +111,7 @@ def run(test, params, env):
             test.fail("Expected fail in negative cases but vm started successfully.")
             return
 
-        logging.debug("VM started successfully in postive cases.")
+        logging.debug("VM started successfully in positive cases.")
         check_dumpxml()
         check_qemu_cmd_line()
     finally:
@@ -109,7 +120,7 @@ def run(test, params, env):
         vm_xml_backup.sync()
 
 
-def check_preconditions(bus_type, input_type, test):
+def check_preconditions(bus_type, input_type, with_packed, test):
     if input_type == "tablet":
         if not libvirt_version.version_compare(1, 2, 2):
             test.cancel("tablet input type is not supported "
@@ -120,3 +131,6 @@ def check_preconditions(bus_type, input_type, test):
                         "is not supported on current version.")
     if bus_type in ["ps2", "usb"] and platform.machine() == 's390x':
         test.cancel("bus types ps2, usb not supported on s390x")
+    if with_packed and not libvirt_version.version_compare(6, 3, 0):
+        test.cancel("The virtio packed attribute is not supported in"
+                    " current libvirt version.")

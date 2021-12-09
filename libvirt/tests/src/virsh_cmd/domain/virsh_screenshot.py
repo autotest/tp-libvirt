@@ -2,10 +2,9 @@ import os
 import logging
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.video import Video
-
-from provider import libvirt_version
 
 
 def video_device_setup(vm_name, video_type):

@@ -1,8 +1,11 @@
 import logging
 
 from virttest import virt_vm
-from virttest.libvirt_xml import VMXML
+from virttest import virsh
+from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import LibvirtXMLError
+from virttest.libvirt_xml.devices.video import Video
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -20,12 +23,12 @@ def run(test, params, env):
         # Change name in XML
         logging.info("Rename %s to %s.", vm.name, new_name)
         try:
-            vm = VMXML.vm_rename(vm, new_name, uuid)  # give it a new uuid
+            vm = vm_xml.VMXML.vm_rename(vm, new_name, uuid)  # give it a new uuid
         except LibvirtXMLError as detail:
             test.fail("Rename %s to %s failed:\n%s"
                       % (vm.name, new_name, detail))
 
-        # Exercize the defined XML
+        # Exercise the defined XML
         try:
             vm.start()
         except virt_vm.VMStartError as detail:
@@ -34,12 +37,69 @@ def run(test, params, env):
         vm.destroy()
         return fail_info
 
+    def prepare_xml_file():
+        """
+        prepare an invalid xml with video device containing
+        invalid attribute "foot", for example,
+        <model type='qxl' ram='65536' vram='65536' vgamem='65536' foot='3'/>
+        """
+        new_xml = xml_backup.copy()
+
+        # Add video device if guest doesn't have
+        if not new_xml.get_devices(device_type="video"):
+            logging.debug("Guest doesn't have video device, add one")
+            new_video = Video()
+            new_video.model_type = "virtio"
+            new_xml.add_device(new_video)
+            logging.debug("The xml with video is %s", new_xml)
+
+        # Set invalid attribute for video device
+        video_device_xml = new_xml.xmltreefile.find('/devices/video/model')
+        if video_device_xml is None:
+            test.error("Failed to get guest video device")
+        video_device_xml.set("foot", "3")
+        logging.debug("The new xml used for defining a new domain is %s", new_xml)
+        xml_file = new_xml.xmltreefile.name
+
+        # undefine the original vm
+        virsh.undefine(vm_name)
+        return xml_file
+
     # Run test
     vm_name = params.get("main_vm")
     vm = env.get_vm(params["main_vm"])
     new_name = params.get("new_name", "test")
+    status_error = params.get("status_error") == "yes"
+    readonly = params.get("readonly") == "yes"
+    option_ref = params.get("option_ref")
+    is_defined_from_xml = params.get("is_defined_from_xml") == "yes"
+    error_msg = params.get("error_msg")
     uuid = vm.get_uuid()
     logging.info("Original uuid: %s", vm.get_uuid())
+
+    xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    xml_backup_file = xml_backup.xmltreefile.name
+
+    virsh_dargs = {"debug": True}
+    if readonly:
+        virsh_dargs["readonly"] = True
+
+    expected_fails_msg = []
+    if error_msg:
+        expected_fails_msg.append(error_msg)
+
+    if is_defined_from_xml:
+        xml_file = prepare_xml_file()
+        try:
+            ret = virsh.define(xml_file, option_ref, **virsh_dargs)
+            libvirt.check_result(ret, expected_fails=expected_fails_msg)
+        finally:
+            # for positive test, undefine the defined vm firstly
+            if not ret.exit_status:
+                virsh.undefine(vm_name)
+            # restore the original vm
+            virsh.define(xml_backup_file)
+        return
 
     assert uuid is not None
     # Rename to a new name

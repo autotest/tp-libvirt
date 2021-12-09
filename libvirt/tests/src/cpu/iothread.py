@@ -336,7 +336,7 @@ def run(test, params, env):
 
     def check_iothread_pool(org_pool, act_pool, is_equal=False):
         """
-        Compare the iothread pool values between orginal and actual ones
+        Compare the iothread pool values between original and actual ones
 
         :param org_pool: original pool
         :param act_pool: actual pool
@@ -349,7 +349,7 @@ def run(test, params, env):
                         "Expected: {}, Actual: {}".format(org_pool, act_pool))
             if is_equal:
                 err_info = ("The iothread pool values have been updated "
-                            "unexpectly! Expected: {}, Actual: {}"
+                            "unexpectedly! Expected: {}, Actual: {}"
                             .format(org_pool, act_pool))
             test.fail(err_info)
 
@@ -370,8 +370,8 @@ def run(test, params, env):
             result = virsh.schedinfo(vm_name, debug=True)
             libvirt.check_exit_status(result)
             if update_error:
-                items.update({"iothread_period": 100000})
-                items.update({"iothread_quota": -1})
+                items.update({"iothread_period": 100000,
+                              "iothread_quota": '(17592186044415|-1)'})
             for key, val in items.items():
                 if not re.findall(key+'\s*:\s+'+str(val), result.stdout):
                     test.fail("Unable to find expected value {}:{} from {}"

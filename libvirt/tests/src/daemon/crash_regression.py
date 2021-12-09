@@ -9,6 +9,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest.utils_libvirtd import LibvirtdSession
+from virttest.utils_libvirtd import Libvirtd
 from virttest.libvirt_xml.xcepts import LibvirtXMLError
 from virttest.libvirt_xml.vm_xml import VMXML, VMCPUXML, VMPMXML
 from virttest.libvirt_xml.network_xml import NetworkXML, IPXML
@@ -27,7 +28,7 @@ def run_sig_segv(params, libvirtd, vm):
     """
     Kill libvirtd with signal SEGV.
     """
-    process.run('pkill libvirtd --signal 11')
+    process.run('pkill %s --signal 11' % libvirtd.service_exec)
 
 
 def run_shutdown_console(params, libvirtd, vm):
@@ -174,7 +175,7 @@ def run_invalid_mac_net(params, libvirtd, vm):
 
 def run_cpu_compare(params, libvirtd, vm):
     """
-    Comprare a cpu without model property.
+    Compare a cpu without model property.
     """
     cpu_xml = VMCPUXML()
     cpu_xml.topology = {"sockets": 1, "cores": 1, "threads": 1}
@@ -249,6 +250,9 @@ def run(test, params, env):
     except path.CmdNotFoundError:
         pass
     libvirtd = LibvirtdSession(gdb=True)
+    serv_tmp = "libvirt" if libvirtd.service_exec == "libvirtd" else libvirtd.service_exec
+    process.run("rm -rf /var/run/libvirt/%s-*" % serv_tmp,
+                shell=True, ignore_status=True)
     try:
         libvirtd.start()
 
@@ -275,6 +279,7 @@ def run(test, params, env):
             path.find_command('virtlogd')
             process.run('pkill virtlogd', ignore_status=True)
             process.run('systemctl restart virtlogd.socket', ignore_status=True)
+            Libvirtd("libvirtd.socket").restart()
         except path.CmdNotFoundError:
             pass
         libvirtd.exit()

@@ -4,7 +4,7 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -47,4 +47,4 @@ def run(test, params, env):
             test.fail("Command 'virsh version %s' failed "
                       "(correct command)" % option)
         if option.count("daemon") and not result.stdout.count("daemon"):
-            test.fail("No daemon information outputed!")
+            test.fail("No daemon information outputted!")

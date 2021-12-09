@@ -51,7 +51,7 @@ def check_disk(vm_name, disk, test):
     Check if given disk exist in VM.
 
     :param vm_name: Domain name.
-    :param disk: Domian disk source path or darget dev.
+    :param disk: Domain disk source path or darget dev.
     :return: True/False
     """
     if vm_xml.VMXML.check_disk_exist(vm_name, disk):
@@ -67,11 +67,11 @@ def run(test, params, env):
     This command can manage active block operations.
     1. Positive testing
         1.1 Query active block job for the specified disk.
-        1.2 Manager the active block job(cancle/pivot).
+        1.2 Manager the active block job(cancel/pivot).
         1.3 Adjust speed for the active block job.
     2. Negative testing
         2.1 Query active block job for a invalid disk.
-        2.2 Invalid bandwith test.
+        2.2 Invalid bandwidth test.
         2.3 No active block job management.
     """
 
@@ -83,6 +83,7 @@ def run(test, params, env):
     invalid_disk = params.get("invalid_disk")
     persistent_vm = "yes" == params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
+    blockcopy_options = params.get("blockjob_under_test_options", "")
 
     target = get_disk(vm_name, test)
     if not target:
@@ -91,7 +92,7 @@ def run(test, params, env):
     # Prepare transient/persistent vm
     original_xml = vm.backup_xml()
     if not persistent_vm and vm.is_persistent():
-        vm.undefine("--nvram")
+        vm.undefine()
     elif persistent_vm and not vm.is_persistent():
         vm.define(original_xml)
 
@@ -99,7 +100,7 @@ def run(test, params, env):
     tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
     dest_path = os.path.join(data_dir.get_tmp_dir(), tmp_file)
     if not no_blockjob:
-        cmd_result = virsh.blockcopy(vm_name, target, dest_path, "",
+        cmd_result = virsh.blockcopy(vm_name, target, dest_path, blockcopy_options,
                                      ignore_status=True, debug=True)
         status = cmd_result.exit_status
         if status != 0:

@@ -60,7 +60,7 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
-        # Gerenate tmp dir
+        # Generate tmp dir
         tmp_dir = data_dir.get_tmp_dir()
         img_dir = os.path.join(tmp_dir, 'images')
         if not os.path.exists(img_dir):
@@ -137,8 +137,7 @@ def run(test, params, env):
         logging.debug("disk_list_debug = %s", bef_list)
 
         # Attach disk to guest
-        ret = virsh.attach_device(domain_opt=vm_name,
-                                  file_opt=img_disk.xml)
+        ret = virsh.attach_device(vm_name, img_disk.xml)
         if ret.exit_status != 0:
             test.fail("Fail to attach device %s" % ret.stderr)
         time.sleep(2)
@@ -154,6 +153,12 @@ def run(test, params, env):
             """
             Create large image in guest
             """
+            # install dependent packages
+            pkg_list = ["parted", "e2fsprogs"]
+            for pkg in pkg_list:
+                if not utils_package.package_install(pkg, session):
+                    test.error("Failed to install dependent package %s" % pkg)
+
             # create partition and file system
             session.cmd("parted -s %s mklabel msdos" % new_disk)
             session.cmd("parted -s %s mkpart primary ext3 '0%%' '100%%'" %

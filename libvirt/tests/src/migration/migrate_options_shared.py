@@ -8,15 +8,17 @@ import platform
 import tempfile
 import copy
 import datetime
+import subprocess
 
 from avocado.utils import process
 from avocado.utils import memory
 from avocado.utils import distro
+from avocado.utils import cpu as cpuutil
 from avocado.core import exceptions
 
 from virttest import libvirt_vm
-from virttest import utils_test
 from virttest import utils_misc
+from virttest import utils_split_daemons
 from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
@@ -25,37 +27,18 @@ from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_package
 from virttest import utils_iptables
+from virttest import utils_secret
 from virttest import utils_conn
+from virttest import utils_config
 from virttest import xml_utils
+from virttest import migration
 
 from virttest.utils_iptables import Iptables
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
+from virttest.utils_libvirt import libvirt_config
 from virttest.libvirt_xml.devices.controller import Controller
-
-
-def check_parameters(test, params):
-    """
-    Make sure all of parameters are assigned a valid value
-
-    :param test: the test object
-    :param params: the parameters to be checked
-
-    :raise: test.cancel if invalid value exists
-    """
-    migrate_dest_host = params.get("migrate_dest_host")
-    migrate_dest_pwd = params.get("migrate_dest_pwd")
-    migrate_source_host = params.get("migrate_source_host")
-    migrate_source_pwd = params.get("migrate_source_pwd")
-
-    args_list = [migrate_dest_host,
-                 migrate_dest_pwd, migrate_source_host,
-                 migrate_source_pwd]
-
-    for arg in args_list:
-        if arg and arg.count("EXAMPLE"):
-            test.cancel("Please assign a value for %s!" % arg)
 
 
 def run(test, params, env):
@@ -107,27 +90,6 @@ def run(test, params, env):
             else:
                 logging.info("'%s' is found in dmesg", content % hpt_order)
 
-    def check_vm_network_accessed(session=None):
-        """
-        The operations to the VM need to be done before or after
-        migration happens
-
-        :param session: The session object to the host
-
-        :raise: test.error when ping fails
-        """
-        # Confirm local/remote VM can be accessed through network.
-        logging.info("Check VM network connectivity")
-        s_ping, _ = utils_test.ping(vm.get_address(),
-                                    count=10,
-                                    timeout=20,
-                                    output_func=logging.debug,
-                                    session=session)
-        if s_ping != 0:
-            if session:
-                session.close()
-            test.fail("%s did not respond after %d sec." % (vm.name, 20))
-
     def check_virsh_command_and_option(command, option=None):
         """
         Check if virsh command exists
@@ -159,6 +121,20 @@ def run(test, params, env):
             logging.debug("New device is added:\n%s", newcontroller)
             vm_xml.add_device(newcontroller)
         vm_xml.sync()
+
+    def add_tpm(vm, tpm_args):
+        """
+        Add tpm device to vm
+
+        :param vm: The guest
+        :param tpm_args: Parameters for tpm device
+        """
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+        vmxml.remove_all_device_by_type('tpm')
+        tpm_dev = libvirt.create_tpm_dev(tpm_args)
+        logging.debug("tpm xml is %s", tpm_dev)
+        vmxml.add_device(tpm_dev)
+        vmxml.sync()
 
     def do_migration(vm, dest_uri, options, extra):
         """
@@ -200,29 +176,6 @@ def run(test, params, env):
         cmd = "rm -f %s" % log_file
         logging.debug("Delete remote libvirt log file '%s'", log_file)
         remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
-
-    def cleanup_dest(vm):
-        """
-        Clean up the destination host environment
-        when doing the uni-direction migration.
-
-        :param vm: the guest to be cleaned up
-        """
-        logging.info("Cleaning up VMs on %s", vm.connect_uri)
-        try:
-            if virsh.domain_exists(vm.name, uri=vm.connect_uri):
-                vm_state = vm.state()
-                if vm_state == "paused":
-                    vm.resume()
-                elif vm_state == "shut off":
-                    vm.start()
-                vm.destroy(gracefully=False)
-
-                if vm.is_persistent():
-                    vm.undefine()
-
-        except Exception as detail:
-            logging.error("Cleaning up destination failed.\n%s", detail)
 
     def run_stress_in_vm():
         """
@@ -409,8 +362,9 @@ def run(test, params, env):
         """
         Switch to postcopy during migration
         """
-        res = virsh.migrate_postcopy(vm_name)
-        logging.debug("Command output: %s", res)
+        if not utils_misc.wait_for(
+           lambda: not virsh.migrate_postcopy(vm_name, debug=True).exit_status, 5):
+            test.fail("Failed to set migration postcopy.")
 
         if not utils_misc.wait_for(
            lambda: libvirt.check_vm_state(vm_name, "paused",
@@ -544,6 +498,21 @@ def run(test, params, env):
             dest_stats = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
             logging.debug("domstats in destination: {}".format(dest_stats))
 
+        def _check_dest_state(expected_remote_state):
+            """
+            Check domstate of vm in target
+
+            :param expected_remote_state: The expected value
+            :return: True if expected domstate is not found
+            """
+            cmd = "virsh domstate {}".format(vm_name)
+            remote_vm_state = remote.run_remote_cmd(cmd, cmd_parms,
+                                                    runner_on_target,
+                                                    ignore_status=False)
+            if (len(remote_vm_state.stdout.split()) and
+               remote_vm_state.stdout.split()[0] == expected_remote_state):
+                return True
+
         expected_remote_state = "paused"
         expected_source_state = ["paused", "running"]
         if postcopy_options:
@@ -558,17 +527,12 @@ def run(test, params, env):
             test.fail("Incorrect VM stat on source machine: {}"
                       .format(vm_stat.stdout))
 
-        check_dest_stats(vm_name)
-        cmd = "virsh domstate {}".format(vm_name)
-        remote_vm_state = remote.run_remote_cmd(cmd, cmd_parms,
-                                                runner_on_target,
-                                                ignore_status=False)
-        if ((not len(remote_vm_state.stdout.split())) or
-           remote_vm_state.stdout.split()[0] != expected_remote_state):
-            test.fail("Incorrect VM stat on destination machine: {}"
-                      .format(remote_vm_state.stdout))
-        else:
-            logging.debug("vm stat on destination: {}".format(remote_vm_state))
+        if not utils_misc.wait_for(
+           lambda: _check_dest_state(expected_remote_state), 5,
+           text="check if dest vm state is %s" % expected_remote_state):
+            test.fail("Unable to get expected domstate on destination machine "
+                      "in 5s!")
+
         if postcopy_options:
             vm_stat = virsh.domstate(vm_name, ignore_status=False)
             if ((not len(vm_stat.stdout.split())) or
@@ -606,7 +570,8 @@ def run(test, params, env):
 
         if use_firewall_cmd:
             firewall_cmd.add_direct_rule(firewall_rule)
-            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True,
+                                            zone=None)
             cmdRes = re.findall(firewall_rule, direct_rules)
             if len(cmdRes) == 0:
                 test.error("Rule '%s' is not added" % firewall_rule)
@@ -618,7 +583,8 @@ def run(test, params, env):
 
         if use_firewall_cmd:
             firewall_cmd.remove_direct_rule(firewall_rule)
-            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True,
+                                            zone=None)
             cmdRes = re.findall(firewall_rule, direct_rules)
             if len(cmdRes):
                 test.error("Rule '%s' is not removed correctly" % firewall_rule)
@@ -644,15 +610,30 @@ def run(test, params, env):
             test.fail("The number of established connections is unexpected: %s"
                       % result.stdout.strip())
 
+    def suspend_vm(vm):
+        """
+        Suspend guest on source host and then check state
+
+        :params vm: Vm
+        :raise: test.fail if failed to pause vm or
+            the state of vm is not 'paused'
+        """
+        if not vm.pause():
+            test.fail("Failed to suspend vm.")
+        if not utils_misc.wait_for(
+           lambda: libvirt.check_vm_state(vm.name, "paused"), 10):
+            test.fail("vm statue is expected to 'paused'")
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
 
         :param params: the parameters used
+        :raise: test.error if parameter is invalid
         """
         actions_during_migration = params.get("actions_during_migration")
         if not actions_during_migration:
-            return
+            test.error("Invalid parameter is provided!")
         for action in actions_during_migration.split(","):
             if action == 'setspeed':
                 check_setspeed(params)
@@ -674,7 +655,47 @@ def run(test, params, env):
                 check_established(expConnNum)
             elif action == 'drop_network_connection':
                 drop_network_connection(block_time)
+            elif action == 'suspendvm':
+                suspend_vm(vm)
+            elif action == 'cancel_concurrent_migration':
+                cancel_bg_migration()
             time.sleep(3)
+
+    def do_actions_after_migrate(params):
+        """
+        The entry point to execute action list on remote vm after migration
+
+        :param params: the parameters used
+        :raise: test.error if parameter is invalid
+        """
+        actions_after_migration = params.get("actions_after_migration")
+        if not actions_after_migration:
+            test.error("Invalid parameter is provided!")
+        remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+        savefile = params.get("save_file", "/tmp/save.file")
+        for action in actions_after_migration.split(","):
+            if action == 'save_restore':
+                ret = remote_virsh_session.save(vm_name, savefile, debug=True)
+                libvirt.check_exit_status(ret)
+                time.sleep(3)
+
+                ret = remote_virsh_session.restore(savefile, debug=True)
+                remote.run_remote_cmd('rm -f %s' % savefile,
+                                      cmd_parms, runner_on_target)
+                libvirt.check_exit_status(ret)
+                if not libvirt.check_vm_state(vm_name, state="running",
+                                              uri=dest_uri):
+                    test.fail("Can't get the expected vm state 'running'")
+            elif action == "checkdomstate":
+                ret = remote_virsh_session.domstate(vm_name, debug=True)\
+                    .stdout_text.strip()
+                exp_state = "running" if not pause_vm_before_mig else "paused"
+                if ret != exp_state:
+                    test.fail("The vm state on target host should "
+                              "be '%s', but '%s' found" % (exp_state, ret))
+
+            time.sleep(3)
+        remote_virsh_session.close_session()
 
     def attach_channel_xml():
         """
@@ -691,7 +712,7 @@ def run(test, params, env):
                   'target_type': target_type,
                   'target_name': target_name}
         channel_xml = libvirt.create_channel_xml(params)
-        virsh.attach_device(domain_opt=vm_name, file_opt=channel_xml.xml,
+        virsh.attach_device(vm_name, channel_xml.xml,
                             flagstr="--config", ignore_status=False)
         logging.debug("New VMXML with channel:\n%s", virsh.dumpxml(vm_name))
 
@@ -797,57 +818,174 @@ def run(test, params, env):
                       "is power of 2", item, pagesize)
         return item
 
-    def update_config_file(config_type, new_conf, remote_host=True,
-                           params=None):
+    def update_qemu_conf_on_local_and_remote():
+        """
+        Update qemu.conf on both local and remote hosts
+        """
+
+        conf_dict = eval(params.get("qemu_conf_dict", '{}'))
+        conf_dest_dict = params.get("qemu_conf_dest_dict", '{}')
+
+        update_conf_on_local_and_remote("qemu", "qemu",
+                                        conf_dict, conf_dest_dict)
+
+    def update_libvirtd_conf_on_local_and_remote():
+        """
+        Update libvirtd conf file on both local and remote hosts
+        """
+
+        conf_dict = eval(params.get("libvirtd_conf_dict", '{}'))
+        conf_dest_dict = params.get("libvirtd_conf_dest_dict", '{}')
+        conf_type = params.get("libvirtd_conf_type")
+        conf_type_dest = params.get("libvirtd_conf_type_dest")
+
+        update_conf_on_local_and_remote(conf_type, conf_type_dest,
+                                        conf_dict, conf_dest_dict)
+
+    def update_log_conf_on_local_and_remote():
+        """
+        Update log conf file on both local and remote hosts
+        """
+
+        conf_dict = eval(params.get("log_conf_dict", '{}'))
+        conf_dest_dict = params.get("log_conf_dest_dict", '{}')
+        conf_type = params.get("log_conf_type")
+        conf_type_dest = params.get("log_conf_type_dest")
+
+        update_conf_on_local_and_remote(conf_type, conf_type_dest,
+                                        conf_dict, conf_dest_dict)
+
+    def update_conf_on_local_and_remote(conf_type, conf_type_dest,
+                                        conf_dict, conf_dest_dict):
+        """
+        Update libvirt related conf files on both local and remote hosts
+
+        :param conf_type: String type, conf type on local host
+        :param conf_dict: Dict of parameters to set on local host
+        :param conf_type_dest: String type, conf type on remote host
+        :param conf_dest_dict: String type that contains dict of parameters
+                               to be set on remote host
+        """
+
+        if conf_dict:
+            logging.info("Update conf on local host")
+            updated_conf_local = update_config_file(
+                conf_type, conf_dict, remote=False, remote_params=None
+                )
+            local_conf_obj_list.append(updated_conf_local)
+
+        if eval(conf_dest_dict):
+            logging.info("Update conf on remote host")
+            updated_conf_remote = update_config_file(
+                conf_type_dest, conf_dest_dict, remote=True,
+                remote_params=params
+                )
+            remote_conf_obj_list.append(updated_conf_remote)
+
+    def get_conf_type(conf_type):
+        """
+        Convert the configured conf_type to the actual conf_type\
+        according to test env.
+        Note: The conf_type configured in <test>.cfg is always set to the value
+              in modular daemon mode. Need to convert it to the actual value
+              according to the test env.
+
+        :param conf_type: Configured conf_type, String type
+                          like virtlogd, virtproxyd, etc
+        :return conf_type: Actual conf_type, String type,
+                           like virtlogd, virtproxyd, etc
+        """
+
+        if (not utils_split_daemons.is_modular_daemon() and
+            conf_type in ["virtqemud", "virtproxyd", "virtnetworkd",
+                          "virtstoraged", "virtinterfaced", "virtnodedevd",
+                          "virtnwfilterd", "virtsecretd"]):
+            return "libvirtd"
+        else:
+            return conf_type
+
+    def get_conf_file_path(conf_type):
+        """
+        Get conf file path by the conf type
+
+        :param conf_type: conf type, like libvirtd, qemu, virtproxyd, etc
+        :return conf file path
+        """
+
+        return utils_config.get_conf_obj(conf_type).conf_path
+
+    def update_config_file(conf_type, conf_dict, remote=False,
+                           remote_params=None):
         """
         Update the specified configuration file with dict
 
-        :param config_type: Like libvirtd, qemu
-        :param new_conf: The str including new configuration
-        :param remote_host: True to also update in remote host
-        :param params: The dict including parameters to connect remote host
-        :return: utils_config.LibvirtConfigCommon object
+        :param conf_type: String type, conf type
+        :param conf_dict: Dict of parameters to set
+        :param remote: True to update only remote
+                       False to update only local
+        :param remote_params: Dict of remote host parameters, which should
+                              include: server_ip, server_user, server_pwd
+        :return: utils_config.LibvirtConfigCommon object if remote is False, or
+                 remote.RemoteFile objects if remote is True
         """
-        logging.debug("Update configuration file")
-        cleanup_libvirtd_log(log_file)
-        config_dict = eval(new_conf)
-        updated_conf = libvirt.customize_libvirt_config(config_dict,
-                                                        config_type=config_type,
-                                                        remote_host=remote_host,
-                                                        extra_params=params)
+
+        updated_conf = None
+
+        if not remote:
+            logging.debug("Update local conf, conf type is %s, dict is %s",
+                          conf_type, conf_dict)
+            updated_conf = libvirt.customize_libvirt_config(
+                conf_dict, config_type=conf_type,
+                remote_host=False, extra_params=None
+                )
+        else:
+            logging.debug("Update remote conf, conf type is %s, dict is %s",
+                          conf_type, conf_dict)
+            actual_conf_type = get_conf_type(conf_type)
+            file_path = get_conf_file_path(actual_conf_type)
+            updated_conf = libvirt_remote.update_remote_file(
+                remote_params, conf_dict, file_path)
+
         return updated_conf
 
-    def check_migration_res(result):
+    def time_diff_between_vm_host(localvm=True):
         """
-        Check if the migration result is as expected
-
-        :param result: the output of migration
-        :raise: test.fail if test is failed
+        check the time difference between vm and source host
+        :param localvm: True if vm is not migrated yet
         """
-        if not result:
-            test.error("No migration result is returned.")
-
-        logging.info("Migration out: %s", result.stdout_text.strip())
-        logging.info("Migration error: %s", result.stderr_text.strip())
-
-        if status_error:  # Migration should fail
-            if err_msg:   # Special error messages are expected
-                if not re.search(err_msg, result.stderr_text.strip()):
-                    test.fail("Can not find the expected patterns '%s' in "
-                              "output '%s'" % (err_msg,
-                                               result.stderr_text.strip()))
-                else:
-                    logging.debug("It is the expected error message")
-            else:
-                if int(result.exit_status) != 0:
-                    logging.debug("Migration failure is expected result")
-                else:
-                    test.fail("Migration success is unexpected result")
+        if localvm:
+            vm_time = virsh.domtime(vm_name, debug=True).stdout
+            vm_time_value = int(vm_time.strip().split(":")[-1])
         else:
-            if int(result.exit_status) != 0:
-                test.fail(result.stderr_text.strip())
+            remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+            vm_time = remote_virsh_session.domtime(vm_name, debug=True).stdout
+            vm_time_value = int(vm_time.strip().split(":")[-1])
+            remote_virsh_session.close_session()
 
-    check_parameters(test, params)
+        host_time_value = int(time.time())
+        time_diff = host_time_value - vm_time_value
+        logging.debug("Time difference between source host and vm is %s", time_diff)
+        return time_diff
+
+    def cancel_bg_migration():
+        """
+        Cancel one of the simultaneous migration processes
+        """
+        cmd = "virsh migrate %s %s %s %s" % (vm_name, dest_uri, options, extra)
+        logging.debug("Start migrating from background: %s", cmd)
+        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Sleep 10s to wait for migration to start
+        time.sleep(10)
+
+        logging.debug("Stopping migration process: %s", p.pid)
+        p.terminate()
+        stdout, stderr = p.communicate()
+        logging.debug("status:[%d], stdout:[%s], stderr:[%s]",
+                      p.returncode, stdout, stderr)
+
+    migration_test = migration.MigrationTest()
+    migration_test.check_parameters(params)
 
     # Params for NFS shared storage
     shared_storage = params.get("migrate_shared_storage", "")
@@ -882,6 +1020,10 @@ def run(test, params, env):
     check_complete_job = "yes" == params.get("check_complete_job", "no")
     check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
     check_log_interval = params.get("check_log_interval")
+    comp_cache_size = params.get("comp_cache_size")
+    maxdowntime_before_mig = "yes" == params.get("set_maxdowntime_before_migration",
+                                                 "no")
+    check_default_maxdowntime = params.get("check_default_maxdowntime")
     check_event_output = params.get("check_event_output")
     check_tls_destination = "yes" == params.get("check_tls_destination", "no")
     contrl_index = params.get("new_contrl_index", None)
@@ -895,7 +1037,9 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
     low_speed = params.get("low_speed", None)
-    migr_vm_back = "yes" == params.get("migr_vm_back", "no")
+    migrate_vm_back = "yes" == params.get("migrate_vm_back", "no")
+    timer_migration = "yes" == params.get("timer_migration", "no")
+    concurrent_migration = "yes" == params.get("concurrent_migration", "no")
 
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
@@ -907,9 +1051,13 @@ def run(test, params, env):
     vcpu_num = params.get("vcpu_num")
     block_time = params.get("block_time", 30)
     parallel_cn_nums = params.get("parallel_cn_nums")
-
+    tpm_args = eval(params.get("tpm_args", '{}'))
+    src_secret_value = params.get("src_secret_value")
+    dst_secret_value = params.get("dst_secret_value")
+    update_tpm_secret = "yes" == params.get("update_tpm_secret", "no")
     break_network_connection = "yes" == params.get("break_network_connection",
                                                    "no")
+    pause_vm_before_mig = "yes" == params.get("pause_vm_before_migration", "no")
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -921,6 +1069,10 @@ def run(test, params, env):
     cmd_run_in_remote_host = params.get("cmd_run_in_remote_host", None)
     cmd_run_in_remote_host_1 = params.get("cmd_run_in_remote_host_1", None)
     cmd_run_in_remote_host_2 = params.get("cmd_run_in_remote_host_2", None)
+    cmd_in_vm_after_migration = params.get("cmd_in_vm_after_migration")
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     # For qemu command line checking
     qemu_check = params.get("qemu_check", None)
@@ -931,7 +1083,9 @@ def run(test, params, env):
     cache = params.get("cache")
     remove_cache = "yes" == params.get("remove_cache", "no")
     err_msg = params.get("err_msg")
-
+    extra_args = {'func_params': params,
+                  'status_error': params.get("status_error", "no"),
+                  'err_msg': err_msg}
     arch = platform.machine()
     if any([hpt_resize, contrl_index, htm_state]) and 'ppc64' not in arch:
         test.cancel("The case is PPC only.")
@@ -958,14 +1112,23 @@ def run(test, params, env):
     is_TestCancel = False
 
     # Objects to be cleaned up in the end
+    local_conf_obj_list = []
+    remote_conf_obj_list = []
     objs_list = []
     tls_obj = None
 
     expConnNum = 0
+    tpm_sec_uuid = None
+    dest_tmp_sec_uuid = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
+
     # Local variables
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     vm.verify_alive()
+    bk_uri = vm.connect_uri
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -982,24 +1145,15 @@ def run(test, params, env):
             if not libvirt_version.version_compare(5, 6, 0):
                 test.cancel("This libvirt version doesn't support "
                             "tls-destination option.")
+        # only emulator backend type in migration for now
+        if tpm_args and tpm_args.get("backend_type") == "emulator":
+            if not utils_misc.compare_qemu_version(4, 0, 0, is_rhev=False):
+                test.cancel("This qemu version doesn't support "
+                            "vtpm emulator backend.")
+        if concurrent_migration and not libvirt_version.version_compare(6, 0, 0):
+            test.cancel("This libvirt version doesn't support "
+                        "concurrent migration.")
 
-        if vcpu_num:
-            cmd = "grep -c processor /proc/cpuinfo"
-            remote_session = remote.remote_login("ssh", server_ip, "22",
-                                                 server_user, server_pwd,
-                                                 r'[$#%]')
-            for loc in ['source', 'target']:
-                session = None
-                if loc == 'target':
-                    session = remote_session
-                cmdStd, cmdStdout = utils_misc.cmd_status_output(cmd, shell=True,
-                                                                 session=session)
-                if cmdStd:
-                    test.fail("Failed to run %s." % cmd)
-                if (cmdStdout.split('\n')[0] and
-                   int(cmdStdout.split('\n')[0]) <= int(vcpu_num)):
-                    test.cancel("The %s host may not have enough cpus to start "
-                                "vm with %s cpu(s)." % (loc, vcpu_num))
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
                                                username=server_user,
@@ -1009,6 +1163,8 @@ def run(test, params, env):
                 use_firewall_cmd = False
                 firewall_rule = ["INPUT -s {}/32 -j DROP".format(server_ip)]
             else:
+                if not utils_package.package_install("firewalld"):
+                    test.error("Failed to install firewalld.")
                 use_firewall_cmd = True
                 firewall_cmd = utils_iptables.Firewall_cmd()
                 firewall_rule = ("ipv4 filter INPUT 0 --source {} -j DROP"
@@ -1025,33 +1181,13 @@ def run(test, params, env):
                 tls_obj.auto_recover = True
                 tls_obj.conn_setup()
 
-        # Setup qemu.conf
-        qemu_conf_dict = params.get("qemu_conf_dict")
-        qemu_conf_dest_dict = params.get("qemu_conf_dest_dict")
-        update_remote = not bool(qemu_conf_dest_dict)
-        if qemu_conf_dict:
-            qemu_conf = update_config_file('qemu',
-                                           qemu_conf_dict,
-                                           remote_host=update_remote,
-                                           params=params)
-            # Setup qemu.conf on target only
-            if qemu_conf_dest_dict:
-                qemuDestConf = libvirt_remote.update_remote_file(params,
-                                                                 qemu_conf_dest_dict,
-                                                                 '/etc/libvirt/qemu.conf')
-        # Setup libvirtd
-        libvirtd_conf_dict = params.get("libvirtd_conf_dict")
-        libvirtd_conf_dest_dict = params.get("libvirtd_conf_dest_dict")
-        update_remote = not bool(libvirtd_conf_dest_dict)
-        if libvirtd_conf_dict:
-            libvirtd_conf = update_config_file('libvirtd',
-                                               libvirtd_conf_dict,
-                                               remote_host=update_remote,
-                                               params=params)
-            # Setup libvirtd on dest
-            if libvirtd_conf_dest_dict:
-                libvirtDestConf = libvirt_remote.update_remote_file(params,
-                                                                    libvirtd_conf_dest_dict)
+        # Clean up existing libvirtd log
+        cleanup_libvirtd_log(log_file)
+
+        # Setup libvirt related conf files
+        update_qemu_conf_on_local_and_remote()
+        update_libvirtd_conf_on_local_and_remote()
+        update_log_conf_on_local_and_remote()
 
         # Prepare required guest xml before starting guest
         if contrl_index:
@@ -1063,6 +1199,8 @@ def run(test, params, env):
             attach_channel_xml()
 
         if hpt_resize:
+            if cpuutil.get_cpu_vendor_name() != 'power8':
+                test.cancel('HPT cases are for Power8 only.')
             set_feature(new_xml, 'hpt', hpt_resize)
 
         if htm_state:
@@ -1075,6 +1213,50 @@ def run(test, params, env):
             params["driver_cache"] = cache
         if remove_cache:
             params["enable_cache"] = "no"
+
+        if tpm_args:
+            if update_tpm_secret:
+                auth_sec_dict = {"sec_ephemeral": "no",
+                                 "sec_private": "yes",
+                                 "sec_desc": "sample vTPM secret",
+                                 "sec_usage": "vtpm",
+                                 "sec_name": "VTPM_example"}
+                utils_secret.clean_up_secrets()
+                tpm_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                logging.debug("tpm sec uuid on source: %s", tpm_sec_uuid)
+                tpm_args.update({"encryption_secret": tpm_sec_uuid})
+                add_tpm(vm, tpm_args)
+                if src_secret_value:
+                    virsh.secret_set_value(tpm_sec_uuid, src_secret_value,
+                                           encode=True, debug=True)
+                if not remote_virsh_session:
+                    remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+                utils_secret.clean_up_secrets(remote_virsh_session)
+                logging.debug("create secret on target")
+                auth_sec_dict.update({"sec_uuid": tpm_sec_uuid})
+                dest_tmp_sec_uuid = libvirt.create_secret(auth_sec_dict,
+                                                          remote_virsh_dargs)
+                logging.debug("tpm sec uuid on target: %s", dest_tmp_sec_uuid)
+                if dst_secret_value:
+                    if not remote_virsh_session:
+                        remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+
+                    remote_virsh_session.secret_set_value(
+                        dest_tmp_sec_uuid, dst_secret_value, encode=True,
+                        debug=True, ignore_status=True)
+                    remote_virsh_session.close_session()
+
+            remote_session = remote.remote_login("ssh", server_ip, "22",
+                                                 server_user, server_pwd,
+                                                 r'[$#%]')
+            for loc in ['source', 'target']:
+                session = None
+                if loc == 'target':
+                    session = remote_session
+                if not utils_package.package_install(["swtpm", "swtpm-tools"], session):
+                    test.error("Failed to install swtpm packages on {} host."
+                               .format(loc))
+            remote_session.close()
 
         # Change the disk of the vm to shared disk and then start VM
         libvirt.set_vm_disk(vm, params)
@@ -1095,7 +1277,7 @@ def run(test, params, env):
 
         # Check local guest network connection before migration
         vm_session = vm.wait_for_login()
-        check_vm_network_accessed()
+        migration_test.ping_vm(vm, params)
 
         if check_event_output:
             cmd = "event --loop --all"
@@ -1110,9 +1292,27 @@ def run(test, params, env):
                                                  r'[$#%]')
             remote_session.sendline("virsh " + cmd)
 
+        if comp_cache_size:
+            if (not (int(comp_cache_size) & (int(comp_cache_size)-1)) and
+               int(comp_cache_size) > memory.get_page_size()):
+                res = virsh.migrate_compcache(vm_name, comp_cache_size,
+                                              **virsh_args).stdout_text.strip()
+                regx = (r"Compression cache: %.3f M"
+                        % (int(comp_cache_size)/(1024*1024)))
+                if not re.findall(regx, res):
+                    test.fail("Failed to find '%s' in '%s'." % (regx, res))
+            else:
+                # TODO: non-power-of-2 value or smaller than default pagesize
+                test.error("%s is not power of 2 or smaller than "
+                           "default pagesize." % comp_cache_size)
+
         # Preparation for the running guest before migration
         if hpt_resize and hpt_resize != 'disabled':
             trigger_hpt_resize(vm_session)
+
+        if tpm_args:
+            if not utils_package.package_install("tpm2-tools", vm_session):
+                test.error("Failed to install tpm2-tools in vm")
 
         if stress_in_vm:
             pkg_name = 'stress'
@@ -1127,10 +1327,23 @@ def run(test, params, env):
                                              args=())
             stress_thread.start()
 
+        # Check maxdowntime before migration
+        if check_default_maxdowntime:
+            res = virsh.migrate_getmaxdowntime(vm_name,
+                                               **virsh_args).stdout.strip()
+            if check_default_maxdowntime != res:
+                test.fail("Unable to get expected maxdowntime! Expected: {},"
+                          "Actual: {}.".format(check_default_maxdowntime, res))
+        if maxdowntime_before_mig:
+            check_maxdowntime(params)
+
+        if timer_migration:
+            source_vm_host_time_diff = time_diff_between_vm_host(localvm=True)
+
         if extra.count("timeout-postcopy"):
-            func_name = check_timeout_postcopy
+            action_during_mig = check_timeout_postcopy
         if params.get("actions_during_migration"):
-            func_name = do_actions_during_migrate
+            action_during_mig = do_actions_during_migrate
         if extra.count("comp-xbzrle-cache"):
             cache = get_usable_compress_cache(memory.get_page_size())
             extra = "%s %s" % (extra, cache)
@@ -1166,11 +1379,18 @@ def run(test, params, env):
             control_migrate_speed(int(low_speed))
             if postcopy_options and libvirt_version.version_compare(5, 0, 0):
                 control_migrate_speed(int(low_speed), opts=postcopy_options)
+        if pause_vm_before_mig:
+            suspend_vm(vm)
+
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
+            migration_test.check_result(mig_result, params)
         else:
-            migration_test = libvirt.MigrationTest()
 
             logging.debug("vm.connect_uri=%s", vm.connect_uri)
             vms = [vm]
@@ -1178,8 +1398,8 @@ def run(test, params, env):
                 migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                             options, thread_timeout=900,
                                             ignore_status=True, virsh_opt=virsh_opt,
-                                            func=func_name, extra_opts=extra,
-                                            func_params=params)
+                                            func=action_during_mig, extra_opts=extra,
+                                            **extra_args)
                 mig_result = migration_test.ret
             except exceptions.TestFail as fail_detail:
                 test.fail(fail_detail)
@@ -1190,8 +1410,6 @@ def run(test, params, env):
             except Exception as details:
                 mig_result = migration_test.ret
                 logging.error(details)
-
-        check_migration_res(mig_result)
 
         if add_channel:
             # Get the channel device source path of remote guest
@@ -1219,12 +1437,17 @@ def run(test, params, env):
                                                runner_on_target)
 
             # Send message from remote guest to the channel file
-            remote_vm_obj = utils_test.RemoteVMManager(cmd_parms)
-            vm_ip = vm.get_address()
+            remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            vm_ip = vm.get_address(session=remote_session, timeout=480)
+            remote_session.close()
             vm_pwd = params.get("password")
-            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
-            cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
-            remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % cmd_result.stdout_text.strip())
+            cmd_parms.update({'vm_ip': vm_ip, 'vm_pwd': vm_pwd})
+            remote_vm_obj = remote.VMManager(cmd_parms)
+            remote_vm_obj.setup_ssh_auth()
+            cmd_result = remote_vm_obj.run_command(cmd_run_in_remote_guest_1)
+            remote_vm_obj.run_command(cmd_run_in_remote_guest % cmd_result.stdout_text.strip())
             logging.debug("Sending message is done")
 
             # Check message on remote host from the channel
@@ -1237,7 +1460,31 @@ def run(test, params, env):
             check_virsh_command_and_option("domjobinfo", opts)
             if extra.count("comp-xbzrle-cache"):
                 params.update({'compare_to_value': cache // 1024})
-            check_domjobinfo(params, option=opts)
+            # The output of domjobinfo with '--completed' option does not
+            # contain "Expected downtime:". So update to check
+            # "Total downtime". The value of "Total downtime" should be
+            # around the expected value of "Expected downtime".
+            if params.get("jobinfo_item", "") == "Expected downtime:":
+                params.update({"jobinfo_item": "Total downtime:"})
+            if timer_migration:
+                opts = vm_name + " --completed"
+                res = virsh.domjobinfo(opts, **virsh_args)
+                if res.exit_status:
+                    test.fail("Failed to get domjobinfo --completed: %s"
+                              % res.stderr)
+                actual_dt = re.findall(r"Total downtime:\s+(\d+)",
+                                       res.stdout_text)
+                if actual_dt:
+                    min_time = eval(params.get("min_total_downtime", "3000"))
+                    if int(actual_dt[0]) < min_time:
+                        test.fail("The value of 'Total downtime' "
+                                  "should be greater than {}s."
+                                  .format(int(min_time/1000)))
+                else:
+                    test.fail("Unable to get value of 'Total downtime' "
+                              "in '%s'." % res.stdout_text)
+            else:
+                check_domjobinfo(params, option=opts)
             if check_domjobinfo_results:
                 check_domjobinfo_output(option=opts, is_mig_compelete=True)
 
@@ -1310,13 +1557,23 @@ def run(test, params, env):
             remote_virsh_session.close_session()
 
         if int(mig_result.exit_status) == 0:
-            server_session = remote.wait_for_login('ssh', server_ip, '22',
-                                                   server_user, server_pwd,
-                                                   r"[\#\$]\s*$")
-            check_vm_network_accessed(server_session)
-            server_session.close()
-        # Execute migration from remote
-        if migr_vm_back:
+            if cmd_in_vm_after_migration:
+                vm.connect_uri = dest_uri
+                vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
+                vm_session_after_mig.cmd(cmd_in_vm_after_migration)
+                vm_session_after_mig.close()
+                vm.connect_uri = bk_uri
+
+        if timer_migration:
+            target_vm_host_time_diff = time_diff_between_vm_host(localvm=False)
+            if abs(target_vm_host_time_diff - source_vm_host_time_diff) > 1:
+                test.fail("The difference of target_vm_host_time_diff and "
+                          "source_vm_host_time_diff "
+                          "should not more than 1 second")
+        if params.get("actions_after_migration"):
+            do_actions_after_migrate(params)
+
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -1327,13 +1584,16 @@ def run(test, params, env):
                 ssh_connection.conn_setup()
                 ssh_connection.conn_check()
 
-            migrate_setup = libvirt.MigrationTest()
             # Pre migration setup for local machine
             src_full_uri = libvirt_vm.complete_uri(
                         params.get("migrate_source_host"))
-            migrate_setup.migrate_pre_setup(src_full_uri, params)
+            migration_test.migrate_pre_setup(src_full_uri, params)
+            remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_full_uri)}
+            remote_libvirt_file = libvirt_config\
+                .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
             cmd = "virsh migrate %s %s %s" % (vm_name,
-                                              virsh_opt, src_full_uri)
+                                              options, src_full_uri)
             logging.debug("Start migration: %s", cmd)
             cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
             logging.info(cmd_result)
@@ -1344,26 +1604,17 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, cmd_result))
 
-    except exceptions.TestFail as details:
-        is_TestFail = True
-        test_exception = details
-    except exceptions.TestCancel as details:
-        is_TestCancel = True
-        test_exception = details
-    except exceptions.TestError as details:
-        is_TestError = True
-        test_exception = details
-    except Exception as details:
-        test_exception = details
     finally:
         logging.debug("Recover test environment")
+        vm.connect_uri = bk_uri
         try:
             # Remove firewall rule if needed
             if break_network_connection and 'firewall_rule' in locals():
                 if use_firewall_cmd:
                     logging.debug("cleanup firewall rule via firewall-cmd.")
                     direct_rules = firewall_cmd.get(key="all-rules",
-                                                    is_direct=True)
+                                                    is_direct=True,
+                                                    zone=None)
                     cmdRes = re.findall(firewall_rule, direct_rules)
                     if len(cmdRes):
                         firewall_cmd.remove_direct_rule(firewall_rule)
@@ -1372,13 +1623,20 @@ def run(test, params, env):
                                                              cleanup=True)
 
             # Clean VM on destination
-            vm.connect_uri = dest_uri
-            cleanup_dest(vm)
-            vm.connect_uri = src_uri
+            migration_test.cleanup_vm(vm, dest_uri)
 
-            logging.info("Recovery VM XML configration")
+            logging.info("Recover VM XML configuration")
             orig_config_xml.sync()
             logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
+
+            # cleanup secret uuid
+            if tpm_sec_uuid:
+                virsh.secret_undefine(tpm_sec_uuid, debug=True,
+                                      ignore_status=True)
+
+            if dest_tmp_sec_uuid:
+                cmd = "virsh secret-undefine %s" % dest_tmp_sec_uuid
+                remote.run_remote_cmd(cmd, params, runner_on_target)
 
             if remote_virsh_session:
                 remote_virsh_session.close_session()
@@ -1387,13 +1645,12 @@ def run(test, params, env):
                 remote_session.close()
 
             # Clean up of pre migration setup for local machine
-            if migr_vm_back:
+            if migrate_vm_back:
                 if 'ssh_connection' in locals():
                     ssh_connection.auto_recover = True
-                migrate_setup = libvirt.MigrationTest()
                 if 'src_full_uri' in locals():
-                    migrate_setup.migrate_pre_setup(src_full_uri, params,
-                                                    cleanup=True)
+                    migration_test.migrate_pre_setup(src_full_uri, params,
+                                                     cleanup=True)
 
             # Delete files on target
             # Killing qemu process on target may lead a problem like
@@ -1416,18 +1673,28 @@ def run(test, params, env):
                                                  is_recover=True,
                                                  config_object=qemu_conf)
 
-            for update_conf in [libvirtd_conf, qemu_conf]:
-                if update_conf:
-                    logging.debug("Recover the configurations")
-                    libvirt.customize_libvirt_config(None,
-                                                     remote_host=True,
-                                                     extra_params=params,
-                                                     is_recover=True,
-                                                     config_object=update_conf)
+            local_conf_obj_list.reverse()
+            for conf in local_conf_obj_list:
+                logging.info("Recover the conf files on local host")
+                libvirt.customize_libvirt_config(None,
+                                                 remote_host=False,
+                                                 is_recover=True,
+                                                 config_object=conf)
+
+            remote_conf_obj_list.reverse()
+            for conf in remote_conf_obj_list:
+                logging.info("Recover the conf files on remote host")
+                del conf
+
+            if src_libvirt_file:
+                src_libvirt_file.restore()
+            if remote_libvirt_file:
+                del remote_libvirt_file
 
             logging.info("Remove local NFS image")
             source_file = params.get("source_file")
-            libvirt.delete_local_disk("file", path=source_file)
+            if source_file:
+                libvirt.delete_local_disk("file", path=source_file)
 
             if objs_list:
                 for obj in objs_list:
@@ -1442,14 +1709,3 @@ def run(test, params, env):
                 # if any of above exceptions has been raised, only print
                 # error log here to avoid of hiding the original issue
                 logging.error(exception_detail)
-    # Check result
-    if is_TestFail:
-        test.fail(test_exception)
-    if is_TestCancel:
-        test.cancel(test_exception)
-    if is_TestError:
-        test.error(test_exception)
-    if not test_exception:
-        logging.info("Case execution is done.")
-    else:
-        test.error(test_exception)

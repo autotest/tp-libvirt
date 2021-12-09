@@ -4,7 +4,6 @@ import shutil
 import logging
 import platform
 import signal
-import time
 
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
@@ -21,7 +20,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 find_dump_file = False
 
@@ -238,7 +237,7 @@ def run(test, params, env):
         # Timing issue cause test to check domstate before prior action
         # kill gets completed
         if vm_action == "kill":
-            time.sleep(2)
+            utils_misc.wait_for(vm.is_dead, timeout=20)
 
         if remote_uri:
             remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")

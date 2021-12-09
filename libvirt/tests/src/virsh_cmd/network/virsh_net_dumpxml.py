@@ -4,7 +4,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -55,7 +55,7 @@ def run(test, params, env):
             status_destroy = virsh.net_destroy(net_name,
                                                ignore_status=True).exit_status
             if status_destroy != 0:
-                test.error("Network destroied failed!")
+                test.error("Network destroyed failed!")
 
         virsh_dargs = {'ignore_status': True}
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -93,7 +93,7 @@ def run(test, params, env):
         if status == 0:
             test.fail("Run successfully with wrong command!")
         if err == "":
-            test.fail("The wrong command has no error outputed!")
+            test.fail("The wrong command has no error outputted!")
     elif status_error == "no":
         if status != 0:
             test.fail("Run failed with right command!")

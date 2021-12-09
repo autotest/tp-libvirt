@@ -249,6 +249,9 @@ def run(test, params, env):
                 port_number = active_xml.xmltreefile.find(
                     '/devices/channel/address').get('port')
                 vport = 'vport1p%s' % port_number
+                # sometimes the vport created above is not correct
+                if vport not in vports:
+                    vport = vports[0]
             guest_path = '/dev/%s' % vport
             return guest_path, host_path
 

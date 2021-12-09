@@ -2,11 +2,11 @@ import os
 import logging
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml import domcapability_xml
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
-from provider import libvirt_version
 
 
 def get_domxml(cpu_mode, vm_name, extract=False):
@@ -161,7 +161,7 @@ def run(test, params, env):
                 test.fail("Expect success but got:\n%s" % result.stderr)
 
         if msg_pattern:
-            logging.debug("Expect key word in comand output: %s", msg_pattern)
+            logging.debug("Expect key word in command output: %s", msg_pattern)
             output = result.stdout.strip()
             if not output:
                 output = result.stderr.strip()

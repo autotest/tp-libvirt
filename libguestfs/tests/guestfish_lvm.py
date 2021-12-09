@@ -159,7 +159,7 @@ def test_lvm_canonical_lv_name(test, vm, params):
 
     if result != real_name:
         gf.close_session()
-        test.fail("Return name is uncorrect")
+        test.fail("Return name is incorrect")
 
     gf.close_session()
 
@@ -388,7 +388,7 @@ def test_lvm_set_filter(test, vm, params):
         gf.close_session()
         test.fail("LV should be listed")
 
-    # set filter, lvm device should be hided
+    # set filter, lvm device should be hidden
     gf.lvm_set_filter(lv_name)
     lv_name = gf.lvs().stdout.strip()
     if lv_name:

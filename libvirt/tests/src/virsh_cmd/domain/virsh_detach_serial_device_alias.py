@@ -5,11 +5,10 @@ import string
 import platform
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
-
-from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -91,7 +90,7 @@ def run(test, params, env):
             if os.path.exists('/var/log/libvirt/virt-test'):
                 os.remove('/var/log/libvirt/virt-test')
 
-    serial_type = params.get('serial_type', 'pty')
+    serial_type = params.get('serial_dev_type', 'pty')
     target_type = params.get('target_type', 'isa-serial')
     sources_str = params.get('serial_sources', '')
     hot_plug_support = "yes" == params.get('hot_plugging_support')

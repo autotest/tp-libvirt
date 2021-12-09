@@ -10,6 +10,8 @@ from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
+from virttest import utils_secret
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.utils_nbd import NbdExport
 
@@ -40,7 +42,6 @@ def run(test, params, env):
         :param save_file: the path to saved file
         """
         # Save the domain.
-        vm.save_to_file(save_file)
         ret = virsh.save(vm_name, save_file,
                          **virsh_dargs)
         libvirt.check_exit_status(ret)
@@ -151,7 +152,10 @@ def run(test, params, env):
     check_partitions = "yes" == params.get("virt_disk_check_partitions", "yes")
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
     tls_enabled = "yes" == params.get("enable_tls", "no")
+    enable_private_key_encryption = "yes" == params.get("enable_private_key_encryption", "no")
+    private_key_encrypt_passphrase = params.get("private_key_password")
     domain_operation = params.get("domain_operation")
+    secret_uuid = None
 
     # Get snapshot attributes.
     snapshot_name1 = params.get("snapshot_name1")
@@ -162,7 +166,7 @@ def run(test, params, env):
     # Initialize one NbdExport object
     nbd = None
 
-    # Start VM and get all partions in VM.
+    # Start VM and get all partitions in VM.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -186,6 +190,20 @@ def run(test, params, env):
         if tls_enabled:
             tls_bit = "yes"
 
+        # Create secret
+        if enable_private_key_encryption:
+            # this feature is enabled after libvirt 6.6.0
+            if not libvirt_version.version_compare(6, 6, 0):
+                test.cancel("current libvirt version doesn't support client private key encryption")
+            utils_secret.clean_up_secrets()
+            private_key_sec_uuid = libvirt.create_secret(params)
+            logging.debug("A secret created with uuid = '%s'", private_key_sec_uuid)
+            private_key_sec_passwd = params.get("private_key_password", "redhat")
+            ret = virsh.secret_set_value(private_key_sec_uuid, private_key_sec_passwd,
+                                         encode=True, use_file=True, debug=True)
+            libvirt.check_exit_status(ret)
+            secret_uuid = private_key_sec_uuid
+
         # Initialize special test environment config for snapshot operations.
         if domain_operation == "snap_shot":
             first_disk = vm.get_first_disk_devices()
@@ -200,7 +218,9 @@ def run(test, params, env):
 
         # Create NbdExport object
         nbd = NbdExport(image_path, image_format=device_format,
-                        port=nbd_server_port, export_name=export_name, tls=tls_enabled, deleteExisted=deleteExisted)
+                        port=nbd_server_port, export_name=export_name,
+                        tls=tls_enabled, deleteExisted=deleteExisted,
+                        private_key_encrypt_passphrase=private_key_encrypt_passphrase, secret_uuid=secret_uuid)
         nbd.start_nbd_server()
         # Prepare disk source xml
         source_attrs_dict = {"protocol": "nbd", "tls": "%s" % tls_bit}
@@ -259,9 +279,11 @@ def run(test, params, env):
         # Unplug disk.
         if hotplug_disk:
             result = virsh.detach_device(vm_name, disk_xml.xml,
-                                         ignore_status=True, debug=True)
+                                         ignore_status=True, debug=True, wait_for_event=True)
             libvirt.check_exit_status(result, status_error)
     finally:
+        if enable_private_key_encryption:
+            utils_secret.clean_up_secrets()
         # Clean up backend storage and TLS
         try:
             if nbd:

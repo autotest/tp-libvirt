@@ -4,7 +4,6 @@ import logging
 import base64
 import time
 import shutil
-import os
 
 from avocado.utils import service
 
@@ -16,10 +15,11 @@ from virttest.utils_test import libvirt
 
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml import secret_xml
+from virttest.libvirt_xml.devices.controller import Controller
 
 from virttest.libvirt_xml.devices.disk import Disk
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -84,20 +84,27 @@ def run(test, params, env):
         else:
             service_mgr.stop('qemu-pr-helper')
 
+    def ppc_controller_update():
+        """
+        Update controller of ppc vm to 'virtio-scsi' to support 'scsi' type
+
+        :return:
+        """
+        if params.get('machine_type') == 'pseries' and device_bus == 'scsi':
+            if not vmxml.get_controllers(device_bus, 'virtio-scsi'):
+                vmxml.del_controller(device_bus)
+                ppc_controller = Controller('controller')
+                ppc_controller.type = device_bus
+                ppc_controller.index = '0'
+                ppc_controller.model = 'virtio-scsi'
+                vmxml.add_device(ppc_controller)
+                vmxml.sync()
+
     # Check if SCSI3 Persistent Reservations supported by
     # current libvirt versions.
     if not libvirt_version.version_compare(4, 4, 0):
         test.cancel("The <reservations> tag supported by libvirt from version "
                     "4.4.0")
-
-    # This part is a temporary workaround for bz 1658988, should be removed
-    # when that bug fixed.
-    #===== BEGIN =====
-    target_pr_dir = "/etc/target/pr"
-    if not os.path.isdir(target_pr_dir):
-        os.mkdir(target_pr_dir)
-    #===== END =====
-
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
@@ -124,7 +131,7 @@ def run(test, params, env):
     # Case step options
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
 
-    # Start vm and get all partions in vm
+    # Start vm and get all partitions in vm
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -217,6 +224,9 @@ def run(test, params, env):
         disk_source.reservations = disk_xml.new_reservations(**reservations_dict)
         disk_xml.source = disk_source
 
+        # Update controller of ppc vms
+        ppc_controller_update()
+
         if not hotplug_disk:
             vmxml.add_device(disk_xml)
         try:
@@ -224,6 +234,7 @@ def run(test, params, env):
             vmxml.sync()
             vm.start()
             vm.wait_for_login().close()
+            time.sleep(5)
             if hotplug_disk:
                 result = virsh.attach_device(vm_name, disk_xml.xml,
                                              ignore_status=True, debug=True)
@@ -234,7 +245,7 @@ def run(test, params, env):
             new_part = new_parts[0]
             check_pr_cmds(vm, new_part)
             result = virsh.detach_device(vm_name, disk_xml.xml,
-                                         ignore_status=True, debug=True)
+                                         ignore_status=True, debug=True, wait_for_event=True)
             libvirt.check_exit_status(result)
         except virt_vm.VMStartError as e:
             test.fail("VM failed to start."

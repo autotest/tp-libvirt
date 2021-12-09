@@ -1,5 +1,5 @@
 """
-Module to exercize virsh attach-device command with various devices/options
+Module to exercise virsh attach-device command with various devices/options
 """
 
 import os
@@ -7,17 +7,19 @@ import os.path
 import logging
 import aexpect
 import itertools
+import platform
 from string import ascii_lowercase
 
 from six import iteritems
 
 from avocado.utils import astring
 
+from virttest import libvirt_version
 from virttest import virt_vm, virsh, remote, utils_misc, data_dir
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.utils_libvirt import libvirt_pcicontr
 
-from provider import libvirt_version
 
 # TODO: Move all these helper classes someplace else
 
@@ -35,7 +37,7 @@ class TestParams(object):
         self.virsh = None  # Can't be known yet
         self._e = env
         self._p = params
-        self.serial_dir = params.get("serial_dir", "/var/log/libvirt")
+        self.serial_dir = params.get("serial_dir", "/var/lib/libvirt")
 
     @property
     def start_vm(self):
@@ -139,7 +141,7 @@ class TestParams(object):
                 device.cleanup()
                 # Attempt to finish entire list before raising
                 # any exceptions that occurred
-            # ignore pylint W0703 - exception acumulated and raised below
+            # ignore pylint W0703 - exception accumulated and raised below
             except Exception as xcept_obj:
                 xcpt_list.append(xcept_obj)
         if xcpt_list:
@@ -392,7 +394,7 @@ class SerialFile(AttachDeviceBase):
         # auto-cleaned at end of test
         if self.type_name == 'file':
             if libvirt_version.version_compare(3, 2, 0):
-                serial_dir = '/var/log/libvirt'
+                serial_dir = '/var/lib/libvirt'
             else:
                 serial_dir = self.test_params.serial_dir
         else:
@@ -462,6 +464,27 @@ class SerialPipe(SerialFile):
         return super(SerialPipe, self).init_device(index)  # stub for now
 
 
+class SerialPty(AttachDeviceBase):
+
+    """
+    Simple console pty device
+    """
+
+    type_name = "pty"
+
+    def init_device(self, index):
+        serialclass = self.test_params.vmxml.get_device_class('serial')
+        serial_device = serialclass(type_name=self.type_name,
+                                    virsh_instance=self.test_params.virsh)
+        # Assume default domain serial device on port 0 and index starts at 0
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            serial_device.alias = {'name': self.alias + str(index)}
+        return serial_device
+
+    def function(self, index):
+        return not self.test_params.status_error
+
+
 class Console(AttachDeviceBase):
 
     """
@@ -480,6 +503,41 @@ class Console(AttachDeviceBase):
 
     def function(self, index):
         return not self.test_params.status_error
+
+
+def _init_device_Serial2Console(self, index):
+    """
+    Helper function to merge init_device from two parent
+    classes SerialFile/Pipe and Console.
+
+    :param self: instance of ConsoleFile/Pipe
+    :param index: device index
+    """
+
+    self.type = self.type_name
+    console_device = Console.init_device(self, index)
+    filepath = self.make_filepath(index)
+    self.make_source(filepath)
+    console_device.add_source(path=filepath)
+    return console_device
+
+
+class ConsoleFile(Console, SerialFile):
+    """
+    Simplistic pipe-backed console
+    """
+
+    def init_device(self, index):
+        return _init_device_Serial2Console(self, index)
+
+
+class ConsolePipe(Console, SerialPipe):
+    """
+    Simplistic file-backed console
+    """
+
+    def init_device(self, index):
+        return _init_device_Serial2Console(self, index)
 
 
 class Channel(AttachDeviceBase):
@@ -595,13 +653,13 @@ class VirtualDiskBasic(AttachDeviceBase):
             devname_prefix = "hd"
             self.devidx = hd_count
         else:
-            self.test.cancel("Unsupport bus '%s' in this test" %
+            self.test.cancel("Unsupported bus '%s' in this test" %
                              self.targetbus)
         return devname_prefix + self.devname_suffix(self.devidx + index)
 
     def make_image_file_path(self, index):
         """Create backing file for test disk device"""
-        return os.path.join(data_dir.get_tmp_dir(),
+        return os.path.join(data_dir.get_data_dir(),
                             'disk_%s_%s_%d.raw'
                             % (self.__class__.__name__,
                                self.identifier,
@@ -833,7 +891,7 @@ def remove_chardevs(vm_name, vmxml):
     for chardev_type in chardev_types:
         vmxml.del_device(chardev_type, by_tag=True)
     vmxml.sync()
-    virsh.start(vm_name, debug=True)
+    virsh.start(vm_name, debug=True, ignore_status=False)
 
 
 def remove_non_disks(vm_name, vmxml):
@@ -854,6 +912,22 @@ def remove_non_disks(vm_name, vmxml):
                               debug=True)
 
 
+def update_controllers_ppc(vm_name, vmxml):
+    """
+    Update controller settings of vmxml to fit for test
+
+    :param vm_name: domain name
+    :param vmxml: domain xml
+    :return:
+    """
+    machine = platform.machine().lower()
+    if 'ppc64le' in machine:
+        # Remove old scsi controller, replace with virtio-scsi controller
+        vmxml.del_controller('scsi')
+        vmxml.sync()
+        virsh.start(vm_name, debug=True, ignore_status=False)
+
+
 def run(test, params, env):
     """
     Test virsh {at|de}tach-device command.
@@ -866,23 +940,51 @@ def run(test, params, env):
     6) Handle results
     """
     vm_name = params.get('main_vm')
+    machine_type = params.get("machine_type", "pc")
     backup_vm_xml = vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
 
     dev_obj = params.get("vadu_dev_objs")
+    vadu_vdb = int(params.get("vadu_dev_obj_count_VirtualDiskBasic", "0"))
+    vadu_dom_ref = params.get("vadu_dom_ref", "dom_ref")
+    status_error = "yes" == params.get("status_error", "no")
+    vadu_domain_positional = "yes" == params.get("vadu_domain_positional", "no")
+    vadu_file_positional = "yes" == params.get("vadu_file_positional", "no")
+    vadu_preboot_error = "yes" == params.get("vadu_preboot_function_error", "no")
+
     # Skip chardev hotplug on rhel6 host as it is not supported
     if "Serial" in dev_obj:
         if not libvirt_version.version_compare(1, 1, 0):
             test.cancel("You libvirt version not supported"
                         " attach/detach Serial devices")
+    # Prepare test environment and its parameters
+    test_params = TestParams(params, env, test)
+
+    # Reset pci controllers num to fix error "No more available PCI slots"
+    if params.get("reset_pci_controllers_nums", "no") == "yes" and "VirtualDiskBasic" in dev_obj:
+        # Only apply change on some cases with feature:
+        # block.multi_virtio_file..hot_attach_hot_vm..name_ref.file_positional.domain_positional
+        # block.multi_virtio_file..hot_attach_hot_vm_current.name_ref.file_positional.domain_positional
+        # Those cases often fialed on aarch64 due to error "No more available PCI slots"
+        if vadu_vdb == 16 and not status_error \
+            and not vadu_preboot_error and 'name' in vadu_dom_ref \
+                and vadu_file_positional and vadu_domain_positional:
+
+            previous_state_running = test_params.main_vm.is_alive()
+            if previous_state_running:
+                test_params.main_vm.destroy(gracefully=True)
+            libvirt_pcicontr.reset_pci_num(vm_name, 24)
+            logging.debug("Guest XMl with adding many controllers: %s", test_params.main_vm.get_xml())
+            if previous_state_running:
+                test_params.main_vm.start()
 
     remove_non_disks(vm_name, vmxml)
+    update_controllers_ppc(vm_name, vmxml)
 
     if params.get("remove_all_chardev", "no") == "yes":
         remove_chardevs(vm_name, vmxml)
 
     logging.info("Preparing initial VM state")
-    # Prepare test environment and its parameters
-    test_params = TestParams(params, env, test)
+
     if test_params.start_vm:
         # Make sure VM is working
         test_params.main_vm.verify_alive()
@@ -917,6 +1019,7 @@ def run(test, params, env):
             test_params.main_vm.destroy(gracefully=True,
                                         free_mac_addresses=False)
         try:
+            logging.debug("vmxml %s", VMXML.new_from_inactive_dumpxml(vm_name))
             test_params.main_vm.start()
         except virt_vm.VMStartError as details:
             test.fail('VM Failed to start for some reason!: %s' % details)

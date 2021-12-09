@@ -281,7 +281,7 @@ def test_blockdev_rw(test, vm, params):
     logging.info("Get readonly status successfully.")
 
     if getro_result.stdout.strip() == "true":
-        logging.info("Paritition %s is readonly already.", part_name)
+        logging.info("Partition %s is readonly already.", part_name)
     else:
         setro_result = gf.blockdev_setro(part_name)
         logging.debug(setro_result)

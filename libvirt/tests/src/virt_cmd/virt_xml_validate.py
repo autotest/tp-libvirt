@@ -3,10 +3,12 @@ import time
 import re
 
 from avocado.utils import process
+from avocado.utils import astring
 from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_secret
 from virttest.utils_test import libvirt
 
 
@@ -142,20 +144,20 @@ def nwfilter_validate(test, file=None, **virsh_dargs):
         libvirt.check_exit_status(cmd_result)
 
 
-def secret_validate(test, file=None, **virsh_dargs):
+def secret_validate(test, secret_volume, file=None, **virsh_dargs):
     """
     Test for schema secret
     """
-    cmd_result = virsh.secret_list(**virsh_dargs)
-    libvirt.check_exit_status(cmd_result)
-    try:
-        uuid = re.findall(r"(\S+)\ +(\S+)", str(cmd_result.stdout.strip()))[1][0]
-    except IndexError:
-        test.error("Fail to get secret uuid")
-
-    if uuid:
+    # Clean up dirty secrets in test environments if there are.
+    utils_secret.clean_up_secrets()
+    sec_params = {"sec_usage": "volume",
+                  "sec_volume": secret_volume,
+                  "sec_desc": "Test for schema secret."
+                  }
+    sec_uuid = libvirt.create_secret(sec_params)
+    if sec_uuid:
         try:
-            virsh.secret_dumpxml(uuid, to_file=file, **virsh_dargs)
+            virsh.secret_dumpxml(sec_uuid, to_file=file, **virsh_dargs)
         except process.CmdError as e:
             test.error(str(e))
 
@@ -187,7 +189,7 @@ def run(test, params, env):
     """
     # Get the full path of virt-xml-validate command.
     try:
-        VIRT_XML_VALIDATE = process.system("which virt-xml-validate", shell=True)
+        VIRT_XML_VALIDATE = astring.to_text(process.system_output("which virt-xml-validate", shell=True))
     except ValueError:
         test.cancel("Not find virt-xml-validate command on host.")
 
@@ -197,12 +199,17 @@ def run(test, params, env):
     schema = params.get("schema", "domain")
     output = params.get("output_file", "output")
     output_path = os.path.join(data_dir.get_tmp_dir(), output)
+    secret_volume = params.get("secret_volume", None)
 
     valid_schemas = ['domain', 'domainsnapshot', 'network', 'storagepool',
                      'storagevol', 'nodedev', 'capability',
                      'nwfilter', 'secret', 'interface']
     if schema not in valid_schemas:
         test.fail("invalid %s specified" % schema)
+
+    # If storage volume doesn't exist then create it
+    if secret_volume and not os.path.isfile(secret_volume):
+        process.run("dd if=/dev/zero of=%s bs=1 count=1 seek=1M" % secret_volume, shell=True)
 
     virsh_dargs = {'ignore_status': True, 'debug': True}
     if schema == "domainsnapshot":
@@ -220,19 +227,24 @@ def run(test, params, env):
     elif schema == "nwfilter":
         nwfilter_validate(test, file=output_path, **virsh_dargs)
     elif schema == "secret":
-        secret_validate(test, file=output_path, **virsh_dargs)
+        secret_validate(test, secret_volume, file=output_path, **virsh_dargs)
     elif schema == "interface":
         interface_validate(test, file=output_path, **virsh_dargs)
     else:
         # domain
         virsh.dumpxml(vm_name, to_file=output_path)
 
-    cmd = "%s %s %s" % (VIRT_XML_VALIDATE, output_path, schema)
-    cmd_result = process.run(cmd, ignore_status=True, shell=True)
-    if cmd_result.exit_status:
-        test.fail("virt-xml-validate command failed.\n"
-                  "Detail: %s." % cmd_result)
+    try:
+        cmd = "%s %s %s" % (VIRT_XML_VALIDATE, output_path, schema)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
+        if cmd_result.exit_status:
+            test.fail("virt-xml-validate command failed.\n"
+                      "Detail: %s." % cmd_result)
 
-    if cmd_result.stdout_text.count("fail"):
-        test.fail("xml fails to validate\n"
-                  "Detail: %s." % cmd_result)
+        if cmd_result.stdout_text.count("fail"):
+            test.fail("xml fails to validate\n"
+                      "Detail: %s." % cmd_result)
+    finally:
+        utils_secret.clean_up_secrets()
+        if secret_volume and os.path.isfile(secret_volume):
+            os.remove(secret_volume)

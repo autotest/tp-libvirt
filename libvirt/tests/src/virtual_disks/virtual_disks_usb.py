@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import utils_disk
 from virttest import utils_misc
 from virttest import virt_vm, remote
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -144,7 +145,7 @@ def run(test, params, env):
         image_filename = params.get("image_filename", "raw.img")
         image_format = params.get("image_format", "raw")
         image_size = params.get("image_size", "1G")
-        image_path = os.path.join(data_dir.get_tmp_dir(), image_filename)
+        image_path = os.path.join(data_dir.get_data_dir(), image_filename)
         try:
             if image_format in ["raw", "qcow2"]:
                 image_path = libvirt.create_local_disk("file",
@@ -198,6 +199,8 @@ def run(test, params, env):
     vmxml = vmxml_backup.copy()
 
     try:
+        if 'vt82c686b-uhci' in usb_models and libvirt_version.version_compare(7, 4, 0):
+            test.cancel("vt82c686b-usb-uhci not supported in this QEMU")
         remove_usbs(vmxml)
         prepare_usb_controller(vmxml, usb_models)
         vm.start()
@@ -229,9 +232,11 @@ def run(test, params, env):
             test.fail("Cannot operate the newly added disk in vm.")
 
         # Detach the disk from vm
+        wait_for_event = False if coldplug else True
         result = virsh.detach_device(vm_name, disk_xml.xml,
                                      flagstr=attach_options,
-                                     ignore_status=True, debug=True)
+                                     ignore_status=True, debug=True,
+                                     wait_for_event=wait_for_event)
         libvirt.check_exit_status(result, status_error)
 
         # Check the detached disk in vm

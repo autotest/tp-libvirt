@@ -5,8 +5,8 @@ from avocado.utils import cpu as cpuutil
 
 from virttest import virsh
 from virttest import utils_libvirtd
-
-from provider import libvirt_version
+from virttest import libvirt_version
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -199,6 +199,10 @@ def run(test, params, env):
                 else:
                     test.fail("Command 'virsh nodecpustats %s' "
                               "succeeded (incorrect command)" % option)
+            if (invalid_cpunum == "yes" and
+               libvirt_version.version_compare(6, 2, 0)):
+                err_msg = "Invalid cpuNum in virHostCPUGetStatsLinux"
+                libvirt.check_result(output, expected_fails=[err_msg])
 
         elif status_error == "no":
             # Run the testcase for each cpu to get the cpu stats

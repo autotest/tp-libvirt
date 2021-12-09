@@ -11,7 +11,7 @@ from virttest import utils_libvirtd
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def check_ownership(file_path):
@@ -46,7 +46,7 @@ def format_user_group_str(user, group):
         try:
             user_id = pwd.getpwnam(user).pw_uid
         except KeyError:
-            # user did not exist will definitly fail start domain, log warning
+            # user did not exist will definitely fail start domain, log warning
             # here, let the test continue
             logging.warning("the user name: %s not found on host" % user)
             user_id = user
@@ -71,7 +71,7 @@ def run(test, params, env):
     Test per-image DAC disk hotplug to VM.
 
     (1).Init variables for test.
-    (2).Creat disk xml with per-image DAC
+    (2).Create disk xml with per-image DAC
     (3).Start VM
     (4).Attach the disk to VM and check result.
     """

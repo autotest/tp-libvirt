@@ -5,6 +5,8 @@ import shutil
 import logging
 import uuid
 import aexpect
+import socket
+import time
 
 from six.moves import xrange
 
@@ -13,12 +15,11 @@ from avocado.utils import process
 from virttest import virt_vm, virsh
 from virttest import utils_package
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import rng
-
-from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -68,7 +69,7 @@ def run(test, params, env):
             """
             Get set and get value to compare
 
-            :param xml_set: seting xml object
+            :param xml_set: setting xml object
             :param xml_get: getting xml object
             :param rng_attr: attribute of rng device
             :return: set and get value in xml
@@ -175,6 +176,8 @@ def run(test, params, env):
         rng_xml.backend = backend
         if detach_alias:
             rng_xml.alias = dict(name=rng_alias)
+        if with_packed:
+            rng_xml.driver = dict(packed=driver_packed)
 
         logging.debug("Rng xml: %s", rng_xml)
         if get_xml:
@@ -199,6 +202,7 @@ def run(test, params, env):
         rng_model = dparams.get("rng_model", "virtio")
         rng_rate = dparams.get("rng_rate")
         backend_type = dparams.get("backend_type")
+        backend_model = dparams.get("backend_model")
         backend_source_list = dparams.get("backend_source",
                                           "").split()
         cmd = ("ps -ef | grep %s | grep -v grep" % vm_name)
@@ -213,6 +217,8 @@ def run(test, params, env):
                 src_host = source['host']
                 src_port = source['service']
 
+        if backend_model == "builtin":
+            cmd += (" | grep rng-builtin")
         if chardev and src_host and src_port:
             cmd += (" | grep 'chardev %s,.*host=%s,port=%s'"
                     % (chardev, src_host, src_port))
@@ -222,6 +228,8 @@ def run(test, params, env):
             rate = ast.literal_eval(rng_rate)
             cmd += (" | grep 'max-bytes=%s,period=%s'"
                     % (rate['bytes'], rate['period']))
+        if with_packed:
+            cmd += (" | grep 'packed=%s'" % driver_packed)
         if process.run(cmd, ignore_status=True, shell=True).exit_status:
             test.fail("Can't see rng option"
                       " in command line")
@@ -287,7 +295,7 @@ def run(test, params, env):
                                        % snapshot_name2, debug=True)
         if ret.exit_status:
             if ret.stderr.count(err_msgs):
-                test.skip(err_msgs)
+                test.cancel(err_msgs)
             else:
                 test.fail("Failed to create external snapshot")
         snap_lists = virsh.snapshot_list(vm_name, debug=True)
@@ -305,9 +313,9 @@ def run(test, params, env):
         :param session: ssh session to guest
         :param exists: check rng device exists/not exists
         """
-        check_cmd = "hexdump /dev/hwrng"
+        check_cmd = "hexdump /dev/hwrng -n 100"
         try:
-            status = session.cmd_status(check_cmd, 5)
+            status = session.cmd_status(check_cmd, 60)
 
             if status != 0 and exists:
                 test.fail("Fail to check hexdump in guest")
@@ -405,6 +413,36 @@ def run(test, params, env):
         else:
             test.fail("Unknown rng model %s" % rng_model)
 
+    def add_udp_random_server():
+        """
+        Feed the udp rng device some data.
+        It's prepared for aarch64 due to below issue.
+        https://bugzilla.redhat.com/show_bug.cgi?id=1983544
+        """
+        backend_source_list = params.get("backend_source", "").split()
+        backend_type = params.get("backend_type", "tcp")
+        if backend_source_list:
+            source_list = [ast.literal_eval(source) for source in
+                           backend_source_list]
+
+        for udp_info in source_list:
+            if udp_info["mode"] == "connect":
+                udp_ip = udp_info["host"]
+                udp_port = int(udp_info["service"])
+                logging.debug("UDP_IP is %s, UDP_PORT is %s" % (udp_ip, udp_port))
+
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sock.bind((udp_ip, udp_port))
+                    for i in range(5):
+                        data, addr = sock.recvfrom(1024)
+                        logging.debug("SEND DATA")
+                        sock.sendto(b"AB" * 1024, addr)
+                except Exception as e:
+                    test.fail("Guest failed to connect udp server: %s" % str(e))
+                finally:
+                    sock.close()
+
     start_error = "yes" == params.get("start_error", "no")
     status_error = "yes" == params.get("status_error", "no")
 
@@ -425,10 +463,19 @@ def run(test, params, env):
     random_source = "yes" == params.get("rng_random_source", "yes")
     timeout = int(params.get("timeout", 600))
     wait_timeout = int(params.get("wait_timeout", 60))
+    with_packed = "yes" == params.get("with_packed", "no")
+    driver_packed = params.get("driver_packed", "on")
+
+    if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(6, 2, 0):
+        test.cancel("Builtin backend is not supported on this libvirt version")
 
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
-        test.skip("Multiple virtio-rng devices not "
-                  "supported on this libvirt version")
+        test.cancel("Multiple virtio-rng devices not "
+                    "supported on this libvirt version")
+
+    if with_packed and not libvirt_version.version_compare(6, 3, 0):
+        test.cancel("The virtio packed attribute is not supported in"
+                    " current libvirt version.")
 
     guest_arch = params.get("vm_arch_name", "x86_64")
 
@@ -442,7 +489,7 @@ def run(test, params, env):
         rngd_conf = "/etc/sysconfig/rngd"
         rngd_srv = "/usr/lib/systemd/system/rngd.service"
         if os.path.exists(rngd_conf):
-            # For rhel6 host, add extraoptions
+            # For rhel6 host, add extra options
             with open(rngd_conf, 'w') as f_rng:
                 f_rng.write('EXTRAOPTIONS="--rng-device /dev/urandom"')
         elif os.path.exists(rngd_srv):
@@ -512,26 +559,39 @@ def run(test, params, env):
             rng_xml = modify_rng_xml(params, not test_snapshot, attach_rng)
 
         try:
-            # Add random server
-            if random_source and params.get("backend_type") == "tcp":
+            # Add tcp random server
+            if random_source and params.get("backend_type") == "tcp" and not test_guest_dump:
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
                 bgjob = utils_misc.AsyncJob(cmd)
 
             vm.start()
+            # Wait guest to enter boot stage
+            time.sleep(3)
+
+            # Feed the tcp random device some data
+            if test_guest_dump and params.get("backend_type") == "tcp":
+                cmd = "cat /dev/random | nc -4 localhost 1024"
+                bgjob = utils_misc.AsyncJob(cmd)
+
             if attach_rng:
                 ret = virsh.attach_device(vm_name, rng_xml.xml,
                                           flagstr=attach_options,
+                                          wait_remove_event=True,
                                           debug=True, ignore_status=True)
                 libvirt.check_exit_status(ret, status_error)
                 if status_error:
                     return
                 if not check_rng_xml(rng_xml, True):
                     test.fail("Can not find rng device in xml")
-
             else:
                 # Start the VM.
                 if start_error:
                     test.fail("VM started unexpectedly")
+
+            # Add udp random server to feed aarch64 guest to speed up boot
+            # https://bugzilla.redhat.com/show_bug.cgi?id=1983544
+            if guest_arch == 'aarch64' and params.get("backend_type") == "udp":
+                add_udp_random_server()
 
             if test_qemu_cmd and not attach_rng:
                 if device_num > 1:

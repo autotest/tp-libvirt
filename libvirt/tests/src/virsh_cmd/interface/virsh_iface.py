@@ -12,7 +12,7 @@ from virttest.utils_test import libvirt
 from virttest.staging import service
 from virttest import data_dir
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
@@ -108,7 +108,7 @@ def run(test, params, env):
         1.2 Destroy the interface
         1.3 Undefine the interface
     (2) Define an interface from XML file
-    (3) List interfaces with '--inactive' optioin
+    (3) List interfaces with '--inactive' option
     (4) Start the interface
     (5) List interfaces with no option
     (6) Dumpxml for the interface

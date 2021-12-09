@@ -6,7 +6,8 @@ from avocado.utils import process
 from avocado.utils import path as utils_path
 from virttest import virsh
 
-from provider import libvirt_version
+from virttest import libvirt_version
+from virttest import utils_split_daemons
 
 
 def get_avail_caps(all_caps):
@@ -86,6 +87,9 @@ def get_net_devices():
                 # Ignore bonding devices
                 if os.path.exists(os.path.join(dev_dir, 'bonding')):
                     continue
+                # Ignore vlan devices
+                if [x for x in os.listdir(dev_dir) if x.startswith('lower')]:
+                    continue
                 address_file = os.path.join(dev_dir, 'address')
                 mac = ''
                 with open(address_file, 'r') as f_addr:
@@ -100,13 +104,56 @@ def get_net_devices():
     return devices
 
 
+def get_ccw_io_devices():
+    """
+    Retrieve only online ccw devices
+
+    :return: A list of ccw devices in the same format as nodedev-list
+    """
+    ccw_base_path = '/sys/bus/ccw/devices'
+    devices = []
+    if not os.path.exists(ccw_base_path):
+        return devices
+    for device in os.listdir(ccw_base_path):
+        online_attribute = os.path.join(ccw_base_path, device, "online")
+        online_value = process.run("cat %s" % online_attribute,
+                                   timeout=5, ignore_status=True,
+                                   shell=True).stdout_text
+        is_online = "1" == online_value.strip()
+        if is_online:
+            dev_name = re.sub(r'\W', '_', 'ccw_' + device)
+            devices.append(dev_name)
+    return devices
+
+
+def get_css_io_devices():
+    """
+    Retrieve css devices apt for I/O passthrough.
+
+    :return: A list of css devices in the same format as nodedev-list
+    """
+    css_base_path = '/sys/bus/css'
+    io_subchannel_path = '/sys/bus/css/drivers/io_subchannel'
+    vfio_ccw_path = '/sys/bus/css/drivers/vfio_ccw'
+    devices = []
+    if os.path.exists(css_base_path):
+        for path in [io_subchannel_path, vfio_ccw_path]:
+            if not os.path.exists(path):
+                continue
+            for device in os.listdir(path):
+                if re.match(r'\d+\.\d+\.\d+', device):
+                    dev_name = re.sub(r'\W', '_', 'css_' + device)
+                    devices.append(dev_name)
+    return devices
+
+
 def get_devices_by_cap(cap):
     """
     Retrieve devices list from sysfs for specific capability.
 
     Implemented capabilities are:
     'system', 'pci', 'usb_device', 'usb', 'net', 'scsi_host',
-    'scsi_target', 'scsi', 'storage', 'scsi_generic'.
+    'scsi_target', 'scsi', 'storage', 'scsi_generic', 'ccw', 'css'.
 
     Not implemented capabilities are:
     'vports', 'fc_host'.
@@ -127,7 +174,7 @@ def get_devices_by_cap(cap):
                 r'\S+:\d+\.\d+'),
         'usb_device': ('/sys/bus/usb/devices', 'usb_',
                        # Match any string that does not have :X.X at the end
-                       r'^((?!\S+:\d+\.\d+).)*$'),
+                       r'^((?!\S+:\d+\.\d+).)*$')
     }
     if cap in cap_map:
         devices = []
@@ -143,6 +190,10 @@ def get_devices_by_cap(cap):
         devices = get_net_devices()
     elif cap == 'storage':
         devices = get_storage_devices()
+    elif cap == 'css':
+        devices = get_css_io_devices()
+    elif cap == 'ccw':
+        devices = get_ccw_io_devices()
     else:
         devices = []
     return devices
@@ -156,27 +207,45 @@ def run(test, params, env):
     2) If `cap_option == one`, results are also compared
        with devices get from sysfs.
     """
-    def _check_result(cap, ref_list, result):
+    def _check_result(cap, ref_list, result, mode):
         """
-        Check test result agains a device list retrived from sysfs.
+        Check test result against a device list retrieved from sysfs.
 
         :param cap:        Capability being checked, current available caps are
                            defined in variable `caps`.
-        :param ref_list:   Reference device list retrived from sysfs.
-        :param check_list: Stdout returned from virsh nodedev-list command.
+        :param ref_list:   Reference device list retrieved from sysfs.
+        :param result:     Stdout returned from virsh nodedev-list command.
+        :param mode:       How to compare sysfs info with command output:
+                           "exact" or "similar".
         """
         check_list = result.strip().splitlines()
+        are_not_equivalent = True
+        if mode == "similar":
+            listed = [x for x in ref_list if x in result]
+            all_sysfs_info_listed = len(ref_list) == len(listed)
+            same_number_of_devices = len(ref_list) == len(check_list)
+            are_not_equivalent = (not all_sysfs_info_listed or
+                                  not same_number_of_devices)
+        elif mode == "exact":
+            are_not_equivalent = set(ref_list) != set(check_list)
+        else:
+            logging.error("Unknown comparison mode in result check: %s",
+                          mode)
+            return False
+
         uavail_caps = ['system', 'vports', 'fc_host']
-        if set(ref_list) != set(check_list) and cap not in uavail_caps:
+
+        if are_not_equivalent and cap not in uavail_caps:
             logging.error('Difference in capability %s:', cap)
             logging.error('Expected devices: %s', ref_list)
             logging.error('Result devices  : %s', check_list)
             return False
         return True
 
+    mode = params.get("comparison_mode", "exact")
     all_caps = ['system', 'pci', 'usb_device', 'usb', 'net', 'scsi_host',
                 'scsi_target', 'scsi', 'storage', 'fc_host', 'vports',
-                'scsi_generic']
+                'scsi_generic', 'ccw', 'css']
     expect_succeed = params.get('expect_succeed', 'yes')
     tree_option = params.get('tree_option', 'off')
     cap_option = params.get('cap_option', 'off')
@@ -185,6 +254,8 @@ def run(test, params, env):
 
     # acl polkit params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -217,7 +288,7 @@ def run(test, params, env):
                 break
             elif result.exit_status == 0 and expect_succeed == 'no':
                 break
-            if not _check_result(cap, devices[cap], result.stdout.strip()):
+            if not _check_result(cap, devices[cap], result.stdout.strip(), mode):
                 check_failed = True
                 break
     else:

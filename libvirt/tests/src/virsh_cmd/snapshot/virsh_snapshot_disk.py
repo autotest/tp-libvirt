@@ -14,8 +14,9 @@ from virttest import libvirt_storage
 from virttest import utils_libvirtd
 from virttest import gluster
 from virttest.utils_test import libvirt as utlv
+from virttest.utils_libvirt import libvirt_pcicontr
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -35,6 +36,7 @@ def run(test, params, env):
     vm_state = params.get("vm_state", "running")
     image_format = params.get("snapshot_image_format", "qcow2")
     snapshot_del_test = "yes" == params.get("snapshot_del_test", "no")
+    disk_cluster_size_set = "yes" == params.get("disk_cluster_size_set", "no")
     status_error = ("yes" == params.get("status_error", "no"))
     snapshot_from_xml = ("yes" == params.get("snapshot_from_xml", "no"))
     snapshot_current = ("yes" == params.get("snapshot_current", "no"))
@@ -43,7 +45,7 @@ def run(test, params, env):
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     disk_source_protocol = params.get("disk_source_protocol")
     vol_name = params.get("vol_name")
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
     multi_gluster_disks = "yes" == params.get("multi_gluster_disks", "no")
@@ -101,9 +103,9 @@ def run(test, params, env):
                         "https://bugzilla.redhat.com/buglist.cgi?"
                         "bug_id=1017289,1032370")
 
-    # This is brought by new feature:block-dev
-    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
-        test.cancel("transport protocol 'rdma' is not yet supported")
+    if disk_cluster_size_set and not libvirt_version.version_compare(6, 10, 0):
+        test.cancel("current libvirt version doesn't support the feature that "
+                    "snapshot and backing file share the cluster size ")
 
     # Init snapshot_name
     snapshot_name = None
@@ -188,6 +190,9 @@ def run(test, params, env):
             extra = "--persistent --subdriver %s" % image_format
 
         if not multi_gluster_disks:
+            # Fix No more available PCI slots
+            libvirt_pcicontr.reset_pci_num(vm_name, 15)
+            vm.start()
             # Do the attach action.
             out = process.run("qemu-img info %s" % img_path, shell=True)
             logging.debug("The img info is:\n%s" % out.stdout.strip())
@@ -292,16 +297,23 @@ def run(test, params, env):
                     if libvirt_version.version_compare(1, 2, 5):
                         # As commit d2e668e in 1.2.5, internal active snapshot
                         # without memory state is rejected. Handle it as SKIP
-                        # for now. This could be supportted in future by bug:
+                        # for now. This could be supported in future by bug:
                         # https://bugzilla.redhat.com/show_bug.cgi?id=1103063
                         if re.search("internal snapshot of a running VM" +
                                      " must include the memory state",
                                      out_err):
-                            test.cancel("Check Bug #1083345, %s" %
-                                        out_err)
+                            logging.warning("Got expected error. Please check "
+                                            "Bug #1083345, %s" % out_err)
+                            return
 
                     test.fail("Failed to create snapshot. Error:%s."
                               % out_err)
+            if disk_cluster_size_set:
+                disk_path, _ = vm.get_device_size('vdf')
+                img_info = process.run("qemu-img info -U %s" % img_path, verbose=True, shell=True).stdout_text.strip()
+                match_cluster_size = "cluster_size: %s" % params.get("image_cluster_size")
+                if match_cluster_size not in img_info:
+                    test.fail("%s snapshot image doesn't have the same cluster size with backing file" % disk_path)
         else:
             snapshot_result = virsh.snapshot_create(vm_name, options,
                                                     debug=True)
@@ -390,7 +402,7 @@ def run(test, params, env):
                 if vm.is_paused():
                     vm.resume()
                 else:
-                    test.fail("Revert command successed, but VM is not "
+                    test.fail("Revert command succeeded, but VM is not "
                               "paused after reverting with --paused"
                               "  option.")
             # login vm.
@@ -406,7 +418,7 @@ def run(test, params, env):
 
         # Test delete snapshot without "--metadata", delete external disk
         # snapshot will fail for now.
-        # Only do this when snapshot creat succeed which filtered in cfg file.
+        # Only do this when snapshot create succeed which filtered in cfg file.
         if snapshot_del_test:
             if snapshot_name:
                 del_result = virsh.snapshot_delete(vm_name, snapshot_name,

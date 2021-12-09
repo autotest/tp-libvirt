@@ -175,7 +175,7 @@ def run(test, params, env):
         output = session.cmd_status_output('mount')
         logging.debug("Mount output: %s", output[1])
         if '/mnt' in output[1]:
-            logging.debug("Mount Successful accross reboot")
+            logging.debug("Mount Successful across reboot")
         session.close()
 
         status = virsh.detach_device(vm_name, disk_xml,

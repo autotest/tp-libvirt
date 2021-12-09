@@ -6,10 +6,11 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_split_daemons
 from virttest.libvirt_xml.secret_xml import SecretXML
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 SECRET_DIR = "/etc/libvirt/secrets/"
 SECRET_BASE64 = "c2VjcmV0X3Rlc3QK"
@@ -43,6 +44,8 @@ def run(test, params, env):
 
     # libvirt acl related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     define_acl = "yes" == params.get("define_acl", "no")
     undefine_acl = "yes" == params.get("undefine_acl", "no")
@@ -100,7 +103,7 @@ def run(test, params, env):
            (ephemeral == "no" and not exist):
             test.fail("The ephemeral attribute worked not expected")
 
-        # Check private attrbute
+        # Check private attribute
         virsh.secret_set_value(uuid, SECRET_BASE64, debug=True)
         if get_value_acl:
             cmd_result = virsh.secret_get_value(uuid, **acl_dargs)

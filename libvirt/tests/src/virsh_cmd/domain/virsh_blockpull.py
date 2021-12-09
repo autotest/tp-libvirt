@@ -8,6 +8,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest import utils_package
 from virttest import libvirt_storage
 from virttest import ceph
@@ -17,7 +18,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def check_chain_xml(disk_xml, chain_lst):
@@ -254,7 +255,7 @@ def run(test, params, env):
     disk_src_protocol = params.get("disk_source_protocol")
     restart_tgtd = params.get("restart_tgtd", "no")
     vol_name = params.get("vol_name")
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
 
@@ -293,6 +294,17 @@ def run(test, params, env):
                 ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide ceph host first.")
+
+                params.update(
+                   {"disk_source_name": os.path.join(
+                      pool_name,
+                      'rbd_blockpull_' + utils_misc.generate_random_string(4) +
+                      '.img')})
+                if utils_package.package_install(["ceph-common"]):
+                    ceph.rbd_image_rm(
+                        mon_host, *params.get("disk_source_name").split('/'))
+                else:
+                    test.error('Failed to install ceph-common package.')
             if backing_file_relative_path:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
@@ -382,14 +394,21 @@ def run(test, params, env):
             #Use block pull with --keep-relative flag,and reset base_index to 2.
             base_index = 2
             for count in range(1, snapshot_take):
-                # If block pull operations are more than or equal to 3,it need reset base_index to 1.
                 if count >= 3:
+                    if libvirt_version.version_compare(6, 0, 0):
+                        break
+                    # If block pull operations are more than or equal to 3,
+                    # it need reset base_index to 1. It only affects the test
+                    # of libvirt < 6.0.0
                     base_index = 1
                 base_image = "%s[%s]" % (disk_target, base_index)
                 blockpull_options = "  --wait --verbose --base %s --keep-relative" % base_image
                 res = virsh.blockpull(vm_name, blk_target,
                                       blockpull_options, **virsh_dargs)
                 libvirt.check_exit_status(res, status_error)
+
+                if libvirt_version.version_compare(6, 0, 0):
+                    base_index += 1
             # Check final backing chain files.
             check_chain_backing_files(blk_source_image, True)
             return
@@ -440,14 +459,14 @@ def run(test, params, env):
                     if not ret:
                         test.fail(err_msg)
                 elif "base" or "shallow" in base_option:
-                    chain_lst = snap_src_lst[::-1]
                     if not base_index and base_image:
                         base_index = chain_lst.index(base_image)
-                    val_tmp = []
-                    for i in range(1, base_index):
-                        val_tmp.append(chain_lst[i])
-                    for i in val_tmp:
-                        chain_lst.remove(i)
+
+                    chain_lst = snap_src_lst[:base_index][::-1]
+                    if not libvirt_version.version_compare(6, 0, 0):
+                        chain_lst = snap_src_lst[::-1][base_index:]
+                    chain_lst.insert(0, snap_src_lst[-1])
+
                     ret = check_chain_xml(disk_xml, chain_lst)
                     if not ret:
                         test.fail(err_msg)

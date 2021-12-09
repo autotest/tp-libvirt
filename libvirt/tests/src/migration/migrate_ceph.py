@@ -15,6 +15,7 @@ from virttest import utils_package
 from virttest import utils_conn
 from virttest import virsh
 from virttest import virt_vm
+from virttest import migration
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import secret_xml
@@ -22,7 +23,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 MIGRATE_RET = False
 
@@ -109,7 +110,7 @@ def check_virsh_command_and_option(test, command, option=None):
     :param test: test object
     :param command: the command to validate
     :param option: the option for the command
-    :raise: test.cancel if commmand is not supported
+    :raise: test.cancel if command is not supported
     """
     msg = "This version of libvirt does not support "
     if not virsh.has_help_command(command):
@@ -369,7 +370,7 @@ def build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
     :param vm_name: specified VM name.
     :param disk_format: disk format,e.g raw or qcow2
     :param host_ip: host ip address
-    :param disk_src_protocol: access disk procotol ,e.g network or file
+    :param disk_src_protocol: access disk protocol ,e.g network or file
     :param volume_name: volume name
     :param disk_img: disk image name
     :param transport: transport pattern,e.g TCP
@@ -480,8 +481,8 @@ def run(test, params, env):
     #ssh_key.setup_ssh_key(server_ip, server_user, server_pwd, port=22)
 
     # Set up remote ssh key and remote /etc/hosts file for bi-direction migration
-    migr_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
-    if migr_vm_back:
+    migrate_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
+    if migrate_vm_back:
         ssh_key.setup_remote_ssh_key(server_ip, server_user, server_pwd)
         ssh_key.setup_remote_known_hosts_file(client_ip,
                                               server_ip,
@@ -495,14 +496,14 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Setup migration context
-    migrate_setup = libvirt.MigrationTest()
+    migrate_setup = migration.MigrationTest()
     migrate_setup.migrate_pre_setup(test_dict["desuri"], params)
 
     # Install ceph-common on remote host machine.
     remote_ssh_session = remote.remote_login("ssh", server_ip, "22", server_user,
                                              server_pwd, r"[\#\$]\s*$")
     if not utils_package.package_install(["ceph-common"], remote_ssh_session):
-        test.error("Failed ot install required packages on remote host")
+        test.error("Failed to install required packages on remote host")
     remote_ssh_session.close()
     try:
         # Create a remote runner for later use
@@ -560,7 +561,7 @@ def run(test, params, env):
         # Trigger migration
         migrate_vm(test, test_dict)
 
-        if migr_vm_back:
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -580,20 +581,20 @@ def run(test, params, env):
             logging.info(output)
             if status:
                 destroy_cmd = "virsh destroy %s" % vm_name
-                remote.run_remote_cmd(cmd, params, runner_on_target)
+                remote.run_remote_cmd(destroy_cmd, params, runner_on_target)
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, output))
     finally:
         logging.info("Recovery test environment")
         # Clean up of pre migration setup for local machine
-        if migr_vm_back:
+        if migrate_vm_back:
             migrate_setup.migrate_pre_setup(src_uri, params,
                                             cleanup=True)
         # Ensure VM can be cleaned up on remote host even migrating fail.
         destroy_vm_cmd = "virsh destroy %s" % vm_name
-        remote.run_remote_cmd(cmd, params, runner_on_target)
+        remote.run_remote_cmd(destroy_vm_cmd, params, runner_on_target)
 
-        logging.info("Recovery VM XML configration")
+        logging.info("Recovery VM XML configuration")
         vmxml_backup.sync()
         logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
 

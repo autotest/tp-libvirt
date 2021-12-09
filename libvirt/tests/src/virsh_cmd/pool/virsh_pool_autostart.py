@@ -11,7 +11,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import pool_xml
 from virttest.staging import lv_utils
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -75,7 +75,7 @@ def run(test, params, env):
         :param pool_type: Type of the pool.
         :param checkpoint: Which part for checking.
         :param expect_value: Expected value.
-        :param expect_error: Boolen value, expect command success or fail
+        :param expect_error: Boolean value, expect command success or fail
         """
         libvirt_pool = libvirt_storage.StoragePool()
         virsh.pool_list(option="--all", debug=True)
@@ -191,9 +191,8 @@ def run(test, params, env):
             # Restart libvirtd and check pool status
             logging.info("Try to restart libvirtd")
             # Remove the autostart management file
-            cmd = ("rm -rf /var/run/libvirt/storage/autostarted")
-            process.run(cmd, ignore_status=True, shell=True)
-            libvirtd = utils_libvirtd.Libvirtd()
+            utils_libvirtd.unmark_storage_autostarted()
+            libvirtd = utils_libvirtd.Libvirtd("virtstoraged")
             libvirtd.restart()
             check_pool(pool_name, pool_type, checkpoint="State",
                        expect_value="active", expect_error=status_error)
@@ -217,7 +216,7 @@ def run(test, params, env):
 
                 # Repeat step (3)
                 logging.debug("Try to restart libvirtd")
-                libvirtd = utils_libvirtd.Libvirtd()
+                libvirtd = utils_libvirtd.Libvirtd('virtstoraged')
                 libvirtd.restart()
                 check_pool(pool_name, pool_type, checkpoint='State',
                            expect_value="inactive", expect_error=status_error)
@@ -237,6 +236,6 @@ def run(test, params, env):
             if os.path.exists(p_xml):
                 os.remove(p_xml)
         except exceptions.TestFail as details:
-            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd = utils_libvirtd.Libvirtd('virtstoraged')
             libvirtd.restart()
             logging.error(str(details))

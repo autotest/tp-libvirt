@@ -9,7 +9,7 @@ def run(test, params, env):
     """
     status_error = bool("yes" == params.get("status_error", "no"))
 
-    # list of sandbox agregation managers
+    # list of sandbox aggregation managers
     sb_list = make_sandboxes(params, env)
     if not sb_list:
         test.fail("Failed to return list of instantiated "

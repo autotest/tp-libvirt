@@ -7,7 +7,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

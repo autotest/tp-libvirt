@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import time
 import platform
+import re
 
 from avocado.utils import process
 
@@ -50,6 +51,7 @@ def run(test, params, env):
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
+    document_string = eval(params.get("document_string", "[]"))
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -85,13 +87,17 @@ def run(test, params, env):
         Get the file flags of domain core dump file and check it.
         """
         error = ''
-        cmd1 = "lsof -w %s" % dump_file
+        cmd1 = "lsof -w %s |awk '/libvirt_i/{print $2}'" % dump_file
         while True:
-            if not os.path.exists(dump_file) or process.system(cmd1):
-                time.sleep(0.1)
+            if not os.path.exists(dump_file):
+                time.sleep(0.05)
                 continue
-            cmd2 = ("cat /proc/$(%s |awk '/libvirt_i/{print $2}')/fdinfo/1"
-                    "|grep flags|awk '{print $NF}'" % cmd1)
+            ret = process.run(cmd1, shell=True)
+            status, output = ret.exit_status, ret.stdout_text.strip()
+            if status:
+                time.sleep(0.05)
+                continue
+            cmd2 = "cat /proc/%s/fdinfo/1 |grep flags|awk '{print $NF}'" % output
             ret = process.run(cmd2, allow_output_check='combined', shell=True)
             status, output = ret.exit_status, ret.stdout_text.strip()
             if status:
@@ -152,7 +158,7 @@ def run(test, params, env):
         Check the format of dumped file.
 
         If 'dump_image_format' is not specified or invalid in qemu.conf, then
-        the file shoule be normal raw file, otherwise it shoud be compress to
+        the file should be normal raw file, otherwise it should be compress to
         specified format, the supported compress format including: lzop, gzip,
         bzip2, and xz.
         For memory-only dump, the default dump format is ELF, and it can also
@@ -213,6 +219,18 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
+    # check the explanation of "--memory-only" option in virsh dump man.
+    if document_string:
+        logging.info("document string: %s" % document_string)
+        ret = process.run("man virsh", shell=True)
+        if ret.exit_status:
+            test.error("failed to run 'man virsh'.")
+        man_str = re.sub(r"\s+", " ", ret.stdout_text.strip())
+        logging.debug("man str: %s" % man_str)
+        if not all([item in man_str for item in document_string]):
+            test.fail("failed to check document string in virsh man page.")
+        logging.info("the document string in virsh man page.")
+        return
     dump_guest_core = params.get("dump_guest_core", "")
     if dump_guest_core not in ["", "on", "off"]:
         test.error("invalid dumpCore value: %s" % dump_guest_core)

@@ -9,10 +9,11 @@ from virttest import utils_test
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import ssh_key
+from virttest import migration
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
-
-from provider import libvirt_version
 
 
 def set_cpu_memory(vm_name, cpu, memory):
@@ -59,7 +60,7 @@ def copied_migration(test, vm, params, blockjob_type=None, block_target="vda"):
     if stress_type is not None:
         utils_test.load_stress("stress_in_vms", params=params, vms=[vm])
 
-    cp_mig = utlv.MigrationTest()
+    cp_mig = migration.MigrationTest()
     migration_thread = threading.Thread(target=cp_mig.thread_func_migration,
                                         args=(vm, dest_uri, options))
     migration_thread.start()

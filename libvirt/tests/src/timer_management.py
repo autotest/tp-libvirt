@@ -49,9 +49,8 @@ def set_clock_xml(test, vm, params):
     adjustment = params.get("clock_adjustment")
     timezone = params.get("clock_timezone")
 
-    vmclockxml = vm_xml.VMClockXML()
-    vmclockxml.from_dumpxml(vm.name)
-    vmclockxml.offset = offset
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+    vmclockxml = vm_xml.VMClockXML(offset=offset)
     del vmclockxml.adjustment
     del vmclockxml.timezone
     if adjustment is not None:
@@ -66,8 +65,9 @@ def set_clock_xml(test, vm, params):
         newtimer.update(element)
         newtimers.append(newtimer)
     vmclockxml.timers = newtimers
-    logging.debug("New vm XML:\n%s", vmclockxml)
-    vmclockxml.sync()
+    vmxml.clock = vmclockxml
+    logging.debug("New vm XML:\n%s", vmxml)
+    vmxml.sync()
     # Return timer elements for test verify
     return timer_elems
 
@@ -299,7 +299,7 @@ def manipulate_vm(vm, operation, params=None):
             except OSError:
                 pass
     else:
-        err_msg = "Unsupport operation in this function: %s" % operation
+        err_msg = "Unsupported operation in this function: %s" % operation
     return err_msg
 
 
@@ -448,7 +448,7 @@ def test_specific_timer(test, vm, params):
     if vm.is_dead():
         vm.start()
     vm.wait_for_login()
-    # Not config VM clock if the timer is unsupport in VM
+    # Not config VM clock if the timer is unsupported in VM
     config_clock_in_vm = True
     for timer in timers:
         timer = translate_timer_name(timer)

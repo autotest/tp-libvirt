@@ -4,6 +4,7 @@ import stat
 import time
 
 from pwd import getpwuid
+from xml.etree.ElementTree import parse
 
 from avocado.utils import process
 
@@ -11,12 +12,13 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_package
 from virttest import virt_vm
+from virttest.staging import service
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
 from virttest.libvirt_xml.devices.graphics import Graphics
 from virttest.libvirt_xml.devices.serial import Serial
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 # Define qemu log path.
@@ -72,7 +74,7 @@ def run(test, params, env):
         # Get pipe node.
         else:
             result = process.run(cmd, timeout=90, ignore_status=True, shell=True)
-            ret, output = result.exit_status, result.stdout_text
+            ret, output = result.exit_status, result.stdout_text.strip()
             if ret:
                 test.fail("Failed to get pipe node")
             else:
@@ -150,11 +152,11 @@ def run(test, params, env):
         Check pipe used by QEMU is closed gracefully after VM shutdown.
         """
         # Check pipe node can not be listed after VM shutdown.
-        cmd = ("lsof  -w |grep pipe|grep virtlogd|grep %s" % pipe_node)
+        cmd = ("lsof +c0 -w |grep pipe|grep virtlogd|grep %s" % pipe_node)
         if not process.run(cmd, timeout=90, ignore_status=True, shell=True).exit_status:
             test.fail("pipe node: %s is not closed in virtlogd gracefully." % pipe_node)
 
-        cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
+        cmd = ("lsof +c0 -w |grep pipe|grep %s|grep %s" % (emulator[0:15], pipe_node))
         if not process.run(cmd, timeout=90, ignore_status=True, shell=True).exit_status:
             test.fail("pipe node: %s is not closed in qemu gracefully." % pipe_node)
 
@@ -217,14 +219,18 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "virtlogd_disabled")
     stdio_handler = params.get("stdio_handler", "not_set")
+    matched_msg = params.get("matched_msg", "Powering off")
     start_vm = "yes" == params.get("start_vm", "yes")
     reload_virtlogd = "yes" == params.get("reload_virtlogd", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
+    stop_libvirtd = "yes" == params.get("stop_libvirtd", "no")
     with_spice = "yes" == params.get("with_spice", "no")
     with_console_log = "yes" == params.get("with_console_log", "no")
 
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+    emulator_path = parse(vm_xml.get_devices(device_type='emulator')[0]['xml']).getroot().text
+    emulator = os.path.basename(emulator_path)
     vm_xml_backup = vm_xml.copy()
     if with_console_log:
         guest_log_file = os.path.join(QEMU_LOG_PATH, "%s-console.log" % vm_name)
@@ -236,7 +242,7 @@ def run(test, params, env):
     try:
         if stdio_handler != 'not_set':
             config['stdio_handler'] = "'%s'" % stdio_handler
-        if restart_libvirtd:
+        if restart_libvirtd or stop_libvirtd:
             virtlogd_pid = check_service_status("virtlogd", service_start=True)
             logging.info("virtlogd pid: %s", virtlogd_pid)
             check_service_status("libvirtd", service_start=True)
@@ -254,6 +260,37 @@ def run(test, params, env):
         if not start_vm:
             if reload_virtlogd:
                 reload_and_check_virtlogd()
+            if expected_result == 'virtlogd_restart':
+                # check virtlogd status
+                virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("virtlogd PID: %s", virtlogd_pid)
+                # restart virtlogd
+                ret = process.run("systemctl restart virtlogd", ignore_status=True, shell=True)
+                if ret.exit_status:
+                    test.fail("failed to restart virtlogd.")
+                # check virtlogd status
+                new_virtlogd_pid = check_service_status("virtlogd", service_start=False)
+                logging.info("new virtlogd PID: %s", new_virtlogd_pid)
+                if virtlogd_pid == new_virtlogd_pid:
+                    test.fail("virtlogd pid don't change.")
+                cmd = "ps -o ppid,pid,pgid,sid,tpgid,tty,stat,command -C virtlogd"
+                ret = process.run(cmd, ignore_status=True, shell=True)
+                if ret.exit_status:
+                    test.fail("virtlogd don't exist.")
+            if expected_result == 'virtlogd_disabled':
+                # check virtlogd status
+                virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("virtlogd PID: %s", virtlogd_pid)
+                # disabled virtlogd
+                service_manager = service.Factory.create_generic_service()
+                service_manager.stop('virtlogd')
+                # check virtlogd status
+                if service_manager.status('virtlogd'):
+                    test.fail("virtlogd status is not inactive.")
+                cmd = "ps -C virtlogd"
+                ret = process.run(cmd, ignore_status=True, shell=True)
+                if not ret.exit_status:
+                    test.fail("virtlogd still exist.")
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
@@ -310,25 +347,37 @@ def run(test, params, env):
             # On latest release,No.8 field in lsof returning is pipe node number.
             if libvirt_version.version_compare(4, 3, 0):
                 pipe_node_field = "$8"
-            cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
+            cmd = ("lsof +c0 -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
             pipe_node = configure(cmd)
 
-            if restart_libvirtd:
-                libvirtd.restart()
+            if restart_libvirtd or stop_libvirtd:
+                cmd2 = "lsof %s | grep virtlogd | awk '{print $2}'" % guest_log_file
+                if restart_libvirtd:
+                    libvirtd.restart()
+                if stop_libvirtd:
+                    pid_in_log = configure(cmd2)
+                    logging.info("virtlogd pid in guest log: %s" % pid_in_log)
+                    libvirtd.stop()
                 new_virtlogd_pid = check_service_status("virtlogd", service_start=True)
-                logging.info("After libvirtd restart, virtlogd PID: %s", new_virtlogd_pid)
-                new_pipe_node = configure(cmd)
-                logging.info("After libvirtd restart, pipe node: %s", new_pipe_node)
-                if pipe_node != new_pipe_node and new_pipe_node != new_virtlogd_pid:
-                    test.fail("After libvirtd restart, pipe node changed.")
+                logging.info("New virtlogd PID: %s", new_virtlogd_pid)
+                if restart_libvirtd:
+                    new_pipe_node = configure(cmd)
+                    logging.info("After libvirtd restart, pipe node: %s", new_pipe_node)
+                    if pipe_node != new_pipe_node and new_pipe_node != new_virtlogd_pid:
+                        test.fail("After libvirtd restart, pipe node changed.")
+                if stop_libvirtd:
+                    new_pid_in_log = configure(cmd2)
+                    logging.info("After libvirtd stop, new virtlogd pid in guest log: %s" % new_pid_in_log)
+                    if pid_in_log != new_virtlogd_pid or pid_in_log != new_pid_in_log:
+                        test.fail("After libvirtd stop, virtlogd PID changed.")
 
             if with_spice or with_console_log:
                 reload_and_check_virtlogd()
 
-            # Check if qemu-kvm use pipe node provided by virtlogd.
-            cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
+            # Check if qemu use pipe node provided by virtlogd.
+            cmd = ("lsof +c0 -w |grep pipe|grep %s|grep %s" % (emulator[0:15], pipe_node))
             errorMessage = ("Can not find matched pipe node: %s "
-                            "from pipe list used by qemu-kvm." % pipe_node)
+                            "from pipe list used by %s." % (emulator, pipe_node))
             configure(cmd, errorMsg=errorMessage)
 
             # Shutdown VM.
@@ -338,12 +387,12 @@ def run(test, params, env):
             # Check qemu log works well
             if with_spice:
                 check_info_in_vm_log_file(vm_name, guest_log_file,
-                                          matchedMsg="qemu-kvm: terminating on signal 15 from pid")
+                                          matchedMsg="%s: terminating on signal 15 from pid" % emulator)
 
             # Check VM shutdown log is written into log file correctly.
             if with_console_log:
                 check_info_in_vm_log_file(vm_name, guest_log_file,
-                                          matchedMsg="Powering off")
+                                          matchedMsg=matched_msg)
             else:
                 check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="shutting down")
 

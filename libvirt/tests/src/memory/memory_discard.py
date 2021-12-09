@@ -85,6 +85,9 @@ def run(test, params, env):
         logging.debug(cpu_params)
         cpu_xml = vm_xml.VMCPUXML()
         cpu_xml.xml = "<cpu><numa/></cpu>"
+        if 'cpuxml_numa_cell' in cpu_params:
+            cpu_params['cpuxml_numa_cell'] = cpu_xml.dicts_to_cells(
+                eval(cpu_params['cpuxml_numa_cell']))
         for attr_key in cpu_params:
             val = cpu_params[attr_key]
             logging.debug('Set cpu params')

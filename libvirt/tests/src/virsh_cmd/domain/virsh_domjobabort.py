@@ -6,7 +6,7 @@ import locale
 
 from virttest import virsh
 from virttest import data_dir
-from virttest.utils_test import libvirt as utlv
+from virttest import migration
 from virttest import ssh_key
 
 
@@ -164,7 +164,7 @@ def run(test, params, env):
         try:
             os.unlink(tmp_file)
         except OSError as detail:
-            logging.info("Cant' remove %s: %s", tmp_file, detail)
+            logging.info("Can't remove %s: %s", tmp_file, detail)
 
     # Recover the environment.
     if pre_vm_state == "suspend":
@@ -179,7 +179,7 @@ def run(test, params, env):
     if action == "migrate":
         # Recover migration speed
         virsh.migrate_setspeed(vm_name, original_speed)
-        utlv.MigrationTest().cleanup_dest_vm(vm, None, remote_uri)
+        migration.MigrationTest().cleanup_dest_vm(vm, None, remote_uri)
 
     # check status_error
     if status_error == "yes":

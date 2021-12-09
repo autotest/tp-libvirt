@@ -19,7 +19,7 @@ from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -97,7 +97,7 @@ def run(test, params, env):
             elif target.startswith("sd"):
                 added_part = added_parts[0]
             if not added_part:
-                logging.error("Cann't see added partition in VM")
+                logging.error("Can't see added partition in VM")
                 return False
             utils_disk.linux_disk_check(session, added_part)
             session.close()
@@ -163,7 +163,7 @@ def run(test, params, env):
 
     secret_uuid = ""
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if device == "lun":
         if vm.is_dead():
             vm.start()
@@ -340,7 +340,7 @@ def run(test, params, env):
 
             # Test domain save/restore/snapshot.
             if test_save_snapshot:
-                save_file = os.path.join(data_dir.get_tmp_dir(), "%.save" % vm_name)
+                save_file = os.path.join(data_dir.get_data_dir(), "%.save" % vm_name)
                 check_save_restore(save_file)
                 check_snapshot()
                 if os.path.exists(save_file):

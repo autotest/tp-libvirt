@@ -17,7 +17,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import pool_xml
 from virttest.xml_utils import XMLTreeFile
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -356,7 +356,7 @@ def run(test, params, env):
     image_size = params.get("image_size", "1.44M")
     emulated_image = "emulated-iscsi"
 
-    # Storage pool and volume related paramters.
+    # Storage pool and volume related parameters.
     pool_name = params.get("pool_name", "iscsi_pool")
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target", "/dev/disk/by-path")
@@ -372,7 +372,7 @@ def run(test, params, env):
     save_file = os.path.join(data_dir.get_tmp_dir(), "vm.save")
     snapshot_name = "s1"
 
-    # Policy related paramters.
+    # Policy related parameters.
     disk_xml_file = os.path.join(data_dir.get_tmp_dir(), "attach_disk.xml")
     disk_xml_policy_file = os.path.join(data_dir.get_tmp_dir(), "attach_policy_disk.xml")
     update_policy = "yes" == params.get("update_policy", "no")

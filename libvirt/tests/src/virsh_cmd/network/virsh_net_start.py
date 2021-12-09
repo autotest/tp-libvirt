@@ -1,9 +1,13 @@
 import logging
+import time
 
 from virttest import virsh
 from virttest import libvirt_vm
+from virttest import libvirt_version
+from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 from virttest.libvirt_xml import network_xml, IPXML
-from provider import libvirt_version
+from virttest.staging import service
 from virttest.utils_test import libvirt
 
 
@@ -19,6 +23,7 @@ def run(test, params, env):
     net_ref = params.get("net_start_net_ref", "netname")  # default is tested
     extra = params.get("net_start_options_extra", "")  # extra cmd-line params.
     route_test = "yes" == params.get("route_test", "no")
+    firewalld_operate = params.get("firewalld_operate", None)
 
     # make easy to maintain
     virsh_dargs = {'uri': uri, 'debug': True, 'ignore_status': True}
@@ -31,6 +36,8 @@ def run(test, params, env):
                         " libvirt version.")
 
     virsh_uri = params.get("virsh_uri")
+    if virsh_uri and not utils_split_daemons.is_modular_daemon():
+        virsh_uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -71,7 +78,9 @@ def run(test, params, env):
             test_xml.forward = {'mode': 'nat'}
             test_xml.routes = [{'address': '192.168.122.0', 'prefix': '24', 'gateway': '192.168.100.1'}]
             ipxml = IPXML(address='192.168.100.1', netmask='255.255.255.0')
-            ipxml.dhcp_ranges = {'start': '192.168.100.2', 'end': '192.168.100.254'}
+            range_4 = network_xml.RangeXML()
+            range_4.attrs = {'start': '192.168.100.2', 'end': '192.168.100.254'}
+            ipxml.dhcp_ranges = range_4
             test_xml.ip = ipxml
             test_xml.define()
             virsh.net_start("def")
@@ -122,6 +131,37 @@ def run(test, params, env):
         logging.debug("Current network(s) state: %s", current_state)
         if 'default' not in current_state:
             test.fail('Network "default" cannot be found')
+        if firewalld_operate:
+            # current network is active, ensure firewalld is active
+            # if not, restart firewalld, then restart libvirtd
+            firewalld_service = service.Factory.create_service("firewalld")
+            libvirtd_obj = utils_libvirtd.Libvirtd()
+            if not firewalld_service.status():
+                firewalld_service.start()
+                libvirtd_obj.restart()
+                virsh_instance = virsh.VirshPersistent(**virsh_dargs)
+            if firewalld_operate == "restart":
+                # after firewalld restart, destroy and start the network
+                firewalld_service.restart()
+                time.sleep(5)
+                res1 = virsh.net_destroy(net_ref, extra, **virsh_dargs)
+                # need to add wait time. As libvirt doesn't know that firewalld has restarted until it gets the
+                # dbus message, but that message won't arrive until some time after all of libvirt's chains/rules
+                # have already been removed by the firewalld restart. refer to bug 1942805
+                time.sleep(5)
+                res2 = virsh.net_start(net_ref, extra, **virsh_dargs)
+            elif firewalld_operate == "stop_start":
+                # start network which has been destroyed before firewalld restart
+                res1 = virsh.net_destroy(net_ref, extra, **virsh_dargs)
+                firewalld_service.stop()
+                firewalld_service.start()
+                time.sleep(5)
+                res2 = virsh.net_start(net_ref, extra, **virsh_dargs)
+            logging.debug("firewalld_operate is %s, result for start network after firewalld restart: %s",
+                          firewalld_operate, res2)
+            status1 = res1.exit_status | res2.exit_status
+            if status1:
+                test.fail("Start or destroy network after firewalld restart fail!")
         # Check status_error
         if status_error:
             if not status:

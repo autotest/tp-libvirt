@@ -67,8 +67,8 @@ def run(test, params, env):
         else:
             contr_dict = {'controller_type': 'pci',
                           'controller_model': 'pcie-to-pci-bridge'}
-            libvirt.create_controller_xml(
-                contr_dict, "add_controller", vm_name)
+            cntl_add = libvirt.create_controller_xml(contr_dict)
+            libvirt.add_controller(vm_name, cntl_add)
 
     # Generate xml for device vsock
     vsock_xml = libvirt.create_vsock_xml(virtio_model)

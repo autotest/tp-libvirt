@@ -14,11 +14,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging import lv_utils
+from virttest.utils_libvirt import libvirt_pcicontr
 from virttest import utils_disk
 from virttest import utils_misc
 from virttest import data_dir
-
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -31,6 +31,18 @@ def run(test, params, env):
     3.Recover test environment.
     4.Confirm the test result.
     """
+    def check_info_in_audit_log_file(test_cmd, device_source):
+        """
+        Check if information can be found in audit.log.
+
+        :params test_cmd: test command
+        :params device_source: device source
+        """
+        grep_audit = ('grep "%s" /var/log/audit/audit.log'
+                      % test_cmd.split("-")[0])
+        cmd = (grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"'
+               % device_source)
+        return process.run(cmd, ignore_status=True, shell=True).exit_status == 0
 
     def check_vm_partition(vm, device, os_type, target_name, old_parts):
         """
@@ -183,10 +195,11 @@ def run(test, params, env):
                             "support in current libvirt version.")
         at_options += (" --cache %s" % cache_options)
 
+    machine_type = params.get('machine_type')
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -196,9 +209,10 @@ def run(test, params, env):
 
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vm_dump_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Create virtual device file.
-    device_source_path = os.path.join(data_dir.get_tmp_dir(), device_source_name)
+    device_source_path = os.path.join(data_dir.get_data_dir(), device_source_name)
     if test_block_dev:
         device_source = libvirt.setup_or_cleanup_iscsi(True)
         if not device_source:
@@ -227,6 +241,25 @@ def run(test, params, env):
                 size="1G", disk_format=device_source_format)
         else:
             device_source = device_source_name
+
+    if machine_type == 'q35':
+        # Add more pci controllers to avoid error: No more available PCI slots
+        if test_twice and params.get("add_more_pci_controllers", "yes") == "yes":
+            vm_dump_xml.remove_all_device_by_type('controller')
+            machine_list = vm_dump_xml.os.machine.split("-")
+            vm_dump_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
+            q35_pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
+            q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
+            vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
+            # Add enough controllers to match multiple times disk attaching requirements
+            for i in list(range(1, 15)):
+                q35_pcie_dict1.update({'controller_index': "%d" % i})
+                vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
+            vm_dump_xml.sync()
+
+    if params.get("reset_pci_controllers_nums", "no") == "yes" \
+            and 'attach-disk' in test_cmd:
+        libvirt_pcicontr.reset_pci_num(vm_name, 15)
 
     # if we are testing audit, we need to start audit servcie first.
     if test_audit:
@@ -282,7 +315,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.pause()
     elif pre_vm_state == "shut off":
-        logging.info("Shuting down %s..." % vm_name)
+        logging.info("Shutting down %s..." % vm_name)
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
@@ -374,11 +407,8 @@ def run(test, params, env):
     # Check audit log
     check_audit_after_cmd = True
     if test_audit:
-        grep_audit = ('grep "%s" /var/log/audit/audit.log'
-                      % test_cmd.split("-")[0])
-        cmd = (grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"'
-               % device_source)
-        if process.run(cmd, shell=True).exit_status:
+        result = utils_misc.wait_for(lambda: check_info_in_audit_log_file(test_cmd, device_source), timeout=20)
+        if not result:
             logging.error("Audit check failed")
             check_audit_after_cmd = False
 
@@ -449,7 +479,7 @@ def run(test, params, env):
     # Eject cdrom test
     eject_cdrom = "yes" == params.get("at_dt_disk_eject_cdrom", "no")
     save_vm = "yes" == params.get("at_dt_disk_save_vm", "no")
-    save_file = os.path.join(data_dir.get_tmp_dir(), "vm.save")
+    save_file = os.path.join(data_dir.get_data_dir(), "vm.save")
     try:
         if eject_cdrom:
             eject_params = {'type_name': "file", 'device_type': "cdrom",
@@ -457,7 +487,7 @@ def run(test, params, env):
             eject_xml = libvirt.create_disk_xml(eject_params)
             with open(eject_xml) as eject_file:
                 logging.debug("Eject CDROM by XML: %s", eject_file.read())
-            # Run command tiwce to make sure cdrom tray open first #BZ892289
+            # Run command twice to make sure cdrom tray open first #BZ892289
             # Open tray
             virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
             # Add time sleep between two attach commands.

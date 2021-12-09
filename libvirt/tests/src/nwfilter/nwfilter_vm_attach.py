@@ -2,6 +2,7 @@ import re
 import logging
 
 from avocado.utils import process
+from avocado.utils import astring
 
 from virttest import virsh
 from virttest import libvirt_xml
@@ -9,7 +10,6 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
-from virttest.compat_52lts import decode_to_text as to_text
 
 
 def run(test, params, env):
@@ -42,8 +42,7 @@ def run(test, params, env):
 
     # backup vm xml
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    libvirtd = utils_libvirtd.Libvirtd()
-
+    daemon_serv = utils_libvirtd.Libvirtd("virtqemud")
     try:
         # Prepare interface xml for attach
         new_iface = interface.Interface(type_name=iface_type)
@@ -68,8 +67,8 @@ def run(test, params, env):
                                       ignore_status=True)
             utlv.check_exit_status(ret, status_error)
 
-        if not libvirtd.is_running():
-            test.fail("libvirtd not running after attach "
+        if not daemon_serv.is_running():
+            test.fail("daemon not running after attach "
                       "interface.")
 
         # Check iptables or ebtables on host
@@ -83,14 +82,14 @@ def run(test, params, env):
                                       timeout=30)
             if not ret:
                 test.fail("Rum command '%s' failed" % check_cmd)
-            out = to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
+            out = astring.to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
             if expect_match and not re.search(expect_match, out):
                 test.fail("'%s' not found in output: %s"
                           % (expect_match, out))
 
     finally:
         if attach_twice_invalid:
-            libvirtd.restart()
+            daemon_serv.restart()
         # Clean env
         if vm.is_alive():
             vm.destroy(gracefully=False)

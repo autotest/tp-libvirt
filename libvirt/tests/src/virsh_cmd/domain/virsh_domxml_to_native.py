@@ -7,8 +7,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import libvirt_version
 from virttest import utils_libvirtd
-
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -61,6 +60,12 @@ def run(test, params, env):
             if (e[0] == '-' and enext[0] == '-') or e[0] != '-':
                 retlist.append(e)
             else:
+                # -blockdev '{"driver":"file",...,"discard":"unmap"}' should be
+                # turned into
+                # -blockdev {"driver":"file",...,"discard":"unmap"} in order to
+                # match the qemu command line format
+                if e in ['-blockdev', '-object', '-compat', '-audiodev']:
+                    enext = enext.strip("'")
                 # Append this and the next and set our skip flag
                 retlist.append(e + " " + enext)
                 skip = True
@@ -96,6 +101,9 @@ def run(test, params, env):
                 continue
             elif re.search("-cpu", arg):
                 continue
+            # libvirt commit id 'd96fb5cb'
+            elif re.search("master-key.aes", arg):
+                continue
             retlist.append(arg)
 
         return retlist
@@ -111,9 +119,10 @@ def run(test, params, env):
         """
         expected_env_vars = [
             'LC_ALL',
-            'PATH',
-            'QEMU_AUDIO_DRV',
+            'PATH'
             ]
+        if not libvirt_version.version_compare(7, 3, 0):
+            expected_env_vars += ['QEMU_AUDIO_DRV']
         if libvirt_version.version_compare(5, 2, 0):
             expected_env_vars += [
                 'HOME',
@@ -140,7 +149,7 @@ def run(test, params, env):
         cmdline_tmp = process.run("cat -v /proc/%d/cmdline" % pid, shell=True).stdout_text
 
         # Output has a trailing '^@' which gets converted into an empty
-        # element when spliting by '\x20', so strip it on the end.
+        # element when splitting by '\x20', so strip it on the end.
         cmdline = re.sub(r'\^@', ' ', cmdline_tmp).strip(' ')
 
         # Fedora 19 replaces the /usr/bin/qemu-kvm with the string
@@ -148,8 +157,11 @@ def run(test, params, env):
         # do the same if we find "/usr/bin/qemu-kvm" in the incoming
         # argument list and we find "qemu-system-x86_64 -machine accel=kvm"
         # in the running guest's cmdline
-        # ubuntu use /usr/bin/kvm as qemu binary
-        qemu_bin = ["/usr/bin/qemu-kvm", "/usr/bin/kvm"]
+        # ubuntu uses /usr/bin/kvm as qemu binary
+        # RHEL uses /usr/libexec/qemu-kvm as qemu binary
+        qemu_bin = ["/usr/bin/qemu-kvm",
+                    "/usr/bin/kvm",
+                    "/usr/libexec/qemu-kvm"]
         arch_bin = ["/usr/bin/qemu-system-x86_64 -machine accel=kvm",
                     "/usr/bin/qemu-system-ppc64 -machine accel=kvm",
                     "qemu-system-ppc64 -enable-kvm"]
@@ -174,15 +186,15 @@ def run(test, params, env):
                                if x not in set(qemu_arg_lines)))
         if diff1:
             logging.debug("Found the following in conv_arg not in qemu_arg:")
-        for elem in diff1:
-            logging.debug("\t%s", elem)
+            for elem in diff1:
+                logging.debug("\t%s", elem)
 
         diff2 = filtlist(tuple(x for x in qemu_arg_lines
                                if x not in set(conv_arg_lines)))
         if diff2:
             logging.debug("Found the following in qemu_arg not in conv_arg:")
-        for elem in diff2:
-            logging.debug("\t%s", elem)
+            for elem in diff2:
+                logging.debug("\t%s", elem)
 
         if diff1 or diff2:
             return False

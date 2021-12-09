@@ -12,6 +12,7 @@ from virttest import virt_vm
 from virttest import data_dir
 from virttest import utils_test
 from virttest import libvirt_xml
+from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.staging import utils_cgroup
 
@@ -37,14 +38,19 @@ def run(test, params, env):
         """
         bt = None
         if not reset:
-            if condn == "avocadotest":
-                bt = utils_test.run_avocado_bg(vm, params, test)
+            if condn == "avocado_test":
+                testlist = utils_test.get_avocadotestlist(params)
+                bt = utils_test.run_avocado_bg(vm, params, test, testlist)
                 if not bt:
                     test.cancel("guest stress failed to start")
                 # Allow stress to start
                 time.sleep(condn_sleep_sec)
                 return bt
             elif condn == "stress":
+                session = vm.wait_for_login()
+                if not utils_package.package_install("gcc", session):
+                    test.fail("Failed to install gcc in guest")
+                session.close()
                 utils_test.load_stress("stress_in_vms", params=params, vms=[vm])
             elif condn in ["save", "managedsave"]:
                 # No action
@@ -93,8 +99,8 @@ def run(test, params, env):
             elif condn == "suspend":
                 result = virsh.resume(vm_name, ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
-            elif condn == "avocadotest":
-                guestbt.join(ignore_status=True)
+            elif condn == "avocado_test":
+                guestbt.join()
             elif condn == "stress":
                 utils_test.unload_stress("stress_in_vms", params=params, vms=[vm])
             elif condn == "hotplug":

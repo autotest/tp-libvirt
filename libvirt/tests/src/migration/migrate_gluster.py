@@ -1,7 +1,5 @@
 import logging
 import os
-import re
-
 
 from virttest import libvirt_vm
 from virttest import virsh
@@ -10,32 +8,11 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest import utils_conn
 from virttest import gluster
+from virttest import migration
 
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-
-
-def check_parameters(test, params):
-    """
-    Make sure all of parameters are assigned a valid value
-
-    :param test: the test object
-    :param params: the parameters to be checked
-
-    :raise: test.cancel if invalid value exists
-    """
-    migrate_dest_host = params.get("migrate_dest_host")
-    migrate_dest_pwd = params.get("migrate_dest_pwd")
-    migrate_source_host = params.get("migrate_source_host")
-    migrate_source_pwd = params.get("migrate_source_pwd")
-
-    args_list = [migrate_dest_host,
-                 migrate_dest_pwd, migrate_source_host,
-                 migrate_source_pwd]
-
-    for arg in args_list:
-        if arg and arg.count("EXAMPLE"):
-            test.cancel("Please assign a value for %s!" % arg)
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -80,62 +57,6 @@ def run(test, params, env):
             if utils_misc.check_exists(mount_point, session):
                 utils_misc.safe_rmdir(gluster_mount_dir, session=session)
 
-    def do_migration(vm, dest_uri, options, extra):
-        """
-        Execute the migration with given parameters
-
-        :param vm: the guest to be migrated
-        :param dest_uri: the destination uri for migration
-        :param options: options next to 'migrate' command
-        :param extra: options in the end of the migrate command line
-
-        :return: CmdResult object
-        """
-        # Migrate the guest.
-        virsh_args.update({"ignore_status": True})
-        migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
-        if int(migration_res.exit_status) != 0:
-            logging.error("Migration failed for %s.", vm_name)
-            return migration_res
-
-        if vm.is_alive():
-            logging.info("VM is alive on destination %s.", dest_uri)
-        else:
-            test.fail("VM is not alive on destination %s" % dest_uri)
-
-        # Throws exception if console shows panic message
-        vm.verify_kernel_crash()
-        return migration_res
-
-    def check_migration_res(result):
-        """
-        Check if the migration result is as expected
-
-        :param result: the output of migration
-        :raise: test.fail if test is failed
-        """
-        if not result:
-            test.error("No migration result is returned.")
-        logging.info("Migration out: %s", result.stdout_text.strip())
-        logging.info("Migration error: %s", result.stderr_text.strip())
-
-        if status_error:  # Migration should fail
-            if err_msg:   # Special error messages are expected
-                if not re.search(err_msg, result.stderr_text.strip()):
-                    test.fail("Can not find the expected patterns '%s' in "
-                              "output '%s'" % (err_msg,
-                                               result.stderr_text.strip()))
-                else:
-                    logging.debug("It is the expected error message")
-            else:
-                if int(result.exit_status) != 0:
-                    logging.debug("Migration failure is expected result")
-                else:
-                    test.fail("Migration success is unexpected result")
-        else:
-            if int(result.exit_status) != 0:
-                test.fail(result.stderr_text.strip())
-
     # Local variables
     virsh_args = {"debug": True}
     server_ip = params["server_ip"] = params.get("remote_ip")
@@ -144,8 +65,8 @@ def run(test, params, env):
     client_ip = params["client_ip"] = params.get("local_ip")
     client_pwd = params["client_pwd"] = params.get("local_pwd")
     extra = params.get("virsh_migrate_extra")
-    options = params.get("virsh_migrate_options")
-    virsh_options = params.get("virsh_options", "--verbose --live")
+    options = params.get("virsh_migrate_options", "--live --p2p --verbose")
+    virsh_options = params.get("virsh_options", "")
 
     vol_name = params.get("vol_name")
     disk_format = params.get("disk_format", "qcow2")
@@ -154,7 +75,7 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     err_msg = params.get("err_msg")
     host_ip = params.get("gluster_server_ip", "")
-    migr_vm_back = params.get("migrate_vm_back", "no") == "yes"
+    migrate_vm_back = params.get("migrate_vm_back", "no") == "yes"
 
     selinux_local = params.get('set_sebool_local', 'yes') == "yes"
     selinux_remote = params.get('set_sebool_remote', 'no') == "yes"
@@ -163,15 +84,23 @@ def run(test, params, env):
     test_dict = dict(params)
     test_dict["local_boolean_varible"] = "virt_use_fusefs"
     test_dict["remote_boolean_varible"] = "virt_use_fusefs"
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     remove_pkg = False
     seLinuxBool = None
     seLinuxfusefs = None
     gluster_uri = None
     mig_result = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     # Make sure all of parameters are assigned a valid value
-    check_parameters(test, params)
+    migrate_test = migration.MigrationTest()
+    migrate_test.check_parameters(params)
+    extra_args = migrate_test.update_virsh_migrate_extra_args(params)
 
     # params for migration connection
     params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
@@ -184,8 +113,8 @@ def run(test, params, env):
     # For --postcopy enable
     postcopy_options = params.get("postcopy_options")
     if postcopy_options:
-        virsh_options = "%s %s" % (virsh_options, postcopy_options)
-        params['virsh_options'] = virsh_options
+        extra = "%s %s" % (virsh_options, postcopy_options)
+        func_name = virsh.migrate_postcopy
 
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
@@ -195,7 +124,6 @@ def run(test, params, env):
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = new_xml.copy()
 
-    migrate_setup = libvirt.MigrationTest()
     try:
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
@@ -221,8 +149,8 @@ def run(test, params, env):
         # Check if gluster server is deployed locally
         if not host_ip:
             logging.debug("Enable port 24007 and 49152:49216")
-            migrate_setup.migrate_pre_setup(src_uri, params, ports="24007")
-            migrate_setup.migrate_pre_setup(src_uri, params)
+            migrate_test.migrate_pre_setup(src_uri, params, ports="24007")
+            migrate_test.migrate_pre_setup(src_uri, params)
             gluster_uri = "{}:{}".format(client_ip, vol_name)
         else:
             gluster_uri = "{}:{}".format(host_ip, vol_name)
@@ -253,10 +181,21 @@ def run(test, params, env):
             libvirt.set_vm_disk(vm, gluster_backend_disk)
         remote_session.close()
 
-        mig_result = do_migration(vm, dest_uri, options, extra)
-        check_migration_res(mig_result)
+        vm.wait_for_login().close()
+        migrate_test.ping_vm(vm, params)
 
-        if migr_vm_back:
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
+        vms = [vm]
+        migrate_test.do_migration(vms, None, dest_uri, 'orderly',
+                                  options, thread_timeout=900,
+                                  ignore_status=True, virsh_opt=virsh_options,
+                                  extra_opts=extra, **extra_args)
+        migrate_test.ping_vm(vm, params, dest_uri)
+
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -268,9 +207,13 @@ def run(test, params, env):
                 ssh_connection.conn_check()
 
             # Pre migration setup for local machine
-            migrate_setup.migrate_pre_setup(src_uri, params)
-            cmd = "virsh migrate %s %s %s" % (vm_name,
-                                              virsh_options, src_uri)
+            migrate_test.migrate_pre_setup(src_uri, params)
+            remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+            remote_libvirt_file = libvirt_config\
+                .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
+            cmd = "virsh migrate %s %s %s %s" % (vm_name, options,
+                                                 virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
             cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
             logging.info(cmd_result)
@@ -283,15 +226,22 @@ def run(test, params, env):
                           % (cmd, cmd_result))
 
     finally:
-        logging.info("Recovery test environment")
+        logging.info("Recover test environment")
+        migrate_test.cleanup_vm(vm, dest_uri)
+
         orig_config_xml.sync()
 
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+        if remote_libvirt_file:
+            del remote_libvirt_file
+
         # Clean up of pre migration setup for local machine
-        if migr_vm_back:
+        if migrate_vm_back:
             if 'ssh_connection' in locals():
                 ssh_connection.auto_recover = True
-            migrate_setup.migrate_pre_setup(src_uri, params,
-                                            cleanup=True)
+            migrate_test.migrate_pre_setup(src_uri, params,
+                                           cleanup=True)
 
         # Cleanup selinu configuration
         if seLinuxBool:
@@ -302,10 +252,10 @@ def run(test, params, env):
         # Disable ports 24007 and 49152:49216
         if not host_ip:
             logging.debug("Disable 24007 and 49152:49216 in Firewall")
-            migrate_setup.migrate_pre_setup(src_uri, params,
-                                            cleanup=True, ports="24007")
-            migrate_setup.migrate_pre_setup(src_uri, params,
-                                            cleanup=True)
+            migrate_test.migrate_pre_setup(src_uri, params,
+                                           cleanup=True, ports="24007")
+            migrate_test.migrate_pre_setup(src_uri, params,
+                                           cleanup=True)
 
         gluster.setup_or_cleanup_gluster(False, **params)
 

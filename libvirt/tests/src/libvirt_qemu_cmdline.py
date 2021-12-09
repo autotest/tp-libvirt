@@ -4,12 +4,13 @@ BTW it not limited to hypervisors CPU/machine features.
 """
 import re
 import logging
+import platform
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 from avocado.utils import process, astring
 
@@ -37,27 +38,33 @@ def config_feature_pv_eoi(test, vmxml, **kwargs):
             elif eoi_enable == 'off':
                 qemu_flags.append('-kvm_pv_eoi')
             else:
-                logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
+                logging.error("Invalid value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
         elif hostos_version > float(8.0):
             if eoi_enable == 'on':
                 qemu_flags.append('kvm-pv-eoi=on')
             elif eoi_enable == 'off':
                 qemu_flags.append('kvm-pv-eoi=off')
             else:
-                logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
+                logging.error("Invalid value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
         else:
             test.fail("Can not decide the expected qemu cmd line because of no expected hostos version")
 
-    try:
-        vmxml_feature = vmxml.features
-        if vmxml_feature.has_feature('apic'):
-            vmxml_feature.remove_feature('apic')
-        vmxml_feature.add_feature('apic', 'eoi', eoi_enable)
-        vmxml.features = vmxml_feature
-        logging.debug("Update VM XML:\n%s", vmxml)
-        vmxml.sync()
-    except Exception as detail:
-        logging.error("Update VM XML fail: %s", detail)
+    # Create features tag if not existed
+    if not vmxml.xmltreefile.find('features'):
+        vmxml.features = vm_xml.VMFeaturesXML()
+    vmxml_feature = vmxml.features
+    if vmxml_feature.has_feature('apic'):
+        vmxml_feature.remove_feature('apic')
+    vmxml_feature.add_feature('apic', 'eoi', eoi_enable)
+    vmxml.features = vmxml_feature
+    logging.debug("Update VM XML:\n%s", vmxml)
+    expect_fail = False if 'expect_define_vm_fail' not in kwargs \
+        else kwargs['expect_define_vm_fail']
+    result = virsh.define(vmxml.xml, debug=True)
+    libvirt.check_exit_status(result, expect_fail)
+    if expect_fail:
+        libvirt.check_result(result, kwargs.get('expected_msg'))
+        return
     return qemu_flags
 
 
@@ -113,23 +120,33 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     expect_fail = "yes" == params.get("expect_start_vm_fail", "no")
+    expect_define_vm_fail = 'yes' == params.get('expect_define_vm_fail', 'no')
     test_feature = params.get("test_feature")
     # All test case Function start with 'test_feature' prefix
     testcase = globals()['config_feature_%s' % test_feature]
     test_feature_attr = params.get("test_feature_attr", '').split(",")
     test_feature_valu = params.get("test_feature_valu", '').split(",")
-    # Paramters for test case
+    # Parameters for test case
     if len(test_feature_attr) != len(test_feature_valu):
         test.error("Attribute number not match with value number")
     test_dargs = dict(list(zip(test_feature_attr, test_feature_valu)))
+    if expect_define_vm_fail:
+        test_dargs.update({'expect_define_vm_fail': expect_define_vm_fail,
+                           'expected_msg': params.get('expected_msg', '')})
     if vm.is_alive():
         vm.destroy()
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
     virsh_dargs = {'debug': True, 'ignore_status': False}
+
+    if 'ppc64le' in platform.machine().lower() and test_feature == 'pv_eoi':
+        if not libvirt_version.version_compare(6, 0, 0):
+            test.cancel('Feature %s is supported since version 6.0.0' % test_feature)
     try:
         # Run test case
         qemu_flags = testcase(test, vmxml, **test_dargs)
+        if not qemu_flags and expect_define_vm_fail:
+            return
         result = virsh.start(vm_name, **virsh_dargs)
         libvirt.check_exit_status(result, expect_fail)
 

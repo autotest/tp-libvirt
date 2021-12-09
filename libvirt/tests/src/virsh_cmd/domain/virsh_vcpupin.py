@@ -59,7 +59,7 @@ def run(test, params, env):
     def check_vcpupin(vm_name, vcpu, cpu_list, pid, vcpu_pid):
         """
         This function checks the actual and the expected affinity of given vcpu
-        and raises error if not matchs
+        and raises error if not matches
 
         :param vm_name: VM Name to operate on
         :param vcpu: vcpu number for which the affinity is required
@@ -185,32 +185,37 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
 
-    if start_vm and vm.state() == "shut off":
-        cmdResult = virsh.start(vm.name, debug=True)
-        libvirt.check_exit_status(cmdResult, status_error)
-
-    # Get the guest vcpu count
-    if offline_pin:
-        vcpucount_option = "--config --active"
-    else:
-        vcpucount_option = "--live --active"
-    guest_vcpu_count = virsh.vcpucount(vm_name,
-                                       vcpucount_option).stdout.strip()
-
-    # Find the alive cpus list
-    cpus_list = list(map(str, cpuutils.cpu_online_list()))
-    logging.info("Active cpus in host are %s", cpus_list)
-
-    # If the cpus_list has too many cpus, then only test the
-    # cpus of the head, middle and tail part
-    lenght = len(cpus_list)
-    if lenght > 30:
-        cpus_list = cpus_list[:10] + \
-                    cpus_list[lenght//2 - 5: lenght//2 + 5] + \
-                    cpus_list[lenght - 10:]
-        logging.info('Will run test on cpus: %s', cpus_list)
-
     try:
+        # Remove cputune settings that will affect affinity info
+        if vcpupin_initial and vmxml.xmltreefile.find('cputune'):
+            vmxml.del_cputune()
+            vmxml.sync()
+
+        if (start_vm or vcpupin_initial) and vm.state() == "shut off":
+            cmdResult = virsh.start(vm.name, debug=True)
+            libvirt.check_exit_status(cmdResult, status_error)
+
+        # Get the guest vcpu count
+        if offline_pin:
+            vcpucount_option = "--config --active"
+        else:
+            vcpucount_option = "--live --active"
+        guest_vcpu_count = virsh.vcpucount(vm_name,
+                                           vcpucount_option).stdout.strip()
+
+        # Find the alive cpus list
+        cpus_list = list(map(str, cpuutils.cpu_online_list()))
+        logging.info("Active cpus in host are %s", cpus_list)
+
+        # If the cpus_list has too many cpus, then only test the
+        # cpus of the head, middle and tail part
+        length = len(cpus_list)
+        if length > 30:
+            cpus_list = cpus_list[:10] + \
+                        cpus_list[length//2 - 5: length//2 + 5] + \
+                        cpus_list[length - 10:]
+            logging.info('Will run test on cpus: %s', cpus_list)
+
         # Control multi domain vcpu affinity
         multi_dom = ("yes" == params.get("multi_dom_pin", "no"))
         vm2 = None

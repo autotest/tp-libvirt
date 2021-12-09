@@ -3,6 +3,7 @@ import logging
 import re
 import aexpect
 import time
+import shutil
 
 from avocado.utils import path as utils_path
 from avocado.utils import process
@@ -12,6 +13,8 @@ from virttest import data_dir
 from virttest import utils_misc
 from virttest import virsh
 from virttest import utils_config
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 from virttest.staging import service
 
 
@@ -40,14 +43,14 @@ def run(test, params, env):
     def chk_on_shutdown(status_error, on_shutdown, parallel_shutdown, output):
         """
         check domains' state when host shutdown, and if parallel_shutdown is set
-        to non-zero, check whether the guests have been shutdown corretly.
+        to non-zero, check whether the guests have been shutdown correctly.
 
         :param status_error: positive test if status_error is "no", otherwise
                              negative test
         :param on_shutdown: action taking on host shutdown
         :param parallel_shutdown: the number of parallel_shutdown guests would
                                   be shutdown concurrently on shutdown
-        :param output: apppended message from /var/log/messages
+        :param output: appended message from /var/log/messages
         """
         if on_shutdown == "shutdown" and on_boot == "start":
             second_boot_time = boot_time()
@@ -196,11 +199,49 @@ def run(test, params, env):
             session.close()
         return booting_time
 
+    def setup_nfs_backend_guest(vmxml_backup):
+        # nfs_server setup
+        nfs_server = libvirt.setup_or_cleanup_nfs(True)
+        nfs_export_dir = nfs_server['export_dir']
+        logging.debug("nfs dir is %s", nfs_export_dir)
+
+        # change the original xml and image path
+        for dom in vms:
+            vmxml = vm_xml.VMXML.new_from_dumpxml(dom.name)
+            vmxml_backup.append(vmxml.copy())
+            disk_xml = vmxml.get_devices(device_type="disk")[0]
+            orig_image_path_name = disk_xml.source.attrs['file']
+
+            libvirt.update_vm_disk_source(dom.name, nfs_export_dir)
+            shutil.copy(orig_image_path_name, nfs_export_dir)
+
+        # set the selinux bool
+        if virt_use_nfs:
+            result = process.run("setsebool virt_use_nfs 1",
+                                 shell=True, verbose=True)
+            if result.exit_status:
+                logging.error("Failed to set virt_use_nfs on")
+
+    def cleanup_nfs_backend_guest(vmxml_backup):
+        if virt_use_nfs:
+            result = process.run("setsebool virt_use_nfs 0",
+                                 shell=True, verbose=True)
+            if result.exit_status:
+                logging.error("Failed to set virt_use_nfs off")
+
+        # recover the guest xml
+        for xml_backup in vmxml_backup:
+            xml_backup.sync(options="--managed-save")
+
+        nfs_server = libvirt.setup_or_cleanup_nfs(False)
+
     main_vm_name = params.get("main_vm")
     main_vm = env.get_vm(main_vm_name)
 
     on_boot = params.get("on_boot")
     on_shutdown = params.get("on_shutdown")
+    nfs_vol = params.get("nfs_vol") == "yes"
+    virt_use_nfs = params.get("virt_use_nfs") == "on"
     parallel_shutdown = params.get("parallel_shutdown")
     additional_vms = int(params.get("additional_vms", "0"))
     status_error = params.get("status_error")
@@ -228,9 +269,15 @@ def run(test, params, env):
         guest_name = ("%s" % main_vm_name[:-1])+("%s" % str(i+2))
         logging.debug("guest_name : %s", guest_name)
         utils_libguestfs.virt_clone_cmd(main_vm_name, guest_name,
-                                        True, timeout=360)
+                                        True, timeout=360,
+                                        ignore_status=False)
         vms.append(main_vm.clone(guest_name))
         logging.debug("Now the vms is: %s", [dom.name for dom in vms])
+
+    if nfs_vol:
+        # info collected for clear env finally
+        vmxml_backup = []
+        setup_nfs_backend_guest(vmxml_backup)
 
     for dom in vms:
         if not dom.is_alive():
@@ -254,7 +301,7 @@ def run(test, params, env):
 
         tail_messages = get_log()
         # Even though libvirt-guests was designed to operate guests when
-        # host shutdown. The purpose can also be fullfilled by restart the
+        # host shutdown. The purpose can also be fulfilled by restart the
         # libvirt-guests service.
         libvirt_guests_service.restart()
         time.sleep(10)
@@ -280,5 +327,8 @@ def run(test, params, env):
                 dom.destroy(gracefully=False)
             virsh.remove_domain(dom.name, "--remove-all-storage")
 
-        if not libvirt_guests_service.status():
-            libvirt_guests_service.start()
+        if nfs_vol:
+            cleanup_nfs_backend_guest(vmxml_backup)
+
+        if libvirt_guests_service.status():
+            libvirt_guests_service.stop()

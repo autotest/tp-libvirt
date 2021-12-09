@@ -34,11 +34,9 @@ def run(test, params, env):
         if 'power8' in feature:
             cmd = 'lscpu|grep -i "Model name:.*power8"'
         elif 'xive' in feature:
-            # remove -v once guest xive support is available
-            # right now power9 guest supports only xics
-            cmd = "grep -v xive /sys/firmware/devicetree/base/interrupt-*/compatible"
+            cmd = "grep ivpe /sys/firmware/devicetree/base/interrupt-*/compatible"
         elif 'xics' in feature:
-            cmd = "grep -v xive /sys/firmware/devicetree/base/interrupt-*/compatible"
+            cmd = "grep -v ivpe /sys/firmware/devicetree/base/interrupt-*/compatible"
         elif 'power9' in feature:
             cmd = 'lscpu|grep -i "Model name:.*power9"'
         elif 'hpt' in feature:
@@ -116,9 +114,11 @@ def run(test, params, env):
         if condn == "filetrans":
             utils_test.run_file_transfer(test, params, env)
         elif condn == "stress":
-            bt = utils_test.run_avocado_bg(vm, params, test)
+            testlist = utils_test.get_avocadotestlist(params)
+            bt = utils_test.run_avocado_bg(vm, params, test, testlist)
             if not bt:
                 test.cancel("guest stress failed to start")
+            bt.join()
         elif condn == "save":
             save_file = os.path.join(data_dir.get_tmp_dir(), vm_name + ".save")
             result = virsh.save(vm_name, save_file, ignore_status=True,

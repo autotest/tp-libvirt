@@ -2,8 +2,9 @@ import logging
 
 from virttest import virsh
 from virttest import libvirt_xml
+from virttest import utils_split_daemons
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def check_list(filter_ref):
@@ -42,42 +43,45 @@ def run(test, params, env):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
-    if unprivileged_user:
-        if unprivileged_user.count('EXAMPLE'):
-            unprivileged_user = 'testacl'
+    try:
+        if unprivileged_user:
+            if unprivileged_user.count('EXAMPLE'):
+                unprivileged_user = 'testacl'
 
-    if not libvirt_version.version_compare(1, 1, 1):
-        if params.get('setup_libvirt_polkit') == 'yes':
-            test.cancel("API acl test not supported in current"
-                        " libvirt version.")
-    # Backup filter xml
-    if filter_ref:
-        new_filter = libvirt_xml.NwfilterXML()
-        filterxml = new_filter.new_from_filter_dumpxml(filter_ref)
-        logging.debug("the filter xml is: %s" % filterxml.xmltreefile)
-        filter_xml = filterxml.xmltreefile.name
+        if not libvirt_version.version_compare(1, 1, 1):
+            if params.get('setup_libvirt_polkit') == 'yes':
+                test.cancel("API acl test not supported in current"
+                            " libvirt version.")
+        # Backup filter xml
+        if filter_ref:
+            new_filter = libvirt_xml.NwfilterXML()
+            filterxml = new_filter.new_from_filter_dumpxml(filter_ref)
+            logging.debug("the filter xml is: %s" % filterxml.xmltreefile)
+            filter_xml = filterxml.xmltreefile.name
 
-    # Run command
-    cmd_result = virsh.nwfilter_undefine(filter_ref, options=options_ref,
-                                         unprivileged_user=unprivileged_user,
-                                         uri=uri,
-                                         ignore_status=True, debug=True)
-    status = cmd_result.exit_status
+        # Run command
+        cmd_result = virsh.nwfilter_undefine(filter_ref, options=options_ref,
+                                             unprivileged_user=unprivileged_user,
+                                             uri=uri,
+                                             ignore_status=True, debug=True)
+        status = cmd_result.exit_status
 
-    # Check result
-    if status_error == "yes":
+        # Check result
+        if status_error == "yes":
+            if status == 0:
+                test.fail("Run successfully with wrong command.")
+        elif status_error == "no":
+            if status:
+                test.fail("Run failed with right command.")
+            chk_result = check_list(filter_ref)
+            if chk_result:
+                test.fail("filter %s show up in filter list." %
+                          filter_ref)
+    finally:
+        # Clean env
         if status == 0:
-            test.fail("Run successfully with wrong command.")
-    elif status_error == "no":
-        if status:
-            test.fail("Run failed with right command.")
-        chk_result = check_list(filter_ref)
-        if chk_result:
-            test.fail("filter %s show up in filter list." %
-                      filter_ref)
-
-    # Clean env
-    if status == 0:
-        virsh.nwfilter_define(filter_xml, options="",
-                              ignore_status=True, debug=True)
+            virsh.nwfilter_define(filter_xml, options="",
+                                  ignore_status=True, debug=True)

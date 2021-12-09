@@ -40,16 +40,24 @@ def run(test, params, env):
         process.run("mkisofs -o %s %s/new" % (new_iso, iso_dir), shell=True)
 
     @error_context.context_aware
-    def check_media(session, target_file, action, rw_test=False):
+    def check_media(session, target_file, action, rw_test=False, options=None):
         """
         Check guest cdrom/floppy files
 
         :param session: guest session
         :param target_file: the expected files
         :param action: test case action
+        :param options: additional options
         """
         if target_device == "hdc" or target_device == "sdc":
             drive_name = session.cmd("cat /proc/sys/dev/cdrom/info | grep -i 'drive name'", ignore_all_errors=True).split()[2]
+            if 'block' in options:
+                # Check device exists
+                if 'sr0' not in drive_name:
+                    test.fail("can not find expected drive name when check media")
+                else:
+                    # For block options, just stop here and skip below checking since the content is empty in block device.
+                    return
         if action != "--eject ":
             error_context.context("Checking guest %s files" % target_device)
             if target_device == "hdc" or target_device == "sdc":
@@ -217,6 +225,12 @@ def run(test, params, env):
             if source_path == "no":
                 source = source_name
 
+        # Setup iscsi target
+        if 'block' in options:
+            blk_dev = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                     is_login=True)
+            logging.debug("block dev:%s" % blk_dev)
+            source = blk_dev
         # For read&write floppy test, the iso media need a writeable fs
         rw_floppy_test = "yes" == params.get("rw_floppy_test", "no")
         if rw_floppy_test:
@@ -260,7 +274,7 @@ def run(test, params, env):
                     if not vm_xml.VMXML.check_disk_type(vm_name, source, "block"):
                         test.fail("Disk isn't a 'block' device")
                 session = vm.wait_for_login()
-                check_media(session, check_file, action, rw_floppy_test)
+                check_media(session, check_file, action, rw_floppy_test, options=options)
                 session.close()
         # Negative testing
         if status_error:
@@ -285,6 +299,8 @@ def run(test, params, env):
     finally:
         # Clean the iso dir  and clean the device
         update_device(vm_name, "", options, start_vm)
+        if 'block' in options:
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
         vm.destroy(gracefully=False)
         # Recover xml of vm.
         vmxml_backup.sync()

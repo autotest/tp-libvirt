@@ -62,8 +62,8 @@ def get_pci_bridge_index(vm_name):
     else:
         contr_dict = {'controller_type': 'pci',
                       'controller_model': 'pcie-to-pci-bridge'}
-        pci_bridge = libvirt.create_controller_xml(
-            contr_dict, "add_controller", vm_name)
+        pci_bridge = libvirt.create_controller_xml(contr_dict)
+        libvirt.add_controller(vm_name, pci_bridge)
     return '%0#4x' % int(pci_bridge.get("index"))
 
 
@@ -102,7 +102,7 @@ def get_free_root_port(vm_name):
             contr_dict = {'controller_type': 'pci',
                           'controller_index': index,
                           'controller_model': 'pcie-root-port'}
-            libvirt.create_controller_xml(
-                contr_dict, "add_controller", vm_name)
+            cntl_add = libvirt.create_controller_xml(contr_dict)
+            libvirt.add_controller(vm_name, cntl_add)
             return "%0#4x" % int(index)
     return None

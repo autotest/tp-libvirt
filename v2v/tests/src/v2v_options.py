@@ -15,9 +15,12 @@ from avocado.utils.astring import to_text
 
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_v2v
+from virttest import utils_sasl
 from virttest import virsh
 from virttest import libvirt_storage
+from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -28,6 +31,8 @@ def run(test, params, env):
     """
     Test various options of virt-v2v.
     """
+    V2V_UNSUPPORT_GLANCE_VER = "[virt-v2v-1.45.2-1.el9,)"
+
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     for v in list(params.values()):
@@ -85,11 +90,25 @@ def run(test, params, env):
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'mkdir -p %s'" % target_path
             process.system(cmd, verbose=True)
-            cmd = su_cmd + "'virsh pool-create-as %s dir" % pool_name
-            cmd += " --target %s'" % target_path
-            process.system(cmd, verbose=True)
+            # Sometimes pool_creat_as returns success, but the pool can
+            # not be found in user session.
+            virsh.pool_create_as(
+                pool_name,
+                'dir',
+                target_path,
+                unprivileged_user=v2v_user,
+                debug=True)
+
+            res = virsh.pool_info(
+                pool_name,
+                unprivileged_user=v2v_user,
+                debug=True)
+            if res.exit_status != 0:
+                return False
         else:
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
+
+        return True
 
     def cleanup_pool(
             user_pool=False,
@@ -99,8 +118,10 @@ def run(test, params, env):
         Clean up libvirt pool
         """
         if output_uri == "qemu:///session" or user_pool:
-            cmd = su_cmd + "'virsh pool-destroy %s'" % pool_name
-            process.system(cmd, verbose=True)
+            virsh.pool_destroy(
+                pool_name,
+                unprivileged_user=v2v_user,
+                debug=True)
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'rm -rf %s'" % target_path
             process.system(cmd, verbose=True)
@@ -315,7 +336,7 @@ def run(test, params, env):
                 fail.append(key)
 
         # Check disk info
-        disk = list(xml.get_disk_all().values())[0]
+        disk = list(xml.get_disk_all_by_expr('device==disk').values())[0]
 
         def _get_disk_subelement_attr_value(obj, attr, subattr):
             if obj.find(attr) is not None:
@@ -334,9 +355,12 @@ def run(test, params, env):
             path_pattern1 = path.split()[1].replace('.vmdk', '-flat.vmdk')
             # In newer qemu version, '_' is replaced with '%5f'.
             path_pattern2 = path_pattern1.replace('_', '%5f')
+            # nbd:unix:/tmp/v2vnbdkit.u44G6C/nbdkit1.sock:exportname=/ (raw)
+            # [scsi]
+            path_pattern_nbd = r'nbd:unix:/.*? \(raw\) \[%s\]' % bus
             # For esx, '(raw)' is fixed? Let's see if others will be met.
             disks_info_pattern = '|'.join(
-                [
+                [path_pattern_nbd] + [
                     r"https://%s/folder/%s\?dcPath=data&dsName=esx.*} \(raw\) \[%s" %
                     (remote_host, i, bus) for i in [
                         path_pattern1, path_pattern2]])
@@ -427,8 +451,9 @@ def run(test, params, env):
                         v2v_start = True
                     if line.startswith('libvirt:'):
                         v2v_start = False
-                    if v2v_start and len(line) > 72:
-                        test.fail('Error log longer than 72 charactors: %s' %
+                    # 76 is the max length in v2v
+                    if v2v_start and len(line) > 76:
+                        test.fail('Error log longer than 76 characters: %s' %
                                   line)
             if checkpoint == 'disk_not_exist':
                 vol_list = virsh.vol_list(pool_name)
@@ -472,6 +497,8 @@ def run(test, params, env):
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
                     test.fail("Import VM failed")
                 else:
+                    vmchecker = VMChecker(test, params, env)
+                    params['vmchecker'] = vmchecker
                     params['vmcheck_flag'] = True
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options and not no_root:
@@ -507,6 +534,10 @@ def run(test, params, env):
                         win_img,
                         ignore_status=True).exit_status == 0:
                     test.fail('Command "%s" success' % command % win_img)
+            #check 'yum deplist virt-v2v'
+            if checkpoint == 'deplist':
+                if 'platform-python' not in output:
+                    test.fail('platform-python is not in dependency')
             if checkpoint == 'no_dcpath':
                 if '--dcpath' in output:
                     test.fail('"--dcpath" is not removed')
@@ -535,9 +566,8 @@ def run(test, params, env):
                     with open(params['example_file']) as f:
                         for line in f:
                             if line.strip() not in output_stdout.strip():
-                                test.fail(
-                                    '%s not in --machine-readable output' %
-                                    line.strip())
+                                if utils_v2v.multiple_versions_compare(V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
+                                    continue
                 else:
                     test.error('No content to compare with')
             if checkpoint == 'compress':
@@ -573,8 +603,9 @@ def run(test, params, env):
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
-        if version_requried and not utils_v2v.compare_version(version_requried):
-            test.cancel("Testing requries version: %s" % version_requried)
+        if version_requried and not utils_v2v.multiple_versions_compare(
+                version_requried):
+            test.cancel("Testing requires version: %s" % version_requried)
 
         if hypervisor == "xen":
             # See man virt-v2v-input-xen(1)
@@ -606,6 +637,11 @@ def run(test, params, env):
         elif input_mode == "libvirt":
             uri_obj = utils_v2v.Uri(hypervisor)
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
+            # Remote libvirt connection is not officially supported by
+            # v2v and may fail. Just use localhost to simulate a remote
+            # connection to test the warnings.
+            if checkpoint == 'remote_libvirt_conn':
+                ic_uri = 'qemu+ssh://localhost/system'
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
             if checkpoint == 'with_ic':
                 ic_uri = 'qemu:///session'
@@ -638,7 +674,9 @@ def run(test, params, env):
         # Build output options
         output_option = ""
         if output_mode:
-            output_option = "-o %s -os %s" % (output_mode, output_storage)
+            output_option = "-o %s" % output_mode
+            if output_mode != 'null':
+                output_option += " -os %s" % output_storage
             if checkpoint == 'rhv':
                 output_option = output_option.replace('rhev', 'rhv')
             if checkpoint in ['with_ic', 'without_ic']:
@@ -671,6 +709,21 @@ def run(test, params, env):
                 os.makedirs(vdsm_image_dir)
                 os.makedirs(vdsm_vm_dir)
 
+            if output_mode == 'rhev':
+                # create different sasl_user name for different job
+                params.update({'sasl_user': params.get("sasl_user") +
+                               utils_misc.generate_random_string(3)})
+                logging.info('sals user name is %s' % params.get("sasl_user"))
+
+                user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
+                                               params.get("sasl_pwd"))
+                v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
+                v2v_sasl.server_ip = params.get("remote_ip")
+                v2v_sasl.server_user = params.get('remote_user')
+                v2v_sasl.server_pwd = params.get('remote_pwd')
+                v2v_sasl.setup(remote=True)
+                logging.debug('A SASL session %s was created', v2v_sasl)
+
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
@@ -685,11 +738,11 @@ def run(test, params, env):
             except KeyError:
                 # create new user
                 process.system("useradd %s" % v2v_user, ignore_status=True)
-                new_v2v_user = True
+            new_v2v_user = True
             user_info = pwd.getpwnam(v2v_user)
             logging.info("Convert to qemu:///session by user '%s'", v2v_user)
             if input_mode == "disk":
-                # Copy image from souce and change the image owner and group
+                # Copy image from source and change the image owner and group
                 disk_path = os.path.join(
                     data_dir.get_tmp_dir(), os.path.basename(disk_img))
                 logging.info('Copy image file %s to %s', disk_img, disk_path)
@@ -743,7 +796,7 @@ def run(test, params, env):
 
         # Create libvirt dir pool
         if output_mode == "libvirt":
-            create_pool()
+            utils_misc.wait_for(create_pool, timeout=30, step=3)
 
         # Work around till bug fixed
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -751,11 +804,13 @@ def run(test, params, env):
         if checkpoint in ['with_ic', 'without_ic']:
             new_v2v_user = True
             v2v_options += ' -on %s' % new_vm_name
-            create_pool(user_pool=True, pool_name='src_pool',
-                        pool_target='v2v_src_pool')
-            cmd = su_cmd + \
-                "'virsh -c %s pool-info %s'" % ('qemu:///session', 'src_pool')
-            process.system(cmd, verbose=True)
+            utils_misc.wait_for(
+                lambda: create_pool(
+                    user_pool=True,
+                    pool_name='src_pool',
+                    pool_target='v2v_src_pool'),
+                timeout=30,
+                step=3)
 
         if checkpoint == 'vmx':
             mount_point = params.get('mount_point')
@@ -794,6 +849,15 @@ def run(test, params, env):
                 'v2v_print_estimate')
             v2v_options += " --machine-readable=file:%s" % estimate_file
 
+        if checkpoint == 'remote_libvirt_conn':
+            # Add localhost to known_hosts
+            cmd = 'ssh-keyscan -t ecdsa localhost >> ~/.ssh/known_hosts'
+            process.run(cmd, shell=True)
+            # Setup remote login without password
+            public_key = ssh_key.get_public_key().rstrip()
+            cmd = 'echo "%s" >> ~/.ssh/authorized_keys' % public_key
+            process.run(cmd, shell=True)
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -828,6 +892,8 @@ def run(test, params, env):
     finally:
         if hypervisor == "esx":
             process.run("rm -rf %s" % vpx_passwd_file)
+        if checkpoint == "weak_dendency":
+            utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
             if os.path.exists(vdsm_dir):
                 shutil.rmtree(vdsm_dir)
@@ -860,9 +926,13 @@ def run(test, params, env):
         if vmcheck_flag and params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if new_v2v_user:
-            process.system("userdel -f %s" % v2v_user)
+            process.system("userdel -fr %s" % v2v_user)
         if backup_xml:
             backup_xml.sync()
+        if output_mode == 'rhev' and v2v_sasl:
+            v2v_sasl.cleanup()
+            logging.debug('SASL session %s is closing', v2v_sasl)
+            v2v_sasl.close_session()
         if checkpoint == 'vmx':
             utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
             os.rmdir(params['mount_point'])
@@ -875,7 +945,7 @@ def run(test, params, env):
             os.remove(estimate_file)
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,
@@ -883,3 +953,10 @@ def run(test, params, env):
                 shell=True)
             utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")
+        if checkpoint == 'remote_libvirt_conn':
+            cmd = r"sed -i '/localhost/d' ~/.ssh/known_hosts"
+            process.run(cmd, shell=True, ignore_status=True)
+            if locals().get('public_key'):
+                key = public_key.rstrip().split()[1].split('/')[0]
+                cmd = r"sed -i '/%s/d' ~/.ssh/authorized_keys" % key
+                process.run(cmd, shell=True, ignore_status=True)

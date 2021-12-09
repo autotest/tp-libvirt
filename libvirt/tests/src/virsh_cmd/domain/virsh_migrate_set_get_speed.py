@@ -4,9 +4,9 @@ from virttest import ssh_key
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest import utils_test
-from virttest.utils_test import libvirt as utlv
+from virttest import migration
+from virttest import libvirt_version
 
-from provider import libvirt_version
 
 UINT32_MAX = (1 << 32) - 1
 INT64_MAX = (1 << 63) - 1
@@ -170,7 +170,7 @@ def run(test, params, env):
         # virsh migrate options
         virsh_migrate_options = "--live --unsafe --timeout %s" % virsh_migrate_timeout
         # Migrate vms to remote host
-        mig_first = utlv.MigrationTest()
+        mig_first = migration.MigrationTest()
         virsh_dargs = {"debug": True}
         for vm in vms:
             set_get_speed(vm.name, bandwidth, virsh_dargs=virsh_dargs)
@@ -203,7 +203,7 @@ def run(test, params, env):
             vm.wait_for_login()
             set_get_speed(vm.name, second_bandwidth, virsh_dargs=virsh_dargs)
         utils_test.load_stress(stress_type, params=params, vms=vms)
-        mig_second = utlv.MigrationTest()
+        mig_second = migration.MigrationTest()
         mig_second.do_migration(vms, src_uri, dest_uri, migration_type,
                                 options=virsh_migrate_options, thread_timeout=thread_timeout)
         for vm in vms:
@@ -244,6 +244,6 @@ def run(test, params, env):
         virsh.migrate_setspeed(vm_name, orig_value)
         if twice_migration:
             for vm in env.get_all_vms():
-                utlv.MigrationTest().cleanup_dest_vm(vm, src_uri, dest_uri)
+                migration.MigrationTest().cleanup_dest_vm(vm, src_uri, dest_uri)
                 if vm.is_alive():
                     vm.destroy(gracefully=False)

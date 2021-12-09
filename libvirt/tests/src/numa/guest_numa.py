@@ -3,7 +3,6 @@ import logging
 import platform
 
 from avocado.utils import process
-
 from virttest import virt_vm
 from virttest import libvirt_xml
 from virttest import utils_misc
@@ -12,8 +11,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import test_setup
 from virttest import utils_params
-
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def handle_param(param_tuple, params):
@@ -46,13 +44,87 @@ def handle_param(param_tuple, params):
     return param_list
 
 
+def dynamic_node_replacement(params, numa_info, test_obj):
+    """
+    Replace numa node parameters dynamically per current system configuration
+
+    :param numa_info: available numa node info from avocado-vt/utils_misc
+    :param params: all params passed to test
+    :param test_obj: test object - for cancel case
+    """
+    node_list = numa_info.get_online_nodes_withmem()
+    key_names = ['memnode_nodeset_', 'page_nodenum_']
+    for param in params:
+        if 'numa_cells_with_memory_required' in param:
+            if int(params['numa_cells_with_memory_required']) > len(node_list):
+                test_obj.cancel("There is no enough NUMA nodes available on this system to perform the test.")
+        if 'memory_nodeset' in param:
+            params['memory_nodeset'] = ','.join([str(elem) for elem in node_list])
+            logging.debug('The parameter "memory_nodeset" from config file is going to be replaced by: {} available '
+                          'on this system'.format(params['memory_nodeset']))
+            continue
+        if 'kernel_hp_file' == param:
+            cfg_param = params['kernel_hp_file']
+            node_name = re.search('node\d', cfg_param)
+            node_index = re.search('\d', node_name.group(0)).group(0)
+            if int(node_index) not in node_list:
+                try:
+                    replacement = re.sub('node' + node_index, 'node' + str(node_list[int(node_index)]), cfg_param)
+                    logging.debug('The parameter "kernel_hp_file" is going to be changed from {} in config file to {} '
+                                  'available on this system.'.format(cfg_param, replacement))
+                    params[param] = replacement
+                except IndexError:
+                    test_obj.fail('Unexpected value {} for parameter {} in config file'.format(cfg_param, param))
+            continue
+        for name in key_names:
+            if name in param:
+                index = int(params[param])
+                if index not in node_list:
+                    try:
+                        logging.debug('The parameter {} from config file is going to be replaced by: {}'.
+                                      format(param, node_list[index]))
+                        params[param] = str(node_list[index])
+                    except IndexError:
+                        test_obj.fail('Unexpected value {} for parameter {} in config file'.format(index, param))
+
+
 def run(test, params, env):
     """
     Test guest numa setting
     """
+
+    def replace_qemu_cmdline(cmdline_list):
+        """
+        Replace the expected qemu command line for new machine type
+
+        :param cmdline_list: The list for expected qemu command lines
+        :return: The list contains the updated qemu command lines if any
+        """
+        os_xml = getattr(vmxml, "os")
+        machine_ver = getattr(os_xml, 'machine')
+        if (machine_ver.startswith("pc-q35-rhel") and
+                machine_ver > 'pc-q35-rhel8.2.0' and
+                libvirt_version.version_compare(6, 4, 0)):
+            # Replace 'node,nodeid=0,cpus=0-1,mem=512' with
+            # 'node,nodeid=0,cpus=0-1,memdev=ram-node0'
+            # Replace 'node,nodeid=1,cpus=2-3,mem=512' with
+            # 'node,nodeid=1,cpus=2-3,memdev=ram-node1'
+            for cmd in cmdline_list:
+                line = cmd['cmdline']
+                try:
+                    node = line.split(',')[1][-1]
+                    cmd['cmdline'] = line.replace('mem=512',
+                                                  'memdev=ram-node{}'.format(node))
+                # We can skip replacing, when the cmdline parameter is empty.
+                except IndexError:
+                    pass
+
+        return cmdline_list
+
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes
     arch = platform.machine()
+    dynamic_node_replacement(params, host_numa_node, test)
     if 'ppc64' in arch:
         try:
             ppc_memory_nodeset = ""
@@ -105,12 +177,18 @@ def run(test, params, env):
     max_mem_unit = params.get("max_mem_unit", 'KiB')
     vcpu_placement = params.get("vcpu_placement", 'static')
     bug_url = params.get("bug_url", "")
+    expect_cpus = params.get('expect_cpus')
     status_error = "yes" == params.get("status_error", "no")
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
     mode_dict = {'strict': 'bind', 'preferred': 'prefer',
                  'interleave': 'interleave'}
+
+    cpu_num = cpu.get_cpu_info().get('CPU(s)')
+    if vcpu_num > int(cpu_num):
+        test.cancel('Number of vcpus(%s) is larger than number of '
+                    'cpus on host(%s).' % (vcpu_num, cpu_num))
 
     # Prepare numatune memory parameter dict and list
     mem_tuple = ('memory_mode', 'memory_placement', 'memory_nodeset')
@@ -149,8 +227,6 @@ def run(test, params, env):
     page_list = handle_param(page_tuple, params)
     nr_pagesize_total = params.get("nr_pagesize_total")
     deallocate = False
-    default_nr_hugepages_path = "/sys/kernel/mm/hugepages/hugepages-2048kB/"
-    default_nr_hugepages_path += "nr_hugepages"
 
     if page_list:
         if not libvirt_version.version_compare(1, 2, 5):
@@ -220,7 +296,6 @@ def run(test, params, env):
             # Only set total 2M size huge page number as total 1G size runtime
             # update not supported now.
             deallocate = True
-            hp_cl.kernel_hp_file = default_nr_hugepages_path
             hp_cl.target_hugepages = int(nr_pagesize_total)
             hp_cl.set_hugepages()
         if page_list:
@@ -235,7 +310,7 @@ def run(test, params, env):
             for i in h_list:
                 node_val = hp_cl.get_node_num_huge_pages(i['nodenum'],
                                                          i['size'])
-                # set hugpege per node if current value not satisfied
+                # set hugepage per node if current value not satisfied
                 # kernel 1G hugepage runtime number update is supported now
                 if int(i['num']) > node_val:
                     node_dict = i.copy()
@@ -269,11 +344,11 @@ def run(test, params, env):
 
         # guest numa cpu setting
         vmcpuxml = libvirt_xml.vm_xml.VMCPUXML()
-        vmcpuxml.xml = "<cpu><numa/></cpu>"
+        vmcpuxml.xml = "<cpu mode='host-model'><numa/></cpu>"
         if topology:
             vmcpuxml.topology = topology
         logging.debug(vmcpuxml.numa_cell)
-        vmcpuxml.numa_cell = numa_cell
+        vmcpuxml.numa_cell = vmcpuxml.dicts_to_cells(numa_cell)
         logging.debug(vmcpuxml.numa_cell)
         vmxml.cpu = vmcpuxml
 
@@ -350,6 +425,7 @@ def run(test, params, env):
         with open("/proc/%s/cmdline" % vm_pid) as f_cmdline:
             q_cmdline_list = f_cmdline.read().split("\x00")
         logging.debug("vm qemu cmdline list is %s" % q_cmdline_list)
+        cmdline_list = replace_qemu_cmdline(cmdline_list)
         for cmd in cmdline_list:
             logging.debug("checking '%s' in qemu cmdline", cmd['cmdline'])
             p_found = False
@@ -373,6 +449,8 @@ def run(test, params, env):
             cpu_str = vm_cpu_info["NUMA node%s CPU(s)" % i]
             vm_cpu_list = cpu.cpus_parser(cpu_str)
             cpu_list = cpu.cpus_parser(numa_cell[i]["cpus"])
+            if i == 0 and expect_cpus:
+                cpu_list = cpu.cpus_parser(expect_cpus)
             if vm_cpu_list != cpu_list:
                 test.fail("vm node %s cpu list %s not expected"
                           % (i, vm_cpu_list))

@@ -175,12 +175,12 @@ def run(test, params, env):
             # it cannot support adding or removing a vCPU...
             if re.search("cannot change vcpu count of this domain",
                          cmd_result.stderr):
-                test.cancel("Unsupport virsh setvcpu hotplug")
+                test.cancel("Unsupported virsh setvcpu hotplug")
 
             # Maybe QEMU doesn't support unplug vcpu
             if re.search("Operation not supported: qemu didn't unplug the vCPUs",
                          cmd_result.stderr):
-                test.cancel("Your qemu unsupport unplug vcpu")
+                test.cancel("Your qemu unsupported unplug vcpu")
 
             # Qemu guest agent version could be too low
             if re.search("The command guest-get-vcpus has not been found",
@@ -301,10 +301,11 @@ def run(test, params, env):
         vm.start()
         vm_uptime_init = vm.uptime()
         if with_stress:
-            bt = utils_test.run_avocado_bg(vm, params, test)
+            testlist = utils_test.get_avocadotestlist(params)
+            bt = utils_test.run_avocado_bg(vm, params, test, testlist)
             if not bt:
                 test.cancel("guest stress failed to start")
-        # Create swap partition/file if nessesary
+        # Create swap partition/file if necessary
         if vm_operation == "s4":
             need_mkswap = not vm.has_swap()
         if need_mkswap:
@@ -545,7 +546,7 @@ def run(test, params, env):
             vm.cleanup_swap()
         if with_stress:
             if "bt" in locals() and bt:
-                bt.join(ignore_status=True)
+                bt.join()
         vm.destroy()
         backup_xml.sync()
 

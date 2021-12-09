@@ -72,8 +72,8 @@ def run(test, params, env):
                 contr_dict = {'controller_type': 'pci',
                               'controller_index': index,
                               'controller_model': 'pcie-root-port'}
-                libvirt.create_controller_xml(
-                    contr_dict, "add_controller", vm_name)
+                cntl_add = libvirt.create_controller_xml(contr_dict)
+                libvirt.add_controller(vm_name, cntl_add)
                 return "%0#4x" % int(index)
         return None
 
@@ -128,20 +128,22 @@ def run(test, params, env):
             download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
 
-    # Add 'pcie-to-pci-bridge' if there is no one
-    pci_controllers = vmxml.get_controllers('pci')
-    for controller in pci_controllers:
-        if controller.get('model') == 'pcie-to-pci-bridge':
-            pci_bridge = controller
-            break
-    else:
-        contr_dict = {'controller_type': 'pci',
-                      'controller_model': 'pcie-to-pci-bridge'}
-        pci_bridge = libvirt.create_controller_xml(
-            contr_dict, "add_controller", vm_name)
-    pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
-
     try:
+        # Add 'pcie-to-pci-bridge' if there is no one
+        pci_controllers = vmxml.get_controllers('pci')
+        for controller in pci_controllers:
+            if controller.get('model') == 'pcie-to-pci-bridge':
+                pci_bridge = controller
+                break
+        else:
+            contr_dict = {'controller_type': 'pci',
+                          'controller_model': 'pcie-to-pci-bridge'}
+            pci_bridge = libvirt.create_controller_xml(contr_dict)
+            libvirt.add_controller(vm_name, pci_bridge)
+            pci_bridge = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)\
+                .get_controllers('pci', 'pcie-to-pci-bridge')[0]
+        pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
+
         # Update nic and vm disks
         if (params["os_variant"] == 'rhel6' or
                 'rhel6' in params.get("shortname")):
@@ -206,3 +208,6 @@ def run(test, params, env):
     finally:
         vm.destroy()
         backup_xml.sync()
+
+        if guest_src_url and target_path:
+            libvirt.delete_local_disk("file", path=target_path)

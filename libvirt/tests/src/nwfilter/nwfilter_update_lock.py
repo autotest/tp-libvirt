@@ -4,11 +4,10 @@ import logging
 
 from virttest import virsh
 from virttest import libvirt_xml
-from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest.libvirt_xml.devices import interface
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -37,7 +36,6 @@ def run(test, params, env):
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_filter = libvirt_xml.NwfilterXML()
     filterxml = backup_filter.new_from_filter_dumpxml(filter_name)
-    libvirtd = utils_libvirtd.LibvirtdSession()
 
     def nwfilter_sync_loop(filter_name, filerxml):
         """
@@ -58,7 +56,6 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
 
     try:
-        libvirtd.start()
         # Update first vm interface with filter
         vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         iface_xml = vmxml.get_devices('interface')[0]
@@ -79,17 +76,16 @@ def run(test, params, env):
         time.sleep(0.3)
         vm_thread.start()
 
-        ret = utils_misc.wait_for(lambda: not libvirtd.is_working(),
+        ret = utils_misc.wait_for(lambda: virsh.dom_list(debug=True),
                                   timeout=240,
                                   step=1)
 
         filter_thread.join()
         vm_thread.join()
-        if ret:
+        if not ret:
             test.fail("Libvirtd hang, %s" % bug_url)
 
     finally:
-        libvirtd.exit()
         # Clean env
         if vm.is_alive():
             vm.destroy(gracefully=False)

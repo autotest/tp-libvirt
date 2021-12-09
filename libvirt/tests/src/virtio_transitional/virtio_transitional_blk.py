@@ -2,13 +2,13 @@ import os
 import re
 import logging
 
-from avocado.utils import process
+from avocado.utils import download
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
-from virttest import utils_package
 from virttest import libvirt_version
+from virttest import utils_libvirtd
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import devices
@@ -185,10 +185,10 @@ def run(test, params, env):
             slot = get_free_slot(pci_bridge_index, v_xml)
             addr = '{"bus": %s, "slot": %s}' % (pci_bridge_index, slot)
             contr_dict.update({'controller_addr': addr})
-        xml = libvirt.create_controller_xml(contr_dict=contr_dict)
-        attach(xml, params['controller_model'])
-        xml = libvirt.create_controller_xml(contr_dict=contr_dict)
-        detach(xml, params['controller_model'])
+        cntl_add = libvirt.create_controller_xml(contr_dict=contr_dict)
+        attach(cntl_add.xml, params['controller_model'])
+        cntl_add = libvirt.create_controller_xml(contr_dict=contr_dict)
+        detach(cntl_add.xml, params['controller_model'])
 
     def snapshot():  # pylint: disable=W0611
         """
@@ -197,7 +197,8 @@ def run(test, params, env):
         for i in range(1, 4):
             ret = virsh.snapshot_create_as(vm_name, "sn%s --disk-only" % i)
             libvirt.check_exit_status(ret)
-        process.system("systemctl restart libvirtd")
+        libvirtd_obj = utils_libvirtd.Libvirtd()
+        libvirtd_obj.restart()
         save_path = os.path.join(tmp_dir, "test.save")
         ret = virsh.save(vm_name, save_path)
         libvirt.check_exit_status(ret)
@@ -220,34 +221,27 @@ def run(test, params, env):
                     "virtio-transitional model.")
 
     if guest_src_url:
-
-        def _download():
-            download_cmd = ("wget %s -O %s" % (guest_src_url, target_path))
-            if process.system(download_cmd, shell=True):
-                test.error("Failed to download file")
-
         image_name = params['image_path']
         target_path = utils_misc.get_path(data_dir.get_data_dir(), image_name)
         if not os.path.exists(target_path):
-            if utils_package.package_install("wget"):
-                utils_misc.wait_for(_download, timeout=360)
-            else:
-                test.error("Fail to install wget")
+            download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
 
-    if add_pcie_to_pci_bridge:
-        pci_controllers = vmxml.get_controllers('pci')
-        for controller in pci_controllers:
-            if controller.get('model') == 'pcie-to-pci-bridge':
-                pci_bridge = controller
-                break
-        else:
-            contr_dict = {'controller_type': 'pci',
-                          'controller_model': 'pcie-to-pci-bridge'}
-            pci_bridge = libvirt.create_controller_xml(
-                contr_dict, "add_controller", vm_name)
-        pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
     try:
+        if add_pcie_to_pci_bridge:
+            pci_controllers = vmxml.get_controllers('pci')
+            for controller in pci_controllers:
+                if controller.get('model') == 'pcie-to-pci-bridge':
+                    pci_bridge = controller
+                    break
+            else:
+                contr_dict = {'controller_type': 'pci',
+                              'controller_model': 'pcie-to-pci-bridge'}
+                pci_bridge = libvirt.create_controller_xml(contr_dict)
+                libvirt.add_controller(vm_name, pci_bridge)
+                pci_bridge = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)\
+                    .get_controllers('pci', 'pcie-to-pci-bridge')[0]
+            pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
         if (params["os_variant"] == 'rhel6' or
                 'rhel6' in params.get("shortname")):
             iface_params = {'model': 'virtio-transitional'}
@@ -281,3 +275,5 @@ def run(test, params, env):
         vm.destroy()
         libvirt.clean_up_snapshots(vm_name)
         backup_xml.sync()
+        if guest_src_url and target_path:
+            libvirt.delete_local_disk("file", path=target_path)

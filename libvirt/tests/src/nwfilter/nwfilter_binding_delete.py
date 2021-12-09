@@ -4,7 +4,7 @@ from virttest.libvirt_xml.devices import interface
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_xml
-from avocado.utils import process
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -22,7 +22,6 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error")
     expected_not_match = params.get("expected_not_match")
     filter_param_list = []
-    restart_cmd = params.get("restart_cmd")
     vmxml_backup = libvirt_xml.vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     params_key = []
     for i in params.keys():
@@ -47,6 +46,7 @@ def run(test, params, env):
 
         new_filterref = new_iface.new_filterref(**filterref_dict)
         new_iface.filterref = new_filterref
+        new_iface.target = {'dev': params.get('target_name', 'net_tap')}
         logging.debug("new interface xml is: %s" % new_iface)
         vmxml.add_device(new_iface)
         vmxml.sync()
@@ -65,11 +65,14 @@ def run(test, params, env):
             new_iface.target['dev'], debug=True)
         utlv.check_exit_status(ret, status_error)
         # check rule
-        utlv.check_cmd_expected(check_cmd, expected_not_match, False)
+        if not utlv.check_cmd_output(check_cmd, expected_not_match, True):
+            logging.debug("the rules are deleted as expected!")
+        else:
+            test.fail("the rules are still exists after binding delete")
 
         # restart libvirtd, the nwfilter-binding will restore
-        cmd_res = process.run(restart_cmd, shell=True)
-        if cmd_res.exit_status:
+        libvirtd = utils_libvirtd.Libvirtd()
+        if not libvirtd.restart():
             test.fail("fail to restart libvirtd")
 
         ret = virsh.nwfilter_binding_list(debug=True)

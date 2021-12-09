@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import utils_conn
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -28,8 +29,23 @@ def run(test, params, env):
     """
 
     def boot_time():
+        """
+        Get guest boot time
+        """
         session = vm.wait_for_login()
-        boot_time = session.cmd_output("uptime --since")
+
+        def get_boot_time():
+            """
+            Waiting for boot time getting when exception happened
+            """
+            boot_time = None
+            try:
+                boot_time = session.cmd_output("uptime --since")
+            except (aexpect.ShellStatusError, aexpect.ShellProcessTerminatedError) as e:
+                logging.error("Get boot_time error:%s" % e)
+            return boot_time
+
+        boot_time = utils_misc.wait_for(get_boot_time, 60)
         session.close()
         return boot_time
 

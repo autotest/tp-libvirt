@@ -6,11 +6,10 @@ import logging
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.graphics import Graphics
-
-from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -41,7 +40,7 @@ def run(test, params, env):
 
     if "--type" in options:
         if not libvirt_version.version_compare(1, 2, 6):
-            test.cancel("--type option is not supportted in this"
+            test.cancel("--type option is not supported in this"
                         " libvirt version.")
         elif "vnc" in options and graphic != "vnc" or \
              "spice" in options and graphic != "spice":

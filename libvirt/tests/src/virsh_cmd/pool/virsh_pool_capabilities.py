@@ -6,7 +6,7 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest.libvirt_xml import pool_capability_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -39,7 +39,7 @@ def run(test, params, env):
                                        'raw': ['none', 'raw', 'dir', 'bochs', 'cloop', 'dmg', 'iso', 'vpc', 'vdi',
                                                'fat', 'vhd', 'ploop', 'cow', 'qcow', 'qcow2', 'qed', 'vmdk']},
                                'fs': {'auto': ['auto', 'ext2', 'ext3', 'ext4', 'ufs', 'iso9660', 'udf', 'gfs', 'gfs2',
-                                               'vfat', 'hfs+', 'xfs', 'ocfs2'],
+                                               'vfat', 'hfs+', 'xfs', 'ocfs2', 'vmfs'],
                                       'raw': ['none', 'raw', 'dir', 'bochs', 'cloop', 'dmg', 'iso', 'vpc', 'vdi',
                                               'fat', 'vhd', 'ploop', 'cow', 'qcow', 'qcow2', 'qed', 'vmdk']},
                                'netfs': {'auto': ['auto', 'nfs', 'glusterfs', 'cifs'],
@@ -68,7 +68,7 @@ def run(test, params, env):
 
         #Check the pool capability information
         if pool_capa != pool_type_info_dict:
-            test.fail('Unexpected pool information support occured,please check the information by manual')
+            test.fail('Unexpected pool information support occurred,please check the information by manual')
 
     # Run test case
     option = params.get("virsh_pool_cap_options")

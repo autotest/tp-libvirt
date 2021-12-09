@@ -91,7 +91,7 @@ def run(test, params, env):
         def _booting_completed():
             session = vm.wait_for_login()
             status = None
-            second_boot_time = None
+            second_boot_time = ""
             try:
                 status, second_boot_time = session.cmd_status_output("uptime --since")
                 logging.debug("The second boot time is %s", second_boot_time)
@@ -258,7 +258,7 @@ def run(test, params, env):
             logging.info("The first boot time is %s\n", first_boot_time)
         if action == "inject-nmi":
             virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC, auto_close=True)
-            event_cmd = "event --event watchdog --all --loop"
+            event_cmd = "event --all --loop"
             virsh_session.sendline(event_cmd)
         trigger_watchdog(model)
         confirm_guest_status()

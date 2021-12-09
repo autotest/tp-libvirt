@@ -6,10 +6,12 @@ from virttest import virsh
 from virttest import libvirt_vm
 from virttest import xml_utils
 from virttest import utils_libvirtd
+from virttest import utils_net
+from virttest import utils_split_daemons
 from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt
-
-from provider import libvirt_version
+from virttest import libvirt_version
+from virttest.utils_libvirt import libvirt_network
 
 
 def get_network_xml_instance(virsh_dargs, test_xml, net_name,
@@ -48,7 +50,9 @@ def set_ip_section(testnet_xml, addr, ipv6=False, **dargs):
     if "dhcp_ranges_start" in dargs and dargs["dhcp_ranges_start"] is not None:
         dhcp_ranges_start = dargs["dhcp_ranges_start"]
         dhcp_ranges_end = dargs["dhcp_ranges_end"]
-        ipxml.dhcp_ranges = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+        ran = network_xml.RangeXML()
+        ran.attrs = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+        ipxml.dhcp_ranges = ran
     testnet_xml.set_ip(ipxml)
 
 
@@ -103,9 +107,30 @@ def run(test, params, env):
     test_port = "yes" == params.get("test_port", "no")
     loop = int(params.get("loop", 1))
 
+    # Get params about creating a bridge
+    bridge = params.get('bridge', None)
+    create_bridge = "yes" == params.get('create_bridge', 'no')
+    ovs_bridge = "yes" == params.get('ovs_bridge', 'no')
+    iface_name = utils_net.get_net_if(state="UP")[0]
+
+    # Get params about creating a network
+    create_netxml = "yes" == params.get("create_netxml", "no")
+    domain = params.get('domain', None)
+    forward = params.get("forward", None)
+    net_dns_txt = params.get("net_dns_txt", None)
+    net_bandwidth_inbound = params.get("net_bandwidth_inbound", None)
+    net_bandwidth_outbound = params.get("net_bandwidth_outbound", None)
+    mac = params.get("mac")
+
+    # Edit the created network xml to get the xml to be tested
+    del_mac = "yes" == params.get('del_mac', 'no')
+    del_ip = "yes" == params.get('del_ip', 'no')
+    add_dev = "yes" == params.get('add_dev', 'no')
+    virtualport = 'yes' == params.get("virtualport", "no")
+    virtualport_type = params.get("virtualport_type")
+
     virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
-
     # libvirt acl polkit related params
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -113,6 +138,8 @@ def run(test, params, env):
                         " libvirt version.")
 
     virsh_uri = params.get("virsh_uri")
+    if virsh_uri and not utils_split_daemons.is_modular_daemon():
+        virsh_uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -134,6 +161,7 @@ def run(test, params, env):
 
     testnet_xml = get_network_xml_instance(virsh_dargs, test_xml, net_name,
                                            net_uuid, bridge=None)
+    logging.debug("Get network xml as testnet_xml: %s" % testnet_xml)
 
     if remove_existing:
         for netxml in list(backup.values()):
@@ -173,7 +201,9 @@ def run(test, params, env):
             ipxml_v4 = network_xml.IPXML()
             ipxml_v4.address = address_v4
             ipxml_v4.netmask = netmask
-            ipxml_v4.dhcp_ranges = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+            range_4 = network_xml.RangeXML()
+            range_4.attrs = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+            ipxml_v4.dhcp_ranges = range_4
             testnet_xml.del_ip()
             testnet_xml.set_ip(ipxml_v4)
             if test_port:
@@ -202,7 +232,21 @@ def run(test, params, env):
                            prefix_v6=prefix_v6,
                            dhcp_ranges_start=dhcp_ranges_v6_start_2,
                            dhcp_ranges_end=dhcp_ranges_v6_end_2)
+        if create_netxml:
+            net_dict = {'del_nat_attrs': True, 'del_ip': del_ip,
+                        'dns_txt': net_dns_txt, 'domain': domain, 'bridge': bridge,
+                        'forward': forward, 'interface_dev': iface_name,
+                        'virtualport': virtualport, 'virtualport_type': virtualport_type,
+                        'mac': mac, 'net_bandwidth_inbound': net_bandwidth_inbound,
+                        'net_bandwidth_outbound': net_bandwidth_outbound}
+            logging.debug("net_dict is %s" % net_dict)
+            testnet_xml = libvirt_network.modify_network_xml(net_dict, testnet_xml)
         testnet_xml.debug_xml()
+        if create_bridge:
+            if ovs_bridge:
+                utils_net.create_ovs_bridge(bridge, ignore_status=False)
+            else:
+                utils_net.create_linux_bridge_tmux(bridge, iface_name, ignore_status=False)
         # Run test case
         while loop:
             try:
@@ -219,9 +263,10 @@ def run(test, params, env):
                             not net_state[net_name]['persistent']):
                         fail_flag = 1
                         result_info.append("Found wrong network states for "
-                                           "defined netowrk: %s" % str(net_state))
+                                           "defined network: %s" % str(net_state))
 
                 if define_status == 1 and status_error and expect_msg:
+                    logging.debug("check result is %s, expect_msg is %s" % (define_result, expect_msg))
                     libvirt.check_result(define_result, expect_msg.split(';'))
 
                 # If defining network succeed, then trying to start it.
@@ -238,7 +283,7 @@ def run(test, params, env):
                         if start_status:
                             fail_flag = 1
                             result_info.append("Found wrong network states for "
-                                               "defined netowrk: %s" % str(net_state))
+                                               "defined network: %s" % str(net_state))
 
                 # Check network states after start
                 if check_states and not status_error:
@@ -248,7 +293,7 @@ def run(test, params, env):
                             not net_state[net_name]['persistent']):
                         fail_flag = 1
                         result_info.append("Found wrong network states for "
-                                           "started netowrk: %s" % str(net_state))
+                                           "started network: %s" % str(net_state))
                     # Try to set autostart
                     virsh.net_autostart(net_name, **virsh_dargs)
                     net_state = virsh_instance.net_state_dict()
@@ -290,7 +335,7 @@ def run(test, params, env):
                                     net_state[net_name]['persistent']):
                                 fail_flag = 1
                                 result_info.append("Found wrong network states for "
-                                                   "undefined netowrk: %s" % str(net_state))
+                                                   "undefined network: %s" % str(net_state))
                         else:
                             if net_name in net_state:
                                 fail_flag = 1
@@ -335,7 +380,11 @@ def run(test, params, env):
         # Done with file, cleanup
         del test_xml
         del testnet_xml
-
+        if create_bridge:
+            if ovs_bridge:
+                utils_net.delete_ovs_bridge(bridge, ignore_status=False)
+            else:
+                utils_net.delete_linux_bridge_tmux(bridge, iface_name, ignore_status=False)
     # Check status_error
     # If fail_flag is set, it must be transaction test.
     if fail_flag:

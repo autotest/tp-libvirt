@@ -54,7 +54,7 @@ def run(test, params, env):
     remote_uri = params.get("remote_uri")
     tmpxml = os.path.join(data_dir.get_tmp_dir(), 'tmp.xml')
     topology_correction = "yes" == params.get("topology_correction", "yes")
-    with_topology = "yes" == params.get("with_topology", "yes")
+    with_topology = "yes" == params.get("with_topology", "no")
     update_maxmum_config = "yes" == params.get("update_maxmum_config", "no")
     no_acpi = "yes" == params.get("no_acpi", "no")
     # virsh start vm after destroy it
@@ -161,6 +161,15 @@ def run(test, params, env):
                                      'cores': cores,
                                      'threads': 1}
             vmxml['cpu'] = vmcpu_xml
+            vmxml.sync()
+
+        # Remove topology if not required by test
+        has_cpu_definition = vmxml.xmltreefile.find('cpu') is not None
+        should_remove_topology = topology and not with_topology
+        if has_cpu_definition and should_remove_topology:
+            cpu_xml = vmxml.cpu
+            cpu_xml.del_topology()
+            vmxml.cpu = cpu_xml
             vmxml.sync()
 
         vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,

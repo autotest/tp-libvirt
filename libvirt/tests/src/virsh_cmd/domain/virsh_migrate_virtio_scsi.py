@@ -13,6 +13,7 @@ from virttest import libvirt_vm
 from virttest import virt_vm
 from virttest import remote
 from virttest import ssh_key
+from virttest import migration
 from virttest.utils_test import libvirt as utlv
 
 
@@ -161,7 +162,7 @@ def run(test, params, env):
     try:
         # For safety and easily reasons, we'd better define a new vm
         new_vm_name = "%s_vsmtest" % vm.name
-        mig = utlv.MigrationTest()
+        mig = migration.MigrationTest()
         if vm.is_alive():
             vm.destroy()
         utlv.define_new_vm(vm.name, new_vm_name)

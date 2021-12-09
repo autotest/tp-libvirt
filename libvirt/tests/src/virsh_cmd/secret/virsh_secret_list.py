@@ -7,7 +7,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml.secret_xml import SecretXML
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -70,7 +70,7 @@ def run(test, params, env):
         if status_error and exit_status == 0:
             test.fail("Run successfully with wrong command!")
 
-        # Reture if secret-list failed
+        # Return if secret-list failed
         if exit_status != 0:
             return
 
@@ -129,7 +129,7 @@ def run(test, params, env):
                 test.fail("Failed list secret object %s, %s" %
                           (uuid_list[0], uuid_list[2]))
             if m2 or m4:
-                test.fail("Secret object %s and %s should't be "
+                test.fail("Secret object %s and %s shouldn't be "
                           "listed out"
                           % (uuid_list[1], uuid_list[3]))
         elif secret_list_option.find("--no-private") >= 0:

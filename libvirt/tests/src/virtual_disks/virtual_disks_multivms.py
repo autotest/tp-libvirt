@@ -2,22 +2,25 @@ import os
 import logging
 import aexpect
 
+from avocado.utils import process
+
 from virttest import utils_selinux
 from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
+from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
     """
-    Test disk attachement of multiple disks.
+    Test disk attachment of multiple disks.
 
     1.Prepare test environment, destroy VMs.
     2.Perform 'qemu-img create' operation.
@@ -112,7 +115,7 @@ def run(test, params, env):
                                             "no")
     test_shareable = "yes" == params.get("virt_disk_test_shareable", "no")
     test_readonly = "yes" == params.get("virt_disk_test_readonly", "no")
-    disk_source_path = data_dir.get_tmp_dir()
+    disk_source_path = data_dir.get_data_dir()
     disk_path = ""
     tmp_filename = "cdrom_te.tmp"
     tmp_readonly_file = ""
@@ -241,7 +244,7 @@ def run(test, params, env):
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("error_policy in vm0 exit %s; output: %s", s, o)
                             if 0 != s:
-                                test.fail("Test error_policy %s: cann't see"
+                                test.fail("Test error_policy %s: can't see"
                                           " error messages")
                             session.close()
                             break
@@ -264,18 +267,25 @@ def run(test, params, env):
                             s, o = session0.cmd_status_output(cmd)
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             if error_policy == "report":
-                                if s:
-                                    test.fail("Test error_policy %s: cann't report"
+                                process.run("rm -rf %s" % disk_source, ignore_status=False, shell=True)
+                                vms_list[0]['vm'].destroy(gracefully=False)
+
+                                def _check_error():
+                                    cmd_result = virsh.domblkerror(vms_list[0]['name'])
+                                    return 'Segmentation fault' in cmd_result.stdout_text.strip()
+                                status = utils_misc.wait_for(lambda: _check_error, timeout=90)
+                                if not status:
+                                    test.fail("Test error_policy %s: can't report"
                                               " error" % error_policy)
                             elif error_policy == "ignore":
                                 if 0 == s:
-                                    test.fail("Test error_policy %s: error cann't"
+                                    test.fail("Test error_policy %s: error can't"
                                               " be ignored" % error_policy)
                             session0.close()
                         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
                             if error_policy == "stop":
                                 if not vms_list[0]['vm'].is_paused():
-                                    test.fail("Test error_policy %s: cann't stop"
+                                    test.fail("Test error_policy %s: can't stop"
                                               " VM" % error_policy)
                             else:
                                 logging.error(str(e))
@@ -359,7 +369,8 @@ def run(test, params, env):
         for img in disks:
             if 'format' in img:
                 if img["format"] == "scsi":
-                    libvirt.delete_scsi_disk()
+                    utils_misc.wait_for(libvirt.delete_scsi_disk,
+                                        120, ignore_errors=True)
                 elif img["format"] == "iscsi":
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
             elif "source" in img:

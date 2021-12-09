@@ -93,6 +93,8 @@ def run(test, params, env):
         if scsi_wwnn.count("ENTER.YOUR.WWNN") or \
                 scsi_wwpn.count("ENTER.YOUR.WWPN"):
             test.cancel("You didn't provide proper wwpn/wwnn")
+        # Load sg module if necessary
+        process.run("modprobe sg", shell=True, ignore_status=True, verbose=True)
         if vm.is_dead():
             vm.start()
         session = vm.wait_for_login()
@@ -110,6 +112,8 @@ def run(test, params, env):
                 {"nodedev_parent": first_online_hba,
                  "scsi_wwnn": scsi_wwnn,
                  "scsi_wwpn": scsi_wwpn})
+        # enable multipath service
+        process.run("mpathconf --enable", shell=True)
         if not utils_misc.wait_for(lambda: utils_npiv.is_vhbas_added(old_vhbas),
                                    timeout=_TIMEOUT):
             test.fail("vhba not successfully created")
@@ -157,6 +161,8 @@ def run(test, params, env):
         result = virsh.detach_device(vm_name, new_hostdev_xml.xml)
         libvirt.check_exit_status(result, status_error)
         # login vm and check disk actually removed
+        if not vm.session:
+            session = vm.wait_for_login()
         parts_after_detach = utils_disk.get_parts_list(session)
         old_parts.sort()
         parts_after_detach.sort()

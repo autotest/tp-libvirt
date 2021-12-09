@@ -1,11 +1,17 @@
 import os
 import logging
+import re
 
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import utils_test
+from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml.vm_xml import VMXML
+
+from avocado.utils import process
 
 
 def run(test, params, env):
@@ -30,6 +36,7 @@ def run(test, params, env):
     security_default_confined = params.get("security_default_confined", None)
     security_require_confined = params.get("security_require_confined", None)
     no_sec_model = 'yes' == params.get("no_sec_model", 'no')
+    xattr_check = 'yes' == params.get("xattr_check", 'no')
     sec_relabel = params.get("svirt_start_destroy_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'relabel': sec_relabel}
     sec_dict_list = []
@@ -66,7 +73,7 @@ def run(test, params, env):
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
-    # Get varialbles about image.
+    # Get variables about image.
     img_label = params.get('svirt_start_destroy_disk_label')
     # Backup disk Labels.
     disks = vm.get_disk_devices()
@@ -76,8 +83,7 @@ def run(test, params, env):
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
-        f = os.open(disk_path, 0)
-        stat_re = os.fstat(f)
+        stat_re = os.stat(disk_path)
         backup_ownership_of_disks[disk_path] = "%s:%s" % (stat_re.st_uid,
                                                           stat_re.st_gid)
     # Backup selinux of host.
@@ -122,7 +128,8 @@ def run(test, params, env):
             utils_selinux.verify_defcon(pathname=disk_path,
                                         readonly=False,
                                         forcedesc=True)
-            os.chown(disk_path, 107, 107)
+            if sec_relabel == "no" and sec_type == 'none':
+                os.chown(disk_path, 107, 107)
 
         # Set selinux of host.
         utils_selinux.set_status(host_sestatus)
@@ -149,11 +156,23 @@ def run(test, params, env):
 
         # Start VM to check the VM is able to access the image or not.
         try:
+            # Need another guest to test the xattr added by libvirt
+            if xattr_check:
+                blklist = virsh.domblklist(vm_name, debug=True)
+                target_disk = re.findall(r"[v,s]d[a-z]", blklist.stdout.strip())[0]
+                guest_name = "%s_%s" % (vm_name, '1')
+                cmd = "virt-clone --original %s --name %s " % (vm_name, guest_name)
+                cmd += "--auto-clone --skip-copy=%s" % target_disk
+                process.run(cmd, shell=True, verbose=True)
             vm.start()
             # Start VM successfully.
             # VM with seclabel can access the image with the context.
             if status_error:
                 test.fail("Test succeeded in negative case.")
+            # Start another vm with the same disk image.
+            # The xattr will not be changed.
+            if xattr_check:
+                virsh.start(guest_name, ignore_status=True, debug=True)
             # Check the label of VM and image when VM is running.
             vm_context = utils_selinux.get_context_of_process(vm.get_pid())
             if (sec_type == "static") and (not vm_context == sec_label):
@@ -180,25 +199,46 @@ def run(test, params, env):
                               "VM\nDetal: disk_context="
                               "%s, imagelabel=%s"
                               % (disk_context, imagelabel))
+                expected_results = "trusted.libvirt.security.ref_dac=\"1\"\n"
+                expected_results += "trusted.libvirt.security.ref_selinux=\"1\""
+                cmd = "getfattr -m trusted.libvirt.security -d %s " % list(disks.values())[0]['source']
+                utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
+
             # Check the label of disk after VM being destroyed.
             if poweroff_with_destroy:
                 vm.destroy(gracefully=False)
             else:
                 vm.wait_for_login()
                 vm.shutdown()
-            img_label_after = utils_selinux.get_context_of_file(
-                filename=list(disks.values())[0]['source'])
-            if (not img_label_after == img_label):
-                # Bug 547546 - RFE: the security drivers must remember original
-                # permissions/labels and restore them after
-                # https://bugzilla.redhat.com/show_bug.cgi?id=547546
-
-                err_msg = "Label of disk is not restored in VM shuting down.\n"
-                err_msg += "Detail: img_label_after=%s, " % img_label_after
-                err_msg += "img_label_before=%s.\n" % img_label
-                err_msg += "More info in https://bugzilla.redhat.com/show_bug"
-                err_msg += ".cgi?id=547546"
-                test.fail(err_msg)
+            filename = list(disks.values())[0]['source']
+            img_label_after = utils_selinux.get_context_of_file(filename)
+            stat_re = os.stat(filename)
+            ownership_of_disk = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
+            logging.debug("The ownership of disk after guest starting is:\n")
+            logging.debug(ownership_of_disk)
+            logging.debug("The ownership of disk before guest starting is:\n")
+            logging.debug(backup_ownership_of_disks[filename])
+            if not (sec_relabel == "no" and sec_type == 'none'):
+                if not libvirt_version.version_compare(5, 6, 0):
+                    if img_label_after != img_label:
+                        # Bug 547546 - RFE: the security drivers must remember original
+                        # permissions/labels and restore them after
+                        # https://bugzilla.redhat.com/show_bug.cgi?id=547546
+                        err_msg = "Label of disk is not restored in VM shutting down.\n"
+                        err_msg += "Detail: img_label_after=%s, " % img_label_after
+                        err_msg += "img_label_before=%s.\n" % img_label
+                        err_msg += "More info in https://bugzilla.redhat.com/show_bug"
+                        err_msg += ".cgi?id=547546"
+                        test.fail(err_msg)
+                elif (img_label_after != img_label or
+                      ownership_of_disk != backup_ownership_of_disks[filename]):
+                    err_msg = "Label of disk is not restored in VM shutting down.\n"
+                    err_msg += "Detail: img_label_after=%s, %s " % (img_label_after, ownership_of_disk)
+                    err_msg += "img_label_before=%s, %s\n" % (img_label, backup_ownership_of_disks[filename])
+                    test.fail(err_msg)
+            # The xattr should be cleaned after guest shutoff.
+            cmd = "getfattr -m trusted.libvirt.security -d %s " % list(disks.values())[0]['source']
+            utils_test.libvirt.check_cmd_output(cmd, content="")
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
@@ -225,6 +265,8 @@ def run(test, params, env):
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
         backup_xml.sync()
+        if xattr_check:
+            virsh.undefine(guest_name, ignore_status=True)
         utils_selinux.set_status(backup_sestatus)
         if (security_driver or security_default_confined or
                 security_require_confined):

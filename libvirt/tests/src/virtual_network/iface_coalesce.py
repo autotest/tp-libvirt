@@ -12,7 +12,7 @@ from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.libvirt_xml.devices.interface import Interface
 from avocado.utils import process
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -25,7 +25,7 @@ def run(test, params, env):
 
     For each host network type, guest can use bridge/network interface type to set coalesce
     except macvtap network type.
-    Execute 'ethtool -c ${interface}|grep "rx-frames"' and anylize the output to check
+    Execute 'ethtool -c ${interface}|grep "rx-frames"' and analyse the output to check
     whether coalesce setting take effect or not.
 
     For macvtap network type, guest can start but query coalesce will fail.
@@ -155,7 +155,7 @@ def run(test, params, env):
 
     4. For macvtap bridge mode on host network
     For this mode, first, create one virtual network.
-    Note, should set dev to one ture physical interface.
+    Note, should set dev to one true physical interface.
     'virsh net-define net-br-macvtap.xml'
     'virsh net-dumpxml net-br-macvtap'
     <network>
@@ -164,7 +164,7 @@ def run(test, params, env):
            <interface dev='eno1'/>
        </forward>
     </network>
-    Set guest to use this macvtap network and set coalesc
+    Set guest to use this macvtap network and set coalesce
     <interface type='network'>
       <mac address='52:54:00:6e:f4:f1'/>
       <source network='net-br-macvtap'/>
@@ -214,7 +214,7 @@ def run(test, params, env):
     def modify_iface_xml():
         """
         Modify interface xml options
-        Two methods to modify domain interfae:
+        Two methods to modify domain interface:
         1. modify guest xml, define it
         2. attach one interface for running guest
 
@@ -335,7 +335,7 @@ def run(test, params, env):
             if network_type == "ovsbridge":
                 params['net_virtualport'] = "openvswitch"
             if network_type == "macvtap":
-                # For bridge type of macvtap network, one true physical interface shold be added
+                # For bridge type of macvtap network, one true physical interface should be added
                 # Check whether physical interface has been added into one bridge. if yes, skip macvtap test
                 # If interface already added to a bridge, the output of the nmcli
                 # command will include "connection.slave-type: bridge"
@@ -345,11 +345,12 @@ def run(test, params, env):
                     test.cancel("no connection for the interface")
                 else:
                     con = con_l[0].strip()
-                if "bridge" not in process.run('nmcli con show "%s"' % con).stdout_text:
+                if con == '--' or "bridge" not in process.run('nmcli con show "%s"' % con,
+                                                              ignore_status=True, shell=True).stdout_text:
                     params['forward_iface'] = interface
                     params['net_forward'] = "{'mode':'bridge', 'dev': '%s'}" % interface
                 else:
-                    test.cancel("interface %s has been added into one brige, but macvtap"
+                    test.cancel("interface %s has been added into one bridge, but macvtap"
                                 "need also add this interface, so current network can't"
                                 "suit macvtap testing" % interface)
             if not network.exists():
@@ -375,9 +376,9 @@ def run(test, params, env):
             out = process.run('ethtool -c %s' % newinterface, ignore_status=True)
             if network_type == 'macvtap':
                 # Currently, output coalesce for macvtap is not supported
-                err_msg = "Cannot get device coalesce settings: Operation not supported"
-                std_msg = "Coalesce parameters for %s:" % newinterface
-                if err_msg not in out.stderr_text or std_msg not in out.stdout_text:
+                err_msg = "Operation not supported"
+                logging.info("err_msg is %s, out.stderr_text is %s" % (err_msg, out.stderr_text))
+                if err_msg not in out.stderr_text:
                     test.fail("coalesce setting on %s failed." % network_type)
             else:
                 # Get coalesce value and check it is true

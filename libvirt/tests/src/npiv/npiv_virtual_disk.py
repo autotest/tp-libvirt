@@ -118,7 +118,7 @@ def run(test, params, env):
     wwpn = params.get("wwpn", "WWPN_EXAMPLE")
     wwnn = params.get("wwnn", "WWNN_EXAMPLE")
     disk_device = params.get("disk_device", "disk")
-    device_type = params.get("device_type", "file")
+    device_type = params.get("device_type", "block")
     device_target = params.get("device_target", "vdb")
     lun_dir_method = params.get("lun_dir_method", "by-path")
     driver_name = params.get("driver_name", "qemu")

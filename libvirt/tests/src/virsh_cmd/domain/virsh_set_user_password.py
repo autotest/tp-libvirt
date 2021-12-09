@@ -69,7 +69,12 @@ def run(test, params, env):
 
             # Set the user password in vm
             if encrypted:
-                cmd = "openssl passwd -crypt %s" % new_passwd
+                openssl_version = process.run("openssl version",
+                                              ignore_status=False)
+                if "OpenSSL 3.0." in openssl_version.stdout_text:
+                    cmd = "openssl passwd %s" % new_passwd
+                else:
+                    cmd = "openssl passwd -crypt %s" % new_passwd
                 ret = process.run(cmd, shell=True)
                 libvirt.check_exit_status(ret)
                 en_passwd = str(ret.stdout_text.strip())
@@ -84,7 +89,7 @@ def run(test, params, env):
                 session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, new_passwd,
                                                 r"[\#\$]\s*$", timeout=30)
                 session.close()
-            except remote.LoginAuthenticationError, e:
+            except remote.LoginAuthenticationError as e:
                 logging.debug(e)
 
             # Login with old password
@@ -105,7 +110,7 @@ def run(test, params, env):
                 session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, ori_passwd,
                                                 r"[\#\$]\s*$", timeout=30)
                 session.close()
-            except remote.LoginAuthenticationError, e:
+            except remote.LoginAuthenticationError as e:
                 logging.debug(e)
 
             if start_ga:

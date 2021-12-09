@@ -2,6 +2,8 @@ import os
 import logging
 import shutil
 import platform
+import multiprocessing
+import time
 
 from aexpect import ShellTimeoutError
 
@@ -9,12 +11,11 @@ from avocado.utils import process
 
 from virttest import utils_config
 from virttest import utils_libvirtd
-from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest import data_dir
-
-from provider import libvirt_version
+from virttest import utils_package
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -31,6 +32,7 @@ def run(test, params, env):
     addr_type = params.get("addr_type")
     addr_iobase = params.get("addr_iobase")
     vm = env.get_vm(vm_name)
+    target_flags = int(params.get('target_flags', '0o40000'), 8)
 
     if panic_model and not libvirt_version.version_compare(1, 3, 1):
         test.cancel("panic device model attribute not supported"
@@ -41,7 +43,7 @@ def run(test, params, env):
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
-    dump_path = os.path.join(data_dir.get_tmp_dir(), "dump")
+    dump_path = os.path.join(data_dir.get_data_dir(), "dump")
     try:
         if not vmxml.xmltreefile.find('devices').findall('panic'):
             # Set panic device
@@ -80,7 +82,43 @@ def run(test, params, env):
             vm.destroy()
         vm.start()
 
+        # Install lsof pkg if not installed
+        if not utils_package.package_install("lsof"):
+            test.cancel("Failed to install lsof in host\n")
+
+        def get_flags(dump_path, result_dict):
+            cmd = "lsof -w %s/* |awk '/libvirt_i/{print $2}'" % dump_path
+            start_time = time.time()
+            while (time.time() - start_time) < 30:
+                ret = process.run(cmd, shell=True, ignore_status=True)
+                status, iohelper_pid = ret.exit_status, ret.stdout_text.strip()
+                if status:
+                    time.sleep(0.1)
+                    continue
+                if not len(iohelper_pid):
+                    continue
+                else:
+                    logging.info('pid: %s', iohelper_pid)
+                    result_dict['pid'] = iohelper_pid
+                    break
+
+            # Get file open flags containing bypass cache information.
+            with open('/proc/%s/fdinfo/1' % iohelper_pid, 'r') as fdinfo:
+                flags = 0
+                for line in fdinfo.readlines():
+                    if line.startswith('flags:'):
+                        flags = int(line.split()[1], 8)
+                        logging.debug('file open flag is: %o', flags)
+            result_dict['flags'] = flags
+            with open('/proc/%s/cmdline' % iohelper_pid) as cmdinfo:
+                cmdline = cmdinfo.readline()
+                logging.debug(cmdline.split())
+
         session = vm.wait_for_login()
+        result_dict = multiprocessing.Manager().dict()
+        child_process = multiprocessing.Process(target=get_flags, args=(dump_path, result_dict))
+        child_process.start()
+
         # Stop kdump in the guest
         session.cmd("service kdump stop", ignore_all_errors=True)
         # Enable sysRq
@@ -92,29 +130,11 @@ def run(test, params, env):
             pass
         session.close()
 
-        def _get_iohelper_pid():
-            try:
-                return process.run('pgrep -f %s' % dump_path).stdout_text.strip()
-            except Exception:
-                return
-
-        if not utils_misc.wait_for(_get_iohelper_pid, 30, text='Waiting to get pid'):
-            test.error('Cannot get pid by running "pgrep -f %s"' % dump_path)
-
-        iohelper_pid = _get_iohelper_pid()
-        logging.error('%s', iohelper_pid)
-
-        # Get file open flags containing bypass cache information.
-        with open('/proc/%s/fdinfo/1' % iohelper_pid, 'r') as fdinfo:
-            flags = 0
-            for line in fdinfo.readlines():
-                if line.startswith('flags:'):
-                    flags = int(line.split()[1], 8)
-                    logging.debug('file open flag is: %o', flags)
-
-        with open('/proc/%s/cmdline' % iohelper_pid) as cmdinfo:
-            cmdline = cmdinfo.readline()
-            logging.debug(cmdline.split())
+        child_process.join(10)
+        if child_process.is_alive():
+            child_process.terminate()
+        flags = result_dict['flags']
+        iohelper_pid = result_dict['pid']
 
         # Kill core dump process to speed up test
         try:
@@ -126,8 +146,8 @@ def run(test, params, env):
 
         if arch in ['x86_64', 'ppc64le', 's390x']:
             # Check if bypass cache flag set or unset accordingly.
-            cond1 = (flags & 0o40000) and bypass_cache != '1'
-            cond2 = not (flags & 0o40000) and bypass_cache == '1'
+            cond1 = (flags & target_flags) and bypass_cache != '1'
+            cond2 = not (flags & target_flags) and bypass_cache == '1'
             if cond1 or cond2:
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))

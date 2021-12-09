@@ -1,6 +1,7 @@
 import os
 import signal
 
+from avocado.utils import process
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
@@ -14,6 +15,7 @@ def run(test, params, env):
     sig_name = params.get('signal', 'SIGSTOP')
     vm_state = params.get('vm_state', 'running')
     expect_stop = params.get('expect_stop', 'yes') == 'yes'
+    expect_coredump = params.get('expect_coredump', 'no') == 'yes'
     vm = env.get_vm(vm_name)
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -41,4 +43,9 @@ def run(test, params, env):
             test.fail('Expected VM stop is "%s", got "%s"'
                       % (expect_stop, vm.state()))
     finally:
+        # Clear coredump info
+        if expect_coredump:
+            cmd = 'journalctl --flush;'
+            cmd += 'journalctl --rotate; journalctl --vacuum-size=1K; journalctl --vacuum-time=1s'
+            process.run(cmd, ignore_status=True, shell=True)
         xml_backup.sync()

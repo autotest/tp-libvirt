@@ -28,6 +28,8 @@ def run(test, params, env):
     # Get general variables.
     status_error = ('yes' == params.get("status_error", 'no'))
     host_sestatus = params.get("host_selinux", "enforcing")
+    video_model = params.get('video_model', 'vga')
+    nvram_o = params.get('nvram_o', None)
     # Get variables about seclabel for VM.
     sec_type = params.get("svirt_install_vm_sec_type", "dynamic")
     sec_model = params.get("svirt_install_vm_sec_model", "selinux")
@@ -46,7 +48,7 @@ def run(test, params, env):
     real_data_path = os.path.realpath(data_path)
     image_path = os.path.join(real_data_path, "svirt_image")
     if virsh.domain_exists(vm_name):
-        virsh.remove_domain(vm_name)
+        virsh.remove_domain(vm_name, nvram_o)
     if not os.path.exists(image_path):
         utils_test.libvirt.create_local_disk("file", path=image_path)
 
@@ -57,7 +59,7 @@ def run(test, params, env):
         cmd += " --security"
         if sec_type == 'static':
             if sec_label is None:
-                raise ValueError("Seclabel is not setted for static.")
+                raise ValueError("Seclabel is not set for static.")
             cmd += " type=static,label=%s" % (sec_label)
         elif sec_type == 'dynamic':
             cmd += " type=dynamic"
@@ -67,7 +69,7 @@ def run(test, params, env):
         if sec_relabel is not None:
             cmd += ",relabel=%s" % sec_relabel
 
-        cmd += " --noautoconsole --graphics vnc --video vga"
+        cmd += " --noautoconsole --graphics vnc --video %s" % video_model
         process.run(cmd, timeout=600, ignore_status=True)
 
         def _vm_alive():
@@ -82,6 +84,6 @@ def run(test, params, env):
         # cleanup
         utils_selinux.set_status(backup_sestatus)
         if virsh.domain_exists(vm_name):
-            virsh.remove_domain(vm_name)
+            virsh.remove_domain(vm_name, nvram_o)
         if not os.path.exists(image_path):
             utils_test.libvirt.delete_local_disk("file", path=image_path)

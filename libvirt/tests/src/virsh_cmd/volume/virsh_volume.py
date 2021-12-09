@@ -15,7 +15,7 @@ from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -78,7 +78,7 @@ def run(test, params, env):
         """
         Normalize the capacity values to bytes
         """
-        # Normaize all values to bytes
+        # Normalize all values to bytes
         norm_capacity = {}
         des = {'B': 'B', 'bytes': 'B', 'b': 'B', 'kib': 'K',
                'KiB': 'K', 'K': 'K', 'k': 'K', 'KB': 'K',

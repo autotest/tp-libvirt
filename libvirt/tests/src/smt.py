@@ -3,9 +3,10 @@ import logging
 import re
 
 from avocado.utils import process
+from avocado.utils import astring
+
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_package
-from virttest.compat_52lts import decode_to_text as to_text
 from virttest import virt_vm
 
 
@@ -76,7 +77,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             output = session.cmd_output("lscpu")
         else:
-            output = to_text(process.system_output("lscpu", shell=True))
+            output = astring.to_text(process.system_output("lscpu", shell=True))
         no_cpus = int(re.findall('CPU\(s\):\s*(\d+)', str(output))[0])
         no_threads = int(re.findall('Thread\(s\)\sper\score:\s*(\d+)', str(output))[0])
         no_cores = int(re.findall('Core\(s\)\sper\ssocket:\s*(\d+)', str(output))[0])
@@ -113,7 +114,7 @@ def run(test, params, env):
     vm_sockets = int(params.get("smt_vcpu_sockets", 1))
     vm = env.get_vm(vm_name)
 
-    output = to_text(process.system_output(smt_threads_per_core_cmd, shell=True))
+    output = astring.to_text(process.system_output(smt_threads_per_core_cmd, shell=True))
     try:
         host_threads = int(re.findall('Threads per core:\s+(\d+)', output)[0])
     except Exception as err:

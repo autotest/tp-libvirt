@@ -6,7 +6,7 @@ from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import network_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -77,7 +77,7 @@ def run(test, params, env):
         net_xml.set_autostart(True)
 
     try:
-        virsh_dargs = {'ignore_status': True}
+        virsh_dargs = {'ignore_status': True, 'debug': True}
         if params.get('setup_libvirt_polkit') == 'yes':
             virsh_dargs['unprivileged_user'] = unprivileged_user
             virsh_dargs['uri'] = uri

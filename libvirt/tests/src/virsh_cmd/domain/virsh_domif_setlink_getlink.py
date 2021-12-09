@@ -8,7 +8,9 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_net
 from virttest import utils_misc
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -28,7 +30,7 @@ def run(test, params, env):
 
         :param vm : domain name
         :param device : domain virtual interface
-        :param opration : domain virtual interface state
+        :param operation : domain virtual interface state
         :param options : some options like --config
 
         """
@@ -93,7 +95,7 @@ def run(test, params, env):
         if ret.exit_status:
             logging.error("Failed to update device to up state")
             return False
-        if not guest_if_state(if_name, session):
+        if not utils_misc.wait_for(lambda: guest_if_state(if_name, session), 5):
             logging.error("Guest link should be up now")
             return False
 
@@ -105,7 +107,7 @@ def run(test, params, env):
         if ret.exit_status:
             logging.error("Failed to update device to down state")
             return False
-        if guest_if_state(if_name, session):
+        if utils_misc.wait_for(lambda: guest_if_state(if_name, session), 5):
             logging.error("Guest link should be down now")
             return False
 
@@ -124,17 +126,26 @@ def run(test, params, env):
     if_operation = params.get("if_operation", "up")
     status_error = params.get("status_error", "no")
     mac_address = vm.get_virsh_mac_address(0)
+    model_type = params.get("model_type", "virtio")
     check_link_state = "yes" == params.get("check_link_state", "no")
     check_link_by_update_device = "yes" == params.get(
         "excute_update_device", "no")
     device = "vnet0"
     username = params.get("username")
     password = params.get("password")
+    post_action = params.get("post_action")
+    save_file = os.path.join(data_dir.get_data_dir(), "vm.save")
 
     # Back up xml file.
-    vm_xml_file = os.path.join(data_dir.get_tmp_dir(), "vm.xml")
+    vm_xml_file = os.path.join(data_dir.get_data_dir(), "vm.xml")
     virsh.dumpxml(vm_name[0], extra="--inactive", to_file=vm_xml_file)
 
+    # Update model type of the interface, delete the pci address to let libvirt
+    # generate a new one suitable for the model
+    if vm.is_alive():
+        vm.destroy()
+    iface_dict = {'model': model_type, 'del_addr': 'yes'}
+    libvirt.modify_vm_iface(vm_name[0], "update_iface", iface_dict)
     # Vm status
     if start_vm == "yes" and vm.is_dead():
         vm.start()
@@ -186,6 +197,12 @@ def run(test, params, env):
         status = result.exit_status
         logging.info("Setlink done")
 
+        if post_action == "restart_libvirtd":
+            utils_libvirtd.libvirtd_restart()
+        elif post_action == "save_restore":
+            vm.save_to_file(save_file)
+            vm.restore_from_file(save_file)
+
         # Getlink opertation
         get_result = domif_getlink(vm_name[1], device, options)
         getlink_output = get_result.stdout.strip()
@@ -197,6 +214,15 @@ def run(test, params, env):
                           "equal with setlink operation")
 
         logging.info("Getlink done")
+
+        # Check guest xml about link status
+        if post_action == "save_restore":
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+            iface = vmxml.get_devices(device_type="interface")[0]
+            logging.debug("Guest current interface xml is %s" % iface)
+            if iface.link_state != if_operation:
+                test.fail("link state in guest xml should be %s" % if_operation)
+
         # If --config or --persistent is given should restart the vm then test link status
         if any(options == option for option in ["--config", "--persistent"]) and vm.is_alive():
             vm.destroy()
@@ -207,7 +233,7 @@ def run(test, params, env):
             vm.start()
 
         error_msg = None
-        if status_error == "no":
+        if status_error == "no" and not post_action:
             # Serial login the vm to check link status
             # Start vm check the link statue
             session = vm.wait_for_serial_login(username=username,
@@ -222,38 +248,37 @@ def run(test, params, env):
                 if (if_operation == "down" and
                         guest_if_state(guest_if_name, session)):
                     error_msg = "Link state should be down in guest"
+                if error_msg:
+                    test.fail(error_msg)
 
             # Test of setting link state by update_device command
             if check_link_by_update_device:
                 if not check_update_device(vm, guest_if_name, session):
-                    error_msg = "Check update_device failed"
+                    test.fail("Check update_device failed")
 
             # Set the link up make host connect with vm
             domif_setlink(vm_name[0], device, "up", "")
             if not utils_misc.wait_for(
                     lambda: guest_if_state(guest_if_name, session), 5):
-                error_msg = "Link state isn't up in guest"
+                test.fail("Link state isn't up in guest")
 
             # Ignore status of this one
-            cmd = 'ip link set down %s' % guest_if_name
+            cmd = 'ip link set %s down;' % guest_if_name
             session.cmd_status_output(cmd, timeout=10)
             pattern = "%s:.*state DOWN.*" % guest_if_name
             pattern_cmd = 'ip addr show dev %s' % guest_if_name
             guest_cmd_check(pattern_cmd, session, pattern)
 
-            cmd = 'ip link set up %s' % guest_if_name
+            cmd = 'ip link set %s up;' % guest_if_name
             session.cmd_status_output(cmd, timeout=10)
             pattern = "%s:.*state UP.*" % guest_if_name
-            if not guest_cmd_check(pattern_cmd, session, pattern):
-                error_msg = ("Could not bring up interface %s inside guest"
-                             % guest_if_name)
+            if not utils_misc.wait_for(lambda: guest_cmd_check(
+                    pattern_cmd, session, pattern), timeout=20):
+                test.fail("Could not bring up interface %s inside guest"
+                          % guest_if_name)
         else:  # negative test
             # stop guest, so state is always consistent on next start
             vm.destroy()
-
-        if error_msg:
-            test.fail(error_msg)
-
         # Check status_error
         if status_error == "yes":
             if status:
@@ -273,3 +298,5 @@ def run(test, params, env):
         virsh.undefine(vm_name[0])
         virsh.define(vm_xml_file)
         os.remove(vm_xml_file)
+        if os.path.exists(save_file):
+            os.remove(save_file)

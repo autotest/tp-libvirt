@@ -1,7 +1,6 @@
 import logging
 
 from avocado.utils import cpu as cpuutil
-from avocado.utils import process
 
 from virttest import virsh
 from virttest import cpu
@@ -80,7 +79,6 @@ def run(test, params, env):
     err_msg = params.get("err_msg", "")
     start_timeout = int(params.get("start_timeout", "180"))
     offline_hostcpus = params.get("offline_hostcpus", "")
-    machine_cpuset_path = params.get("machine_cpuset_path", "")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
@@ -118,10 +116,13 @@ def run(test, params, env):
 
     try:
         hostcpu_num = int(cpuutil.total_cpus_count())
+        if hostcpu_num < 8:
+            test.cancel("The host should have at least 8 CPUs for this test.")
 
         # online all host cpus
+        online_cpus = cpuutil.cpu_online_list()
         for x in range(1, hostcpu_num):
-            if cpuutil.online(x):
+            if x not in online_cpus and cpuutil.online(x):
                 test.fail("fail to online cpu{}".format(x))
 
         # use vcpu cpuset or/and cputune cpuset to define xml
@@ -221,5 +222,3 @@ def run(test, params, env):
         # recovery the host cpu env
         for x in range(1, hostcpu_num):
             cpuutil.online(x)
-        cmd = "echo '0-{}' > {}".format(hostcpu_num-1, machine_cpuset_path)
-        process.run(cmd, shell=True)

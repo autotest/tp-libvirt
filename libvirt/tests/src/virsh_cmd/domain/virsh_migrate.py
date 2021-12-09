@@ -15,17 +15,18 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import libvirt_vm
+from virttest import migration
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest import utils_misc
 from virttest import cpu
+from virttest import libvirt_version
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_config
 from virttest import test_setup
 from virttest.staging import utils_memory
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
-
-from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -409,7 +410,7 @@ def run(test, params, env):
         """
         Handle option '--timeout --timeout-suspend'.
         As the migration thread begins to execute, this function is executed
-        at same time almostly. It will sleep the specified seconds and check
+        at same time almost. It will sleep the specified seconds and check
         the VM state on both hosts. Both should be 'paused'.
 
         :param timeout: The seconds for timeout
@@ -623,6 +624,25 @@ def run(test, params, env):
                                                   "no")
     compat_guest_migrate = get_compat_guest_migrate(params)
     compat_mode = "yes" == params.get("compat_mode", "no")
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
+
+    # Cold plug one pcie-to-pci-bridge controller in case
+    # device hotplugging is needed during test
+    machine_type = params.get("machine_type")
+    if machine_type == 'q35':
+        contr_dict_1 = {
+                'controller_type': 'pci',
+                'controller_model': 'pcie-root-port'
+                }
+        contr_dict_2 = {
+                'controller_type': 'pci',
+                'controller_model': 'pcie-to-pci-bridge'
+                }
+        for contr in [contr_dict_1, contr_dict_2]:
+            contr_xml = libvirt.create_controller_xml(contr)
+            libvirt.add_controller(vm.name, contr_xml)
 
     # Configurations for cpu compat guest to boot
     if compat_mode:
@@ -689,7 +709,7 @@ def run(test, params, env):
             free_mem = host_numa_node.read_from_node_meminfo(each_node,
                                                              'MemFree')
             if (int(free_mem) < int(vmxml.max_mem)):
-                logging.debug("Host Numa node: %s doesnt have enough "
+                logging.debug("Host Numa node: %s doesn't have enough "
                               "memory", each_node)
                 host_numa_node_list.remove(each_node)
         memory_mode = params.get("memory_mode", 'strict')
@@ -794,12 +814,15 @@ def run(test, params, env):
     check_unsafe_result = True
     migrate_setup = None
     mem_xml = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     try:
         # Change the disk of the vm to shared disk
         libvirt.set_vm_disk(vm, params)
 
-        migrate_setup = libvirt.MigrationTest()
+        migrate_setup = migration.MigrationTest()
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
         extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
@@ -832,7 +855,7 @@ def run(test, params, env):
             vmxml_cpu = vm_xml.VMCPUXML()
             vmxml_cpu.xml = "<cpu><numa/></cpu>"
             logging.debug(vmxml_cpu.numa_cell)
-            vmxml_cpu.numa_cell = numa_dict_list
+            vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
             logging.debug(vmxml_cpu.numa_cell)
             vmxml.cpu = vmxml_cpu
             if enable_numa_pin:
@@ -971,7 +994,7 @@ def run(test, params, env):
             vmxml.vm_name = extra.split()[1].strip()
             del vmxml.uuid
             # Define a new vm on destination for --dname
-            virsh.define(vmxml.xml, uri=dest_uri)
+            virsh.define(vmxml.xml, uri=dest_uri, ignore_status=False)
 
         # Prepare for --xml.
         xml_option = params.get("xml_option", "no")
@@ -987,12 +1010,14 @@ def run(test, params, env):
                 ifaces = vm_xml.VMXML.get_net_dev(vm.name)
                 new_nic_mac = vm.get_virsh_mac_address(
                     ifaces.index("tmp-vnet"))
-                vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+                vmxml = vm_xml.VMXML\
+                    .new_from_dumpxml(vm.name, "--security-info --migratable")
                 logging.debug("Xml file on source:\n%s", vm.get_xml())
                 extra = ("%s --xml=%s" % (extra, vmxml.xml))
             elif extra.count("--dname"):
                 vm_new_name = params.get("vm_new_name")
-                vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+                vmxml = vm_xml.VMXML\
+                    .new_from_dumpxml(vm.name, "--security-info --migratable")
                 if vm_new_name:
                     logging.debug("Preparing change VM XML with a new name")
                     vmxml.vm_name = vm_new_name
@@ -1032,6 +1057,9 @@ def run(test, params, env):
             logging.debug("PID for process '%s': %s",
                           remote_viewer_executable, remote_viewer_pid)
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
         # Case for option '--timeout --timeout-suspend'
         # 1. Start the guest
         # 2. Set migration speed to a small value. Ensure the migration
@@ -1047,7 +1075,7 @@ def run(test, params, env):
             timeout = int(params.get("timeout_before_suspend", 5))
             logging.debug("Set migration speed to %sM", speed)
             virsh.migrate_setspeed(vm_name, speed, debug=True)
-            migration_test = libvirt.MigrationTest()
+            migration_test = migration.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
             vms = [vm]
             migration_test.do_migration(vms, None, dest_uri, 'orderly',
@@ -1061,10 +1089,10 @@ def run(test, params, env):
             vms = []
             vms.append(vm)
             cmd = params.get("virsh_postcopy_cmd")
-            obj_migration = libvirt.MigrationTest()
+            obj_migration = migration.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
             # start stress inside VM
-            stress_tool = params.get("stress_tool", "stress")
+            stress_tool = params.get("stress_package", "stress")
             try:
                 vm_stress = utils_test.VMStress(vm, stress_tool, params)
                 vm_stress.load_stress_tool()
@@ -1084,17 +1112,16 @@ def run(test, params, env):
                 obj_migration.do_migration(vms, src_uri, dest_uri, "orderly",
                                            options=migrate_options,
                                            thread_timeout=postcopy_timeout,
-                                           ignore_status=False,
+                                           ignore_status=True,
                                            func=run_migration_cmd,
                                            func_params=cmd,
                                            shell=True)
             except Exception as info:
                 test.fail(info)
             if obj_migration.RET_MIGRATION:
-                utils_test.check_dest_vm_network(vm, vm.get_address(),
-                                                 server_ip, server_user,
-                                                 server_pwd,
-                                                 shell_prompt=r"[\#\$]\s*$")
+                params.update({'vm_ip': vm_ip,
+                               'vm_pwd': params.get("password")})
+                remote.VMManager(params).check_network()
                 ret_migrate = True
             else:
                 ret_migrate = False
@@ -1134,6 +1161,10 @@ def run(test, params, env):
                 logging.debug("Migrating back to source from %s to %s" %
                               (dest_uri, src_uri))
                 params["connect_uri"] = dest_uri
+                remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+                remote_libvirt_file = libvirt_config\
+                    .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
                 if not asynch_migration:
                     ret_migrate = do_migration(delay, vm, src_uri, options,
                                                extra)
@@ -1321,6 +1352,11 @@ def run(test, params, env):
         vm.destroy()
         vm.undefine()
         orig_config_xml.define()
+
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+        if remote_libvirt_file:
+            del remote_libvirt_file
 
         # cleanup xml created during memory hotplug test
         if mem_hotplug:

@@ -14,8 +14,10 @@ from virttest import utils_disk
 from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest import libvirt_version
 
 from virttest.libvirt_xml.devices import hostdev
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):
@@ -57,6 +59,7 @@ def run(test, params, env):
             source_args['secret_type'] = kwargs.get("secret_type")
             source_args['secret_uuid'] = kwargs.get("secret_uuid")
             source_args['secret_usage'] = kwargs.get("secret_usage")
+            source_args['iqn_id'] = kwargs.get("iqn_id")
         elif source_protocol:
             test.cancel("We do not support source protocol = %s yet" %
                         source_protocol)
@@ -176,6 +179,9 @@ def run(test, params, env):
                                   (blkdev_major, blkdev_minor))
             chardev_unpriv_path = ("/sys/dev/char/%s:%s/device/unpriv_sgio" %
                                    (chardev_major, chardev_minor))
+            # unpriv_sgio feature change in certain kernel,e.g: /sys/dev/char/%s:%s/queue/unpriv_sgio may not exist
+            if os.path.exists(blkdev_unpriv_path) is False:
+                return
             with open(blkdev_unpriv_path, 'r') as f:
                 blkdev_unpriv_value = f.read().strip()
             with open(chardev_unpriv_path, 'r') as f:
@@ -200,6 +206,9 @@ def run(test, params, env):
         :param shareable_dev: If the device is a shareable one.
         """
         scsi_unpriv_sgio = get_unpriv_sgio(scsi_dev)
+        # On rhel9, previously skip check folder in get_unpriv_sgio(),so here return True directly
+        if scsi_unpriv_sgio is None:
+            return True
         if shareable_dev:
             # Only when <shareable/> set, the sgio takes effect.
             if ((unpriv_sgio and scsi_unpriv_sgio == '1') or
@@ -243,6 +252,22 @@ def run(test, params, env):
                           str(err))
             return False
 
+    def ppc_controller_update(vmxml):
+        """
+        Update controller of ppc vm to 'virtio-scsi' to support 'scsi' type
+        :return:
+        """
+        device_bus = 'scsi'
+        if params.get('machine_type') == 'pseries':
+            if not vmxml.get_controllers(device_bus, 'virtio-scsi'):
+                vmxml.del_controller(device_bus)
+                ppc_controller = Controller('controller')
+                ppc_controller.type = device_bus
+                ppc_controller.index = '0'
+                ppc_controller.model = 'virtio-scsi'
+                vmxml.add_device(ppc_controller)
+                vmxml.sync()
+
     coldplug = "cold_plug" == params.get("attach_method")
     hotplug = "hot_plug" == params.get("attach_method")
     status_error = "yes" == params.get("status_error")
@@ -266,11 +291,16 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
-
+    enable_initiator_set = "yes" == params.get("enable_initiator_set", "no")
+    if enable_initiator_set and not libvirt_version.version_compare(6, 7, 0):
+        test.cancel("current version doesn't support iscsi initiator hostdev feature")
     try:
+        # Load sg module if necessary
+        process.run("modprobe sg", shell=True, ignore_status=True, verbose=True)
         # Backup vms' xml
         vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         vmxml = vmxml_backup.copy()
+        ppc_controller_update(vmxml)
         if test_shareable:
             vm_names = params.get("vms").split()
             if len(vm_names) < 2:
@@ -280,6 +310,7 @@ def run(test, params, env):
             vm2 = env.get_vm(vm2_name)
             vm2_xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm2_name)
             vm2_xml = vm2_xml_backup.copy()
+            ppc_controller_update(vm2_xml)
             if vm2.is_dead():
                 vm2.start()
                 session = vm2.wait_for_login()
@@ -321,6 +352,8 @@ def run(test, params, env):
                 params['secret_type'] = "iscsi"
                 params['secret_uuid'] = auth_sec_uuid
 
+            if enable_initiator_set:
+                params['iqn_id'] = iscsi_target
             hostdev_xml = prepare_hostdev_xml(**params)
             hostdev_xmls.append(hostdev_xml)
 

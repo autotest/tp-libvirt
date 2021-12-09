@@ -6,11 +6,12 @@ from avocado.utils import process
 
 from virttest import libvirt_storage
 from virttest import data_dir
+from virttest import utils_split_daemons
 from virttest import virsh
 from virttest.staging import lv_utils
 from virttest.utils_test import libvirt as utlv
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -67,6 +68,8 @@ def run(test, params, env):
     cleanup_env = [False, False, False, "", False]
     # libvirt acl related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -106,7 +109,7 @@ def run(test, params, env):
         else:
             logging.debug("Not find pool %s in pool list.", pool_name)
         if expect_error and found:
-            test.fail("Unexpect pool '%s' exist." % pool_name)
+            test.fail("Unexpected pool '%s' exist." % pool_name)
         if not expect_error and not found:
             test.fail("Expect pool '%s' doesn't exist." % pool_name)
 

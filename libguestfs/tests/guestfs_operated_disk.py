@@ -33,7 +33,7 @@ def truncate_from_file(ref_file, new_file, resize=0):
 def test_cloned_vm(test, vm, params):
     """
     1) Clone a new vm with virt-clone
-    2) Use guestfish to set new vm's network(accroding mac)
+    2) Use guestfish to set new vm's network(according mac)
     3) Start new vm to check its network
     """
     new_vm_name = "%s_vtclone" % vm.name

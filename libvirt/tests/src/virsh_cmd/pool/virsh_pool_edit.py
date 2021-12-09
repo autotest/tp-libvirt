@@ -15,7 +15,7 @@ def edit_pool(test, pool, edit_cmd):
     Edit libvirt storage pool.
 
     :param pool: pool name or uuid.
-    :param edit_cmd : edit commad line.
+    :param edit_cmd : edit command line.
     """
     session = aexpect.ShellSession("sudo -s")
     try:
@@ -56,10 +56,10 @@ def check_pool(pool_name, check_point, expect_value=""):
             # No exception means pool_name exist
             return True
         else:
-            logging.error("Unsupport check point %s", check_point)
+            logging.error("Unsupported check point %s", check_point)
             return False
     except Exception as e:
-        logging.error("Error occured: %s", e)
+        logging.error("Error occurred: %s", e)
         return False
     if expect_value == actual_value:
         logging.debug("Edit pool check pass")

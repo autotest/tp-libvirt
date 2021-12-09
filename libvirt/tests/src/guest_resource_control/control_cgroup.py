@@ -1,14 +1,16 @@
 import logging
-import re
+import math
 import os
+import re
+import time
 
 from virttest import libvirt_xml
+from virttest import utils_disk
+from virttest import utils_libvirtd
 from virttest import virt_vm
 from virttest import virsh
-from virttest import utils_disk
 
 from virttest.libvirt_cgroup import CgroupTest
-from virttest.compat_52lts import results_stdout_52lts
 
 from avocado.utils import process
 
@@ -54,7 +56,7 @@ def run(test, params, env):
             test.fail("At least VM name and virsh cmd name should be provided "
                       "to prepare the virsh cmd line.")
         if virsh_cmd not in ["blkiotune", "memtune", "schedinfo"]:
-            test.fail("Unsupported virsh cmd '%s' provided.", virsh_cmd)
+            test.fail("Unsupported virsh cmd '%s' provided." % virsh_cmd)
         cmd_params = virsh_cmd_param.strip().split(";")
         cmd_values = virsh_cmd_param_value.strip().split(";")
         if len(cmd_params) == 0 or len(cmd_params) != len(cmd_values):
@@ -125,6 +127,22 @@ def run(test, params, env):
         else:
             logging.debug("VM is not alive, cannot add iothread")
 
+    def do_extra_operations(operations="daemon-reload"):
+        """
+        Do some extra operation after setting cgroup value
+
+        :param operation: The operation to be executed
+        """
+        if "daemon-reload" in operations:
+            process.run("systemctl daemon-reload",
+                        ignore_status=False, shell=True)
+            logging.debug("daemons reloaded after setting cgroup")
+        if "restart-libvirtd" in operations:
+            utils_libvirtd.libvirtd_restart()
+            logging.debug("libvirtd restarted after setting cgroup")
+        # Sleep 2 seconds to make sure daemons are reloaded or restarted
+        time.sleep(2)
+
     # Run test case
     host_disk = get_host_first_disk()
     vm_name = params.get("main_vm")
@@ -137,6 +155,7 @@ def run(test, params, env):
     virsh_cmd_param_value = params.get("virsh_cmd_param_value", "")
     virsh_cmd_param_value = virsh_cmd_param_value.replace("sda", host_disk)
     virsh_cmd_options = params.get("virsh_cmd_options", "")
+    extra_operations = params.get("extra_operations")
     vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
 
@@ -167,7 +186,7 @@ def run(test, params, env):
     if virsh_cmd in ['blkiotune']:
         scheduler_file = "/sys/block/%s/queue/scheduler" % host_disk
         cmd = "cat %s" % scheduler_file
-        iosche = results_stdout_52lts(process.run(cmd, shell=True))
+        iosche = process.run(cmd, shell=True).stdout_text
         logging.debug("iosche value is:%s", iosche)
         oldmode = re.findall(r"\[(.*?)\]", iosche)[0]
         cfq_enabled = False
@@ -178,7 +197,7 @@ def run(test, params, env):
             elif 'bfq' in iosche:
                 scf.write('bfq')
             else:
-                test.fail("Unknown scheduler in %s", scheduler_file)
+                test.fail("Unknown scheduler in %s" % scheduler_file)
         if not cfq_enabled and "--device-weights" in virsh_cmd_param:
             logging.info("cfq scheduler cannot be enabled in the host, "
                          "so 'blkiotune --device-weights' is not supported. "
@@ -201,7 +220,7 @@ def run(test, params, env):
             if status_error:
                 logging.debug("Expected error happens")
             else:
-                test.fail("Failed to run: %s", virsh_cmd_line)
+                test.fail("Failed to run: %s" % virsh_cmd_line)
         else:
             if "--config" in virsh_cmd_options:
                 try:
@@ -215,6 +234,8 @@ def run(test, params, env):
                     else:
                         logging.debug("VM failed to start as expected")
             if vm.is_alive():
+                if extra_operations:
+                    do_extra_operations(extra_operations)
                 vm_pid = vm.get_pid()
                 logging.debug("vm's pid is: %s", vm_pid)
                 cgtest = CgroupTest(vm_pid)
@@ -228,17 +249,32 @@ def run(test, params, env):
                 # Following are testing blkiotune
                 if virsh_cmd == "blkiotune":
                     logging.debug("blkiotune: The input info is: %s\n"
-                                  "The ouput info is: %s\n"
+                                  "The output info is: %s\n"
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)
                     if not (is_subset_dict(virsh_input_info, virsh_output_info)
                             and is_subset_dict(virsh_output_info, cgroup_info)):
-                        test.fail("blkiotune checking failed.")
+                        if "weight" in virsh_input_info.keys():
+                            virsh_input_info_copy = virsh_input_info.copy()
+                            weight = int(virsh_input_info_copy["weight"])
+                            new_weight = math.ceil(weight / 10)
+                            virsh_input_info_copy["weight"] = str(new_weight)
+                            if not (is_subset_dict(virsh_input_info_copy, virsh_output_info)
+                                    and is_subset_dict(virsh_output_info, cgroup_info)):
+                                test.fail("blkiotune checking failed.")
+                            else:
+                                logging.warning("For current systemd, "
+                                                "the value of io.bfq.weight "
+                                                "is recalculated to a smaller "
+                                                "one, detailed info can be "
+                                                "found at bz1970830.")
+                        else:
+                            test.fail("blkiotune checking failed.")
                 # Following are testing memtune
                 elif virsh_cmd == "memtune":
                     logging.debug("memtune: The input info is: %s\n"
-                                  "The ouput info is: %s\n"
+                                  "The output info is: %s\n"
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)
@@ -248,7 +284,7 @@ def run(test, params, env):
                 # Following are testing schedinfo
                 elif virsh_cmd == "schedinfo":
                     logging.debug("schedinfo: The input info is: %s\n"
-                                  "The ouput info is: %s\n"
+                                  "The output info is: %s\n"
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)

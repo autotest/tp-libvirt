@@ -225,7 +225,7 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login().close()
         elif pre_vm_state == "shutoff":
-            logging.info("Shuting down %s..." % vm_name)
+            logging.info("Shutting down %s..." % vm_name)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
         elif pre_vm_state == "paused":
@@ -234,14 +234,14 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login().close()
             if not vm.pause():
-                test.cancel("Cann't pause the domain")
+                test.cancel("Can't pause the domain")
             time.sleep(5)
         elif pre_vm_state == "transient":
             logging.info("Creating %s..." % vm_name)
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                test.cancel("Cann't create the domain")
+                test.cancel("Can't create the domain")
 
         # Libvirt will ignore --source when action is eject
         attach = True
@@ -282,7 +282,7 @@ def run(test, params, env):
         if action_twice:
             if pre_vm_state == "paused":
                 if not vm.pause():
-                    test.fail("Cann't pause the domain")
+                    test.fail("Can't pause the domain")
                 time.sleep(5)
             attach = True
             device_source = new_iso
@@ -294,7 +294,15 @@ def run(test, params, env):
                 source = device_source
             all_options = action_twice + options_twice + " " + source
             time.sleep(5)
+            if options_twice == "--config" or pre_vm_state == "shutoff":
+                wait_for_event = False
+            else:
+                wait_for_event = True
+            if vm.is_alive():
+                vm.wait_for_login().close()
             ret = virsh.change_media(vm_ref, target_device, all_options,
+                                     wait_for_event=wait_for_event,
+                                     event_timeout=40,
                                      ignore_status=True, debug=True)
             status_error = False
             if pre_vm_state == "shutoff":
@@ -312,6 +320,8 @@ def run(test, params, env):
                     elif options == "--config":
                         if options_twice in ["--force", "--current", ""]:
                             status_error = True
+                        elif options_twice in ["--config --live"] and pre_vm_state in ["running"]:
+                            status_error = False
                         elif options_twice.count("live"):
                             status_error = True
                 elif pre_vm_state == "transient":
@@ -327,6 +337,7 @@ def run(test, params, env):
                 # should be executed again for it takes effect
                 if ret.exit_status and not action_twice.count("insert"):
                     ret = virsh.change_media(vm_ref, target_device, all_options,
+                                             wait_for_event=wait_for_event,
                                              ignore_status=True, debug=True)
             if not status_error and ret.exit_status:
                 test.fail("Change media failed: %s" % ret.stderr.strip())

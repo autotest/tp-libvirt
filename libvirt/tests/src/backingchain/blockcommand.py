@@ -26,9 +26,11 @@ def check_backingchain(img_list, img_info):
     :return: bool, meets expectation or not
     """
     pattern = ''
-    for i in range(len(img_list) - 1):
+    chain_length = len(img_list)
+    for i in range(chain_length):
         pattern += 'image: ' + img_list[i]
-        pattern += '.*backing file: ' + img_list[i + 1]
+        if i + 1 < chain_length:
+            pattern += '.*backing file: ' + img_list[i + 1]
         pattern += '.*'
 
     logging.debug(pattern)
@@ -76,7 +78,7 @@ def check_bc_base_top(command, vmxml, dev, bc_chain):
         return False
     bs = disk.find('backingStore')
     logging.debug('Current backing store: %s', bs)
-    if bs.find('source') is not None:
+    if bs and bs.find('source') is not None:
         logging.error('Backing store of disk %s, should be empty', dev)
         return False
 
@@ -104,10 +106,12 @@ def run(test, params, env):
     check_func = params.get('check_func', '')
     disk_type = params.get('disk_type', '')
     disk_src = params.get('disk_src', '')
+    driver_type = params.get('driver_type', 'qcow2')
     vol_name = params.get('vol_name', 'vol_blockpull')
     pool_name = params.get('pool_name', '')
     brick_path = os.path.join(data_dir.get_tmp_dir(), pool_name)
     vg_name = params.get('vg_name', 'HostVG')
+    vol_size = params.get('vol_size', '10M')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -156,20 +160,15 @@ def run(test, params, env):
 
             # Create logical volume as backing store
             vol_bk, vol_disk = 'vol1', 'vol2'
-            lv_utils.lv_create(vg_name, vol_bk, '100M')
+            lv_utils.lv_create(vg_name, vol_bk, vol_size)
 
             disk_target = '/dev/%s/%s' % (vg_name, vol_bk)
             src_vol = '/dev/%s/%s' % (vg_name, vol_disk)
 
-            # Command of creating block disk
-            cmd_create_img = 'qemu-img create -f qcow2 -b %s %s' % (disk_target, src_vol)
-
         # Setup gluster
         elif disk_src == 'gluster':
             host_ip = gluster.setup_or_cleanup_gluster(
-                is_setup=True, vol_name=vol_name,
-                brick_path=brick_path, pool_name=pool_name
-            )
+                is_setup=True, brick_path=brick_path, **params)
             logging.debug(host_ip)
             gluster_img = 'test.img'
             img_create_cmd = "qemu-img create -f raw /mnt/%s 10M" % gluster_img
@@ -182,15 +181,22 @@ def run(test, params, env):
 
         new_image = os.path.join(os.path.split(image_file)[0], 'test.img')
         params['snapshot_list'] = ['s%d' % i for i in range(1, 5)]
-        snapshot_image_list = [new_image.replace('img', i) for i in params['snapshot_list']]
 
         if disk_src == 'lvm':
             new_image = src_vol
+            if disk_type == 'block':
+                new_image = disk_target
+                for i in range(2, 6):
+                    lv_utils.lv_create(vg_name, 'vol%s' % i, vol_size)
+                snapshot_image_list = ['/dev/%s/vol%s' % (vg_name, i) for i in range(2, 6)]
         else:
             file_to_del.append(new_image)
-
-        cmd_create_img = 'qemu-img create -f qcow2 -b %s %s' % (disk_target, new_image)
-        process.run(cmd_create_img, verbose=True, shell=True)
+            snapshot_image_list = [new_image.replace('img', i) for i in params['snapshot_list']]
+        cmd_create_img = 'qemu-img create -f %s -b %s %s -F raw' % (driver_type, disk_target, new_image)
+        if disk_type == 'block' and driver_type == 'raw':
+            pass
+        else:
+            process.run(cmd_create_img, verbose=True, shell=True)
         info_new = utils_misc.get_image_info(new_image)
         logging.debug(info_new)
 
@@ -199,7 +205,7 @@ def run(test, params, env):
             new_disk = Disk()
             new_disk.xml = libvirt.create_disk_xml({
                 'type_name': disk_type,
-                'driver_type': 'qcow2',
+                'driver_type': driver_type,
                 'target_dev': new_dev,
                 'source_file': new_image
             })
@@ -218,8 +224,9 @@ def run(test, params, env):
         for i in range(len(params['snapshot_list'])):
             virsh.snapshot_create_as(
                 vm_name,
-                '%s --disk-only --diskspec %s,file=%s' %
-                (params['snapshot_list'][i], new_dev, snapshot_image_list[i]),
+                '%s --disk-only --diskspec %s,file=%s,stype=%s' %
+                (params['snapshot_list'][i], new_dev, snapshot_image_list[i],
+                 disk_type),
                 **virsh_dargs
             )
 
@@ -234,7 +241,10 @@ def run(test, params, env):
             qemu_img_cmd += " -U"
         bc_info = process.run(qemu_img_cmd, verbose=True, shell=True).stdout_text
 
-        bc_chain = snapshot_image_list[::-1] + [new_image, disk_target]
+        if not disk_type == 'block':
+            bc_chain = snapshot_image_list[::-1] + [new_image, disk_target]
+        else:
+            bc_chain = snapshot_image_list[::-1] + [new_image]
         bc_result = check_backingchain(bc_chain, bc_info)
         if not bc_result:
             test.fail('qemu-img info output of backing chain is not correct: %s'
@@ -254,7 +264,7 @@ def run(test, params, env):
         if blockcommand == 'blockcommit':
             virsh.blockjob(vm_name, new_dev, '--pivot', **virsh_dargs)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        logging.debug(vmxml)
+        logging.debug("XML after %s: %s" % (blockcommand, vmxml))
 
         # Check backing chain after blockpull/blockcommit
         check_bc_func_name = 'check_bc_%s' % check_func
@@ -298,6 +308,7 @@ def run(test, params, env):
                     process.run("pvremove %s" % pv_name, verbose=True, ignore_status=True)
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
         elif disk_src == 'gluster':
-            gluster.setup_or_cleanup_gluster(is_setup=False, vol_name=vol_name, brick_path=brick_path, pool_name=pool_name)
+            gluster.setup_or_cleanup_gluster(
+                is_setup=False, brick_path=brick_path, **params)
         if 'multipathd_status' in locals() and multipathd_status:
             multipathd.start()

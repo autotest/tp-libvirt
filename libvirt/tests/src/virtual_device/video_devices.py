@@ -3,9 +3,10 @@ import re
 
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.video import Video
+from virttest.utils_test import libvirt
 from virttest import virsh
+from virttest import libvirt_version
 
-#from provider import libvirt_version
 from six import iteritems
 
 from math import ceil
@@ -70,8 +71,19 @@ def run(test, params, env):
             setattr(video_dev, key, value)
         domain_xml.add_device(video_dev)
         try:
-            domain_xml.sync()
+            # Take relevant line only from the XML (without header)
+            video_xml_string = str(video_dev).split('\n')[-1]
+            # Prepare a string for VI to replace with it using virsh edit utility
+            replace_string = r":%s:<video>\_.\{-}</video>:"+video_xml_string+":"
+            status = libvirt.exec_virsh_edit(vm_name, [replace_string])
+            if status:
+                domain_xml.sync()
+            else:
+                # Raise exception which is handled right after in except block.
+                raise Exception('Virsh edit has failed, but that is '
+                                'intentional in negative cases.')
         except Exception as error:
+            logging.debug(error)
             if not status_error:
                 test.fail("Failed to define the guest after adding the %s video "
                           "device xml. Details: %s " % (video_model, error))
@@ -79,7 +91,7 @@ def run(test, params, env):
         else:
             if status_error:
                 test.fail("xml sync should failed as it is a negative case.")
-            logging.debug("Add devices succeed in postive case.")
+            logging.debug("Add devices succeed in positive case.")
 
     def check_model_test_cmd_line(model_type, is_primary=None):
         """
@@ -89,6 +101,8 @@ def run(test, params, env):
         logging.debug("the cmdline is: %s" % cmdline)
         # s390x only supports virtio
         s390x_pattern = r"-device\svirtio-gpu-ccw"
+        # aarch64 only supports virtio
+        aarch64_pattern = r"-device\svirtio-gpu-pci"
 
         if is_primary or is_primary is None:
             if model_type == "vga":
@@ -97,6 +111,8 @@ def run(test, params, env):
                 pattern = r"-device\s%s-vga" % model_type
             if guest_arch == 's390x':
                 pattern = s390x_pattern
+            elif guest_arch == 'aarch64':
+                pattern = aarch64_pattern
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the primary %s video device "
                           "in qemu cmd line." % model_type)
@@ -105,6 +121,8 @@ def run(test, params, env):
                 pattern = r"-device\sqxl,"
             elif model_type == "virtio":
                 pattern = r"-device\svirtio-gpu-pci"
+                if with_packed:
+                    pattern = r"-device\svirtio-gpu-pci.*packed=%s" % driver_packed
             if guest_arch == 's390x':
                 pattern = s390x_pattern
             if not re.search(pattern, cmdline):
@@ -120,6 +138,8 @@ def run(test, params, env):
         logging.debug("the cmdline is: %s" % cmdline)
         # s390x only supports virtio
         s390x_pattern = r"-device\svirtio-gpu-ccw\S+max_outputs=%s"
+        # aarch64 only supports virtio
+        aarch64_pattern = r"-device\svirtio-gpu-pci\S+max_outputs=%s"
 
         if is_primary or is_primary is None:
             model_heads = kwargs.get("model_heads", default_primary_heads)
@@ -127,6 +147,8 @@ def run(test, params, env):
                 pattern = r"-device\s%s-vga\S+max_outputs=%s" % (model_type, model_heads)
                 if guest_arch == 's390x':
                     pattern = s390x_pattern % model_heads
+                elif guest_arch == 'aarch64':
+                    pattern = aarch64_pattern % model_heads
                 if not re.search(pattern, cmdline):
                     test.fail("The heads number of the primary %s video device "
                               "in not correct." % model_type)
@@ -189,11 +211,17 @@ def run(test, params, env):
     zero_size_test = params.get("zero_size_test", None) == "yes"
     non_power_of_2_test = params.get("non_power_of_2_test", None) == "yes"
     guest_arch = params.get("vm_arch_name")
+    with_packed = params.get("with_packed", "no") == "yes"
+    driver_packed = params.get("driver_packed", "on")
 
     vm_xml = VMXML.new_from_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     if vm.is_alive():
         vm.destroy()
+
+    if with_packed and not libvirt_version.version_compare(6, 3, 0):
+        test.cancel("The virtio packed attribute is not supported in"
+                    " current libvirt version.")
 
     try:
         vm_xml.remove_all_device_by_type('video')
@@ -206,13 +234,18 @@ def run(test, params, env):
             kwargs["model_heads"] = primary_heads
         if mem_test and not default_mem_size:
             kwargs["model_"+mem_type] = mem_size
+        if model_type == "virtio" and with_packed:
+            kwargs["driver_packed"] = driver_packed
         add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
 
         if secondary_video_model:
+            kwargs = {}
             model_type = secondary_video_model
             is_primary = False
             if heads_test and not default_secondary_heads:
                 kwargs["model_heads"] = secondary_heads
+            if model_type == "virtio" and with_packed:
+                kwargs["driver_packed"] = driver_packed
             add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
 
         if not status_error:
@@ -221,7 +254,7 @@ def run(test, params, env):
             if res.exit_status:
                 test.fail("failed to start vm after adding the video "
                           "device xml. details: %s " % res)
-            logging.debug("vm started successfully in postive cases.")
+            logging.debug("vm started successfully in positive cases.")
 
             if model_test:
                 check_model_test_cmd_line(model_type, is_primary)

@@ -94,14 +94,14 @@ def login_to_check(vm, checked_mac):
         return (1, "Login to check failed.")
     else:
         if not re.search(checked_mac, output):
-            return (1, ("Can not find interface with mac in vm:%s"
-                        % output))
+            return (1, ("Can not find interface with mac(%s) in vm:%s"
+                        % (checked_mac, output)))
     return (0, "")
 
 
 def format_param(iface_dict):
     """
-    Change the param formate to interface class mapping data
+    Change the param format to interface class mapping data
 
     :param iface_dict: interface properties
     """
@@ -174,6 +174,50 @@ def check_interface_xml(vm_name, iface_type, iface_source, iface_mac, is_active=
     return False
 
 
+def add_pcie_controller(vm_name):
+    """
+    Add pcie-to-pci-bridge controller if not exists in vm
+
+    :param vm_name: name of vm
+    """
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    pci_controllers = vmxml.get_controllers('pci')
+    for controller in pci_controllers:
+        if controller.get('model') == 'pcie-to-pci-bridge':
+            break
+    else:
+        contr_dict = {'controller_type': 'pci',
+                      'controller_model': 'pcie-to-pci-bridge'}
+        cntl_add = libvirt.create_controller_xml(contr_dict)
+        libvirt.add_controller(vm_name, cntl_add)
+
+
+def check_coalesce(vm_name, mac, coalesce):
+    """
+    Check coalesce info of given interface
+
+    :param vm_name: name of vm the interface is attached to
+    :param mac: mac address of the interface
+    :param coalesce: coalesce info to be checked
+    :return:
+    """
+    iface_features = vm_xml.VMXML.get_iface_by_mac(vm_name, mac)
+    target = iface_features.get('target', {}).get('dev')
+
+    frames = eval(coalesce).get('max')
+
+    ethtool_cmd = 'ethtool -c %s' % target
+    ethtool_output = process.run(
+        ethtool_cmd, verbose=True, ignore_status=True).stdout_text
+
+    expected_str = 'rx-frames: %s' % frames
+    if expected_str not in ethtool_output:
+        return 1, '%s not found in ethtool output' % expected_str
+
+    logging.info('Coalesce check PASS.')
+    return 0, ''
+
+
 def run(test, params, env):
     """
     Test virsh {at|de}tach-interface command.
@@ -221,12 +265,15 @@ def run(test, params, env):
     iface_driver_host = params.get("at_detach_driver_host")
     iface_driver_guest = params.get("at_detach_driver_guest")
     iface_backend = params.get("at_detach_iface_backend")
+    iface_coalesce = params.get('at_detach_iface_coalesce')
 
     save_restore = params.get("save_restore", "no")
     restart_libvirtd = params.get("restart_libvirtd", "no")
     attach_cmd = params.get("attach_cmd", "attach-interface")
     virsh_dargs = {'ignore_status': True, 'debug': True, 'uri': uri}
     validate_xml_result = "yes" == params.get("check_xml_result", "no")
+    paused_after_vm_start = "yes" == params.get("paused_after_vm_start", "no")
+    machine_type = params.get("machine_type")
 
     # Get iface name if iface_type is direct
     if iface_type == "direct":
@@ -262,6 +309,12 @@ def run(test, params, env):
     names = locals()
     iface_format = get_formatted_iface_dict(names, params.get("vm_arch_name"))
 
+    # for rtl8139 model, need to add pcie bridge
+    if iface_model == "rtl8139" and machine_type == "q35":
+        add_pcie_controller(vm_name)
+        if start_vm == "yes" and not vm.is_alive():
+            vm.start()
+
     try:
         # Generate xml file if using attach-device command
         if attach_cmd == "attach-device":
@@ -271,7 +324,15 @@ def run(test, params, env):
             vm.start()
             # Generate attached xml
             new_iface = Interface(type_name=iface_type)
-            xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
+            if any(x in params['name'] for x in ('multiqueue', 'multi_options', 'with_coalesce')):
+                tmp_iface_format = iface_format.copy()
+                tmp_iface_format.update(
+                    {'source': "{'%s': '%s'}" % (
+                        iface_type, iface_format['source'])}
+                )
+                xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", tmp_iface_format)
+            else:
+                xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
             new_iface.xml = xml_file_tmp
             new_iface.del_address()
             xml_file = new_iface.xml
@@ -282,6 +343,9 @@ def run(test, params, env):
                 vm.destroy()
         else:
             vm.wait_for_login().close()
+
+        if paused_after_vm_start:
+            vm.pause()
 
         # Set attach-interface domain
         dom_uuid = vm.get_uuid()
@@ -341,12 +405,14 @@ def run(test, params, env):
         if "print-xml" in options_suffix:
             iface_obj = Interface(type_name=iface_type)
             iface_obj.xml = attach_result.stdout.strip()
+            source_type = iface_type if iface_type == 'bridge' else 'dev'
             if (iface_obj.type_name == iface_type
-                    and iface_obj.source['dev'] == iface_source
-                    and iface_obj.target['dev'] == iface_target
+                    and iface_obj.source.get(source_type) == iface_source
+                    and iface_obj.target.get('dev') == iface_target
                     and iface_obj.model == iface_model
                     and iface_obj.bandwidth.inbound == eval(iface_format['inbound'])
-                    and iface_obj.bandwidth.outbound == eval(iface_format['outbound'])):
+                    and iface_obj.bandwidth.outbound == eval(iface_format['outbound'])
+                    and iface_obj.mac_address == iface_mac):
                 logging.info("Print ml all element check pass")
             else:
                 test.fail("Print xml do not show as expected")
@@ -377,11 +443,22 @@ def run(test, params, env):
             vm.start()
         elif vm.state() == "paused":
             vm.resume()
+        vm.wait_for_login().close()
 
         status, ret = login_to_check(vm, iface_mac)
         if status:
             fail_flag = 1
             result_info.append(ret)
+
+        def _check_coalesce(fail_flag):
+            if iface_coalesce:
+                stat, ret = check_coalesce(vm_name, iface_mac, iface_coalesce)
+                fail_flag = fail_flag | stat
+                result_info.append(ret)
+                return fail_flag
+
+        # Check coalesce info if needed
+        fail_flag = _check_coalesce(fail_flag)
 
         # Check on host for direct type
         if iface_type == 'direct':
@@ -389,7 +466,7 @@ def run(test, params, env):
             logging.info("cmd output is %s", cmd_result)
             check_patten = ("%s@%s.*\n.*%s.*\n.*macvtap.*mode.*%s"
                             % (iface_target, iface_source, iface_mac, iface_mode))
-            logging.info("check patten is %s", check_patten)
+            logging.info("check pattern is %s", check_patten)
             if not re.search(check_patten, cmd_result):
                 logging.error("Can not find %s in ip link" % check_patten)
                 fail_flag = 1
@@ -403,6 +480,9 @@ def run(test, params, env):
         if save_restore == "yes":
             check_save_restore(vm_name)
 
+        # Check coalesce info if needed after save/restore
+        fail_flag = _check_coalesce(fail_flag)
+
         status, ret = check_dumpxml_iface(vm_name, iface_format)
         if status:
             fail_flag = 1
@@ -415,7 +495,8 @@ def run(test, params, env):
         # Start detach-interface test
         if save_restore == "yes" and vm_ref == dom_id:
             vm_ref = vm_name
-        detach_result = virsh.detach_interface(vm_ref, options, **virsh_dargs)
+        detach_result = virsh.detach_interface(
+            vm_ref, options, wait_remove_event=True, **virsh_dargs)
         detach_status = detach_result.exit_status
         detach_msg = detach_result.stderr.strip()
 
@@ -468,7 +549,7 @@ def get_formatted_iface_dict(names, vm_arch_name):
     update_list = [
         "driver", "driver_host", "driver_guest", "model",
         "inbound", "outbound", "link", "target", "mac", "source",
-        "boot", "backend", "type", "mode"
+        "boot", "backend", "type", "mode", "coalesce"
     ]
     # For s390-virtio interface addresses are of type ccw
     # rom tuning is only allowed for type pci

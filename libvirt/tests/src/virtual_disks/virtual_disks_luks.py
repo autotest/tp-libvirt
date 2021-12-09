@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import aexpect
 import platform
@@ -20,7 +21,9 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml, vol_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
 
-from provider import libvirt_version
+from virttest import libvirt_version
+
+TMP_DATA_DIR = data_dir.get_data_dir()
 
 
 def run(test, params, env):
@@ -44,14 +47,18 @@ def run(test, params, env):
         """
         Encrypt device with luks format
 
-        :param device: Storage deivce to be encrypted.
+        :param device: Storage device to be encrypted.
         :param params: From the dict to get encryption password.
         """
         password = params.get("luks_encrypt_passwd", "password")
         size = params.get("luks_size", "500M")
+        preallocation = params.get("preallocation")
         cmd = ("qemu-img create -f luks "
                "--object secret,id=sec0,data=`printf '%s' | base64`,format=base64 "
                "-o key-secret=sec0 %s %s" % (password, device, size))
+        # Add preallocation if it is given in params
+        if preallocation:
+            cmd = cmd.replace("key-secret=sec0", "key-secret=sec0,preallocation=%s" % preallocation)
         if process.system(cmd, shell=True):
             test.fail("Can't create a luks encrypted img by qemu-img")
 
@@ -59,7 +66,7 @@ def run(test, params, env):
         """
         Check if device is in luks format
 
-        :param device: Storage deivce to be checked.
+        :param device: Storage device to be checked.
         :param fmt: Expected disk format.
         :return: If device's format equals to fmt, return True, else return False.
         """
@@ -156,13 +163,37 @@ def run(test, params, env):
                 result.append(linesplit[0])
         return result
 
+    def check_top_image_in_xml(expected_top_image):
+        """
+        check top image in src file
+
+        :param expected_top_image: expect top image
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        disks = vmxml.devices.by_device_tag('disk')
+        disk_xml = None
+        for disk in disks:
+            if disk.target['dev'] != device_target:
+                continue
+            else:
+                disk_xml = disk.xmltreefile
+                break
+        logging.debug("disk xml in top: %s\n", disk_xml)
+        src_file = disk_xml.find('source').get('file')
+        if src_file is None:
+            src_file = disk_xml.find('source').get('name')
+        if src_file != expected_top_image:
+            test.fail("Current top img %s is not the same with %s"
+                      % (src_file, expected_top_image))
+
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
     device_target = params.get("virt_disk_device_target", "vdd")
-    device_format = params.get("virt_disk_device_format", "raw")
     device_type = params.get("virt_disk_device_type", "file")
+    device_format = params.get("virt_disk_device_format", "raw")
     device_bus = params.get("virt_disk_device_bus", "virtio")
     backend_storage_type = params.get("backend_storage_type", "iscsi")
+    volume_target_format = params.get("target_format", "raw")
 
     # Backend storage options.
     storage_size = params.get("storage_size", "1G")
@@ -194,12 +225,14 @@ def run(test, params, env):
     disk_encryption_dict = {}
     pvt = None
     duplicated_encryption = "yes" == params.get("duplicated_encryption", "no")
+    slice_support_enable = "yes" == params.get("slice_support_enable", "no")
+    block_copy_test = "yes" == params.get("block_copy_test", "no")
 
     if ((encryption_in_source or auth_in_source) and
             not libvirt_version.version_compare(3, 9, 0)):
         test.cancel("Cannot put <encryption> or <auth> inside disk <source> "
                     "in this libvirt version.")
-    # Start VM and get all partions in VM.
+    # Start VM and get all partitions in VM.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -290,7 +323,7 @@ def run(test, params, env):
             ceph_auth_user = params.get("ceph_auth_user")
             ceph_auth_key = params.get("ceph_auth_key")
             enable_auth = "yes" == params.get("enable_auth")
-            key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
+            key_file = os.path.join(TMP_DATA_DIR, "ceph.key")
             key_opt = ""
             # Prepare a blank params to confirm if delete the configure at the end of the test
             ceph_cfg = ""
@@ -313,8 +346,6 @@ def run(test, params, env):
                     disk_auth_dict = {"auth_user": ceph_auth_user,
                                       "secret_type": auth_sec_usage_type,
                                       "secret_uuid": auth_sec_uuid}
-                    cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
-                           "{2}".format(ceph_mon_ip, key_opt, ceph_disk_name))
                 else:
                     test.error("No ceph client name/key provided.")
                 device_source = "rbd:%s:mon_host=%s:keyring=%s" % (ceph_disk_name,
@@ -322,6 +353,10 @@ def run(test, params, env):
                                                                    key_file)
             else:
                 device_source = "rbd:%s:mon_host=%s" % (ceph_disk_name, ceph_mon_ip)
+            cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
+                   "{2}".format(ceph_mon_ip, key_opt, ceph_disk_name))
+            cmd_result = process.run(cmd, ignore_status=True, shell=True)
+            logging.debug("pre clean up rbd disk if exists: %s", cmd_result)
             disk_src_dict = {"attrs": {"protocol": "rbd",
                                        "name": ceph_disk_name},
                              "hosts":  [{"name": ceph_host_ip,
@@ -333,7 +368,7 @@ def run(test, params, env):
             nfs_server_dir = params.get("nfs_server_dir", "nfs_server")
             emulated_image = params.get("emulated_image")
             image_name = params.get("nfs_image_name", "nfs.img")
-            tmp_dir = data_dir.get_tmp_dir()
+            tmp_dir = TMP_DATA_DIR
             pvt = libvirt.PoolVolumeTest(test, params)
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image)
             nfs_mount_dir = os.path.join(tmp_dir, pool_target)
@@ -363,6 +398,7 @@ def run(test, params, env):
             volume_cap = params.get("vol_cap")
             volume_target_path = params.get("sec_volume")
             volume_target_format = params.get("target_format")
+            device_format = volume_target_format
             volume_target_encypt = params.get("target_encypt", "")
             volume_target_label = params.get("target_label")
             vol_params = {"name": volume_name, "capacity": int(volume_cap),
@@ -374,9 +410,15 @@ def run(test, params, env):
             vol_encryption_params.update({"format": "luks"})
             vol_encryption_params.update({"secret": {"type": "passphrase", "uuid": luks_sec_uuid}})
             try:
-                # If Libvirt version is lower than 2.5.0
-                # Creating luks encryption volume is not supported,so skip it.
-                create_vol(pool_name, vol_encryption_params, vol_params)
+                # If target format is qcow2,need to create test image with "qemu-img create"
+                if volume_target_format == "qcow2":
+                    option = params.get("luks_extra_elements")
+                    libvirt.create_local_disk("file", path=volume_target_path, extra=option,
+                                              disk_format="qcow2", size="1")
+                else:
+                    # If Libvirt version is lower than 2.5.0
+                    # Creating luks encryption volume is not supported,so skip it.
+                    create_vol(pool_name, vol_encryption_params, vol_params)
             except AssertionError as info:
                 err_msgs = ("create: invalid option")
                 if str(info).count(err_msgs):
@@ -387,8 +429,13 @@ def run(test, params, env):
                                "Error: %s" % str(info))
             disk_src_dict = {'attrs': {'file': volume_target_path}}
             device_source = volume_target_path
+        elif backend_storage_type == "file":
+            tmp_dir = TMP_DATA_DIR
+            image_name = params.get("file_image_name", "slice.img")
+            device_source = os.path.join(tmp_dir, image_name)
+            disk_src_dict = {'attrs': {'file': device_source}}
         else:
-            test.cancel("Only iscsi/gluster/rbd/nfs can be tested for now.")
+            test.cancel("Only iscsi/gluster/rbd/nfs/file can be tested for now.")
         logging.debug("device source is: %s", device_source)
         if backend_storage_type != "dir":
             encrypt_dev(device_source, params)
@@ -397,6 +444,7 @@ def run(test, params, env):
         disk_xml = Disk(type_name=device_type)
         disk_xml.device = device
         disk_xml.target = {"dev": device_target, "bus": device_bus}
+        print()
         driver_dict = {"name": "qemu", "type": device_format}
         disk_xml.driver = driver_dict
         disk_source = disk_xml.new_disk_source(**disk_src_dict)
@@ -416,6 +464,15 @@ def run(test, params, env):
             disk_xml.encryption = disk_encryption
         if duplicated_encryption:
             disk_xml.encryption = disk_encryption
+        if slice_support_enable:
+            if not libvirt_version.version_compare(6, 0, 0):
+                test.cancel("Cannot put <slice> inside disk <source> "
+                            "in this libvirt version.")
+            else:
+                check_du_output = process.run("du -b %s" % device_source, shell=True).stdout_text
+                slice_size = re.findall(r'[0-9]+', check_du_output)
+                disk_source.slices = disk_xml.new_slices(
+                        **{"slice_type": "storage", "slice_offset": "0", "slice_size": slice_size[0]})
         disk_xml.source = disk_source
         logging.debug("new disk xml is: %s", disk_xml)
         # Sync VM xml
@@ -442,7 +499,32 @@ def run(test, params, env):
         if check_partitions and not status_error:
             if not check_in_vm(device_target, old_parts):
                 test.fail("Check disk partitions in VM failed")
-        check_dev_format(device_source)
+        if volume_target_format == "qcow2":
+            check_dev_format(device_source, fmt="qcow2")
+        else:
+            check_dev_format(device_source)
+        if block_copy_test:
+            # Create a transient VM
+            transient_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            virsh.undefine(vm_name, debug=True, ignore_status=False)
+            virsh.create(transient_vmxml.xml, ignore_status=False, debug=True)
+            expected_top_image = vm.get_blk_devices()[device_target].get('source')
+            options = params.get("blockcopy_options")
+            tmp_dir = TMP_DATA_DIR
+            tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
+            dest_path = os.path.join(tmp_dir, tmp_file)
+
+            # Need cover a few scenarios:single blockcopy, blockcopy and abort combined
+            virsh.blockcopy(vm_name, device_target, dest_path,
+                            options, ignore_status=False, debug=True)
+            if encryption_in_source:
+                virsh.blockjob(vm_name, device_target, " --pivot", ignore_status=False)
+                expected_top_image = dest_path
+            else:
+                virsh.blockjob(vm_name, device_target, " --abort", ignore_status=False)
+            check_top_image_in_xml(expected_top_image)
     finally:
         # Recover VM.
         if vm.is_alive():

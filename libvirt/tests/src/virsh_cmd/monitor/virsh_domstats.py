@@ -10,7 +10,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def create_snap(vm_name, snap_option):
@@ -59,7 +59,7 @@ def prepare_vm_state(vm, vm_state):
             vm.pause()
     elif vm_state == "shutoff":
         vm.destroy()
-    elif vm_state == "paniced":
+    elif vm_state == "panicked":
         if vm.state() != "running":
             vm.destroy()
             vm.start()

@@ -113,7 +113,7 @@ def test_virt_tar_out(test, vm, params):
     writes, writeo = vt.write_file_with_guestmount(mountpoint, path, content,
                                                    cleanup=False)
     if utils_misc.umount("", mountpoint, "") is False:
-        logging.error("Umount vm's filesytem failed.")
+        logging.error("Umount vm's filesystem failed.")
 
     if writes is False:
         test.fail("Write file to mounted filesystem failed.")
@@ -240,7 +240,7 @@ def test_virt_copy_out(test, vm, params):
     writes, writeo = vt.write_file_with_guestmount(mountpoint, path, content,
                                                    cleanup=False)
     if utils_misc.umount("", mountpoint, "") is False:
-        logging.error("Umount vm's filesytem failed.")
+        logging.error("Umount vm's filesystem failed.")
 
     if writes is False:
         test.fail("Write file to mounted filesystem failed.")

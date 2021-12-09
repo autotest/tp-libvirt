@@ -1,8 +1,8 @@
 import uuid
-import time
 import logging
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_disk import get_scsi_info
@@ -39,11 +39,23 @@ def run(test, params, env):
 
     device_alias = "ua-" + str(uuid.uuid4())
 
+    def check_detached_xml_noexist():
+        """
+        Check detached xml does not exist in the guest dumpxml
+
+        :return: True if it does not exist, False if still exists
+        """
+        domxml_dt = virsh.dumpxml(vm_name, dump_option).stdout_text.strip()
+        if detach_check_xml not in domxml_dt:
+            return True
+        else:
+            return False
+
     def get_usb_info():
         """
         Get local host usb info
 
-        :return: usb verndor and product id
+        :return: usb vendor and product id
         """
         install_cmd = process.run("yum install usbutils* -y", shell=True)
         result = process.run("lsusb|awk '{print $6\":\"$2\":\"$4}'", shell=True)
@@ -55,26 +67,28 @@ def run(test, params, env):
     # backup xml
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+    device_xml = None
 
     if not vm.is_alive():
         vm.start()
     # wait for vm start successfully
     vm.wait_for_login()
 
-    if hostdev_type in ["usb", "scsi"]:
-        if hostdev_type == "usb":
-            pci_id = get_usb_info()
-        elif hostdev_type == "scsi":
-            source_disk = libvirt.create_scsi_disk(scsi_option="",
-                                                   scsi_size="8")
-            pci_id = get_scsi_info(source_disk)
-        device_xml = libvirt.create_hostdev_xml(pci_id=pci_id,
-                                                dev_type=hostdev_type,
-                                                managed=hostdev_managed,
-                                                alias=device_alias)
-    else:
-        test.error("Hostdev type %s not handled by test."
-                   " Please check code." % hostdev_type)
+    if hostdev_type:
+        if hostdev_type in ["usb", "scsi"]:
+            if hostdev_type == "usb":
+                pci_id = get_usb_info()
+            elif hostdev_type == "scsi":
+                source_disk = libvirt.create_scsi_disk(scsi_option="",
+                                                       scsi_size="8")
+                pci_id = get_scsi_info(source_disk)
+            device_xml = libvirt.create_hostdev_xml(pci_id=pci_id,
+                                                    dev_type=hostdev_type,
+                                                    managed=hostdev_managed,
+                                                    alias=device_alias)
+        else:
+            test.error("Hostdev type %s not handled by test."
+                       " Please check code." % hostdev_type)
     if contr_type:
         controllers = vmxml.get_controllers(contr_type)
         contr_index = len(controllers) + 1
@@ -91,27 +105,33 @@ def run(test, params, env):
     if channel_type:
         channel_params = {'channel_type_name': channel_type}
         channel_params.update(channel_target)
-        device_xml = libvirt.create_channel_xml(channel_params, device_alias).xml
+        device_xml = libvirt.create_channel_xml(channel_params, device_alias)
 
     try:
         dump_option = ""
+        wait_event = True
         if "--config" in detach_options:
             dump_option = "--inactive"
+            wait_event = False
 
         # Attach xml to domain
-        logging.info("Attach xml is %s" % process.run("cat %s" % device_xml).stdout_text)
-        virsh.attach_device(vm_name, device_xml, flagstr=detach_options,
+        logging.info("Attach xml is %s" % process.run("cat %s" % device_xml.xml).stdout_text)
+        virsh.attach_device(vm_name, device_xml.xml, flagstr=detach_options,
                             debug=True, ignore_status=False)
         domxml_at = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
         if detach_check_xml not in domxml_at:
             test.error("Can not find %s in domxml after attach" % detach_check_xml)
 
         # Detach xml with alias
-        result = virsh.detach_device_alias(vm_name, device_alias, detach_options, debug=True)
-        time.sleep(10)
+        result = virsh.detach_device_alias(vm_name, device_alias, detach_options,
+                                           wait_for_event=wait_event,
+                                           event_timeout=20,
+                                           debug=True)
         libvirt.check_exit_status(result)
-        domxml_dt = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
-        if detach_check_xml in domxml_dt:
+        if not utils_misc.wait_for(check_detached_xml_noexist,
+                                   60,
+                                   step=2,
+                                   text="Repeatedly search guest dumpxml with detached xml"):
             test.fail("Still can find %s in domxml" % detach_check_xml)
     finally:
         backup_xml.sync()

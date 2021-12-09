@@ -5,9 +5,9 @@ from avocado.utils import process
 
 from virttest import utils_misc
 from virttest import virsh
-from virttest.libvirt_xml import vm_xml
+from virttest import libvirt_version
 
-from provider import libvirt_version
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):

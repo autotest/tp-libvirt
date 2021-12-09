@@ -13,13 +13,14 @@ from virttest import xml_utils
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import gluster
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import disk
 from virttest import libvirt_storage
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def xml_recover(vmxml):
@@ -64,16 +65,17 @@ def check_snap_in_image(vm_name, snap_name):
         return False
 
 
-def compose_disk_options(test, params, opt_names):
+def compose_disk_options(test, params, opt_names, tmp_dir):
     """
     Compose the {disk,mem}spec options
 
-    The diskspec file need to add suitable dir with the name which is configed
+    The diskspec file need to add suitable dir with the name which is configured
     individually, The 'value' after 'file=' is a parameter which also need to
     get from cfg
 
-    :params: test & params: system parameters
-    :params: opt_names: params get from cfg of {disk,mem}spec options
+    :param test & params: system parameters
+    :param opt_names: params get from cfg of {disk,mem}spec options
+    :param tmp_dir: temp directory
     """
     if "snapshot=no" in opt_names:
         return opt_names
@@ -88,9 +90,9 @@ def compose_disk_options(test, params, opt_names):
 
         if params.get("bad_disk") is not None or \
            params.get("reuse_external") == "yes":
-            spec_disk = os.path.join(data_dir.get_tmp_dir(), params.get(opt_list[0]))
+            spec_disk = os.path.join(tmp_dir, params.get(opt_list[0]))
         else:
-            spec_disk = os.path.join(data_dir.get_tmp_dir(), opt_list[0])
+            spec_disk = os.path.join(tmp_dir, opt_list[0])
 
         return opt_disk[0] + "file=" + spec_disk + left_opt
 
@@ -349,7 +351,7 @@ def run(test, params, env):
     disk_src_protocol = params.get("disk_source_protocol")
     restart_tgtd = params.get("restart_tgtd", "no")
     vol_name = params.get("vol_name")
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
     transport = params.get("transport", "")
@@ -392,17 +394,13 @@ def run(test, params, env):
                          "in this libvirt version. Not expecting a failure.")
             status_error = "no"
 
-    # This is brought by new feature:block-dev
-    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
-        test.cancel("transport protocol 'rdma' is not yet supported")
-
     opt_names = locals()
     if memspec_opts is not None:
-        mem_options = compose_disk_options(test, params, memspec_opts)
+        mem_options = compose_disk_options(test, params, memspec_opts, tmp_dir)
         # if the parameters have the disk without "file=" then we only need to
         # add testdir for it.
         if mem_options is None:
-            mem_options = os.path.join(data_dir.get_tmp_dir(), memspec_opts)
+            mem_options = os.path.join(tmp_dir, memspec_opts)
         options += " --memspec " + mem_options
 
     tag_diskspec = 0
@@ -420,7 +418,8 @@ def run(test, params, env):
     if tag_diskspec == 1:
         for i in range(1, dnum + 1):
             disk_options = compose_disk_options(test, params,
-                                                opt_names["diskopts_%s" % i])
+                                                opt_names["diskopts_%s" % i],
+                                                tmp_dir)
             options += " --diskspec " + disk_options
 
     logging.debug("options are %s", options)
@@ -436,7 +435,7 @@ def run(test, params, env):
 
     # Generate empty image for negative test
     if bad_disk is not None:
-        bad_disk = os.path.join(data_dir.get_tmp_dir(), bad_disk)
+        bad_disk = os.path.join(tmp_dir, bad_disk)
         with open(bad_disk, 'w') as bad_file:
             pass
 
@@ -446,7 +445,7 @@ def run(test, params, env):
         for i in range(dnum):
             external_disk = "external_disk%s" % i
             if params.get(external_disk):
-                disk_path = os.path.join(data_dir.get_tmp_dir(),
+                disk_path = os.path.join(tmp_dir,
                                          params.get(external_disk))
                 process.run("qemu-img create -f qcow2 %s 1G" % disk_path, shell=True)
         # Only chmod of the last external disk for negative case
@@ -455,7 +454,11 @@ def run(test, params, env):
 
     qemu_conf = None
     libvirtd_conf = None
+    libvirtd_conf_dict = {}
     libvirtd_log_path = None
+    conf_type = "libvirtd"
+    if utils_split_daemons.is_modular_daemon():
+        conf_type = "virtqemud"
     libvirtd = utils_libvirtd.Libvirtd()
     try:
         # Config "snapshot_image_format" option in qemu.conf
@@ -466,11 +469,12 @@ def run(test, params, env):
             libvirtd.restart()
 
         if check_json_no_savevm:
-            libvirtd_conf = utils_config.LibvirtdConfig()
-            libvirtd_conf["log_level"] = '1'
-            libvirtd_conf["log_filters"] = '"1:json 3:remote 4:event"'
+            libvirtd_conf_dict["log_level"] = '1'
+            libvirtd_conf_dict["log_filters"] = '"1:json 3:remote 4:event"'
             libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirtd.log")
-            libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+            libvirtd_conf_dict["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+            libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
+                                                             conf_type,)
             logging.debug("the libvirtd config file content is:\n %s" %
                           libvirtd_conf)
             libvirtd.restart()
@@ -528,7 +532,7 @@ def run(test, params, env):
         # specified in cfg
         if dnum > 1 and "--print-xml" not in options:
             for i in range(1, dnum):
-                disk_path = os.path.join(data_dir.get_tmp_dir(), 'disk%s.qcow2' % i)
+                disk_path = os.path.join(tmp_dir, 'disk%s.qcow2' % i)
                 process.run("qemu-img create -f qcow2 %s 200M" % disk_path, shell=True)
                 virsh.attach_disk(vm_name, disk_path,
                                   'vd%s' % list(string.ascii_lowercase)[i],
@@ -543,12 +547,14 @@ def run(test, params, env):
                 vp = virsh.VirshPersistent()
                 vp.create(vmxml_backup['xml'], '--autodestroy')
                 cmd_result = vp.snapshot_create_as(vm_name, options,
+                                                   timeout=300,
                                                    ignore_status=True,
                                                    debug=True)
                 vp.close_session()
                 vmxml_backup.define()
             else:
                 cmd_result = virsh.snapshot_create_as(vm_name, options,
+                                                      timeout=300,
                                                       unprivileged_user=usr,
                                                       uri=uri,
                                                       ignore_status=True,
@@ -629,12 +635,12 @@ def run(test, params, env):
         # rm attach disks and reuse external disks
         if dnum > 1 and "--print-xml" not in options:
             for i in range(dnum):
-                disk_path = os.path.join(data_dir.get_tmp_dir(), 'disk%s.qcow2' % i)
+                disk_path = os.path.join(tmp_dir, 'disk%s.qcow2' % i)
                 if os.path.exists(disk_path):
                     os.unlink(disk_path)
                 if reuse_external:
                     external_disk = "external_disk%s" % i
-                    disk_path = os.path.join(data_dir.get_tmp_dir(),
+                    disk_path = os.path.join(tmp_dir,
                                              params.get(external_disk))
                     if os.path.exists(disk_path):
                         os.unlink(disk_path)

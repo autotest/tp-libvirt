@@ -1,4 +1,5 @@
 import logging
+import shutil
 
 from avocado.utils import distro
 from avocado.utils import process
@@ -34,7 +35,7 @@ def run(test, params, env):
 
     ovs_service = service.Factory.create_service(pkg)
 
-    if not utils_package.package_install(pkg):
+    if not shutil.which('ovs-vsctl') and not utils_package.package_install(pkg):
         test.cancel("Failed to install dependency package %s"
                     " on host" % pkg)
     if not ovs_service.status():

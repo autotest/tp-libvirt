@@ -1,4 +1,5 @@
 import os
+import pwd
 import logging
 import shutil
 import time
@@ -15,6 +16,8 @@ from virttest import remote
 from virttest.utils_test import libvirt
 
 from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v_vmcheck_helper import check_json_output
+from provider.v2v_vmcheck_helper import check_local_output
 
 
 def run(test, params, env):
@@ -29,12 +32,13 @@ def run(test, params, env):
     # Guest name might be changed, we need a new variant to save the original
     # name
     vm_name = params['original_vm_name'] = params.get('main_vm', 'EXAMPLE')
+    unprivileged_user = params.get('unprivileged_user')
     target = params.get('target')
     input_mode = params.get('input_mode')
     input_file = params.get('input_file')
     output_mode = params.get('output_mode')
     output_format = params.get('output_format')
-    output_storage = params.get('output_storage', 'default')
+    os_pool = output_storage = params.get('output_storage', 'default')
     bridge = params.get('bridge')
     network = params.get('network')
     address_cache = env.get('address_cache')
@@ -69,7 +73,10 @@ def run(test, params, env):
     vpx_hostname = params.get("vpx_hostname")
     vpx_password = params.get("vpx_password")
     src_uri_type = params.get('src_uri_type')
-    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    v2v_opts = '-v -x' if params.get('v2v_debug',
+                                     'on') in ['on', 'force_on'] else ''
+    v2v_sasl = ''
+
     if params.get('v2v_opts'):
         # Add a blank by force
         v2v_opts += ' ' + params.get("v2v_opts")
@@ -122,23 +129,31 @@ def run(test, params, env):
         """
         Check virt-v2v command result
         """
-        libvirt.check_exit_status(result, status_error)
-        output = result.stdout_text + result.stderr_text
-        if not status_error:
-            if output_mode == 'rhev':
-                if not utils_v2v.import_vm_to_ovirt(params, address_cache,
-                                                    timeout=v2v_timeout):
-                    test.fail('Import VM failed')
+        def vm_check():
+            """
+            Checking the VM
+            """
+            if output_mode == 'json' and not check_json_output(params):
+                test.fail('check json output failed')
+            if output_mode == 'local' and not check_local_output(params):
+                test.fail('check local output failed')
+            if output_mode in ['null', 'json', 'local']:
+                return
+
             # Create vmchecker before virsh.start so that the vm can be undefined
             # if started failed.
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
+            if output_mode == 'rhev':
+                if not utils_v2v.import_vm_to_ovirt(params, address_cache,
+                                                    timeout=v2v_timeout):
+                    test.fail('Import VM failed')
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
-            # Check guest following the checkpoint document after convertion
+            # Check guest following the checkpoint document after conversion
             if params.get('skip_vm_check') != 'yes':
                 if checkpoint != 'win2008r2_ostk':
                     ret = vmchecker.run()
@@ -148,6 +163,11 @@ def run(test, params, env):
                     check_BSOD()
                 # Merge 2 error lists
                 error_list.extend(vmchecker.errors)
+
+        libvirt.check_exit_status(result, status_error)
+        output = result.stdout_text + result.stderr_text
+        if not status_error:
+            vm_check()
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             log_fail(log_check)
@@ -157,9 +177,30 @@ def run(test, params, env):
                 (len(error_list), error_list))
 
     try:
+        if checkpoint == 'regular_user_sudo':
+            regular_sudo_config = '/etc/sudoers.d/v2v_test'
+            with open(regular_sudo_config, 'w') as fd:
+                fd.write('%s ALL=(ALL)  NOPASSWD: ALL' % unprivileged_user)
+
+            # create user
+            try:
+                pwd.getpwnam(unprivileged_user)
+            except KeyError:
+                process.system("useradd %s" % unprivileged_user)
+
+            # generate ssh-key
+            rsa_private_key_path = '/home/%s/.ssh/id_rsa' % unprivileged_user
+            rsa_public_key_path = '/home/%s/.ssh/id_rsa.pub' % unprivileged_user
+            process.system(
+                'su - %s -c \'ssh-keygen -t rsa -q -N "" -f %s\'' %
+                (unprivileged_user, rsa_private_key_path))
+
+            with open(rsa_public_key_path) as fd:
+                pub_key = fd.read()
+
         v2v_params = {
             'main_vm': vm_name, 'target': target, 'v2v_opts': v2v_opts,
-            'storage': output_storage, 'network': network, 'bridge': bridge,
+            'os_storage': output_storage, 'network': network, 'bridge': bridge,
             'input_mode': input_mode, 'input_file': input_file,
             'new_name': 'ova_vm_' + utils_misc.generate_random_string(3),
             'datastore': datastore,
@@ -168,7 +209,8 @@ def run(test, params, env):
             'input_transport': input_transport,
             'vmx_nfs_src': vmx_nfs_src,
             'output_method': output_method,
-            'storage_name': storage_name,
+            'os_storage_name': storage_name,
+            'os_pool': os_pool,
             'rhv_upload_opts': rhv_upload_opts,
             'params': params
         }
@@ -180,17 +222,24 @@ def run(test, params, env):
                  'password': vpx_password if src_uri_type != 'esx' else esxi_password,
                  'hostname': vpx_hostname,
                  'skip_virsh_pre_conn': skip_virsh_pre_conn})
+            if checkpoint == 'regular_user_sudo':
+                v2v_params.update({'pub_key': pub_key})
         # copy ova from nfs storage before v2v conversion
         if input_mode == 'ova':
             src_dir = params.get('ova_dir')
             dest_dir = params.get('ova_copy_dir')
-            logging.info('Copy ova from %s to %s', src_dir, dest_dir)
-            if not os.path.exists(dest_dir):
+            if os.path.isfile(src_dir) and not os.path.exists(dest_dir):
+                os.makedirs(dest_dir, exist_ok=True)
+            if os.path.isdir(src_dir) and os.path.exists(dest_dir):
+                shutil.rmtree(dest_dir)
+
+            if os.path.isdir(src_dir):
                 shutil.copytree(src_dir, dest_dir)
             else:
-                logging.debug('%s already exists, Skip copying' % dest_dir)
+                shutil.copy(src_dir, dest_dir)
+            logging.info('Copy ova from %s to %s', src_dir, dest_dir)
         if output_format:
-            v2v_params.update({'output_format': output_format})
+            v2v_params.update({'of_format': output_format})
         # Create libvirt dir pool
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
@@ -205,7 +254,7 @@ def run(test, params, env):
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
         if output_mode == 'local':
-            v2v_params['storage'] = data_dir.get_tmp_dir()
+            v2v_params['os_directory'] = data_dir.get_tmp_dir()
 
         if checkpoint == 'ova_relative_path':
             logging.debug('Current dir: %s', os.getcwd())
@@ -237,5 +286,10 @@ def run(test, params, env):
             v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
+        if checkpoint == 'regular_user_sudo' and os.path.exists(
+                regular_sudo_config):
+            os.remove(regular_sudo_config)
+        if unprivileged_user:
+            process.system("userdel -fr %s" % unprivileged_user)
         if input_mode == 'vmx' and input_transport == 'ssh':
-            process.run("ssh-agent -k")
+            process.run("killall ssh-agent")

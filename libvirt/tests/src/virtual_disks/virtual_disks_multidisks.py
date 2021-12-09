@@ -16,6 +16,7 @@ from virttest import remote
 from virttest import nfs
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import data_dir
 from virttest import utils_selinux
 from virttest import utils_package
@@ -33,8 +34,9 @@ from virttest.libvirt_xml.devices.address import Address
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.staging import lv_utils
+from virttest.utils_libvirt import libvirt_pcicontr
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -104,10 +106,11 @@ def run(test, params, env):
         :param is_disk: specified return value type
         :return: Disk if is_disk is True, otherwise return mount_dir.
         """
-        mount_src = os.path.join(data_dir.get_tmp_dir(), "nfs-export")
+        nfs_tmp_folder = data_dir.get_data_dir()
+        mount_src = os.path.join(nfs_tmp_folder, "nfs-export")
         if not os.path.exists(mount_src):
             os.mkdir(mount_src)
-        mount_dir = os.path.join(data_dir.get_tmp_dir(), "nfs-mount")
+        mount_dir = os.path.join(nfs_tmp_folder, "nfs-mount")
 
         if disk_type in ["file", "floppy", "iso"]:
             disk_path = "%s/%s" % (mount_src, disk_name)
@@ -116,8 +119,7 @@ def run(test, params, env):
             os.chmod(device_source, 0o777)
             #Format the disk.
             if disk_type in ["file", "floppy"]:
-                cmd = ("mkfs.ext3 -F %s && setsebool virt_use_nfs true"
-                       % device_source)
+                cmd = ("mkfs.ext3 -F %s" % device_source)
                 if process.system(cmd, ignore_status=True, shell=True):
                     test.cancel("Format disk failed")
 
@@ -129,6 +131,12 @@ def run(test, params, env):
         nfs_obj.setup()
         if not nfs_obj.mount():
             return None
+
+        # Set virt_use_nfs
+        result = process.run("setsebool virt_use_nfs true", ignore_status=True,
+                             shell=True)
+        if result.exit_status:
+            test.error("Set virt_use_nfs true failed")
 
         disk = {"disk_dev": nfs_obj, "format": "nfs", "source":
                 "%s/%s" % (mount_dir, os.path.split(device_source)[-1])}
@@ -214,7 +222,7 @@ def run(test, params, env):
                 logging.debug("disk source is:%s", disk['source'])
             elif disk_device_type == "network":
                 if auth_usage:
-                    global secret_uuid
+                    global secret_uuid, iscsi_target, lun_num
                     secret_uuid = create_auth_secret()
                     # Setup iscsi target
                     try:
@@ -262,11 +270,35 @@ def run(test, params, env):
             disk.update({"format": 'lvm',
                          "source": device_source})
         elif disk_format in ["raw", "qcow2", "vhdx", "qed"]:
-            disk_size = params.get("virt_disk_device_size", "1")
-            device_source = libvirt.create_local_disk(
-                "file", path, disk_size, disk_format=disk_format)
-            disk.update({"format": disk_format,
-                         "source": device_source})
+            if network_iscsi_baseimg:
+                if auth_usage:
+                    secret_uuid = create_auth_secret()
+                # Setup iscsi target
+                image_size = params.get("image_size", "2G")
+                try:
+                    iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(
+                        is_setup=True, is_login=False, image_size=image_size,
+                        chap_user=chap_user, chap_passwd=chap_passwd)
+                except Exception as iscsi_ex:
+                    logging.debug("Failed to create iscsi lun: %s", str(iscsi_ex))
+                    libvirt.setup_or_cleanup_iscsi(is_setup=False)
+                json_str = ('json:{"driver":"raw", "file":{"lun":"%s",'
+                            '"portal":"127.0.0.1","driver":"iscsi", "transport":"tcp",'
+                            '"target":"%s", "user":"%s", "password-secret":"sec"}}'
+                            % (lun_num, iscsi_target, chap_user))
+                cmd = ("qemu-img create --object secret,data='%s',id=sec,format=raw "
+                       "-f qcow2 -b '%s' -o backing_fmt=raw %s"
+                       % (chap_passwd, json_str, path))
+                ret = process.run(cmd, shell=True)
+                libvirt.check_exit_status(ret)
+                disk.update({"format": disk_format,
+                             "source": path})
+            else:
+                disk_size = params.get("virt_disk_device_size", "1")
+                device_source = libvirt.create_local_disk(
+                    "file", path, disk_size, disk_format=disk_format)
+                disk.update({"format": disk_format,
+                             "source": device_source})
             if file_mount_point_type:
                 for cmd in ("touch %s" % tmp_demo_img, "mount --bind %s %s" % (path, tmp_demo_img)):
                     try:
@@ -463,7 +495,7 @@ def run(test, params, env):
         logging.info("Checking diskorder option with snapshot...")
         snapshot1 = "s1"
         snapshot2 = "s2"
-        snapshot2_file = os.path.join(data_dir.get_tmp_dir(), "s2")
+        snapshot2_file = os.path.join(data_dir.get_data_dir(), "s2")
         ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
         libvirt.check_exit_status(ret)
 
@@ -507,6 +539,55 @@ def run(test, params, env):
 
         #Passed all test.
         os.remove(save_file)
+
+    def check_transient_disk_keyword():
+        """
+        Check VM disk with TRANSIENT keyword.
+
+        """
+        logging.info("Checking disk with transient keyword...")
+
+        ret = virsh.dumpxml(vm_name, ignore_status=False)
+
+        cmd = ("echo \"%s\" | grep '<source file=.*TRANSIENT.*/>'" % ret.stdout_text)
+        if process.system(cmd, ignore_status=False, shell=True):
+            test.fail("Check transident disk failed")
+
+    def check_restart_transient_vm(target_name):
+        """
+        Check VM transient feature.
+
+        :param target_name. Device target name.
+        """
+        logging.info("Checking VM transident...")
+        try:
+            session = vm.wait_for_login()
+            cmd = ("fdisk -l  /dev/{0} && mkfs.ext4 -F /dev/{0} && "
+                   "mkdir -p /test && mount /dev/{0} /test && "
+                   "dd if=/dev/zero of=/test/transient.txt bs=1M count=300 && sync"
+                   .format(target_name))
+            status, output = session.cmd_status_output(cmd)
+            if status != 0:
+                session.close()
+                test.fail("Failed due to: %s" % output.strip())
+            session.close()
+            # Destroy VM.
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vm.start()
+            session = vm.wait_for_login()
+
+            cmd = ("mkdir -p /test && mount /dev/{0} /test &&  ls -l /test/ && ls -l /test/transient.txt"
+                   .format(target_name))
+            status, output = session.cmd_status_output(cmd)
+            logging.info("check /test/transient.txt file output in VM: %s", output.strip())
+            if status == 0:
+                session.close()
+                test.fail("Still find file in transient disk after VM restart due to: %s" % output.strip())
+            session.close()
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+            logging.error(str(e))
+            test.error("Check Vm disk transient feature failed")
 
     def check_boot_console(bootorders):
         """
@@ -789,9 +870,7 @@ def run(test, params, env):
         if not os.path.exists(libvirtd_log_file):
             test.fail("Expected VM log file: %s not exists" % libvirtd_log_file)
         cmd = ("grep -nr '%s' %s" % (matchedMsg, libvirtd_log_file))
-        if process.run(cmd, ignore_status=True, shell=True).exit_status:
-            test.fail("Failed to get expected messages from log file: %s."
-                      % libvirtd_log_file)
+        return process.run(cmd, ignore_status=True, shell=True).exit_status == 0
 
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -804,6 +883,9 @@ def run(test, params, env):
     device_targets = params.get("virt_disk_device_target", "vda").split()
     device_formats = params.get("virt_disk_device_format", "raw").split()
     device_types = params.get("virt_disk_device_type", "file").split()
+    # After block-dev introduced, 'host_device' driver expects either a character or block device
+    if libvirt_version.version_compare(6, 0, 0) and params.get("virt_disk_device_type") == "block block block block":
+        device_types = "file file file file".split()
     device_bus = params.get("virt_disk_device_bus", "virtio").split()
     driver_options = params.get("driver_option", "").split()
     device_bootorder = params.get("virt_disk_boot_order", "").split()
@@ -831,6 +913,7 @@ def run(test, params, env):
     hotplug = "yes" == params.get(
         "virt_disk_device_hotplug", "no")
     device_at_dt_disk = "yes" == params.get("virt_disk_at_dt_disk", "no")
+    device_cold_dt = "yes" == params.get("virt_disk_cold_dt", "no")
     device_with_source = "yes" == params.get(
         "virt_disk_with_source", "yes")
     virtio_scsi_controller = "yes" == params.get(
@@ -904,6 +987,11 @@ def run(test, params, env):
     secret_usage_target = params.get("secret_usage_target")
     secret_usage_type = params.get("secret_usage_type")
 
+    # backing Store parameters
+    network_iscsi_baseimg = "yes" == params.get("network_iscsi_baseimg", "no")
+    bs_device_types = params.get("virt_disk_device_type_bs", "file").split()
+    bs_device_formats = params.get("virt_disk_device_format_bs", "qcow2").split()
+
     # Storage pool and disk related parameters.S
     pool_name = params.get("pool_name", "iscsi_pool")
     pool_type = params.get("pool_type")
@@ -952,7 +1040,7 @@ def run(test, params, env):
 
     virt_disk_with_boot_nfs_pool = "yes" == params.get("virt_disk_with_boot_nfs_pool", "no")
     iso_url = ("https://dl.fedoraproject.org/pub/fedora/linux/releases",
-               "/30/Everything/x86_64/os/images/boot.iso")
+               "/34/Everything/x86_64/os/images/boot.iso")
     default_iso_url = ''.join(iso_url)
     boot_iso_url = params.get("boot_iso_url")
     if virt_disk_with_boot_nfs_pool and 'EXAMPLE_BOOT_ISO_URL' in boot_iso_url:
@@ -964,7 +1052,7 @@ def run(test, params, env):
 
     # Configure libvirtd log level and path.
     log_file = params.get("log_file", "libvirtd.log")
-    log_config_path = os.path.join(data_dir.get_tmp_dir(), log_file)
+    log_config_path = os.path.join(data_dir.get_data_dir(), log_file)
     libvirtd_config = LibvirtdConfig()
 
     if virtio_disk_hot_unplug_event_watch:
@@ -996,6 +1084,10 @@ def run(test, params, env):
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
+    # Increase pci num to avoid error 'No more available PCI slots'
+    if params.get("reset_pci_controllers_nums", "no") == "yes":
+        libvirt_pcicontr.reset_pci_num(vm_name, 15)
+
     # For minimal VM xml,it need reconstruct one.
     if test_minimal_xml:
         minimal_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -1014,7 +1106,7 @@ def run(test, params, env):
         <devices>
           <emulator>/usr/libexec/qemu-kvm</emulator>
           <disk type='file' device='disk'>
-            <driver name='qemu' type='qcow2' cache='none'/>
+            <driver name='qemu' type='qcow2'/>
             <source file='%s'/>
             <target dev='vda' bus='virtio'/>
           </disk>
@@ -1066,7 +1158,7 @@ def run(test, params, env):
     # Get device path.
     device_source_path = params.get("device_source_path", "")
     if source_path:
-        device_source_path = data_dir.get_tmp_dir()
+        device_source_path = data_dir.get_data_dir()
 
     # Prepare test environment.
     qemu_config = LibvirtQemuConfig()
@@ -1142,13 +1234,21 @@ def run(test, params, env):
                 source_dict = {dev_attrs: disk_source}
                 if len(startup_policy) > i:
                     source_dict.update({"startupPolicy": startup_policy[i]})
-                if auth_usage or pool_type == "iscsi":
+                if auth_usage and not network_iscsi_baseimg:
+                    auth_dict = {"auth_user": chap_user,
+                                 "secret_type": secret_usage_type,
+                                 "secret_usage": secret_usage_target}
+                    disk_source = disk_xml.new_disk_source(
+                                **disk_source)
+                    disk_auth = disk_xml.new_auth(**auth_dict)
+                    disk_source.auth = disk_auth
+                    disk_xml.source = disk_source
+                elif pool_type == "iscsi":
                     disk_xml.source = disk_xml.new_disk_source(
                         **disk_source)
                 else:
                     disk_xml.source = disk_xml.new_disk_source(
                         **{"attrs": source_dict})
-
             if len(device_bootorder) > i:
                 disk_xml.boot = device_bootorder[i]
 
@@ -1170,6 +1270,9 @@ def run(test, params, env):
                 disk_xml.readonly = "yes" == device_readonly[i]
 
             if disk_transient:
+                # After libvirt 6.9.0, transient disk feature is brought back on file based backend
+                if libvirt_version.version_compare(6, 0, 0) and not libvirt_version.version_compare(6, 9, 0):
+                    test.cancel("unsupported configuration: transient disks not supported")
                 disk_xml.transient = "yes"
 
             # Add driver options from parameters
@@ -1181,12 +1284,32 @@ def run(test, params, env):
                         driver_dict.update({d[0].strip(): d[1].strip()})
             disk_xml.driver = driver_dict
 
-            # Add iSCSI authentication information.
-            if auth_usage:
-                auth_dict = {"auth_user": chap_user,
-                             "secret_type": secret_usage_type,
-                             "secret_usage": secret_usage_target}
-                disk_xml.auth = disk_xml.new_auth(**auth_dict)
+            def add_backingstore_element_to_disk_xml(disk_xml):
+                """
+                Add backingstore subelement of source element.
+                :param disk_xml: the xml of disk
+                """
+                disk_xml.source = disk_xml.new_disk_source(
+                        **{"attrs": source_dict})
+                bs_source = {"protocol": "iscsi",
+                             "name": "%s/%s" % (iscsi_target, lun_num),
+                             "host": {"name": '127.0.0.1', "port": '3260'}}
+                bs_dict = {"type": bs_device_types[i],
+                           "format": {'type': bs_device_formats[i]}}
+                new_bs = disk_xml.new_backingstore(**bs_dict)
+                new_bs.source = disk_xml.BackingStore().new_source(**bs_source)
+                if auth_usage:
+                    auth_dict = {"auth_user": chap_user,
+                                 "secret_type": secret_usage_type,
+                                 "secret_usage": secret_usage_target}
+                    disk_auth = disk_xml.new_auth(**auth_dict)
+                    new_bs_source = new_bs.source
+                    new_bs_source.auth = disk_auth
+                    new_bs.source = new_bs_source
+                disk_xml.backingstore = new_bs
+
+            if network_iscsi_baseimg:
+                add_backingstore_element_to_disk_xml(disk_xml)
 
             # Add disk address from parameters.
             if len(device_address) > i:
@@ -1221,6 +1344,14 @@ def run(test, params, env):
                     osxml.bios_useserial = "yes"
                     if utils_misc.compare_qemu_version(4, 0, 0, False):
                         osxml.bios_reboot_timeout = "-1"
+
+                if vmxml.xmltreefile.find('features'):
+                    vmxml_feature = vmxml.features
+                    if vmxml_feature.has_feature('acpi') and 'aarch64' in arch:
+                        osxml.loader = vmxml.os.loader
+                        osxml.loader_readonly = vmxml.os.loader_readonly
+                        osxml.loader_type = vmxml.os.loader_type
+
                 del vmxml.os
                 vmxml.os = osxml
             driver_dict = {"name": disk.driver["name"],
@@ -1333,7 +1464,11 @@ def run(test, params, env):
                 attach_option = '--config'
                 ret = virsh.attach_device(vm_name, custom_disk_xml.xml,
                                           flagstr=attach_option, debug=True)
-                libvirt.check_exit_status(ret)
+                # The change is introduced by block-dev feature,cold config the same index controller not allow now.
+                if libvirt_version.version_compare(6, 0, 0):
+                    libvirt.check_exit_status(ret, True)
+                else:
+                    libvirt.check_exit_status(ret)
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
         # Create second controller,and add it to vmxml.
@@ -1503,6 +1638,7 @@ def run(test, params, env):
                 ret = virsh.attach_device(vm_name, disks_xml[i].xml,
                                           flagstr=attach_option)
                 attach_error = False
+                logging.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
                 if len(device_attach_error) > i:
                     attach_error = "yes" == device_attach_error[i]
                 libvirt.check_exit_status(ret, attach_error)
@@ -1568,7 +1704,7 @@ def run(test, params, env):
                 test.fail("Test disk block size in VM failed")
 
         if test_disk_option_cmd:
-            # Check if disk options take affect in qemu commmand line.
+            # Check if disk options take affect in qemu command line.
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
             logging.debug("VM cmdline: %s", process.system_output(cmd, shell=True))
             if test_with_boot_disk:
@@ -1576,8 +1712,10 @@ def run(test, params, env):
             else:
                 d_target = device_targets[0]
                 if device_with_source:
-                    cmd += (" | grep %s" %
-                            (device_source_names[0].replace(',', ',,')))
+                    # After blockdev introduced on libvirt 5.6.0 afterwards, below step is not needed.
+                    if not libvirt_version.version_compare(6, 0, 0):
+                        cmd += (" | grep %s" %
+                                (device_source_names[0].replace(',', ',,')))
             io = vm_xml.VMXML.get_disk_attr(vm_name, d_target, "driver", "io")
             if io:
                 cmd += " | grep .*aio.*%s.*" % io
@@ -1664,7 +1802,7 @@ def run(test, params, env):
                 cmd += " | grep %s,event_idx=%s" % (driver, iface_event_idx)
 
             if process.system(cmd, ignore_status=True, shell=True):
-                test.fail("Check disk driver option failed")
+                test.fail("Check disk driver option failed with %s" % cmd)
 
         if test_disk_snapshot:
             ret = virsh.snapshot_create_as(vm_name, "s1 %s" % snapshot_option, debug=True)
@@ -1718,8 +1856,13 @@ def run(test, params, env):
                         device_option = "scsi=on"
                     else:
                         device_option = "scsi=off"
-                    cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
-                            % (device_option, dev_bus, pci_slot))
+                    # scsi=on/off flag is removed from qemu command line after libvirt 6.6.0, so update cmd to make code compatible.
+                    if libvirt_version.version_compare(6, 6, 0):
+                        cmd += (" | grep virtio-blk-pci,bus=pci.%x,addr=0x%x"
+                                % (dev_bus, pci_slot))
+                    else:
+                        cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
+                                % (device_option, dev_bus, pci_slot))
                 if device_bus[0] in ["ide", "sata", "scsi"]:
                     dev_unit = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                               "address", "unit"), 16)
@@ -1733,7 +1876,11 @@ def run(test, params, env):
                     cmd += (" | grep %s,bus=ide.%d,unit=%d,drive=drive-%s,id=%s"
                             % (device_option, dev_bus, dev_unit, dev_id, dev_id))
                 if device_bus[0] == "sata":
-                    cmd += (" | grep 'device ahci,.*,bus=pci.%s'" % dev_bus)
+                    # After block-dev feature introduced, the qemu output is changed accordingly with dev_bus only.
+                    if libvirt_version.version_compare(6, 0, 0):
+                        cmd += (" | grep '.*%s'" % dev_bus)
+                    else:
+                        cmd += (" | grep 'device ahci,.*,bus=pci.%s'" % dev_bus)
                 if device_bus[0] == "scsi":
                     if devices[0] == "lun":
                         device_option = "scsi-block"
@@ -1741,8 +1888,8 @@ def run(test, params, env):
                         device_option = "scsi-cd"
                     else:
                         device_option = "scsi-hd"
-                    cmd += (" | grep %s,bus=scsi%d.%d,.*drive=drive-%s,id=%s"
-                            % (device_option, dev_bus, dev_unit, dev_id, dev_id))
+                    cmd += (" | grep %s,bus=scsi%d.%d,.*drive=.*,id=%s"
+                            % (device_option, dev_bus, dev_unit, dev_id))
                 if device_bus[0] == "usb":
                     dev_port = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                           "address", "port")
@@ -1754,8 +1901,8 @@ def run(test, params, env):
                         if dev_bus == 0:
                             usb_bus_str = "usb.0"
                         cmd += (" | grep usb-storage,bus=%s,port=%s,"
-                                "drive=drive-%s,id=%s"
-                                % (usb_bus_str, dev_port, dev_id, dev_id))
+                                "drive=.*,id=%s"
+                                % (usb_bus_str, dev_port, dev_id))
                     if "input" in usb_devices:
                         input_addr = get_device_addr('input', 'tablet')
                         cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
@@ -1804,6 +1951,9 @@ def run(test, params, env):
             if not utils_libvirtd.libvirtd_restart():
                 test.fail('Libvirtd is expected to be started')
             vm.wait_for_login()
+        if disk_transient:
+            check_transient_disk_keyword()
+            check_restart_transient_vm(device_targets[0])
         # If we testing hotplug, detach the disk at last.
         if device_at_dt_disk:
             for i in list(range(len(disks))):
@@ -1811,7 +1961,8 @@ def run(test, params, env):
                 if devices[i] == "cdrom":
                     dt_options = "--config"
                 ret = virsh.detach_disk(vm_name, device_targets[i],
-                                        dt_options, **virsh_dargs)
+                                        dt_options, wait_remove_event=True,
+                                        **virsh_dargs)
                 disk_detach_error = False
                 if len(device_attach_error) > i:
                     disk_detach_error = "yes" == device_attach_error[i]
@@ -1819,14 +1970,39 @@ def run(test, params, env):
                     libvirt.check_exit_status(ret, disk_detach_error)
                 else:
                     libvirt.check_exit_status(ret)
+
+                def _check_disk_detach():
+                    try:
+                        session = vm.wait_for_login()
+                        if device_targets[i] not in utils_disk.get_parts_list():
+                            return True
+                        else:
+                            logging.debug("still can find device target after detaching")
+                    except Exception:
+                        return False
+                # If disk_detach_error is False, then wait for seconds to let detach operation accomplish complete
+                if not disk_detach_error:
+                    utils_misc.wait_for(_check_disk_detach, timeout=20)
+                # Give time to log file to collect more events
                 if virtio_disk_hot_unplug_event_watch:
-                    check_info_in_libvird_log_file('"event": "DEVICE_DELETED"')
+                    result = utils_misc.wait_for(lambda: check_info_in_libvird_log_file('"event": "DEVICE_DELETED"'), timeout=20)
+                    if not result:
+                        test.fail("Failed to get expected messages from log file: %s."
+                                  % log_config_path)
             # Check disks in VM after hotunplug.
             if check_partitions_hotunplug:
                 if not check_vm_partitions(devices,
                                            device_targets, False):
                     test.fail("See device in VM after hotunplug")
-
+        elif device_cold_dt:
+            ret = virsh.detach_disk(vm_name, device_targets[0],
+                                    '--config', **virsh_dargs)
+            libvirt.check_exit_status(ret)
+            ret = virsh.domblklist(vm_name, '--inactive',
+                                   ignore_status=False, debug=True)
+            target_disks = re.findall(r"[v,s]d[a-z]", ret.stdout.strip())
+            if len(target_disks) > 1:
+                test.fail("Fail to cold unplug disks. ")
         elif hotplug:
             # Test attach device multiple iteration
             if test_attach_device_iteration:
@@ -1835,7 +2011,7 @@ def run(test, params, env):
                 for counter in range(0, iteration_times):
                     logging.info("Begin to execute attach or detach %d operations", counter)
                     ret = virsh.detach_device(vm_name, disks_xml[0].xml,
-                                              flagstr=attach_option, debug=True)
+                                              flagstr=attach_option, debug=True, wait_for_event=True)
                     libvirt.check_exit_status(ret)
                     # Sleep 10 seconds to let VM really cleanup devices.
                     time.sleep(10)
@@ -1854,7 +2030,7 @@ def run(test, params, env):
                     if device_attach_error[i] == "yes":
                         continue
                 ret = virsh.detach_device(vm_name, disks_xml[i].xml,
-                                          flagstr=attach_option, **virsh_dargs)
+                                          flagstr=attach_option, wait_for_event=False, **virsh_dargs)
                 os.remove(disks_xml[i].xml)
                 libvirt.check_exit_status(ret)
 
@@ -1867,7 +2043,7 @@ def run(test, params, env):
     finally:
         # Delete snapshots.
         if virsh.domain_exists(vm_name):
-            #To Delet snapshot, destroy vm first.
+            #To Delete snapshot, destroy vm first.
             if vm.is_alive():
                 vm.destroy()
             libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
@@ -1906,8 +2082,9 @@ def run(test, params, env):
                 del img["disk_dev"]
             else:
                 if img["format"] == "scsi":
-                    libvirt.delete_scsi_disk()
-                elif img["format"] == "iscsi":
+                    utils_misc.wait_for(libvirt.delete_scsi_disk,
+                                        120, ignore_errors=True)
+                elif img["format"] == "iscsi" or network_iscsi_baseimg:
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
                     # Clean up secret
                     if auth_usage and secret_uuid:

@@ -190,7 +190,7 @@ def run(test, params, env):
     managedsave = params.get("managedsave", "no") == "yes"
     no_vsock = params.get("no_vsock", "no") == "yes"
     vsock_num = params.get("num")
-    commuication = params.get("communication", "no") == "yes"
+    communication = params.get("communication", "no") == "yes"
 
     # Backup xml file
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -242,7 +242,7 @@ def run(test, params, env):
         else:
             session = vm.wait_for_login()
             session.close()
-            result = virsh.attach_device(vm_name, file_opt=vsock_dev.xml, flagstr=option, debug=True)
+            result = virsh.attach_device(vm_name, vsock_dev.xml, flagstr=option, debug=True)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
             if option == "--config":
                 result = virsh.start(vm_name, debug=True)
@@ -253,7 +253,7 @@ def run(test, params, env):
             cid = vsock_list[0].cid['address']
             if 0 == len(vsock_list):
                 test.fail("No vsock device found in live xml\n")
-            if commuication:
+            if communication:
                 validate_data_transfer_by_vsock()
             if managedsave and not no_vsock:
                 managedsave_restore()
@@ -262,7 +262,7 @@ def run(test, params, env):
                 status = process.run("lsof /dev/vhost-vsock", ignore_status=True, shell=True).exit_status
                 return status == 1
 
-            result = virsh.detach_device(vm_name, file_opt=vsock_dev.xml, debug=True)
+            result = virsh.detach_device(vm_name, vsock_dev.xml, debug=True)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
             utils_misc.wait_for(_detach_completed, timeout=20)
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)

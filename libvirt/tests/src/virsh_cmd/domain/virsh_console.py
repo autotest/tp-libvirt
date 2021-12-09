@@ -6,9 +6,9 @@ import aexpect
 from avocado.utils import process
 
 from virttest import utils_test
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 
-from provider import libvirt_version
 
 CMD_TIMEOUT = 30
 
@@ -34,7 +34,8 @@ def xml_console_recover(vmxml):
         return False
 
 
-def vm_console_config(vm, test, device='ttyS0', speed='115200'):
+def vm_console_config(vm, test, device='ttyS0',
+                      speed='115200', guest_arch='x86_64'):
     """
     Login to config vm for virsh console.
     Three step:
@@ -48,6 +49,7 @@ def vm_console_config(vm, test, device='ttyS0', speed='115200'):
     :param test: Test Object
     :param device: console device to be configured
     :param speed: console baud rate to be configured
+    :param guest_arch: architecture of the guest vm
 
     :return: True on configuration success
     :raise: test.fail on configuration failure
@@ -60,7 +62,7 @@ def vm_console_config(vm, test, device='ttyS0', speed='115200'):
     vm.set_root_serial_console(device)
 
     # Step 2
-    if not vm.set_kernel_console(device, speed):
+    if not vm.set_kernel_console(device, speed, guest_arch_name=guest_arch):
         test.fail("Config kernel for console failed.")
 
     # Step 3
@@ -89,7 +91,8 @@ def check_duplicated_console(command, force_command, status_error, login_user,
     session = aexpect.ShellSession(command)
     if not status_error:
         # Test duplicated console session
-        res = process.run(command, timeout=CMD_TIMEOUT, ignore_status=True, shell=True)
+        res = process.run(command, timeout=CMD_TIMEOUT,
+                          ignore_status=True, shell=True)
         logging.debug(res)
         if res.exit_status == 0:
             test.fail("Duplicated console session should fail. "
@@ -98,7 +101,8 @@ def check_duplicated_console(command, force_command, status_error, login_user,
         # Test duplicated console session with force option
         force_session = aexpect.ShellSession(force_command)
         force_status = utils_test.libvirt.verify_virsh_console(
-            force_session, login_user, login_passwd, timeout=CMD_TIMEOUT, debug=True)
+            force_session, login_user, login_passwd,
+            timeout=CMD_TIMEOUT, debug=True)
         if not force_status:
             test.fail("Expect force console session should succeed, "
                       "but failed.")
@@ -106,7 +110,8 @@ def check_duplicated_console(command, force_command, status_error, login_user,
     session.close()
 
 
-def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd, test):
+def check_disconnect_on_shutdown(command, status_error, login_user,
+                                 login_passwd, test):
     """
     Test whether an active console will disconnect after shutting down the VM.
 
@@ -155,7 +160,8 @@ def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd
                 test.fail('Expect shell terminated, but found %s'
                           % detail)
             log = session.get_output()
-            logging.debug("Shell terminated on VM shutdown:\n%s\n%s", detail, log)
+            logging.debug("Shell terminated on VM shutdown:\n%s\n%s",
+                          detail, log)
             session.close()
 
 
@@ -170,6 +176,7 @@ def run(test, params, env):
     # Get parameters for test
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    arch = params.get("vm_arch_name", "x86_64")
 
     vm_ref = params.get("virsh_console_vm_ref", "domname")
     vm_state = params.get("virsh_console_vm_state", "running")
@@ -213,7 +220,7 @@ def run(test, params, env):
         if update_console == "yes":
             if vm.is_qemu():
                 vm_console_config(vm, test, device=console_dev,
-                                  speed=console_speed)
+                                  speed=console_speed, guest_arch=arch)
 
         # Prepare vm state for test
         if vm_state != "shutoff":
@@ -246,7 +253,8 @@ def run(test, params, env):
         console_session = aexpect.ShellSession(command)
 
         status = utils_test.libvirt.verify_virsh_console(
-            console_session, login_user, login_passwd, timeout=CMD_TIMEOUT, debug=True)
+            console_session, login_user, login_passwd,
+            timeout=CMD_TIMEOUT, debug=True)
         console_session.close()
 
         check_duplicated_console(command, force_command, status_error,
@@ -263,7 +271,8 @@ def run(test, params, env):
             vm.start()
             vm.wait_for_login()
         if update_console == "yes":
-            vm.set_kernel_console(console_dev, console_speed, remove=True)
+            vm.set_kernel_console(console_dev, console_speed,
+                                  remove=True, guest_arch_name=arch)
 
         # Recover vm
         if vm.is_alive():

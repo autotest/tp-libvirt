@@ -74,7 +74,7 @@ def run(test, params, env):
             raise exceptions.TestError("Fail to setup ssh-agent")
     else:
         raise exceptions.TestSkipError(
-            "Unspported hypervisor: %s" %
+            "Unsupported hypervisor: %s" %
             hypervisor)
 
     # Create libvirt URI for the source node
@@ -101,7 +101,7 @@ def run(test, params, env):
     libvirt_pool = utlv.PoolVolumeTest(test, params)
     libvirt_pool.pre_pool(pool_name, pool_type, pool_target, '')
 
-    # Preapre libvirt virtual network
+    # Prepare libvirt virtual network
     network = params.get("network")
     net_kwargs = {'net_name': network,
                   'address': params.get('network_addr'),
@@ -116,7 +116,7 @@ def run(test, params, env):
     v2v_params = {'target': target, 'hypervisor': hypervisor,
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
-                  'storage': pool_name, 'hostname': source_ip,
+                  'os_pool': pool_name, 'hostname': source_ip,
                   'password': source_pwd,
                   'input_transport': input_transport, 'vcenter_host': vpx_ip,
                   'vcenter_password': vpx_pwd,
@@ -183,7 +183,7 @@ def run(test, params, env):
         utils_v2v.cleanup_constant_files(params)
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,

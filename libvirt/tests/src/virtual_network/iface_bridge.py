@@ -1,16 +1,21 @@
 import os
 import logging
+import re
+import ast
 
 from avocado.utils import process
-
 from virttest import utils_net
+from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_network
 from virttest.staging import service
 from virttest.libvirt_xml import vm_xml
-from virttest import utils_package
-from virttest.libvirt_xml.devices.interface import Interface
+from virttest.libvirt_xml.devices import interface
+from virttest.libvirt_xml import network_xml
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
@@ -29,26 +34,21 @@ def run(test, params, env):
     8) check if the 2 guests can ping each other
     """
 
-    def create_bridge(br_name, iface_name):
+    def create_bridge_network(br_name, net_name, inbound="{'average':'0'}", outbound="{'average':'0'}"):
         """
-        Create a linux bridge by virsh cmd:
-        1. Stop NetworkManager and Start network service
-        2. virsh iface-bridge <iface> <name> [--no-stp]
-
-        :param br_name: bridge name
-        :param iface_name: physical interface name
-        :return: bridge created or raise exception
+        Define and start the bridge type network
         """
-        # Make sure the bridge not exist
-        if libvirt.check_iface(br_name, "exists", "--all"):
-            test.cancel("The bridge %s already exist" % br_name)
-
-        # Create bridge
-        utils_package.package_install('tmux')
-        cmd = 'tmux -c "ip link add name {0} type bridge; ip link set {1} up;' \
-              ' ip link set {1} master {0}; ip link set {0} up;' \
-              ' pkill dhclient; sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
-        process.run(cmd, shell=True, verbose=True)
+        # check if network with the same name already exists
+        output_all = virsh.net_list("--all").stdout.strip()
+        if re.search(net_name, output_all):
+            test.cancel("Network with the same name already exists!")
+        test_xml = network_xml.NetworkXML(network_name="%s" % net_name)
+        test_xml.forward = {"mode": "bridge"}
+        test_xml.bridge = {"name": br_name}
+        test_xml.bandwidth_inbound = eval(inbound)
+        test_xml.bandwidth_outbound = eval(outbound)
+        logging.debug("The network's xml is %s", test_xml)
+        test_xml.create()
 
     def define_nwfilter(filter_name):
         """
@@ -73,25 +73,6 @@ def run(test, params, env):
         if result.exit_status:
             test.fail("Failed to define nwfilter with %s" % filter_xml)
 
-    def modify_iface_xml(br_name, nwfilter, vm_name):
-        """
-        Modify interface xml with the new bridge and the nwfilter
-
-        :param br_name: bridge name
-        :param nwfilter: nwfilter name
-        :param vm_name: vm name
-        """
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        iface_xml = vmxml.get_devices('interface')[0]
-        vmxml.del_device(iface_xml)
-        iface_xml = Interface(type_name='bridge')
-        iface_xml.source = {'bridge': br_name}
-        iface_xml.model = 'virtio'
-        iface_xml.filterref = iface_xml.new_filterref(name=nwfilter)
-        logging.debug("new interface xml is: %s" % iface_xml)
-        vmxml.add_device(iface_xml)
-        vmxml.sync()
-
     def ping(src_ip, dest_ip, ping_count, timeout, session=None):
         """
         Wrap of ping
@@ -105,7 +86,7 @@ def run(test, params, env):
         """
         status, output = utils_net.ping(dest=dest_ip, count=ping_count,
                                         interface=src_ip, timeout=timeout,
-                                        session=session)
+                                        session=session, force_ipv4=True)
         if status:
             test.fail("Fail to ping %s from %s" % (dest_ip, src_ip))
 
@@ -131,97 +112,291 @@ def run(test, params, env):
     bridge_script = NETWORK_SCRIPT + bridge_name
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
+    attach_interface = "yes" == params.get("attach_interface", "no")
+    iface_model = params.get("iface_model", "virtio")
+    iface_source = eval(params.get("iface_source", "{'bridge':'test_br0'}"))
+    iface_type = params.get("iface_type", 'bridge')
+    iface_target = params.get("iface_target", "br_target")
+    iface_alias = params.get("iface_alias", None)
+    hotplug = "yes" == params.get("hotplug", "no")
+    iface_driver = params.get("iface_driver", None)
+    reconnect_tap = "yes" == params.get("reconnect_tap", "no")
+    restart_net = "yes" == params.get("restart_net", "no")
+    start_vm2 = "yes" == params.get("start_vm2", "no")
+    create_network = "yes" == params.get("create_network", "no")
+    update_device = "yes" == params.get("update_with_diff_type", "no")
+    test_qos = "yes" == params.get("test_qos", "no")
+    test_net_qos = "yes" == params.get("test_net_qos", "no")
+    iface_inbound = params.get("iface_bandwidth_inbound", "{'average':'0'}")
+    iface_outbound = params.get("iface_bandwidth_outbound", "{'average':'0'}")
+    net_inbound = params.get("net_bandwidth_inbound", "{'average':'0'}")
+    net_outbound = params.get("net_bandwidth_outbound", "{'average':'0'}")
 
+    libvirt_version.is_libvirt_feature_supported(params)
     vms = params.get("vms").split()
-    if len(vms) <= 1:
-        test.cancel("Need two VMs to test")
-    else:
-        vm1_name = vms[0]
-        vm2_name = vms[1]
-
+    vm1_name = vms[0]
     vm1 = env.get_vm(vm1_name)
-    vm2 = env.get_vm(vm2_name)
+
+    if start_vm2:
+        if len(vms) <= 1:
+            test.cancel("Need two VMs to test")
+        else:
+            vm2_name = vms[1]
+        vm2 = env.get_vm(vm2_name)
+        vm2_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm2_name)
 
     # Back up the interface script
-    process.run("cp %s %s" % (iface_script, iface_script_bk),
-                shell=True, verbose=True)
+    if os.path.exists(iface_script):
+        process.run("cp %s %s" % (iface_script, iface_script_bk),
+                    shell=True, verbose=True)
     # Back up vm xml
     vm1_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm1_name)
-    vm2_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm2_name)
 
     # Stop NetworkManager service
     NM_service = service.Factory.create_service("NetworkManager")
     NM_status = NM_service.status()
     if not NM_status:
         NM_service.start()
+    mac = utils_net.generate_mac_address_simple()
 
     try:
-        create_bridge(bridge_name, iface_name)
+        if libvirt.check_iface(bridge_name, "exists", "--all"):
+            test.cancel("The bridge %s already exist" % bridge_name)
+        s, o = utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
+        if s:
+            test.fail("Failed to create linux bridge on the host. Status: %s Stdout: %s" % (s, o))
         define_nwfilter(filter_name)
-        modify_iface_xml(bridge_name, filter_name, vm1_name)
+        if create_network:
+            create_bridge_network(bridge_name, iface_source["network"], net_inbound, net_outbound)
+        if hotplug:
+            err_msgs = ("No more available PCI slots",
+                        "No more available PCI addresses")
+            # delete the original interface on the vm before hot-plug
+            if vm1.is_alive():
+                vm1.destroy()
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm1_name)
+            iface_xml = vmxml.get_devices('interface')[0]
+            logging.debug("Delete the original interface")
+            vmxml.del_device(iface_xml)
+            vmxml.sync()
+            vm1.start()
+            # do hot-plug
+            if attach_interface:
+                logging.info("Try to hot-plug interface")
+                options = ("%s %s --model %s --mac %s" %
+                           (iface_type, iface_source['bridge'],
+                            iface_model, mac))
+                if test_qos:
+                    inbound_value = ','.join(eval(iface_inbound).values())
+                    outbound_value = ','.join(eval(iface_outbound).values())
+                    options = ("%s %s --model %s --mac %s --inbound %s --outbound %s" %
+                               (iface_type, iface_source['bridge'], iface_model, mac, inbound_value, outbound_value))
+                ret = virsh.attach_interface(vm1_name, options,
+                                             ignore_status=True)
+            else:
+                logging.info("Try to hot-plug device")
+                target = str({'dev': iface_target})
+                iface_alias = str({'name': iface_alias})
+                vm_iface_source = str(iface_source)
+                iface_params = {"type": iface_type, "source": vm_iface_source, "filter": filter_name, "mac": mac,
+                                'alias': iface_alias, 'target': target, 'model': iface_model,
+                                'driver': iface_driver}
+                attach_xml = interface.Interface(iface_params['type'])
+                attach_xml.xml = libvirt.modify_vm_iface(vm1_name, 'get_xml', iface_params)
+                ret = virsh.attach_device(vm1_name, attach_xml.xml, ignore_status=True, debug=True)
+            if ret.exit_status:
+                if any([msg in ret.stderr for msg in err_msgs]):
+                    test.error("No more pci slots, can't attach more devices")
+                else:
+                    test.fail("Failed to attach-interface: %s" % ret.stderr.strip())
+            else:
+                logging.debug("Hot-plug interface or device pass")
+                if update_device:
+                    # As the interface type will change to actual type "bridge" in live xml, we need to ensure
+                    # the update with original "network" type will not fail.
+                    # Try to delete the nwfilter with original type in iface_params
+                    update_xml = interface.Interface(iface_type)
+                    iface_params_update = {"del_filter": "yes", "type": "network", "source": vm_iface_source}
+                    update_xml.xml = libvirt.modify_vm_iface(vm1_name, 'get_xml', iface_params_update)
+                    ret = virsh.update_device(vm1_name, update_xml.xml, ignore_status=True, debug=True)
+                    libvirt.check_exit_status(ret)
 
-        if vm1.is_alive():
-            vm1.destroy()
+        else:
+            vm_iface_source = str(iface_source)
+            vm1_iface_params = {"type": iface_type, "source": vm_iface_source, "filter": filter_name,
+                                "mac": mac, 'driver': iface_driver, "iface_model": iface_model,
+                                "inbound": iface_inbound, "outbound": iface_outbound}
+            libvirt.modify_vm_iface(vm1_name, "update_iface", vm1_iface_params)
 
-        vm1.start()
-        # Check if vm can get ip with the new create bridge
+            if vm1.is_alive():
+                vm1.destroy()
+
+            vm1.start()
+        # apply ip address as it may not be initialized
         session1 = session2 = None
-        try:
-            utils_net.update_mac_ip_address(vm1, timeout=120)
-            vm1_ip = vm1.get_address()
-        except Exception as errs:
-            test.fail("vm1 can't get IP with the new create bridge: %s" % errs)
+        session1 = vm1.wait_for_serial_login()
+        utils_net.restart_guest_network(session1)
+        output = session1.cmd_output("ifconfig || ip a")
+        logging.debug("guest1 ip info %s" % output)
 
         # Check guest's network function
         host_ip = utils_net.get_ip_address_by_interface(bridge_name)
         remote_url = params.get("remote_ip", "www.google.com")
-        # make sure the guest has got ip address
-        session1 = vm1.wait_for_login()
-        session1.cmd("pkill -9 dhclient", ignore_all_errors=True)
-        session1.cmd("dhclient %s " % iface_name, ignore_all_errors=True)
-        output = session1.cmd_output("ifconfig || ip a")
-        logging.debug("guest1 ip info %s" % output)
 
-        # Start vm2 connect to the same bridge
-        modify_iface_xml(bridge_name, filter_name, vm2_name)
-        if vm2.is_alive():
-            vm2.destroy()
-        vm2.start()
-
-        # Check if vm1 and vm2 can ping each other
         try:
-            utils_net.update_mac_ip_address(vm2, timeout=120)
-            vm2_ip = vm2.get_address()
+            vm1_ip = utils_net.get_guest_ip_addr(session1, mac)
         except Exception as errs:
-            test.fail("vm2 can't get IP with the new create bridge: %s" % errs)
-        session2 = vm2.wait_for_login()
-        # make sure guest has got ip address
-        session2.cmd("pkill -9 dhclient", ignore_all_errors=True)
-        session2.cmd("dhclient %s " % iface_name, ignore_all_errors=True)
-        output2 = session2.cmd_output("ifconfig || ip a")
-        logging.debug("guest ip info %s" % output2)
-        # check 2 guests' network functions
-        check_net_functions(vm1_ip, ping_count, ping_timeout, session1,
-                            host_ip, remote_url, vm2_ip)
-        check_net_functions(vm2_ip, ping_count, ping_timeout, session2,
-                            host_ip, remote_url, vm1_ip)
+            test.fail("vm1 can't get IP with the new create bridge: %s" % errs)
+        if test_qos:
+            if test_net_qos:
+                logging.debug("Test network inbound:")
+                res1 = utils_net.check_class_rules(bridge_name, "1:2", ast.literal_eval(net_inbound))
+                logging.debug("Test network outbound:")
+                res2 = utils_net.check_filter_rules(bridge_name, ast.literal_eval(net_outbound))
+            else:
+                iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
+                tap_name = libvirt.get_ifname_host(vm1_name, iface_mac)
+                logging.debug("Test inbound:")
+                res1 = utils_net.check_class_rules(tap_name, "1:1", ast.literal_eval(iface_inbound))
+                logging.debug("Test outbound:")
+                res2 = utils_net.check_filter_rules(tap_name, ast.literal_eval(iface_outbound))
+            if not res1 or not res2:
+                test.fail("Qos test fail!")
+        if hotplug:
+            # reboot vm1 then check network function to ensure the interface still there and works fine
+            logging.info("reboot the vm")
+            virsh.reboot(vm1)
+            if session1 is None:
+                session1 = vm1.wait_for_serial_login()
+            ping(vm1_ip, remote_url, ping_count, ping_timeout, session=session1)
+            # restart libvirtd service then check the interface still works fine
+            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd.restart()
+            vm1.cleanup_serial_console()
+            vm1.create_serial_console()
+            session1 = vm1.wait_for_serial_login()
+            ping(vm1_ip, remote_url, ping_count, ping_timeout, session=session1)
+            logging.info("after reboot and restart libvirtd, the network works fine")
+            if iface_driver:
+                try:
+                    driver_dict = eval(iface_driver)
+                    if session1 is None:
+                        session1 = vm1.wait_for_serial_login()
+                    guest_iface_info = session1.cmd_output("ip l").strip()
+                    guest_iface_name = re.findall(r"^\d+: (\S+?)[@:].*state UP.*$", guest_iface_info, re.MULTILINE)[0]
+                    comb_size = driver_dict.get('queues')
+                    rx_size = driver_dict.get('rx_queue_size')
+                    session1.cmd_status("ethtool -L %s combined %s" % (guest_iface_name, comb_size))
+                    ret, outp = session1.cmd_status_output("ethtool -l %s" % guest_iface_name)
+                    logging.debug("ethtool cmd output:%s" % outp)
+                    if not ret:
+                        pre_comb = re.search("Pre-set maximums:[\s\S]*?Combined:.*?(\d+)", outp).group(1)
+                        cur_comb = re.search("Current hardware settings:[\s\S]*?Combined:.*?(\d+)", outp).group(1)
+                        if int(pre_comb) != int(comb_size) or int(cur_comb) != int(comb_size):
+                            test.fail("Fail to check the combined size: setting: %s,"
+                                      "Pre-set: %s, Current-set: %s"
+                                      % (comb_size, pre_comb, cur_comb))
+                        else:
+                            logging.info("Getting correct Pre-set and Current set value")
+                    else:
+                        test.error("ethtool list fail: %s" % outp)
+                    # as tx_queue size is only supported for vhost-user interface, only check rx_queue size
+                    ret1, outp1 = session1.cmd_status_output("ethtool -g %s" % guest_iface_name)
+                    logging.debug("guest queue size setting is %s" % outp1)
+                    if not ret1:
+                        pre_set = re.search(r"Pre-set maximums:\s*RX:\s*(\d+)", outp1).group(1)
+                        cur_set = re.search(r"Current hardware settings:\s*RX:\s*(\d+)", outp1).group(1)
+                        if int(pre_set) != int(rx_size) or int(cur_set) != int(rx_size):
+                            test.fail("Fail to check the rx_queue_size!")
+                except Exception as errs:
+                    test.fail("fail to get driver info")
+            # hot-unplug interface/device
+            if attach_interface:
+                ret = virsh.detach_interface(vm1_name, "bridge",
+                                             ignore_status=True)
+            else:
+                ret = virsh.detach_device(vm1_name, attach_xml.xml,
+                                          ignore_status=True,
+                                          debug=True)
+            if ret.exit_status:
+                test.fail("Hot-unplug interface/device fail")
+            else:
+                logging.info("hot-unplug interface/device succeed")
+
+        else:
+            if start_vm2:
+                # Start vm2 connect to the same bridge
+                mac2 = utils_net.generate_mac_address_simple()
+                vm2_iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac2}
+                libvirt.modify_vm_iface(vm2_name, "update_iface", vm2_iface_params)
+                if vm2.is_alive():
+                    vm2.destroy()
+                vm2.start()
+
+                # Check if vm1 and vm2 can ping each other
+                try:
+                    utils_net.update_mac_ip_address(vm2, timeout=120)
+                    vm2_ip = vm2.get_address()
+                except Exception as errs:
+                    test.fail("vm2 can't get IP with the new create bridge: %s" % errs)
+                session2 = vm2.wait_for_login()
+                # make sure guest has got ip address
+                utils_net.restart_guest_network(session2)
+                output2 = session2.cmd_output("ifconfig || ip a")
+                logging.debug("guest ip info %s" % output2)
+                # check 2 guests' network functions
+                check_net_functions(vm1_ip, ping_count, ping_timeout, session1,
+                                    host_ip, remote_url, vm2_ip)
+                check_net_functions(vm2_ip, ping_count, ping_timeout, session2,
+                                    host_ip, remote_url, vm1_ip)
+        if reconnect_tap:
+            iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
+            tap_name = libvirt.get_ifname_host(vm1_name, iface_mac)
+            # For network with shared host bridge, destroy the network will not
+            # impact the connection
+            if create_network and restart_net:
+                virsh.net_destroy(iface_source["network"])
+                out1 = libvirt_network.check_tap_connected(tap_name, True,
+                                                           bridge_name)
+                virsh.net_start(iface_source["network"])
+                out2 = libvirt_network.check_tap_connected(tap_name, True,
+                                                           bridge_name)
+                if not out1 or not out2:
+                    test.fail("Network destroy and restart should not impact "
+                              "tap connection from bridge network!")
+            else:
+                # Delete and re-create bridge, check the tap is not connected
+                utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
+                utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
+                out3 = libvirt_network.check_tap_connected(tap_name, False,
+                                                           bridge_name)
+                # Check restart libvirtd will recover the connection
+                libvirtd = utils_libvirtd.Libvirtd()
+                libvirtd.restart()
+                out4 = utils_misc.wait_for(
+                    lambda: libvirt_network.check_tap_connected(tap_name, True,
+                                                                bridge_name), 20)
+                if not out3 or not out4:
+                    test.fail("Delete and create linux bridge and check tap "
+                              "connection is not as expected!")
     finally:
         logging.debug("Start to restore")
         vm1_xml_bak.sync()
-        vm2_xml_bak.sync()
+        if start_vm2:
+            vm2_xml_bak.sync()
         virsh.nwfilter_undefine(filter_name, ignore_status=True)
-        if libvirt.check_iface(bridge_name, "exists", "--all"):
-            virsh.iface_unbridge(bridge_name, timeout=60, debug=True)
         if os.path.exists(iface_script_bk):
             process.run("mv %s %s" % (iface_script_bk, iface_script),
                         shell=True, verbose=True)
         if os.path.exists(bridge_script):
             process.run("rm -rf %s" % bridge_script, shell=True, verbose=True)
-        cmd = 'tmux -c "ip link set {1} nomaster;  ip link delete {0};' \
-              'pkill dhclient; sleep 6; dhclient {1}"'.format(bridge_name, iface_name)
-        process.run(cmd, shell=True, verbose=True)
+        br_path = "/sys/class/net/%s" % bridge_name
+        if os.path.exists(br_path):
+            utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
         # reload network configuration
         NM_service.restart()
         # recover NetworkManager
         if NM_status is True:
             NM_service.start()
+        if 'network' in iface_source and iface_source["network"] in virsh.net_state_dict():
+            virsh.net_destroy(iface_source["network"], ignore_status=False)

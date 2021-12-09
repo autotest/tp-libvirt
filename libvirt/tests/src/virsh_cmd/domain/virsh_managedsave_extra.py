@@ -8,6 +8,7 @@ from virttest import data_dir
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices import graphics
 from virttest.utils_test import libvirt
 
 MANAGEDSAVE_FILE = '/var/lib/libvirt/qemu/save/%s.save'
@@ -24,6 +25,7 @@ def run(test, params, env):
     vm_name = params.get('main_vm')
     checkpoint = params.get('checkpoint', '')
     error_msg = params.get('error_msg', '')
+    virsh_opt = params.get('virsh_opt', '')
     ms_extra_options = params.get('ms_extra_options', '')
     pre_state = params.get('pre_state', '')
     status_error = 'yes' == params.get('status_error', 'no')
@@ -58,6 +60,10 @@ def run(test, params, env):
         if checkpoint == 'secure_info':
             # Check managedsave-dumpxml with option --security-info
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            # Add graphics vnc if guest doesn't have
+            if not vmxml.get_devices(device_type="graphics"):
+                logging.debug("Guest doesn't have graphic, add one")
+                graphics.Graphics.add_graphic(vm_name, graphic="vnc")
             vm_xml.VMXML.set_graphics_attr(vm_name, {'passwd': '123456'})
             start_and_login_vm()
             virsh.managedsave(vm_name, **virsh_dargs)
@@ -114,6 +120,9 @@ def run(test, params, env):
             virsh.dom_list('--all --managed-save', **virsh_dargs)
             process.run('touch %s' % MANAGEDSAVE_FILE % vm_name, verbose=True)
             params['clean_managed_save'] = True
+        if checkpoint == 'readonly':
+            start_and_login_vm()
+            virsh.managedsave(vm_name, **virsh_dargs)
         if checkpoint == 'exclusive_option':
             virsh.managedsave(vm_name, **virsh_dargs)
 
@@ -123,15 +132,19 @@ def run(test, params, env):
             if ms_command == 'edit':
                 result_need_check = virsh.managedsave_edit(vm_name,
                                                            ms_extra_options,
+                                                           timeout=60,
+                                                           virsh_opt=virsh_opt,
                                                            debug=True)
             if ms_command == 'dumpxml':
                 result_need_check = virsh.managedsave_dumpxml(vm_name,
                                                               ms_extra_options,
+                                                              virsh_opt=virsh_opt,
                                                               debug=True)
             if ms_command == 'define':
                 result_need_check = virsh.managedsave_define(vm_name,
                                                              bkxml.xml,
                                                              ms_extra_options,
+                                                             virsh_opt=virsh_opt,
                                                              debug=True)
         # If needs to check result, check it
         if 'result_need_check' in locals():

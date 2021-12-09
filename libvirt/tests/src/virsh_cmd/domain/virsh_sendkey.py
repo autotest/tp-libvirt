@@ -4,10 +4,10 @@ import time
 from virttest import virsh
 from virttest import utils_package
 from virttest import utils_test
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-
-from provider import libvirt_version
+from virttest.libvirt_xml.devices.input import Input
 
 from avocado.utils import wait
 
@@ -42,6 +42,8 @@ def run(test, params, env):
     unprivileged_user = params.get('unprivileged_user')
     is_crash = ("yes" == params.get("is_crash", "no"))
     add_panic_device = ("yes" == params.get("add_panic_device", "yes"))
+    need_keyboard_device = ("yes" == params.get("need_keyboard_device", "yes"))
+    panic_model = params.get('panic_model', 'isa')
     force_vm_boot_text_mode = ("yes" == params.get("force_vm_boot_text_mode", "yes"))
     crash_dir = "/var/crash"
     if unprivileged_user:
@@ -64,9 +66,33 @@ def run(test, params, env):
         virsh.sendkey(vm_name, "KEY_ENTER",
                       ignore_status=False)
 
+    def add_keyboard_device(vm_name):
+        """
+        Add keyboard to guest if guest doesn't have
+
+        :params: vm_name: the guest name
+        """
+        inputs = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)\
+            .get_devices(device_type="input")
+        for input_device in inputs:
+            if input_device.type_name == "keyboard":
+                logging.debug("Guest already has a keyboard device")
+                return
+
+        kbd = Input("keyboard")
+        kbd.input_bus = "virtio"
+        logging.debug("Add keyboard device %s" % kbd)
+        result = virsh.attach_device(vm_name, kbd.xml)
+        if result.exit_status:
+            test.error("Failed to add keyboard device")
+
     vm = env.get_vm(vm_name)
-    vm.wait_for_login().close()
+    # Part of sysrq tests need keyboard device otherwise the sysrq cmd doesn't
+    # work. Refer to BZ#1526862
+    if need_keyboard_device:
+        add_keyboard_device(vm_name)
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vm.wait_for_login().close()
 
     if force_vm_boot_text_mode:
         # Boot the guest in text only mode so that send-key commands would succeed
@@ -92,7 +118,7 @@ def run(test, params, env):
             session.cmd("rm -rf {0}; mkdir {0}".format(crash_dir))
             libvirt.update_on_crash(vm_name, "destroy")
             if add_panic_device:
-                libvirt.add_panic_device(vm_name)
+                libvirt.add_panic_device(vm_name, model=panic_model)
             if not vm.is_alive():
                 vm.start()
             session = vm.wait_for_login()
@@ -107,7 +133,17 @@ def run(test, params, env):
 
         # clear messages, restart rsyslog, and make sure it's running
         session.cmd("echo '' > %s" % LOG_FILE)
-        session.cmd("service rsyslog restart")
+        # check the result of restart rsyslog
+        status, output = session.cmd_status_output("service rsyslog restart")
+        if status:
+            # To avoid 'Exec format error'
+            utils_package.package_remove("rsyslog", session)
+            utils_package.package_install("rsyslog", session)
+            # if rsyslog.service is masked, need to unmask rsyslog
+            if "Unit rsyslog.service is masked" in output:
+                session.cmd("systemctl unmask rsyslog")
+            session.cmd("echo '' > %s" % LOG_FILE)
+            session.cmd("service rsyslog restart")
         ps_stat = session.cmd_status("ps aux |grep rsyslog")
         if ps_stat != 0:
             test.fail("rsyslog is not running in guest")
@@ -181,13 +217,13 @@ def run(test, params, env):
             timeout = 60
             while timeout >= 0:
                 if "KEY_H" in keystrokes:
-                    cmd = "cat %s | grep 'SysRq.*HELP'" % LOG_FILE
+                    cmd = "cat %s | grep -i 'SysRq.*HELP'" % LOG_FILE
                     get_status = session.cmd_status(cmd)
                 elif "KEY_M" in keystrokes:
-                    cmd = "cat %s | grep 'SysRq.*Show Memory'" % LOG_FILE
+                    cmd = "cat %s | grep -i 'SysRq.*Show Memory'" % LOG_FILE
                     get_status = session.cmd_status(cmd)
                 elif "KEY_T" in keystrokes:
-                    cmd = "cat %s | grep 'SysRq.*Show State'" % LOG_FILE
+                    cmd = "cat %s | grep -i 'SysRq.*Show State'" % LOG_FILE
                     get_status = session.cmd_status(cmd)
                     # Sometimes SysRq.*Show State string missed in LOG_FILE
                     # as a fall back check for runnable tasks logged

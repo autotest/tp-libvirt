@@ -3,7 +3,7 @@ import logging
 
 from virttest import virsh
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 NWFILTER_ETC_DIR = "/etc/libvirt/nwfilter"
 

@@ -8,17 +8,16 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-
-from provider import libvirt_version
 
 
 def run(test, params, env):
     """
     Test command: virsh shutdown.
 
-    The conmand can gracefully shutdown a domain.
+    The command can gracefully shutdown a domain.
 
     1.Prepare test environment.
     2.When the libvirtd == "off", stop the libvirtd service.

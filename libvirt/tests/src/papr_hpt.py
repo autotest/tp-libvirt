@@ -68,7 +68,7 @@ def run(test, params, env):
             cpu = vm_xml.VMCPUXML()
         if 'numa_cell' in attrs:
             cpu.xmltreefile.create_by_xpath('/numa')
-            cpu.numa_cell = attrs['numa_cell']
+            attrs['numa_cell'] = cpu.dicts_to_cells(attrs['numa_cell'])
         for key in attrs:
             setattr(cpu, key, attrs[key])
         vmxml.cpu = cpu
@@ -84,6 +84,11 @@ def run(test, params, env):
 
         logging.debug(numa_cell)
         if numa_cell:
+            # Remove cpu topology to avoid that it doesn't match vcpu count
+            if vmxml.get_cpu_topology():
+                new_cpu = vmxml.cpu
+                new_cpu.del_topology()
+                vmxml.cpu = new_cpu
             vmxml.vcpu = max([int(cell['cpus'][-1]) for cell in numa_cell]) + 1
         vmxml.sync()
 
@@ -140,13 +145,16 @@ def run(test, params, env):
 
         # Test on ppc64le hosts
         if arch.lower() == 'ppc64le':
-            cpu_arch = cpu.get_cpu_arch()
+            cpu_arch = cpu.get_family() if hasattr(cpu, 'get_family') else cpu.get_cpu_arch()
             logging.debug('cpu_arch is: %s', cpu_arch)
             if skip_p8 and cpu_arch == 'power8':
                 test.cancel('This case is not for POWER8')
             if maxpagesize and not utils_misc.compare_qemu_version(3, 1, 0):
                 test.cancel('Qemu version is too low, '
                             'does not support maxpagesize setting')
+            if maxpagesize == 16384 and cpu_arch == 'power9':
+                test.cancel('Power9 does not support 16M pagesize.')
+
             set_hpt(vmxml, True, **hpt_attrs)
             if cpu_attrs or numa_cell:
                 if numa_cell:
@@ -181,7 +189,7 @@ def run(test, params, env):
             result = virsh.start(vm_name, debug=True)
             libvirt.check_exit_status(result, expect_error=status_error)
 
-            # if vm is not suposed to start, terminate test
+            # if vm is not supposed to start, terminate test
             if status_error:
                 libvirt.check_result(result, error_msg)
                 return
@@ -204,7 +212,7 @@ def run(test, params, env):
                 logging.debug(mem_xml)
 
                 # Attach memory device to the guest for 12 times
-                # that will reach the maxinum memory limitation
+                # that will reach the maximum memory limitation
                 for i in range(12):
                     virsh.attach_device(vm_name, mem_xml.xml,
                                         debug=True, ignore_status=False)
@@ -218,16 +226,6 @@ def run(test, params, env):
                     logging.debug('Searching for %s', pattern)
                     if not re.search(pattern, str(xml_after_attach.xmltreefile)):
                         test.fail('Missing memory alias: %s' % pattern)
-
-                # Log in the guest and check dmesg
-                dmesg = session.cmd('dmesg')
-                logging.debug(dmesg)
-                dmesg_content = params.get('dmesg_content', '').split('|')
-                for order in range(1, 3):
-                    order += hpt_order
-                    for content in dmesg_content:
-                        if content % order not in dmesg:
-                            test.fail('Missing dmesg: %s' % (content % order))
 
         # Test on non-ppc64le hosts
         else:

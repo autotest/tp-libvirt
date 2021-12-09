@@ -1,11 +1,17 @@
+import glob
+import json
+import logging
 import os
 import re
-import logging
+import string
+import tempfile
 import time
+import xml.etree.ElementTree as ET
 from distutils.version import LooseVersion  # pylint: disable=E0611
 
 from avocado.core import exceptions
 from avocado.utils import process
+from aexpect.exceptions import ShellStatusError
 
 from virttest import utils_v2v
 from virttest import utils_sasl
@@ -14,13 +20,34 @@ from virttest import utils_misc
 from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
 
-V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
 # Temporary workaround <Fix in future with a better solution>
 FEATURE_SUPPORT = {
     'genid': 'virt-v2v-1.40.1-1.el7',
     'libosinfo': 'virt-v2v-1.40.2-2.el7',
-    'virtio_rng': '2.6.26'}
+    'virtio_rng': '2.6.26',
+    'cache_none': 'virt-v2v-1.42.0-4',
+    'q35': 'virt-v2v-1.43.3-2'}
+
+
+def compare_version(compare_version, real_version=None, cmd=None):
+    """
+    Compare version against given version.
+
+    :param compare_version: The minimum version to be compared
+    :param real_version: The real version to compare
+    :param cmd: the command to get the real version
+
+    :return: If the real_version is greater equal than minimum version,
+            return True, others return False
+    """
+    if not real_version:
+        if not cmd:
+            cmd = 'rpm -q virt-v2v|grep virt-v2v'
+        real_version = process.run(cmd, shell=True).stdout_text.strip()
+    if LooseVersion(real_version) >= LooseVersion(compare_version):
+        return True
+    return False
 
 
 class VMChecker(object):
@@ -32,15 +59,46 @@ class VMChecker(object):
     def __init__(self, test, params, env):
         self.errors = []
         self.params = params
+        self.vmxml = ''
+        self.xmltree = None
         self.vm_name = params.get('main_vm')
         self.v2v_cmd = params.get('v2v_command', '')
         self.original_vm_name = params.get('original_vm_name')
+        self.hypervisor = params.get("hypervisor")
+        self.target = params.get('target')
+        self.input_mode = params.get('input_mode')
+        self.output_method = params.get('output_method')
         # The expected boottype of guest, default 0 is 'i440fx+bios'
         # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
         # q35+secure_uefi
         self.boottype = int(params.get("boottype", 0))
-        self.hypervisor = params.get("hypervisor")
-        self.target = params.get('target')
+        # Due to changes in v2v and rhv, the current logic is:
+        # 1) boottype value set by users takes the hignest precedence.
+        # 2) if bootype is not set and '-o rhv_upload' is used, if ovirt
+        # is >= 4.4, then set boottype to 1, else keep the default 0.
+        # 3) if v2v version is newer enough to support q35 by default, then all latest
+        # guests will be converted to q35 by default.
+        if self.target == 'ovirt' and self.output_method == 'rhv_upload':
+            from virttest.ovirt import connect
+            _, self.ovirt_server_version = connect(params)
+            logging.info(
+                "rhv server version is: %s",
+                self.ovirt_server_version.full_version)
+            if self.ovirt_server_version.major >= 4 and self.ovirt_server_version.minor >= 4:
+                self.boottype = int(params.get("boottype", 1))
+            rhv_bz_1961945_ver = '[4.4.6.8, 4.4.7.6)'  # bz1961945
+            rhv_bz_1983610_ver = '[4.4.6.8, 4.4.8.2)'  # bz1983610
+            if utils_v2v.compare_version(
+                rhv_bz_1961945_ver,
+                self.ovirt_server_version.full_version) or self.hypervisor in [
+                'xen',
+                'kvm'] and utils_v2v.compare_version(
+                rhv_bz_1983610_ver,
+                    self.ovirt_server_version.full_version) and self.input_mode != 'ova':
+                self.boottype = int(params.get("boottype", 0))
+        if compare_version(FEATURE_SUPPORT['q35']):
+            self.boottype = int(params.get("boottype", 1))
+
         self.os_type = params.get('os_type')
         self.os_version = params.get('os_version', 'OS_VERSION_V2V_EXAMPLE')
         self.original_vmxml = params.get('original_vmxml')
@@ -49,18 +107,15 @@ class VMChecker(object):
         self.virsh_session_id = self.virsh_session.get_id(
             ) if self.virsh_session else params.get('virsh_session_id')
         self.checker = utils_v2v.VMCheck(test, params, env)
-        self.setup_session()
+        # Should delete the guest when setup_session failed
+        try:
+            self.setup_session()
+        except Exception:
+            self.checker.cleanup()
+            raise
         if not self.checker.virsh_session_id:
             self.checker.virsh_session_id = self.virsh_session_id
-        if self.v2v_cmd and '-o rhv-upload' in self.v2v_cmd and '--no-copy' in self.v2v_cmd:
-            self.vmxml = ''
-        else:
-            self.vmxml = virsh.dumpxml(
-                self.vm_name,
-                session_id=self.virsh_session_id).stdout.strip()
-        self.xmltree = None
-        if self.vmxml:
-            self.xmltree = xml_utils.XMLTreeFile(self.vmxml)
+        self.init_vmxml(raise_exception=False)
         # Save NFS mount records like {0:(src, dst, fstype)}
         self.mount_records = {}
 
@@ -115,70 +170,155 @@ class VMChecker(object):
         logging.error(msg)
         self.errors.append(msg)
 
+    def init_vmxml(self, raise_exception=True):
+        """
+        Initialize the self.vmxml.
+
+        The self.vmxml could be empty until VMChecker.run begins.
+        It's not necessary to get the xml if you don't need to check it or the
+        env is not ready to get the xml.
+
+        e.g. When the VM is in a rhv host, the dumpxml will not success unless
+        the VM is started. But the VM may fail to start because of unexpected
+        reason, so we should not assume the dumpxml always returns success in
+        vmchecker.__init__ function.
+
+        But the self.vmxml must not be empty when vmchecker.run begins.
+
+        :param raise_exception: True to raise exception, False to ignore it.
+        """
+        if self.vmxml:
+            return
+
+        try:
+            res = virsh.dumpxml(
+                self.vm_name,
+                session_id=self.virsh_session_id,
+                debug=True)
+            if res.exit_status == 0:
+                self.vmxml = res.stdout_text.strip()
+                self.xmltree = xml_utils.XMLTreeFile(self.vmxml)
+        except Exception as e:
+            if raise_exception:
+                raise
+            logging.debug('Failed to dumpxml: %s', str(e))
+
     def run(self):
+        self.init_vmxml()
         self.check_metadata_libosinfo()
         self.check_genid()
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
-            self.check_windows_vm()
+            try:
+                self.check_windows_vm()
+            except ShellStatusError:
+                logging.debug('Windows guest may be rebooting, try again!')
+                self.checker.session.close()
+                self.checker.session = None
+                self.check_windows_vm()
         else:
-            logging.warn("Unspported os type: %s", self.os_type)
+            logging.warn("Unsupported os type: %s", self.os_type)
         return self.errors
-
-    def compare_version(self, compare_version, real_version=None, cmd=None):
-        """
-        Compare version against given version.
-
-        :param compare_version: The minumum version to be compared
-        :param real_version: The real version to compare
-        :param cmd: the command to get the real version
-
-        :return: If the real_version is greater equal than minumum version,
-                return True, others return False
-        """
-        if not real_version:
-            if not cmd:
-                cmd = 'rpm -q virt-v2v|grep virt-v2v'
-            real_version = process.run(cmd, shell=True).stdout_text.strip()
-        if LooseVersion(real_version) >= LooseVersion(compare_version):
-            return True
-        return False
 
     def get_expect_graphic_type(self):
         """
         The graphic type in VM XML is different for different target.
         """
-        # 'ori_graphic' only can be set when hypervior is KVM. For Xen and
+        # 'ori_graphic' only can be set when hypervisor is KVM. For Xen and
         # Esx, it will always be 'None' and 'vnc' will be set by default.
         graphic_type = self.params.get('ori_graphic', 'vnc')
-        # Video modle will change to QXL if convert target is ovirt/RHEVM
+        # Video model will change to QXL if convert target is ovirt/RHEVM
         if self.target == 'ovirt':
             graphic_type = 'spice'
         return graphic_type
+
+    def get_virtio_win_config(self):
+        """
+        Return a value pair (virtio_win_installed, virtio_win_support_qxldod).
+        If virtio_win_installed is true, virtio-win is installed or VIRTIO_WIN
+        is set.
+        If virtio_win_support_qxldod is true, qxldod drivers are included.
+        """
+        # see bz1902635
+        virtio_win_ver = "[virtio-win-1.9.16,)"
+        virtio_win_installed = os.path.exists(
+            '/usr/share/virtio-win/virtio-win.iso')
+        # virtio-win is not installed, but VIRTIO_WIN is set
+        virtio_win_env = os.getenv('VIRTIO_WIN')
+        virtio_win_support_qxldod = False
+
+        if not virtio_win_installed:
+            if virtio_win_env:
+                # Users should assure VIRTIO_WIN is valid
+                virtio_win_installed = True
+                if os.path.isdir(virtio_win_env):
+                    virtio_win_iso_dir = virtio_win_env
+                    qxldods = glob.glob(
+                        "%s/**/qxldod.inf" %
+                        virtio_win_iso_dir, recursive=True)
+                else:
+                    with tempfile.TemporaryDirectory(prefix='v2v_helper_') as virtio_win_iso_dir:
+                        process.run(
+                            'mount %s %s' %
+                            (virtio_win_env, virtio_win_iso_dir), shell=True)
+                        qxldods = glob.glob(
+                            "%s/**/qxldod.inf" %
+                            virtio_win_iso_dir, recursive=True)
+                        process.run(
+                            'umount %s' %
+                            (virtio_win_iso_dir),
+                            shell=True)
+                logging.debug('Found qxldods: %s', qxldods)
+                if qxldods:
+                    virtio_win_support_qxldod = True
+        else:
+            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
+                virtio_win_ver)
+
+        return virtio_win_installed, virtio_win_support_qxldod
 
     def get_expect_video_model(self):
         """
         The video model in VM XML is different in different situation.
         """
-        video_model = 'cirrus'
-        # Video modle will change to QXL if convert target is ovirt/RHEVM
-        if self.target == 'ovirt':
-            video_model = 'qxl'
-        # Since RHEL7.3(virt-v2v-1.32.1-1.el7), video model will change to
-        # QXL for linux VMs
-        if self.os_type == 'linux':
-            if self.compare_version(V2V_7_3_VERSION):
+        def _when_target_libvirt(has_qxldod):
+            # Since RHEL7.3(virt-v2v-1.32.1-1.el7), video model will change to
+            # QXL for linux VMs
+            if self.os_type == 'linux':
                 video_model = 'qxl'
-        # Video model will change to QXL for Windows2008r2 and windows7
-        if self.os_version in ['win7', 'win2008r2']:
-            video_model = 'qxl'
-            # video mode of windows guest will be cirrus if there is no virtio-win
-            # driver installed and environment 'VIRTIO_WIN' is not set on host
-            if process.run(
-                'rpm -q virtio-win',
-                    ignore_status=True).exit_status != 0 and not os.getenv('VIRTIO_WIN'):
+            elif self.os_version in ['win7', 'win2008r2']:
+                video_model = 'qxl'
+            elif self.os_version in ['win10', 'win2016', 'win2019'] and has_qxldod:
+                video_model = 'qxl'
+            else:
                 video_model = 'cirrus'
+
+            # on slow train, video is set to 'cirrus' for windows guest.
+            v2v_av_version = '[virt-v2v-1.42,)'
+            if self.os_type == 'windows' and not utils_v2v.multiple_versions_compare(
+                    v2v_av_version):
+                logging.debug('video is changed because of slow train')
+                video_model = 'cirrus'
+
+            return video_model
+
+        def _when_target_ovirt():
+            # Video model will change to QXL if convert target is ovirt/RHEVM
+            return 'qxl'
+
+        # Default value
+        video_model = 'cirrus'
+        has_virtio_win, has_qxldod = self.get_virtio_win_config()
+        # Video model will change to QXL if convert target is ovirt/RHEVM
+        if self.target == 'ovirt':
+            video_model = _when_target_ovirt()
+        # Video model will change to QXL for Windows2008r2 and windows7
+        if self.target == 'libvirt':
+            video_model = _when_target_libvirt(has_qxldod)
+        if not has_virtio_win:
+            video_model = 'cirrus'
+
         return video_model
 
     def check_metadata_libosinfo(self):
@@ -188,6 +328,95 @@ class VMChecker(object):
         Note: This is not a mandatory checking, if you need to check it, you have to
         set related parameters correctly.
         """
+        def _guess_long_id(short_id):
+            """
+            If libosinfo doesn't have the short_id of an OS, we have to
+            guess the final long_id based on the short_id.
+
+            This usually happens when v2v server is on a lower rhel version,
+            but the guest has a higher rhel version. On which the libosinfo
+            doesn't include the guest info.
+            """
+
+            # 'winnt' must precede 'win'
+            # 'rhel-atomic' must precede 'rhel'
+            os_list = [
+                'rhel-atomic',
+                'rhel',
+                'sles',
+                'centos',
+                'opensuse',
+                'debian',
+                'ubuntu',
+                'fedora',
+                'winnt',
+                'win']
+            long_id = ''
+
+            for os_i in os_list:
+                ptn = r'(%s)(\S+)' % os_i
+                res = re.search(ptn, short_id)
+                if not res:
+                    continue
+                os_name, os_ver = res.group(1), res.group(2).lstrip('-')
+
+                if os_name == 'rhel':
+                    long_id = 'http://redhat.com/%s/%s' % (os_name, os_ver)
+                elif os_name == 'sles':
+                    long_id = 'http://suse.com/%s/%s' % (
+                        os_name, os_ver.replace('sp', '.'))
+                elif os_name == 'centos':
+                    long_id = 'http://centos.org/%s/%s' % (os_name, os_ver)
+                elif os_name == 'opensuse':
+                    long_id = 'http://opensuse.org/%s/%s' % (os_name, os_ver)
+                elif os_name == 'debian':
+                    long_id = 'http://debian.org/%s/%s' % (os_name, os_ver)
+                elif os_name == 'ubuntu':
+                    long_id = 'http://ubuntu.com/%s/%s' % (os_name, os_ver)
+                elif os_name == 'fedora':
+                    long_id = 'http://fedoraproject.org/%s/%s' % (
+                        os_name, os_ver)
+                elif os_name in ['winnt', 'win']:
+                    long_id = 'http://microsoft.com/%s/%s' % (os_name, os_ver)
+                else:
+                    logging.debug("Guess long id failed")
+
+                break
+
+            if not long_id:
+                raise exceptions.TestError(
+                    'Cannot guess long id for %s' % short_id)
+
+            return long_id
+
+        def _id_short_to_long(short_id):
+            """
+            Convert short_id to long_id
+            """
+            cmd = 'osinfo-query os --fields=short-id | tail -n +3'
+            # Too much debug output if verbose is True
+            output = process.run(
+                cmd,
+                timeout=20,
+                shell=True,
+                ignore_status=True,
+                verbose=False)
+            short_id_all = output.stdout_text.splitlines()
+            if short_id not in [os_id.strip() for os_id in short_id_all]:
+                logging.info("Not found shourt_id '%s' on host", short_id)
+                long_id = _guess_long_id(short_id)
+            else:
+                cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
+                output = process.run(
+                    cmd,
+                    timeout=20,
+                    verbose=True,
+                    shell=True,
+                    ignore_status=True)
+                long_id = output.stdout_text.strip()
+
+            return long_id
+
         logging.info("Checking metadata libosinfo")
         # 'os_short_id' must be set for libosinfo checking, you can query it by
         # 'osinfo-query os'
@@ -200,7 +429,7 @@ class VMChecker(object):
             return
 
         # Checking if the feature is supported
-        if not self.compare_version(FEATURE_SUPPORT['libosinfo']):
+        if not compare_version(FEATURE_SUPPORT['libosinfo']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['libosinfo']
             logging.info(
                 'Skip Checking metadata libosinfo parameters: %s' %
@@ -226,29 +455,11 @@ class VMChecker(object):
                 reason)
             return
 
-        cmd = 'osinfo-query os --fields=short-id | tail -n +3'
-        # Too much debug output if verbose is True
-        output = process.run(
-            cmd,
-            timeout=20,
-            shell=True,
-            ignore_status=True,
-            verbose=False)
-        short_id_all = output.stdout_text.splitlines()
-        if short_id not in [os_id.strip() for os_id in short_id_all]:
-            raise exceptions.TestError('Invalid short_id: %s' % short_id)
+        long_id = _id_short_to_long(short_id)
 
-        cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
-        output = process.run(
-            cmd,
-            timeout=20,
-            verbose=True,
-            shell=True,
-            ignore_status=True)
-        long_id = output.stdout_text.strip()
         # '<libosinfo:os id' was changed to '<ns0:os id' after calling
         # vm_xml.VMXML.new_from_inactive_dumpxml.
-        # It's problably a problem in vm_xml.
+        # It's probably a problem in vm_xml.
         # <TODO>  Fix it
         #libosinfo_pattern = r'<libosinfo:os id="%s"/>' % long_id
         # A temp workaround for above problem
@@ -263,10 +474,10 @@ class VMChecker(object):
         Check expected video module on VM
         :param video_type: the expected video type
         :param dev_id: the ID of the video device
-        :return: log error will be recored if not found, else return nothing
+        :return: log error will be recorded if not found, else return nothing
         """
-        # Check by 'lspci' or 'lshw'
-        cmd = ["lspci", "lshw"]
+        # Check by 'lspci' or 'lshw' or 'hwinfo --gfxcard'
+        cmd = ["lspci", "lshw", "hwinfo --gfxcard"]
         if self.checker.vm_general_search(
             cmd,
             video_type,
@@ -390,13 +601,22 @@ class VMChecker(object):
             err_msg = "Checking boot os info failed"
             self.log_err(err_msg)
 
+        logging.info("Checking cache='none' not existing in VM XML")
+        if self.target == 'libvirt' and compare_version(
+                FEATURE_SUPPORT['cache_none']):
+            root = ET.fromstring(self.vmxml)
+            err_msg = "Checking cache='none' not existing failed"
+            for disk in root.findall("./devices/disk/driver[@cache]"):
+                if disk.get('cache') == 'none':
+                    self.log_err(err_msg)
+
     def check_linux_vm(self):
         """
         Check linux VM after v2v convert.
         Only for RHEL VMs(RHEL4 or later)
         """
         self.checker.create_session()
-        # Check OS vender and distribution
+        # Check OS vendor and distribution
         logging.info("Checking VM os info")
         os_info = self.checker.get_vm_os_info()
         os_vendor = self.checker.get_vm_os_vendor()
@@ -431,7 +651,7 @@ class VMChecker(object):
                        "Virtio memory balloon"]
         # Virtio RNG supports from kernel-2.6.26
         # https://wiki.qemu.org/Features/VirtIORNG
-        if self.compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
+        if compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
             virtio_devs.append("Virtio RNG")
         logging.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
@@ -499,6 +719,7 @@ class VMChecker(object):
                 self.checker.run_cmd('dir')
             except BaseException:
                 self.checker.session.close()
+                self.checker.session = None
                 self.checker.create_session()
             else:
                 break
@@ -515,29 +736,28 @@ class VMChecker(object):
 
         # Check Red Hat VirtIO drivers and display adapter
         logging.info("Checking VirtIO drivers and display adapter")
+        expect_video = self.get_expect_video_model()
+        has_virtio_win, has_qxldod = self.get_virtio_win_config()
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte"]
-        # Windows display adapter is different for each release
-        # Default value
-        expect_adapter = 'Basic Display Driver'
-        if self.os_version in ['win7', 'win2008r2']:
-            expect_adapter = 'QXL'
-        if self.os_version in ['win2003', 'win2008']:
-            expect_adapter = 'Standard VGA Graphics Adapter'
-        bdd_list = [
-            'win8',
-            'win8.1',
-            'win10',
-            'win2012',
-            'win2012r2',
-            'win2016',
-            'win2019']
-        if self.os_version in bdd_list:
-            expect_adapter = 'Basic Display Driver'
+        expect_adapter = 'Microsoft Basic Display Driver'
+        virtio_win_qxl_os = ['win2008r2', 'win7']
+        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
+        if has_virtio_win and expect_video == 'qxl':
+            if has_qxldod and self.os_version in virtio_win_qxldod_os:
+                expect_adapter = 'Red Hat QXL controller'
+            elif self.os_version in virtio_win_qxl_os:
+                expect_adapter = 'Red Hat QXL GPU'
+
         expect_drivers.append(expect_adapter)
         check_drivers = expect_drivers[:]
-        for check_times in range(5):
+        for check_times in range(10):
             logging.info('Check drivers for the %dth time', check_times + 1)
+            # Windows VM may reboot after drivers are installed, a fresh
+            # session should be created to avoid using invalid session.
+            self.checker.session.close()
+            self.checker.session = None
+            self.checker.create_session(timeout=900)
             win_dirvers = self.checker.get_driver_info()
             for driver in expect_drivers:
                 if driver in win_dirvers:
@@ -558,14 +778,7 @@ class VMChecker(object):
                 self.log_err("Not find driver: %s" % driver)
 
         # Check graphic and video type in VM XML
-        if self.compare_version(V2V_7_3_VERSION):
-            self.check_vm_xml()
-
-        # Renew network
-        logging.info("Renew network for windows guest")
-        if not self.checker.get_network_restart():
-            err_msg = "Renew network failed"
-            self.log_err(err_msg)
+        self.check_vm_xml()
 
     def check_graphics(self, param):
         """
@@ -602,6 +815,11 @@ class VMChecker(object):
                     map(lambda x: hex(int(x) & ((1 << 64) - 1)), [vm_genid, vm_genidX])):
                 # Remove 'L' suffix for python2
                 val = val.rstrip('L')
+                # if length of val is not equal 18, we must fill the length
+                # to 18 with 0.
+                if len(val) < 18:
+                    zero_pad = 18 - len(val)
+                    val = '0x' + '0' * zero_pad + val[2:]
                 if index == 0:
                     gen_id = '-'.join([val[n:] if n == -8 else val[n:n + 4]
                                        for n in range(-8, -17, -4)])
@@ -612,11 +830,12 @@ class VMChecker(object):
             return gen_id + '-' + gen_idX
 
         has_genid = self.params.get('has_genid')
+        # Return if not set has_genid
         if not has_genid:
             return
 
         # Checking if the feature is supported
-        if not self.compare_version(FEATURE_SUPPORT['genid']):
+        if not compare_version(FEATURE_SUPPORT['genid']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['genid']
             logging.info('Skip Checking genid: %s' % reason)
             return
@@ -665,3 +884,99 @@ class VMChecker(object):
         elif has_genid == 'no':
             if re.search(r'genid', self.vmxml):
                 self.log_err('Unexpected genid in xml')
+
+
+def check_local_output(params):
+    """
+    Check -o local result
+
+    Only do basic checking, '-o libvirt' already does
+    the whole checking process.
+    """
+    logging.info('checking local output')
+
+    os_directory = params.get('os_directory')
+    disk_count = int(params.get('vm_disk_count', 0))
+    vm_name = params.get('main_vm')
+
+    result = True
+    # Checking all disks
+    for i, c in enumerate(string.ascii_lowercase):
+        if i == disk_count:
+            break
+        disk_file_name = "%s-%s" % (vm_name, 'sd%s' % c)
+        disk_file = os.path.join(os_directory, disk_file_name)
+        if not os.path.exists(disk_file):
+            logging.error('Not found %s' % disk_file)
+            result = False
+
+    # Check xml file
+    xml_file = os.path.join(os_directory, '%s.xml' % vm_name)
+    if not os.path.exists(xml_file):
+        logging.error('Not found %s' % xml_file)
+        result = False
+    elif compare_version(FEATURE_SUPPORT['cache_none']):
+        # Check 'cache_none' in xml file
+        logging.info("Checking cache='none' not exist in %s" % xml_file)
+        root = ET.parse(xml_file).getroot()
+        for disk in root.findall("./devices/disk/driver[@cache]"):
+            if disk.get('cache') == 'none':
+                result = False
+                break
+
+    return result
+
+
+def check_json_output(params):
+    """
+    Check -o json result
+    """
+    logging.info('checking json output')
+
+    os_directory = params.get('os_directory')
+    disk_count = int(params.get('vm_disk_count', 0))
+    vm_name = params.get('main_vm')
+    json_disk_pattern = params.get('json_disk_pattern')
+
+    result = True
+
+    json_disk_dict = {
+        'GuestName': vm_name,
+        'DiskDeviceName': '',
+        'DiskNo': 0}
+
+    if json_disk_pattern:
+        json_disk_pattern = json_disk_pattern.replace('%{', '{')
+        json_disk_pattern = re.sub(
+            r'%{(.*?)}', r'%%{{\g<1>}}', json_disk_pattern)
+
+    # Checking all disks
+    for i, c in enumerate(string.ascii_lowercase):
+        if i == disk_count:
+            break
+
+        json_disk_dict.update({'DiskDeviceName': 'sd%s' % c})
+        json_disk_dict.update({'DiskNo': '%d' % (i + 1)})
+
+        disk_file_name = "%s-%s" % (vm_name, 'sd%s' % c)
+        if json_disk_pattern:
+            disk_file_name = json_disk_pattern.format(**json_disk_dict)
+        disk_file = os.path.join(os_directory, disk_file_name)
+        if not os.path.exists(disk_file):
+            logging.error('Not found %s' % disk_file)
+            result = False
+
+    # Check json file
+    json_file = os.path.join(os_directory, '%s.json' % vm_name)
+    if not os.path.exists(json_file):
+        logging.error('Not found %s' % json_file)
+        result = False
+
+    # Check content of the json file
+    with open(json_file) as fp:
+        vm = json.load(fp)
+        if vm['name'] != vm_name and len(vm['disks']) != disk_count:
+            logging.error('Verify content failed in %s' % json_file)
+            result = False
+
+    return result

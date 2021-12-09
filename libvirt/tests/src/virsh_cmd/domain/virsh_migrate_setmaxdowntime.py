@@ -7,13 +7,11 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import ssh_key
+from virttest import utils_misc
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-from virttest import utils_libvirtd
-from virttest import utils_config
-from virttest import utils_misc
-
-from provider import libvirt_version
 
 
 # To get result in thread, using global parameters
@@ -78,18 +76,35 @@ def cleanup_dest(vm, src_uri, dest_uri):
     vm.connect_uri = src_uri
 
 
-def config_libvirt(params):
+def cleanup_daemon_log(log_file):
     """
-    Configure /etc/libvirt/libvirtd.conf
+    Remove existing daemon log file on local host
+
+    :param log_file: log file with absolute path
     """
-    libvirtd_conf = utils_config.LibvirtdConfig()
+    if os.path.exists(log_file):
+        logging.debug("Delete local log file '%s'", log_file)
+        os.remove(log_file)
 
-    for k, v in list(params.items()):
-        libvirtd_conf[k] = v
 
-    logging.debug("The libvirtd config file content is:\n%s" % libvirtd_conf)
+def update_config_file(conf_type, conf_dict, scp_to_remote=False,
+                       remote_params=None):
+    """
+    Update the specified configuration file
 
-    return libvirtd_conf
+    :param conf_type: String type, conf type like libvirtd, qemu
+    :param conf_dict: dict of parameters to set
+    :param scp_to_remote: True to also update in remote host
+    :param remote_params: The dict including parameters to connect remote host
+    :return: utils_config.LibvirtConfigCommon object
+    """
+
+    logging.debug("Update configuration file")
+    updated_conf = libvirt.customize_libvirt_config(conf_dict,
+                                                    config_type=conf_type,
+                                                    remote_host=scp_to_remote,
+                                                    extra_params=remote_params)
+    return updated_conf
 
 
 def run(test, params, env):
@@ -141,18 +156,16 @@ def run(test, params, env):
     if not orig_config_xml:
         test.error("Backing up xmlfile failed.")
 
-    # Params to configure libvirtd.conf
-    log_file = "/var/log/libvirt/libvirtd.log"
-    log_level = "1"
-    log_filters = '"1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"'
-    libvirtd_conf_dict = {"log_level": log_level,
-                          "log_filters": log_filters,
-                          "log_outputs": '"%s:file:%s"' % (log_level, log_file)}
+    # Clean up daemon log
+    log_file = params.get("log_file")
+    cleanup_daemon_log(log_file)
 
-    # Update libvirtd config with new parameters
-    libvirtd = utils_libvirtd.Libvirtd()
-    libvirtd_conf = config_libvirt(libvirtd_conf_dict)
-    libvirtd.restart()
+    # Config daemon log
+    log_conf_dict = eval(params.get("log_conf_dict", '{}'))
+    log_conf_type = params.get("log_conf_type")
+    log_conf = None
+    log_conf = update_config_file(log_conf_type, log_conf_dict,
+                                  scp_to_remote=False, remote_params=None)
 
     # Params to update disk using shared storage
     params["disk_type"] = "file"
@@ -248,11 +261,14 @@ def run(test, params, env):
         libvirt.delete_local_disk("file", path=source_file)
 
         # Recover libvirtd service configuration on local
-        if libvirtd_conf:
+        if log_conf:
             logging.debug("Recover local libvirtd configuration...")
-            libvirtd_conf.restore()
-            libvirtd.restart()
-            os.remove(log_file)
+            libvirt.customize_libvirt_config(None,
+                                             remote_host=False,
+                                             extra_params=params,
+                                             is_recover=True,
+                                             config_object=log_conf)
+            cleanup_daemon_log(log_file)
 
     # Check results.
     if status_error:

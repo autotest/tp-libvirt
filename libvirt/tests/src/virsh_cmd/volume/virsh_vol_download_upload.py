@@ -7,11 +7,12 @@ import aexpect
 
 from avocado.utils import process
 
-from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_xml
-from virttest import utils_misc
 from virttest import remote
+from virttest import utils_misc
+from virttest import utils_split_daemons
+from virttest import virsh
 from virttest import virt_vm
 
 from virttest.libvirt_xml import vm_xml
@@ -20,7 +21,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt as utlv
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def digest(path, offset, length):
@@ -111,7 +112,7 @@ def create_disk(disk_type, disk_path, disk_format, disk_device_type,
     return custom_disk
 
 
-def write_disk(test, guest_vm, target_name, size=100):
+def write_disk(test, guest_vm, target_name, size=200):
     """
     Write data into disk in VM discard value.
 
@@ -171,9 +172,16 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
     sparse_option_support = "yes" == params.get("sparse_option_support", "yes")
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    vol_clusterSize = params.get("vol_clusterSize", "64")
+    vol_clusterSize_unit = params.get("vol_clusterSize_unit")
+    vol_format = params.get("vol_format", "qcow2")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unpri_user = params.get('unprivileged_user')
     if unpri_user:
         if unpri_user.count('EXAMPLE'):
@@ -219,13 +227,21 @@ def run(test, params, env):
                 vol_arg['name'] = vol_name
                 vol_arg['capacity'] = int(capacity)
                 vol_arg['allocation'] = int(allocation)
+                if with_clusterSize:
+                    vol_arg['format'] = vol_format
+                    vol_arg['clusterSize'] = int(vol_clusterSize)
+                    vol_arg['clusterSize_unit'] = vol_clusterSize_unit
                 create_luks_vol(pool_name, vol_name, luks_sec_uuid, vol_arg)
             else:
                 pvt.pre_vol(vol_name, frmt, capacity, allocation, pool_name)
 
-        vol_list = virsh.vol_list(pool_name).stdout.strip()
+        virsh.pool_refresh(pool_name, debug=True)
+        vol_list = virsh.vol_list(pool_name, debug=True).stdout.strip()
         # iscsi volume name is different from others
         if pool_type == "iscsi":
+            # Due to BZ 1843791, the volume cannot be obtained sometimes.
+            if len(vol_list.splitlines()) < 3:
+                test.fail("Failed to get iscsi type volume.")
             vol_name = vol_list.split('\n')[2].split()[0]
 
         vol_path = virsh.vol_path(vol_name, pool_name,
@@ -354,13 +370,12 @@ def run(test, params, env):
                 vm.start()
 
             # Write 100M data into disk.
-            write_disk(test, vm, target)
+            data_size = 100
+            write_disk(test, vm, target, data_size)
+            data_size_in_bytes = data_size * 1024 * 1024
 
             # Refresh directory pool.
             virsh.pool_refresh(pool_name, debug=True)
-            # Get original disk image size by qemu-img info.
-            original_img_info = utils_misc.get_image_info(disk_file_path)
-            original_disk_size = int(original_img_info['dsize'])
 
             # Download volume to local with sparse option.
             download_spare_file = "download-sparse.raw"
@@ -369,14 +384,17 @@ def run(test, params, env):
             result = virsh.vol_download(file_name, download_file_path, options,
                                         unprivileged_user=unpri_user,
                                         uri=uri, debug=True)
+            libvirt.check_exit_status(result)
 
             #Check download image size.
             one_g_in_bytes = 1073741824
             download_img_info = utils_misc.get_image_info(download_file_path)
             download_disk_size = int(download_img_info['dsize'])
-            if download_disk_size < original_disk_size or download_disk_size > one_g_in_bytes:
-                test.fail("download image size:%d is greater than original size:%d or larger than 1G"
-                          % (download_disk_size, original_disk_size))
+            if (download_disk_size < data_size_in_bytes or
+               download_disk_size >= one_g_in_bytes):
+                test.fail("download image size:%d is less than the generated "
+                          "data size:%d or greater than or equal to 1G."
+                          % (download_disk_size, data_size_in_bytes))
 
             # Create one upload sparse image file.
             upload_sparse_file = "upload-sparse.raw"
@@ -391,8 +409,11 @@ def run(test, params, env):
                                       uri=uri, debug=True)
             upload_img_info = utils_misc.get_image_info(upload_file_path)
             upload_disk_size = int(upload_img_info['dsize'])
-            if upload_disk_size != download_disk_size:
-                test.fail("upload image size with sparse option is wrong!")
+            if (upload_disk_size < data_size_in_bytes or
+               upload_disk_size >= one_g_in_bytes):
+                test.fail("upload image size:%d is less than the generated "
+                          "data size:%d or greater than or equal to 1G."
+                          % (upload_disk_size, data_size_in_bytes))
     finally:
         # Recover VM.
         if vm.is_alive():

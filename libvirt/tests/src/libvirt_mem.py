@@ -10,6 +10,7 @@ import random
 
 from six.moves import xrange
 
+from avocado.utils import cpu as cpu_util
 from avocado.utils import process
 
 from virttest import virsh
@@ -18,15 +19,17 @@ from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_numeric
 from virttest import utils_hotplug
+from virttest import libvirt_version
 from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
 from virttest.staging.utils_memory import read_from_numastat
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -107,7 +110,10 @@ def run(test, params, env):
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
         if discard:
-            cmd += " | grep 'discard-data=yes'"
+            if libvirt_version.version_compare(7, 3, 0):
+                cmd = cmd + " | grep " + '\\"discard-data\\":true'
+            else:
+                cmd += " | grep 'discard-data=yes'"
         elif max_mem_rt:
             cmd += (" | grep 'slots=%s,maxmem=%sk'"
                     % (max_mem_slots, max_mem_rt))
@@ -252,8 +258,10 @@ def run(test, params, env):
         all_align = True
         for key in dom_mem:
             logging.info('%-20s:%15d', key, dom_mem[key])
-            if dom_mem[key] % 256:
+            if dom_mem[key] % 262144:
                 logging.error('%s not align to 256', key)
+                if key == 'currentMemory':
+                    continue
                 all_align = False
 
         if not all_align:
@@ -274,8 +282,14 @@ def run(test, params, env):
                                  "%s.save" % vm_name)
         ret = virsh.save(vm_name, save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
-        ret = virsh.restore(save_file, **virsh_dargs)
-        libvirt.check_exit_status(ret)
+
+        def _wait_for_restore():
+            try:
+                virsh.restore(save_file, debug=True, ignore_status=False)
+                return True
+            except Exception as e:
+                logging.error(e)
+        utils_misc.wait_for(_wait_for_restore, 30, step=5)
         if os.path.exists(save_file):
             os.remove(save_file)
         # Login to check vm status
@@ -309,6 +323,10 @@ def run(test, params, env):
             vmxml.max_mem_rt = int(max_mem_rt)
             vmxml.max_mem_rt_slots = max_mem_slots
             vmxml.max_mem_rt_unit = mem_unit
+        if max_mem:
+            vmxml.max_mem = int(max_mem)
+        if cur_mem:
+            vmxml.current_mem = int(cur_mem)
         if memory_val:
             vmxml.memory = int(memory_val)
         if vcpu:
@@ -336,14 +354,14 @@ def run(test, params, env):
                         align_to_value))
                     cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
-            cpu_xml.xml = "<cpu><numa/></cpu>"
+            cpu_xml.xml = "<cpu mode='host-model'><numa/></cpu>"
             cpu_mode = params.get("cpu_mode")
             model_fallback = params.get("model_fallback")
             if cpu_mode:
                 cpu_xml.mode = cpu_mode
             if model_fallback:
                 cpu_xml.fallback = model_fallback
-            cpu_xml.numa_cell = cells
+            cpu_xml.numa_cell = cpu_xml.dicts_to_cells(cells)
             vmxml.cpu = cpu_xml
             # Delete memory and currentMemory tag,
             # libvirt will fill it automatically
@@ -377,6 +395,7 @@ def run(test, params, env):
     detach_alias_options = params.get("detach_alias_options")
     attach_error = "yes" == params.get("attach_error", "no")
     start_error = "yes" == params.get("start_error", "no")
+    define_error = "yes" == params.get("define_error", "no")
     detach_error = "yes" == params.get("detach_error", "no")
     maxmem_error = "yes" == params.get("maxmem_error", "no")
     attach_option = params.get("attach_option", "")
@@ -419,6 +438,7 @@ def run(test, params, env):
     tg_node = params.get("tg_node", 0)
     pg_size = params.get("page_size")
     pg_unit = params.get("page_unit", "KiB")
+    huge_page_num = int(params.get('huge_page_num', 2000))
     node_mask = params.get("node_mask", "0")
     mem_addr = ast.literal_eval(params.get("memory_addr", "{}"))
     huge_pages = [ast.literal_eval(x)
@@ -431,7 +451,16 @@ def run(test, params, env):
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
     if (setup_hugepages_flag == "yes"):
-        setup_hugepages(int(pg_size))
+        cpu_arch = cpu_util.get_family() if hasattr(cpu_util, 'get_family')\
+            else cpu_util.get_cpu_arch()
+        if cpu_arch == 'power8':
+            pg_size = '16384'
+            huge_page_num = 200
+        elif cpu_arch == 'power9':
+            pg_size = '2048'
+            huge_page_num = 2000
+        [x.update({'size': pg_size}) for x in huge_pages]
+        setup_hugepages(int(pg_size), shp_num=huge_page_num)
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -458,6 +487,8 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         modify_domain_xml()
+        numa_info = utils_misc.NumaInfo()
+        logging.debug(numa_info.get_all_node_meminfo())
 
         # Start the domain any way if attach memory device
         old_mem_total = None
@@ -520,7 +551,7 @@ def run(test, params, env):
             if virsh.create(vmxml_for_test.xml,
                             **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                test.fail("Cann't create the domain")
+                test.fail("Can't create the domain")
         elif vm.is_dead():
             try:
                 vm.start()
@@ -593,7 +624,14 @@ def run(test, params, env):
             time.sleep(wait_before_save_secs)
             ret = virsh.managedsave(vm_name, **virsh_dargs)
             libvirt.check_exit_status(ret)
-            vm.start()
+
+            def _wait_for_vm_start():
+                try:
+                    vm.start()
+                    return True
+                except Exception as e:
+                    logging.error(e)
+            utils_misc.wait_for(_wait_for_vm_start, timeout=30, step=5)
             vm.wait_for_login().close()
             if test_dom_xml:
                 check_dom_xml(at_mem=attach_device)
@@ -616,12 +654,11 @@ def run(test, params, env):
         # Detach the memory device
         unplug_failed_with_known_error = False
         if detach_device:
-            if not dev_xml:
-                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                       mem_addr, tg_sizeunit,
-                                                       pg_unit, tg_node,
-                                                       node_mask, mem_model,
-                                                       mem_discard)
+            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                   mem_addr, tg_sizeunit,
+                                                   pg_unit, tg_node,
+                                                   node_mask, mem_model,
+                                                   mem_discard)
             for x in xrange(at_times):
                 if not detach_alias:
                     ret = virsh.detach_device(vm_name, dev_xml.xml,
@@ -636,7 +673,7 @@ def run(test, params, env):
                             known_error = known_error[1:-1]
                         if known_error in ret.stderr:
                             unplug_failed_with_known_error = True
-                            logging.debug("Known error occured in Host, while"
+                            logging.debug("Known error occurred in Host, while"
                                           " hot unplug: %s", known_error)
                 if unplug_failed_with_known_error:
                     break
@@ -665,7 +702,7 @@ def run(test, params, env):
                             test.fail(detail)
                         unplug_failed_with_known_error = True
                         os.remove(dmesg_file)
-            # Check whether a known error occured or not
+            # Check whether a known error occurred or not
             dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
             try:
                 session = vm.wait_for_login()
@@ -685,14 +722,16 @@ def run(test, params, env):
                     with open(dmesg_file, 'r') as f:
                         if known_error in f.read():
                             unplug_failed_with_known_error = True
-                            logging.debug("Known error occured, while hot"
+                            logging.debug("Known error occurred, while hot"
                                           " unplug: %s", known_error)
             if test_dom_xml and not unplug_failed_with_known_error:
                 check_dom_xml(dt_mem=detach_device)
                 # Remove dmesg temp file
                 if os.path.exists(dmesg_file):
                     os.remove(dmesg_file)
-
+    except xcepts.LibvirtXMLError:
+        if define_error:
+            pass
     finally:
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)

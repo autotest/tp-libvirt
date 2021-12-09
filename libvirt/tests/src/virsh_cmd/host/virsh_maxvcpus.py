@@ -7,7 +7,7 @@ from virttest import virsh
 from virttest import utils_conn
 from virttest.libvirt_xml import domcapability_xml as domcap
 from virttest.libvirt_xml import capability_xml
-from provider import libvirt_version
+from virttest import libvirt_version
 import platform
 
 
@@ -63,17 +63,22 @@ def run(test, params, env):
             connect_uri = libvirt_vm.get_uri_with_transport(
                 uri_type=canonical_uri_type,
                 transport=transport, dest_ip=server_ip)
+            virsh_dargs = {'remote_ip': server_ip, 'remote_user': 'root',
+                           'remote_pwd': server_pwd,
+                           'ssh_remote_auth': True}
+            virsh_instance = virsh.VirshPersistent(**virsh_dargs)
     else:
         connect_uri = connect_arg
+        virsh_instance = virsh
 
     if libvirt_version.version_compare(2, 3, 0):
         try:
             maxvcpus = None
             maxvcpus_cap = None
             dom_capabilities = None
-            # make sure we take maxvcpus from right host, helps incase remote
+            # make sure we take maxvcpus from right host, helps in case remote
             try:
-                dom_capabilities = domcap.DomCapabilityXML()
+                dom_capabilities = domcap.DomCapabilityXML(virsh_instance=virsh_instance)
                 maxvcpus = dom_capabilities.max
                 logging.debug("maxvcpus calculate from domcapabilities "
                               "is %s", maxvcpus)
@@ -84,10 +89,11 @@ def run(test, params, env):
             try:
                 cap_xml = capability_xml.CapabilityXML()
                 maxvcpus_cap = cap_xml.get_guest_capabilities()['hvm'][platform.machine()]['maxcpus']
+                logging.debug('maxvcpus_cap is %s', maxvcpus_cap)
             except Exception as details:
                 logging.debug("Failed to get maxvcpu from virsh "
                               "capabilities: %s", details)
-                # Let's fall back incase of failure
+                # Let's fall back in case of failure
                 maxvcpus_cap = maxvcpus
             if not maxvcpus:
                 raise exceptions.TestFail("Failed to get max value for vcpu"
@@ -98,6 +104,7 @@ def run(test, params, env):
                                       "%s\n Details: %s" % (connect_uri, details))
 
     is_arm = "aarch" in platform.machine()
+    gic_version = ''
     if is_arm:
         for gic_enum in domcap.DomCapabilityXML()['features']['gic_enums']:
             if gic_enum['name'] == "version":
@@ -113,7 +120,7 @@ def run(test, params, env):
     # Check status_error
     if status_error == "yes":
         if status == 0:
-            raise exceptions.TestFail("Run successed with unsupported option!")
+            raise exceptions.TestFail("Run succeeded with unsupported option!")
         else:
             logging.info("Run failed with unsupported option %s " % option)
     elif status_error == "no":

@@ -21,6 +21,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v_vmcheck_helper import check_json_output
+from provider.v2v_vmcheck_helper import check_local_output
 
 
 def run(test, params, env):
@@ -40,7 +42,7 @@ def run(test, params, env):
     output_mode = params.get('output_mode')
     output_format = params.get('output_format')
     source_user = params.get("username", "root")
-    storage = params.get('output_storage')
+    os_pool = storage = params.get('output_storage')
     bridge = params.get('bridge')
     network = params.get('network')
     ntp_server = params.get('ntp_server')
@@ -51,7 +53,8 @@ def run(test, params, env):
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
     pvt = utlv.PoolVolumeTest(test, params)
-    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') in ['on', 'force_on'] else ''
+    v2v_opts = '-v -x' if params.get('v2v_debug',
+                                     'on') in ['on', 'force_on'] else ''
     if params.get("v2v_opts"):
         # Add a blank by force
         v2v_opts += ' ' + params.get("v2v_opts")
@@ -118,7 +121,7 @@ def run(test, params, env):
         source_ip = None
         source_pwd = None
     else:
-        test.cancel("Unspported hypervisor: %s" % hypervisor)
+        test.cancel("Unsupported hypervisor: %s" % hypervisor)
 
     # Create libvirt URI
     v2v_uri = utils_v2v.Uri(hypervisor)
@@ -248,7 +251,7 @@ def run(test, params, env):
 
     def check_floppy_exist(vmcheck):
         """
-        Check if floppy exists after convertion
+        Check if floppy exists after conversion
         """
         blk = vmcheck.session.cmd('lsblk')
         logging.info(blk)
@@ -279,7 +282,7 @@ def run(test, params, env):
         dev_table = dict(list(zip(bus_list, dev_prefix)))
         logging.info('Change disk bus to %s' % dest)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        disks = vmxml.get_disk_all()
+        disks = vmxml.get_disk_all_by_expr('device==disk')
         index = 0
         for disk in list(disks.values()):
             if disk.get('device') != 'disk':
@@ -430,20 +433,25 @@ def run(test, params, env):
         """
         Create a large file to make left space of root less than $left_space MB
         """
-        cmd_df = "df -m / --output=avail"
+        cmd_guestfish = "guestfish get-cachedir"
+        tmp_dir = session.cmd_output(cmd_guestfish).split()[-1]
+        logging.debug('Command output of tmp_dir: %s', tmp_dir)
+        cmd_df = "df -m %s --output=avail" % tmp_dir
         df_output = session.cmd(cmd_df).strip()
         logging.debug('Command output: %s', df_output)
         avail = int(df_output.strip().split('\n')[-1])
         logging.info('Available space: %dM' % avail)
-        if avail > left_space - 1:
-            tmp_dir = data_dir.get_tmp_dir()
-            if session.cmd_status('ls %s' % tmp_dir) != 0:
-                session.cmd('mkdir %s' % tmp_dir)
-            large_file = os.path.join(tmp_dir, 'file.large')
-            cmd_create = 'dd if=/dev/zero of=%s bs=1M count=%d' % \
-                         (large_file, avail - left_space + 2)
-            session.cmd(cmd_create, timeout=v2v_timeout)
-        logging.info('Available space: %sM' % session.cmd(cmd_df).strip())
+        if avail <= left_space - 1:
+            return None
+        if not os.path.exists(tmp_dir):
+            os.mkdir(tmp_dir)
+        large_file = os.path.join(tmp_dir, 'file.large')
+        cmd_create = 'dd if=/dev/zero of=%s bs=1M count=%d' % \
+                     (large_file, avail - left_space + 2)
+        session.cmd(cmd_create, timeout=v2v_timeout)
+        newAvail = int(session.cmd(cmd_df).strip().split('\n')[-1])
+        logging.info('New Available space: %sM' % newAvail)
+        return large_file
 
     @vm_shell
     def corrupt_rpmdb(**kwargs):
@@ -524,7 +532,7 @@ def run(test, params, env):
     @vm_shell
     def vm_cmd(cmd_list, **kwargs):
         """
-        Excecute a list of commands on guest.
+        Execute a list of commands on guest.
         """
         session = kwargs['session']
         for cmd in cmd_list:
@@ -540,7 +548,7 @@ def run(test, params, env):
 
     def check_time_keep(vmcheck):
         """
-        Check time drift after convertion.
+        Check time drift after conversion.
         """
         logging.info('Check time drift')
         output = vmcheck.session.cmd('chronyc tracking')
@@ -568,7 +576,7 @@ def run(test, params, env):
             vm.shutdown()
             logging.info('%s is down' % vm_name)
         except Exception as e:
-            test.error('Bootup guest and login failed: %s', str(e))
+            test.error('Bootup guest and login failed: %s' % str(e))
 
     def check_result(result, status_error):
         """
@@ -577,6 +585,15 @@ def run(test, params, env):
         utlv.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
+            if output_mode == 'json' and not check_json_output(params):
+                test.fail('check json output failed')
+            if output_mode == 'local' and not check_local_output(params):
+                test.fail('check local output failed')
+            if output_mode in ['null', 'json', 'local']:
+                return
+
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -586,9 +603,7 @@ def run(test, params, env):
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
-            # Check guest following the checkpoint document after convertion
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
+            # Check guest following the checkpoint document after conversion
             if params.get('skip_vm_check') != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:
@@ -598,7 +613,7 @@ def run(test, params, env):
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
             if checkpoint == 'floppy':
-                # Convert to rhv will remove all removeable devices(floppy,
+                # Convert to rhv will remove all removable devices(floppy,
                 # cdrom)
                 if output_mode in ['local', 'libvirt']:
                     check_floppy_exist(vmchecker.checker)
@@ -613,11 +628,13 @@ def run(test, params, env):
                 else:
                     graph_type = checkpoint.split('_')[0]
                     vmchecker.check_graphics({'type': graph_type})
-                    video_type = vmchecker.xmltree.find('./devices/video/model').get('type')
+                    video_type = vmchecker.xmltree.find(
+                        './devices/video/model').get('type')
                     if video_type.lower() != 'qxl':
                         log_fail('Video expect QXL, actual %s' % video_type)
             if checkpoint.startswith('listen'):
-                listen_type = vmchecker.xmltree.find('./devices/graphics/listen').get('type')
+                listen_type = vmchecker.xmltree.find(
+                    './devices/graphics/listen').get('type')
                 logging.info('listen type is: %s', listen_type)
                 if listen_type != checkpoint.split('_')[-1]:
                     log_fail('listen type changed after conversion')
@@ -627,6 +644,18 @@ def run(test, params, env):
                 logging.info('Selinux status after v2v:%s', status)
                 if status != checkpoint[8:]:
                     log_fail('Selinux status not match')
+            if checkpoint == 'check_selinuxtype':
+                expect_output = vmchecker.checker.session.cmd(
+                    'cat /etc/selinux/config')
+                expect_selinuxtype = re.search(
+                    r'^SELINUXTYPE=\s*(\S+)$', expect_output, re.MULTILINE).group(1)
+                actual_output = vmchecker.checker.session.cmd('sestatus')
+                actual_selinuxtype = re.search(
+                    r'^Loaded policy name:\s*(\S+)$',
+                    actual_output,
+                    re.MULTILINE).group(1)
+                if actual_selinuxtype != expect_selinuxtype:
+                    log_fail('Seliunx type not match')
             if checkpoint == 'guest_firewalld_status':
                 check_firewalld_status(vmchecker.checker, params[checkpoint])
             if checkpoint in ['ntpd_on', 'sync_ntp']:
@@ -650,13 +679,14 @@ def run(test, params, env):
             'input_mode': input_mode,
             'network': network,
             'bridge': bridge,
-            'storage': storage,
+            'os_storage': storage,
+            'os_pool': os_pool,
             'hostname': source_ip,
             'password': source_pwd,
             'v2v_opts': v2v_opts,
             'new_name': vm_name + utils_misc.generate_random_string(3),
             'output_method': output_method,
-            'storage_name': storage_name,
+            'os_storage_name': storage_name,
             'rhv_upload_opts': rhv_upload_opts,
             'input_transport': input_transport,
             'vcenter_host': source_ip,
@@ -672,7 +702,7 @@ def run(test, params, env):
             v2v_params.update({"esx_ip": esx_ip})
         output_format = params.get('output_format')
         if output_format:
-            v2v_params.update({'output_format': output_format})
+            v2v_params.update({'of_format': output_format})
         # Build rhev related options
         if output_mode == 'rhev':
             # Create different sasl_user name for different job
@@ -699,7 +729,7 @@ def run(test, params, env):
                                        ovirt_ca_file_path,
                                        local_ca_file_path)
         if output_mode == 'local':
-            v2v_params['storage'] = data_dir.get_tmp_dir()
+            v2v_params['os_directory'] = data_dir.get_tmp_dir()
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
         # Set libguestfs environment variable
@@ -710,6 +740,8 @@ def run(test, params, env):
             ori_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             params['ori_graphic'] = ori_vm_xml.xmltreefile.find(
                 'devices').find('graphics').get('type')
+            params['vm_machine'] = ori_vm_xml.xmltreefile.find(
+                './os/type').get('machine')
 
         backup_xml = None
         # Only kvm guest's xml needs to be backup currently
@@ -718,16 +750,18 @@ def run(test, params, env):
         if checkpoint == 'multi_disks':
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
                 vm_name, virsh_instance=v2v_virsh)
-            disk_count = 0
-            for disk in list(new_xml.get_disk_all().values()):
-                if disk.get('device') == 'disk':
-                    disk_count += 1
+            disk_count = len(new_xml.get_disk_all_by_expr('device==disk'))
             if disk_count <= 1:
                 test.error('Not enough disk devices')
             params['ori_disks'] = disk_count
         if checkpoint == 'sata_disk':
             change_disk_bus('sata')
         if checkpoint.startswith('floppy'):
+            if params['vm_machine'] and 'q35' in params['vm_machine'] and int(
+                    re.search(r'pc-q35-rhel(\d+)\.', params['vm_machine']).group(1)) >= 8:
+                test.cancel(
+                    'Device isa-fdc is not supported with machine type %s' %
+                    params['vm_machine'])
             img_path = data_dir.get_tmp_dir() + '/floppy.img'
             utlv.create_local_disk('floppy', img_path)
             attach_removable_media('floppy', img_path, 'fda')
@@ -750,14 +784,9 @@ def run(test, params, env):
         if checkpoint == 'serial_terminal':
             grub_serial_terminal()
             check_boot()
-        if checkpoint == 'no_space':
-            @vm_shell
-            def take_space(**kwargs):
-                create_large_file(kwargs['session'], 20)
-            take_space()
         if checkpoint.startswith('host_no_space'):
             session = aexpect.ShellSession('sh')
-            create_large_file(session, 1000)
+            large_file = create_large_file(session, 1000)
             if checkpoint == 'host_no_space_setcache':
                 logging.info('Set LIBGUESTFS_CACHEDIR=/home')
                 os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
@@ -855,12 +884,10 @@ def run(test, params, env):
             logging.info('Attach network')
             virsh.attach_interface(
                 vm_name, 'network default --current', debug=True)
-            v2v_params.pop('bridge')
         if checkpoint == 'only_br':
             logging.info('Attatch bridge')
             virsh.attach_interface(
                 vm_name, 'bridge virbr0 --current', debug=True)
-            v2v_params.pop('network')
         if checkpoint == 'no_libguestfs_backend':
             os.environ.pop('LIBGUESTFS_BACKEND')
         if checkpoint == 'file_image':
@@ -881,7 +908,7 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,
@@ -908,8 +935,7 @@ def run(test, params, env):
                 else:
                     service_mgr.stop('firewalld')
         if checkpoint.startswith('host_no_space'):
-            large_file = os.path.join(data_dir.get_tmp_dir(), 'file.large')
-            if os.path.isfile(large_file):
+            if large_file and os.path.isfile(large_file):
                 os.remove(large_file)
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)

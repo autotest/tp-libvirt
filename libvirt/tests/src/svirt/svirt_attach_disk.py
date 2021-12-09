@@ -1,6 +1,7 @@
 import logging
 
 from avocado.utils import process
+from avocado.utils import astring
 from avocado.core import exceptions
 
 from virttest import qemu_storage
@@ -12,14 +13,13 @@ from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest.utils_test import libvirt as utlv
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices import seclabel
-from virttest.compat_52lts import decode_to_text as to_text
-
-from provider import libvirt_version
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):
@@ -60,7 +60,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
-    # Get varialbles about image.
+    # Get variables about image.
     img_label = params.get('svirt_attach_disk_disk_label')
     sec_disk_dict = {'model': sec_model, 'label': img_label, 'relabel': sec_relabel}
     enable_namespace = 'yes' == params.get('enable_namespace', 'no')
@@ -182,6 +182,17 @@ def run(test, params, env):
         disk_xml.source = disk_source
         logging.debug(disk_xml)
 
+        # Replace old scsi controller with virtio-scsi controller to support hotplug/unplug
+        if params.get('machine_type') == 'pseries' and device_bus == 'scsi':
+            if not vmxml.get_controllers(device_bus, 'virtio-scsi'):
+                vmxml.del_controller(device_bus)
+                ppc_controller = Controller('controller')
+                ppc_controller.type = device_bus
+                ppc_controller.index = '0'
+                ppc_controller.model = 'virtio-scsi'
+                vmxml.add_device(ppc_controller)
+                vmxml.sync()
+
         # Do the attach action.
         cmd_result = virsh.attach_device(domainarg=vm_name, filearg=disk_xml.xml, flagstr='--persistent')
         libvirt.check_exit_status(cmd_result, expect_error=False)
@@ -207,7 +218,7 @@ def run(test, params, env):
                         if val_list[0] in cap_list:
                             cap_dict[val_list[0]] = int(val_list[1].strip(), 16)
 
-                # bit and with rawio capabilitiy value to check cap_sys_rawio
+                # bit and with rawio capability value to check cap_sys_rawio
                 # is set
                 cap_rawio_val = 0x0000000000020000
                 for i in cap_list:
@@ -227,8 +238,8 @@ def run(test, params, env):
                 else:
                     output = process.system_output('ls -Z %s' % img_path)
                 logging.debug("The default label is %s", default_label)
-                logging.debug("The label after guest started is %s", to_text(output.strip().split()[-2]))
-                if default_label not in to_text(output.strip().split()[-2]):
+                logging.debug("The label after guest started is %s", astring.to_text(output.strip().split()[-2]))
+                if default_label not in astring.to_text(output.strip().split()[-2]):
                     test.fail("The label is wrong after guest started\n")
         except virt_vm.VMStartError as e:
             # Starting VM failed.

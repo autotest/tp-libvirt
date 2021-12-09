@@ -19,7 +19,7 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
 from virttest.libvirt_xml.devices.graphics import Graphics
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 from avocado.utils import astring
 
@@ -532,7 +532,7 @@ def run(test, params, env):
             service = 2445
             console = Console('udp', (host, service), is_server)
         elif serial_type == 'file':
-            socket_path = '/var/log/libvirt/virt-test'
+            socket_path = '/var/lib/libvirt/virt-test'
             console = Console('file', socket_path, is_server)
         elif serial_type == 'pipe':
             socket_path = '/tmp/virt-test'
@@ -646,6 +646,8 @@ def run(test, params, env):
                 dev_type = target_model
             exp_ser_devs = [dev_type, 'chardev=charserial0',
                             'id=serial0']
+        elif "aarch64" in arch:
+            exp_ser_devs = ['chardev:charserial0']
         else:
             logging.debug('target_type: %s', target_type)
             if target_type == 'pci-serial':
@@ -708,8 +710,8 @@ def run(test, params, env):
         Clean up test environment
         """
         if serial_type == 'file':
-            if os.path.exists('/var/log/libvirt/virt-test'):
-                os.remove('/var/log/libvirt/virt-test')
+            if os.path.exists('/var/lib/libvirt/virt-test'):
+                os.remove('/var/lib/libvirt/virt-test')
 
         # recovery test environment
         for obj in objs_list:
@@ -744,8 +746,9 @@ def run(test, params, env):
     client_pwd = params.get('client_pwd', None)
     server_pwd = params.get('server_pwd', None)
     machine_type = params.get('machine_type', '')
-    remove_devices = params.get('remove_devices', 'serial,console').split(',')
-
+    remove_devices = params.get('remove_devices', 'serial,console')
+    if remove_devices:
+        remove_devices = remove_devices.split(',')
     args_list = [client_pwd, server_pwd]
 
     for arg in args_list:
@@ -761,14 +764,15 @@ def run(test, params, env):
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     try:
-        for device_type in remove_devices:
-            vm_xml.remove_all_device_by_type(device_type)
+        if remove_devices:
+            for device_type in remove_devices:
+                vm_xml.remove_all_device_by_type(device_type)
         if serial_type == "tls":
             test_dict = dict(params)
             tls_obj = TLSConnection(test_dict)
             if auto_recover == "yes":
                 objs_list.append(tls_obj)
-            tls_obj.conn_setup(False, True, True)
+            tls_obj.conn_setup(False, True)
 
         serial_dev = prepare_serial_device()
         if console_target_type == 'serial' or second_serial_console:
@@ -817,7 +821,7 @@ def run(test, params, env):
         if res.exit_status:
             logging.debug("Can't start the VM, exiting.")
             return
-        check_qemu_cmdline()
+
         # Prepare console after start when console is client
         if console_type == 'client':
             console = prepare_serial_console()

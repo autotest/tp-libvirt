@@ -19,9 +19,10 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml.secret_xml import SecretXML
+from virttest.libvirt_xml.devices.controller import Controller
 from virttest.staging import lv_utils
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def clean_up_lvm(device_source, vg_name, lv_name):
@@ -76,6 +77,10 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     vg_name = params.get("virt_disk_vg_name", "vg_test_0")
     lv_name = params.get("virt_disk_lv_name", "lv_test_0")
+    driver_packed = params.get("driver_packed", "on")
+    disk_packed = "yes" == params.get("disk_packed", "no")
+    scsi_packed = "yes" == params.get("scsi_packed", "no")
+
     # Indicate the PPC platform
     on_ppc = False
     if platform.platform().count('ppc64'):
@@ -93,8 +98,27 @@ def run(test, params, env):
         if not libvirt_version.version_compare(4, 7, 0):
             test.cancel("iscsi-direct pool is not supported in"
                         " current libvirt version.")
+    if ((disk_packed or scsi_packed) and not libvirt_version.version_compare(6, 3, 0)):
+        test.cancel("The virtio packed attribute is not supported in"
+                    " current libvirt version.")
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    # Fix no more PCI slots issue in certain cases.
+    vm_dump_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    machine_type = params.get("machine_type", "pc")
+    if machine_type == 'q35':
+        vm_dump_xml.remove_all_device_by_type('controller')
+        machine_list = vm_dump_xml.os.machine.split("-")
+        vm_dump_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
+        q35_pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
+        q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
+        vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
+        # Add enough controllers to match multiple times disk attaching requirements
+        for i in list(range(1, 12)):
+            q35_pcie_dict1.update({'controller_index': "%d" % i})
+            vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
+        vm_dump_xml.sync()
 
     virsh_dargs = {'debug': True, 'ignore_status': True}
     try:
@@ -250,8 +274,19 @@ def run(test, params, env):
         elif disk_type == "block":
             disk_params_src = {'source_file': device_source,
                                'driver_type': 'raw'}
+            # Start guest with packed attribute in disk
+            if disk_packed:
+                disk_params_src['driver_packed'] = driver_packed
+            # Start guest with packed attribute in scsi controller
+            if scsi_packed:
+                scsi_controller = Controller("controller")
+                scsi_controller.type = "scsi"
+                scsi_controller.model = "virtio-scsi"
+                scsi_controller.driver = {'packed': driver_packed}
+                vm_dump_xml.add_device(scsi_controller)
+                vm_dump_xml.sync()
         else:
-            test.cancel("Unsupport disk type in this test")
+            test.cancel("Unsupported disk type in this test")
         disk_params.update(disk_params_src)
         if chap_auth and disk_type != "volume":
             disk_params_auth = {'auth_user': chap_user,
@@ -283,6 +318,8 @@ def run(test, params, env):
         elif domain_operation == "snapshot":
             # Run snapshot related commands: snapshot-create-as, snapshot-list
             # snapshot-info, snapshot-dumpxml, snapshot-create
+            # virsh snapshot-revert is not supported on combined internal and external snapshots
+            # see more details from,https://bugzilla.redhat.com/show_bug.cgi?id=1733173
             snapshot_name1 = "snap1"
             snapshot_name2 = "snap2"
             cmd_result = virsh.snapshot_create_as(vm_name, snapshot_name1,
@@ -309,23 +346,24 @@ def run(test, params, env):
             cmd_result = virsh.snapshot_current(vm_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
-            snapshot_file = os.path.join(data_dir.get_tmp_dir(), snapshot_name2)
-            sn_create_op = ("%s --disk-only --diskspec %s,file=%s"
-                            % (snapshot_name2, disk_target, snapshot_file))
-            cmd_result = virsh.snapshot_create_as(vm_name, sn_create_op,
-                                                  **virsh_dargs)
+            virsh.snapshot_create_as(vm_name, snapshot_name2,
+                                     ignore_status=False, debug=True)
 
-            libvirt.check_exit_status(cmd_result)
             cmd_result = virsh.snapshot_revert(vm_name, snapshot_name1,
                                                **virsh_dargs)
 
             cmd_result = virsh.snapshot_list(vm_name, **virsh_dargs)
             if snapshot_name2 not in cmd_result:
                 test.error("Snapshot %s not found" % snapshot_name2)
+        elif domain_operation == "start_with_packed":
+            expect_xml_line = "packed=\"%s\"" % driver_packed
+            libvirt.check_dumpxml(vm, expect_xml_line)
+            expect_qemu_line = "packed=%s" % driver_packed
+            libvirt.check_qemu_cmd_line(expect_qemu_line)
         elif domain_operation == "":
             logging.debug("No domain operation provided, so skip it")
         else:
-            logging.error("Unsupport operation %s in this case, so skip it",
+            logging.error("Unsupported operation %s in this case, so skip it",
                           domain_operation)
 
         def find_attach_disk(expect=True):
@@ -359,7 +397,7 @@ def run(test, params, env):
         find_attach_disk(not status_error)
 
         # Detach disk
-        cmd_result = virsh.detach_disk(vm_name, disk_target)
+        cmd_result = virsh.detach_disk(vm_name, disk_target, wait_remove_event=True)
         libvirt.check_exit_status(cmd_result, status_error)
 
         # Check disk inside the VM

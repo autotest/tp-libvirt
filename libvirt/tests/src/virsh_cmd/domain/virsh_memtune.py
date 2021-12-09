@@ -2,23 +2,18 @@ import logging
 import re
 import time
 
-from virttest import virsh
+from virttest import libvirt_cgroup
 from virttest import utils_libvirtd
+from virttest import virsh
 from virttest.staging import utils_memory
-from virttest.staging import utils_cgroup
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 
-memtune_types = ['hard-limit', 'soft-limit', 'swap-hard-limit']
-memtune_cgnames = [
-    'limit_in_bytes',
-    'soft_limit_in_bytes',
-    'memsw.limit_in_bytes',
-]
+memtune_types = ['hard_limit', 'soft_limit', 'swap_hard_limit']
 
 
-def check_limit(path, expected_value, limit_type, cgname, vm, test, acceptable_minus=8):
+def check_limit(path, expected_value, limit_name, cgname, vm, test, acceptable_minus=8):
     """
     Matches the expected and actual output
     1) Match the output of the virsh memtune
@@ -28,7 +23,7 @@ def check_limit(path, expected_value, limit_type, cgname, vm, test, acceptable_m
 
     :params path: memory controller path for a domain
     :params expected_value: the expected limit value
-    :params limit_type: the limit type to be checked
+    :params limit_name: the limit type to be checked
                         hard-limit/soft-limit/swap-hard-limit
     :params cgname: the cgroup postfix
     :params vm: vm instance
@@ -36,10 +31,8 @@ def check_limit(path, expected_value, limit_type, cgname, vm, test, acceptable_m
     """
 
     status_value = True
-    limit_name = re.sub('-', '_', limit_type)
 
-    # Check 1
-    # Match the output of the virsh memtune
+    logging.info("Check 1: Match the output of the virsh memtune")
     actual_value = virsh.memtune_get(vm.name, limit_name)
     minus = int(expected_value) - int(actual_value)
     if minus > acceptable_minus:
@@ -49,14 +42,14 @@ def check_limit(path, expected_value, limit_type, cgname, vm, test, acceptable_m
                       "%d", limit_name,
                       int(expected_value), int(actual_value))
 
-    # Check 2
-    # Match the output of the respective cgroup fs value
+    logging.info("Check 2: Match the output of the respective cgroup fs value")
     if int(expected_value) != -1:
-        cg_file_name = '%s/memory.%s' % (path, cgname)
+        cg_file_name = '%s/%s' % (path, cgname)
         cg_file = None
         try:
             with open(cg_file_name) as cg_file:
                 output = cg_file.read()
+            logging.debug("cgroup file output is: %s", output)
             value = int(output) // 1024
             minus = int(expected_value) - int(value)
             if minus > acceptable_minus:
@@ -65,12 +58,12 @@ def check_limit(path, expected_value, limit_type, cgname, vm, test, acceptable_m
                               "\n\tActual Value: "
                               "%d", limit_name,
                               int(expected_value), int(value))
-        except IOError:
+        except IOError as e:
             status_value = False
             logging.error("Error while reading:\n%s", cg_file_name)
+            logging.error(e)
 
-    # Check 3
-    # Match the output of the virsh dumpxml
+    logging.info("Check 3: Match the output of the virsh dumpxml")
     if int(expected_value) != -1:
         guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name)
         memtune_element = guest_xml.memtune
@@ -81,8 +74,7 @@ def check_limit(path, expected_value, limit_type, cgname, vm, test, acceptable_m
             logging.error("Expect memtune:\n%s\nBut got:\n "
                           "%s" % (expected_value, actual_fromxml))
 
-    # Check 4
-    # Check if vm is alive
+    logging.info("Check 4: Check if vm is alive")
     if not vm.is_alive():
         status_value = False
         logging.error("Error: vm is not alive")
@@ -103,7 +95,8 @@ def check_limits(path, mt_limits, vm, test, acceptable_minus=8):
     """
     for index in range(len(memtune_types)):
         check_limit(path, mt_limits[index], memtune_types[index],
-                    memtune_cgnames[index], vm, test, acceptable_minus)
+                    mem_cgroup_info[memtune_types[index]], vm,
+                    test, acceptable_minus)
 
 
 def mem_step(params, path, vm, test, acceptable_minus=8):
@@ -126,7 +119,7 @@ def mem_step(params, path, vm, test, acceptable_minus=8):
     # Run test case with 100kB increase in memory value for each iteration
     start = time.time()
     while (Mem < Memtotal):
-        # If time pass over 60 secondes, exit directly from while
+        # If time pass over 60 seconds, exit directly from while
         if time.time() - start > 60:
             break
         hard_mem = Mem - hard_base
@@ -162,11 +155,12 @@ def run(test, params, env):
 
     # Check if memtune options are supported
     for option in memtune_types:
+        option = re.sub('_', '-', option)
         if not virsh.has_command_help_match("memtune", option):
             test.cancel("%s option not available in memtune "
                         "cmd in this libvirt version" % option)
     # Get common parameters
-    acceptable_minus = int(params.get("acceptable_minus", 8))
+    acceptable_minus = int(utils_memory.getpagesize() - 1)
     step_mem = params.get("mt_step_mem", "no") == "yes"
     expect_error = params.get("expect_error", "no") == "yes"
     restart_libvirtd = params.get("restart_libvirtd", "no") == "yes"
@@ -183,7 +177,13 @@ def run(test, params, env):
     pid = vm.get_pid()
 
     # Resolve the memory cgroup path for a domain
-    path = utils_cgroup.resolve_task_cgroup_path(int(pid), "memory")
+    cgtest = libvirt_cgroup.CgroupTest(pid)
+    path = cgtest.get_cgroup_path("memory")
+    logging.debug("cgroup path is %s", path)
+
+    global mem_cgroup_info
+    mem_cgroup_info = cgtest.get_cgroup_file_mapping(virsh_cmd='memtune')
+    logging.debug("memtune cgroup info is %s", mem_cgroup_info)
 
     # step_mem is used to do step increment limit testing
     if step_mem:
@@ -202,8 +202,8 @@ def run(test, params, env):
             index = 2
             mt_limit = mt_swap_hard_limit
         mt_type = memtune_types[index]
-        mt_cgname = memtune_cgnames[index]
-        options = " --%s %s --live" % (mt_type, mt_limit)
+        mt_cgname = mem_cgroup_info[mt_type]
+        options = " --%s %s --live" % (re.sub('_', '-', mt_type), mt_limit)
         result = virsh.memtune_set(vm.name, options, debug=True)
 
         if expect_error:

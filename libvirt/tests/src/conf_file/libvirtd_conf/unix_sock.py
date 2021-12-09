@@ -3,12 +3,15 @@ import stat
 import logging
 import os
 from avocado.utils import distro
+from avocado.utils import process
 from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_config
 from virttest import utils_libvirtd
+
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -126,8 +129,12 @@ def run(test, params, env):
 
     config = utils_config.LibvirtdConfig()
     libvirtd = utils_libvirtd.Libvirtd()
-    ro_perms = params.get('unix_sock_ro_perms', '0777')
-    rw_perms = params.get('unix_sock_rw_perms', '0777')
+    if libvirt_version.version_compare(5, 6, 0):
+        ro_perms = '0666'
+        rw_perms = '0666'
+    else:
+        ro_perms = params.get('unix_sock_ro_perms', '0777')
+        rw_perms = params.get('unix_sock_rw_perms', '0777')
     path = params.get('unix_sock_dir', '/var/run/libvirt')
     expected_result = params.get('expected_result', 'success')
     # In Ubuntu there is no group called "nobody", "nogroup" instead.
@@ -168,3 +175,4 @@ def run(test, params, env):
     finally:
         config.restore()
         libvirtd.restart()
+        process.system("systemctl restart libvirtd.socket", ignore_status=True)

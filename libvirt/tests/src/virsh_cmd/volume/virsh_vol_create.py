@@ -12,11 +12,14 @@ from virttest import virsh
 from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest import test_setup
+from virttest import utils_split_daemons
+from virttest import virt_vm
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import secret_xml
+from virttest.libvirt_xml import vm_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -60,6 +63,15 @@ def run(test, params, env):
     luks_encrypted = "luks" == params.get("encryption_method")
     encryption_secret_type = params.get("encryption_secret_type", "passphrase")
     virsh_readonly_mode = 'yes' == params.get("virsh_readonly", "no")
+    vm_name = params.get("main_vm")
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    clusterSize = params.get("vol_clusterSize", "64")
+    libvirt_version.is_libvirt_feature_supported(params)
+
+    if vm_name:
+        vm = env.get_vm(vm_name)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        params["orig_config_xml"] = vmxml.copy()
 
     if not libvirt_version.version_compare(1, 0, 0):
         if "--prealloc-metadata" in extra_option:
@@ -80,6 +92,8 @@ def run(test, params, env):
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -98,11 +112,48 @@ def run(test, params, env):
     vol_arg = {}
     for key in params.keys():
         if key.startswith('vol_'):
-            if key[4:] in ['capacity', 'allocation', 'owner', 'group']:
+            if key[4:] in ['capacity', 'allocation', 'owner', 'group', 'clusterSize']:
                 vol_arg[key[4:]] = int(params[key])
             else:
                 vol_arg[key[4:]] = params[key]
     vol_arg['lazy_refcounts'] = lazy_refcounts
+
+    def attach_disk_encryption(vol_path, uuid, params):
+        """
+        Attach a disk with luks encryption
+
+        :vol_path: the volume path used in disk XML
+        :uuid: the secret uuid of the volume
+        :params: the parameter dictionary
+        :raise: test.fail when disk cannot be attached
+
+        """
+        target_dev = params.get("target_dev", "vdb")
+        vol_format = params.get("vol_format", "qcow2")
+        disk_path = vol_path
+        new_disk_dict = {}
+        new_disk_dict.update(
+                {"driver_type": vol_format,
+                 "source_encryption_dict": {"encryption": 'luks',
+                                            "secret": {"type": "passphrase",
+                                                       "uuid": uuid}}})
+        result = utlv.attach_additional_device(vm_name, target_dev,
+                                               disk_path, new_disk_dict)
+        if result.exit_status:
+            raise test.fail("Attach device %s failed." % target_dev)
+
+    def check_vm_start():
+        """
+        Start a guest
+
+        :params: the parameter dictionary
+        :raise: test.fail when VM cannot be started
+        """
+        if not vm.is_alive():
+            try:
+                vm.start()
+            except virt_vm.VMStartError as err:
+                test.fail("Failed to start VM: %s" % err)
 
     def create_luks_secret(vol_path):
         """
@@ -137,17 +188,17 @@ def run(test, params, env):
 
     def post_process_vol(ori_vol_path):
         """
-        Create or disactive a volume without libvirt
+        Create or deactivate a volume without libvirt
 
         :param ori_vol_path: Full path of an original volume
-        :retur: Volume name for checking
+        :return: Volume name for checking
         """
         process_vol_name = params.get("process_vol_name", "process_vol")
         process_vol_options = params.get("process_vol_options", "")
         process_vol_capacity = params.get("process_vol_capacity", vol_capacity)
         process_vol_cmd = ""
-        unsupport_err = "Unsupport do '%s %s' in this test" % (process_vol_by,
-                                                               process_vol_type)
+        unsupport_err = "Unsupported do '%s %s' in this test" % (process_vol_by,
+                                                                 process_vol_type)
         if process_vol_by == "lvcreate":
             process_vol_cmd = "lvcreate -L %s " % process_vol_capacity
             if process_vol_type == "thin":
@@ -221,6 +272,32 @@ def run(test, params, env):
                 test.fail("Find volume %s in pool %s, but expect not"
                           % (vol_name, pool_name))
 
+    def attach_volume_disk(vm_name, src_pool_name, vol_name, params):
+        """
+        Attach volume disk to the guest
+
+        params: vm_name: the name of the vm
+        params: src_pool_name: the name of the pool
+        params: vol_name: the name of the created volume
+        params: params: the parameter dictionary
+        """
+        disk_target = params.get("disk_target", "vdb")
+        disk_target_bus = params.get("disk_target_bus", "virtio")
+        attach_options = params.get("attach_options", "")
+        disk_params = {'device_type': 'disk',
+                       'type_name': 'volume',
+                       'target_dev': disk_target,
+                       'target_bus': disk_target_bus}
+        disk_params_src = {}
+        disk_params_src = {'source_pool': src_pool_name,
+                           'source_volume': vol_name,
+                           'driver_type': 'qcow2'}
+        disk_params.update(disk_params_src)
+        disk_xml = utlv.create_disk_xml(disk_params)
+        cmd_result = virsh.attach_device(domainarg=vm_name, filearg=disk_xml,
+                                         flagstr=attach_options, debug=True)
+        utlv.check_exit_status(cmd_result, status_error)
+
     fmt_err0 = "Unknown file format '%s'" % vol_format
     fmt_err1 = "Formatting or formatting option not "
     fmt_err1 += "supported for file format '%s'" % vol_format
@@ -267,6 +344,9 @@ def run(test, params, env):
                 volxml = libvirt_xml.VolXML()
                 newvol = volxml.new_vol(**vol_arg)
                 if luks_encrypted:
+                    if vol_format == "qcow2" and not libvirt_version.version_compare(6, 10, 0):
+                        test.cancel("Qcow2 format with luks encryption"
+                                    " is not supported in current libvirt")
                     # For luks encrypted disk, add related xml in newvol
                     luks_encryption_params = {}
                     luks_encryption_params.update({"format": "luks"})
@@ -289,7 +369,7 @@ def run(test, params, env):
                                 for index, v in enumerate(rule):
                                     if v.find("secret") >= 0:
                                         nextline = rule[index + 1]
-                                        s = nextline.replace("QEMU", "secret").replace(
+                                        s = re.sub("QEMU|storage", "secret", nextline).replace(
                                                 "pool_name", "secret_uuid").replace(
                                                         "virt-dir-pool", "%s" % luks_secret_uuid)
                                         rule[index + 1] = s
@@ -306,6 +386,38 @@ def run(test, params, env):
                     src_pool_name, vol_xml, extra_option,
                     unprivileged_user=unprivileged_user, uri=uri,
                     ignore_status=True, debug=True)
+
+                if luks_encrypted and vol_format == "qcow2":
+                    vol_path = virsh.vol_path(vol_name,
+                                              src_pool_name).stdout.strip()
+                    uuid = luks_secret_uuid
+                    attach_disk_encryption(vol_path, uuid, params)
+                    check_vm_start()
+                if with_clusterSize:
+                    clusterSize_B = int(clusterSize) * 1024
+                    # check cluster size in volume xml
+                    volume_xml = volxml.new_from_vol_dumpxml(vol_name, src_pool_name)
+                    check_point = "%s</clusterSize>" % clusterSize_B
+                    if check_point in str(volume_xml):
+                        logging.debug("Can get expected cluster size in volume xml")
+                    else:
+                        test.fail("Can't get expected cluster size %s in volume xml %s"
+                                  % (clusterSize_B, volume_xml))
+                    # check cluster size in qemu-img info
+                    vol_path = virsh.vol_path(vol_name,
+                                              src_pool_name).stdout.strip()
+                    ret = process.run("qemu-img info %s | grep cluster_size"
+                                      % vol_path, shell=True)
+                    ret_clusterSize = int(ret.stdout_text.split(':')[1].strip())
+                    if clusterSize_B == ret_clusterSize:
+                        logging.debug("Can get expected cluster size in qemu-img info")
+                    else:
+                        test.fail("Gan't get expected cluster size %s in the image, the"
+                                  " incorrect cluster size is %s" % (clusterSize_B, ret_clusterSize))
+                    # start the guest with volume disk
+                    attach_volume_disk(vm_name, src_pool_name, vol_name, params)
+                    check_vm_start()
+
             else:
                 # Run virsh_vol_create_as to create_vol
                 pool_name = src_pool_name
@@ -360,6 +472,10 @@ def run(test, params, env):
         # For old version lvm2(2.02.106 or early), deactivate volume group
         # (destroy libvirt logical pool) will fail if which has deactivated
         # lv snapshot, so before destroy the pool, we need activate it manually
+        if vm.is_alive():
+            virsh.destroy(vm_name, debug=True, ignore_status=True)
+        if params.get("orig_config_xml"):
+            params.get("orig_config_xml").sync()
         if src_pool_type == 'logical' and vol_path_list:
             vg_name = vol_path_list[0].split('/')[2]
             process.run("lvchange -ay %s" % vg_name, shell=True)

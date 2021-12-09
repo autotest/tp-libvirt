@@ -11,12 +11,11 @@ from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest import utils_misc
 from virttest import utils_libguestfs
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging.utils_memory import drop_caches
-
-from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -31,6 +30,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
+    shutdown_timeout = int(params.get('shutdown_timeout', 60))
 
     # define function
     def vm_recover_check(option, libvirtd, check_shutdown=False):
@@ -89,9 +89,10 @@ def run(test, params, env):
                 vm.resume()
             vm.wait_for_login()
             # Shutdown and start the domain,
-            # it should be in runing state and can be login.
+            # it should be in running state and can be login.
             vm.shutdown()
-            vm.wait_for_shutdown()
+            if not vm.wait_for_shutdown(shutdown_timeout):
+                test.fail('VM failed to shutdown')
             vm.start()
             vm.wait_for_login()
 
@@ -158,7 +159,7 @@ def run(test, params, env):
         is_systemd = process.run("cat /proc/1/comm", shell=True).stdout_text.count("systemd")
         if is_systemd:
             libvirt_guests.restart()
-            pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest.+done'
+            pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest .*?[\n]*.*done'
         else:
             ret = process.run("service libvirt-guests restart | \
                               awk '{ print strftime(\"%b %y %H:%M:%S\"), \
@@ -237,9 +238,10 @@ def run(test, params, env):
         """
         Check managed save remove command.
         """
-        if not os.path.exists(managed_save_file):
+        if not os.path.exists(managed_save_file) and case not in ['not_saved_without_file', 'saved_without_file']:
             test.fail("Can't find managed save image")
-        virsh.managedsave_remove(vm_name, debug=True)
+        ret = virsh.managedsave_remove(vm_name, debug=True)
+        libvirt.check_exit_status(ret, msave_rm_error)
         if os.path.exists(managed_save_file):
             test.fail("Managed save image still exists")
         virsh.start(vm_name, debug=True)
@@ -325,6 +327,9 @@ def run(test, params, env):
     pre_vm_state = params.get("pre_vm_state", "")
     move_saved_file = "yes" == params.get("move_saved_file", "no")
     test_loop_cmd = "yes" == params.get("test_loop_cmd", "no")
+    remove_test = 'yes' == params.get('remove_test', 'no')
+    case = params.get('case', '')
+    msave_rm_error = "yes" == params.get("msave_rm_error", "no")
     if option:
         if not virsh.has_command_help_match('managedsave', option):
             # Older libvirt does not have this option
@@ -385,7 +390,7 @@ def run(test, params, env):
             if virsh.create(vmxml_for_test.xml, ignore_status=True,
                             debug=True).exit_status:
                 vmxml_backup.define()
-                test.cancel("Cann't create the domain")
+                test.cancel("Can't create the domain")
 
         # Wait for vm in stable state
         if params.get("start_vm") == "yes":
@@ -413,7 +418,7 @@ def run(test, params, env):
         option += extra_param
 
         # For bypass_cache test. Run a shell command to check fd flags while
-        # excuting managedsave command
+        # executing managedsave command
         software_mgr = software_manager.SoftwareManager()
         if not software_mgr.check_installed('lsof'):
             logging.info('Installing lsof package:')
@@ -446,6 +451,10 @@ def run(test, params, env):
 
             if check_flags:
                 check_guest_flags(bash_cmd, flags)
+        elif remove_test:
+            if case == 'not_saved_with_file':
+                process.run('touch %s' % managed_save_file, shell=True, verbose=True)
+            vm_msave_remove_check(vm_name)
 
         else:
             # Ensure VM is running
@@ -453,11 +462,13 @@ def run(test, params, env):
             ret = virsh.managedsave(vm_ref, options=option,
                                     ignore_status=True, debug=True)
             status = ret.exit_status
-            # The progress information outputed in error message
+            # The progress information outputted in error message
             error_msg = ret.stderr.strip()
             if move_saved_file:
                 cmd = "echo > %s" % managed_save_file
                 process.run(cmd, shell=True)
+            if case == 'saved_without_file':
+                os.remove(managed_save_file)
 
             # recover libvirtd service start
             if libvirtd_state == "off":
@@ -476,7 +487,7 @@ def run(test, params, env):
                 if progress:
                     if not error_msg.count("Managedsave:"):
                         test.fail("Got invalid progress output")
-                if remove_after_cmd:
+                if remove_after_cmd or case == 'saved_without_file':
                     vm_msave_remove_check(vm_name)
                 elif test_undefine:
                     vm_undefine_check(vm_name)

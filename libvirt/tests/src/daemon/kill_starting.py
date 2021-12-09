@@ -2,6 +2,7 @@ import logging
 
 from virttest import utils_misc
 from virttest.utils_libvirtd import LibvirtdSession
+from virttest.utils_libvirtd import Libvirtd
 
 
 def run(test, params, env):
@@ -14,10 +15,10 @@ def run(test, params, env):
 
     def _signal_callback(gdb, info, params):
         """
-        Callback function when a signal is recieved by libvirtd.
+        Callback function when a signal is received by libvirtd.
         """
         params['recieved'] = True
-        logging.debug("Signal recieved:")
+        logging.debug("Signal received:")
         logging.debug(info)
 
     def _break_callback(gdb, info, params):
@@ -29,9 +30,23 @@ def run(test, params, env):
         gdb.send_signal(signal_name)
         gdb.cont()
 
+    def get_service(send_signal_at):
+        """
+        Get the name of the service
+
+        :param send_signal_at: The function to set breakpoint
+        :return: Service name
+        """
+        return {
+            'netcfStateInitialize': 'virtinterfaced',
+            'networkStateInitialize': 'virtnetworkd',
+            'nwfilterStateInitialize': 'virtnwfilterd'
+        }.get(send_signal_at)
+
+    serv_name = get_service(send_signal_at)
     bundle = {'recieved': False}
 
-    libvirtd = LibvirtdSession(gdb=True)
+    libvirtd = LibvirtdSession(service_name=serv_name, gdb=True)
     try:
         libvirtd.set_callback('break', _break_callback)
         libvirtd.set_callback('signal', _signal_callback, bundle)
@@ -41,6 +56,8 @@ def run(test, params, env):
         libvirtd.start(wait_for_working=False)
 
         if not utils_misc.wait_for(lambda: bundle['recieved'], 20, 0.5):
-            test.fail("Expect recieve signal, but not.")
+            test.fail("Expect receive signal, but not.")
     finally:
         libvirtd.exit()
+        # Need to restart libvirtd.socket after starting libvirtd in the foreground
+        Libvirtd("libvirtd.socket").restart()

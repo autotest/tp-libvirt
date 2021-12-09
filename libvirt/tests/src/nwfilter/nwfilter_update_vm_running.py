@@ -2,13 +2,13 @@ import re
 import logging
 
 from avocado.utils import process
+from avocado.utils import astring
 
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
-from virttest.compat_52lts import decode_to_text as to_text
 
 
 def run(test, params, env):
@@ -37,7 +37,28 @@ def run(test, params, env):
     new_filter = libvirt_xml.NwfilterXML()
     filter_backup = new_filter.new_from_filter_dumpxml(filter_name)
 
+    def clean_up_dirty_nwfilter_binding():
+        cmd_result = virsh.nwfilter_binding_list(debug=True)
+        binding_list = cmd_result.stdout_text.strip().splitlines()
+        binding_list = binding_list[2:]
+        result = []
+        # If binding list is not empty.
+        if binding_list:
+            for line in binding_list:
+                # Split on whitespace, assume 1 column
+                linesplit = line.split(None, 1)
+                result.append(linesplit[0])
+        logging.info("nwfilter binding list is: %s", result)
+        for binding_uuid in result:
+            try:
+                virsh.nwfilter_binding_delete(binding_uuid)
+            except Exception as e:
+                logging.error("Exception thrown while undefining nwfilter-binding: %s", str(e))
+                raise
+
     try:
+        # Clean up dirty nwfilter binding if there are.
+        clean_up_dirty_nwfilter_binding()
         # Update first vm interface with filter
         vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         iface_xml = vmxml.get_devices('interface')[0]
@@ -72,7 +93,7 @@ def run(test, params, env):
                                   timeout=30)
         if not ret:
             test.fail("Rum command '%s' failed" % check_cmd)
-        out = to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
+        out = astring.to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
         if expect_match and not re.search(expect_match, out):
             test.fail("'%s' not found in output: %s"
                       % (expect_match, out))

@@ -293,7 +293,8 @@ def run(test, params, env):
     else:
         contr_dict = {'controller_type': 'pci',
                       'controller_model': 'pcie-to-pci-bridge'}
-        libvirt.create_controller_xml(contr_dict, "add_controller", vm_name)
+        cntl_add = libvirt.create_controller_xml(contr_dict)
+        libvirt.add_controller(vm_name, cntl_add)
     try:  # Update interface model as defined
         iface_params = {'model': params['virtio_model']}
         libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)

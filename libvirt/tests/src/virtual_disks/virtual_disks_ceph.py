@@ -30,7 +30,9 @@ from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.lease import Lease
 from virttest import data_dir
 
-from provider import libvirt_version
+from virttest import libvirt_version
+
+TMP_DATA_DIR = data_dir.get_data_dir()
 
 
 def run(test, params, env):
@@ -46,7 +48,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
-    additional_xml_file = os.path.join(data_dir.get_tmp_dir(), "additional_disk.xml")
+    additional_xml_file = os.path.join(TMP_DATA_DIR, "additional_disk.xml")
 
     def config_ceph():
         """
@@ -231,7 +233,7 @@ def run(test, params, env):
         """
         Test save and restore operation
         """
-        save_file = os.path.join(data_dir.get_tmp_dir(),
+        save_file = os.path.join(TMP_DATA_DIR,
                                  "%s.save" % vm_name)
         ret = virsh.save(vm_name, save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
@@ -247,8 +249,8 @@ def run(test, params, env):
         Test snapshot operation.
         """
         snap_name = "s1"
-        snap_mem = os.path.join(data_dir.get_tmp_dir(), "rbd.mem")
-        snap_disk = os.path.join(data_dir.get_tmp_dir(), "rbd.disk")
+        snap_mem = os.path.join(TMP_DATA_DIR, "rbd.mem")
+        snap_disk = os.path.join(TMP_DATA_DIR, "rbd.disk")
         xml_snap_exp = ["disk name='%s' snapshot='external' type='file'" % target_dev]
         xml_dom_exp = ["source file='%s'" % snap_disk,
                        "backingStore type='network' index='1'",
@@ -265,8 +267,13 @@ def run(test, params, env):
             options = snap_name
 
         ret = virsh.snapshot_create_as(vm_name, options)
-        if test_disk_internal_snapshot or test_disk_readonly:
+        if test_disk_internal_snapshot:
             libvirt.check_result(ret, expected_fails=unsupported_err)
+        elif test_disk_readonly:
+            if libvirt_version.version_compare(6, 0, 0):
+                libvirt.check_result(ret)
+            else:
+                libvirt.check_result(ret, expected_fails=unsupported_err)
         else:
             libvirt.check_result(ret, skip_if=unsupported_err)
 
@@ -291,7 +298,7 @@ def run(test, params, env):
         """
         Block copy operation test.
         """
-        blk_file = os.path.join(data_dir.get_tmp_dir(), "blk.rbd")
+        blk_file = os.path.join(TMP_DATA_DIR, "blk.rbd")
         if os.path.exists(blk_file):
             os.remove(blk_file)
         blk_mirror = ("mirror type='file' file='%s' "
@@ -360,6 +367,9 @@ def run(test, params, env):
             elif target.startswith("hd"):
                 if added_parts[0].startswith("sd"):
                     added_part = added_parts[0]
+            elif target.startswith("sd"):
+                if added_parts[0].startswith("sd"):
+                    added_part = added_parts[0]
 
             if not added_part:
                 logging.error("Can't see added partition in VM")
@@ -373,7 +383,7 @@ def run(test, params, env):
             logging.info("Check disk operation in VM:\n, %s, %s", s, o)
             # Readonly fs, check the error messages.
             # The command may return True, read-only
-            # messges can be found from the command output
+            # messages can be found from the command output
             if read_only:
                 if "Read-only file system" not in o:
                     return False
@@ -432,12 +442,12 @@ def run(test, params, env):
         logging.info("Making snapshot...")
         first_disk_source = vm.get_first_disk_devices()['source']
         snapshot_path_list = []
-        snapshot2_file = os.path.join(data_dir.get_tmp_dir(), "mem.s2")
-        snapshot3_file = os.path.join(data_dir.get_tmp_dir(), "mem.s3")
-        snapshot4_file = os.path.join(data_dir.get_tmp_dir(), "mem.s4")
-        snapshot4_disk_file = os.path.join(data_dir.get_tmp_dir(), "disk.s4")
-        snapshot5_file = os.path.join(data_dir.get_tmp_dir(), "mem.s5")
-        snapshot5_disk_file = os.path.join(data_dir.get_tmp_dir(), "disk.s5")
+        snapshot2_file = os.path.join(TMP_DATA_DIR, "mem.s2")
+        snapshot3_file = os.path.join(TMP_DATA_DIR, "mem.s3")
+        snapshot4_file = os.path.join(TMP_DATA_DIR, "mem.s4")
+        snapshot4_disk_file = os.path.join(TMP_DATA_DIR, "disk.s4")
+        snapshot5_file = os.path.join(TMP_DATA_DIR, "mem.s5")
+        snapshot5_disk_file = os.path.join(TMP_DATA_DIR, "disk.s5")
 
         # Attempt to take different types of snapshots.
         snapshots_param_dict = {"s1": "s1 --disk-only --no-metadata",
@@ -498,6 +508,8 @@ def run(test, params, env):
     create_snapshot = "yes" == params.get("create_snapshot", "no")
     convert_image = "yes" == params.get("convert_image", "no")
     create_volume = "yes" == params.get("create_volume", "no")
+    rbd_blockcopy = "yes" == params.get("rbd_blockcopy", "no")
+    enable_slice = "yes" == params.get("enable_slice", "no")
     create_by_xml = "yes" == params.get("create_by_xml", "no")
     client_key = params.get("client_key")
     client_name = params.get("client_name")
@@ -515,9 +527,11 @@ def run(test, params, env):
     start_vm = "yes" == params.get("start_vm", "no")
     test_disk_readonly = "yes" == params.get("test_disk_readonly", "no")
     test_disk_internal_snapshot = "yes" == params.get("test_disk_internal_snapshot", "no")
+    test_disk_external_snapshot = "yes" == params.get("test_disk_external_snapshot", "no")
     test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
     disk_snapshot_with_sanlock = "yes" == params.get("disk_internal_with_sanlock", "no")
     auth_place_in_source = params.get("auth_place_in_source")
+    test_target_bus = "yes" == params.get("scsi_target_test", "no")
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ""
@@ -528,7 +542,11 @@ def run(test, params, env):
     if auth_place_in_source and not libvirt_version.version_compare(3, 9, 0):
         test.cancel("place auth in source is not supported in current libvirt version")
 
-    # Start vm and get all partions in vm.
+    # After libvirt 6.0.0, blockcopy rbd backend feature is support.
+    if rbd_blockcopy and not libvirt_version.version_compare(6, 0, 0):
+        test.cancel("blockcopy rbd backend is not supported in current libvirt version")
+
+    # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -550,10 +568,10 @@ def run(test, params, env):
     key_opt = ""
     secret_uuid = None
     snapshot_path = None
-    key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
-    img_file = os.path.join(data_dir.get_tmp_dir(),
+    key_file = os.path.join(TMP_DATA_DIR, "ceph.key")
+    img_file = os.path.join(TMP_DATA_DIR,
                             "%s_test.img" % vm_name)
-    front_end_img_file = os.path.join(data_dir.get_tmp_dir(),
+    front_end_img_file = os.path.join(TMP_DATA_DIR,
                                       "%s_frontend_test.img" % vm_name)
     # Construct a unsupported error message list to skip these kind of tests
     unsupported_err = []
@@ -694,11 +712,21 @@ def run(test, params, env):
             disk_path += (":id=%s:key=%s" %
                           (auth_user, auth_key))
         targetdev = params.get("disk_target", "vdb")
+        targetbus = params.get("disk_target_bus", "virtio")
+        if test_target_bus:
+            targetdev = params.get("disk_target", "sdb")
+            targetbus = params.get("disk_target_bus", "scsi")
+            # Add virtio-scsi controller for sd* test
+            controller_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            conduct = {'controller_type': targetbus}
+            ctrl = libvirt.create_controller_xml(conduct)
+            libvirt.add_controller(vm.name, ctrl)
+            logging.debug("Controller XML is:%s", ctrl)
         # To be compatible with create_disk_xml function,
         # some parameters need to be updated.
         params.update({
             "type_name": params.get("disk_type", "network"),
-            "target_bus": params.get("disk_target_bus"),
+            "target_bus": targetbus,
             "target_dev": targetdev,
             "secret_uuid": secret_uuid,
             "source_protocol": params.get("disk_source_protocol"),
@@ -723,6 +751,19 @@ def run(test, params, env):
             create_pool()
             create_vol(vol_params)
             check_vol(vol_params)
+        elif rbd_blockcopy:
+            # Create one disk to attach to VM as second disk device
+            second_disk_params = {}
+            disk_size = params.get("virt_disk_device_size", "50M")
+            device_source = libvirt.create_local_disk(
+                "file", img_file, disk_size, disk_format="qcow2")
+            second_disk_params.update({"source_file": device_source})
+            second_disk_params.update({"driver_type": "qcow2"})
+            second_xml_file = libvirt.create_disk_xml(second_disk_params)
+            opts = params.get("attach_option", "--config")
+            ret = virsh.attach_device(vm_name, second_xml_file,
+                                      flagstr=opts, debug=True)
+            libvirt.check_result(ret)
         else:
             # Create an local image and make FS on it.
             disk_cmd = ("qemu-img create -f %s %s 10M && mkfs.ext4 -F %s" %
@@ -739,6 +780,9 @@ def run(test, params, env):
                             (mon_host, key_opt, disk_src_name, snap_name))
                 process.run(snap_cmd, ignore_status=False, shell=True)
             if test_json_pseudo_protocol:
+                # After block-dev introduced, qemu-img: warning: RBD options encoded in the filename as keyvalue pairs is deprecated
+                if libvirt_version.version_compare(6, 0, 0):
+                    test.cancel("qemu-img: warning: RBD options encoded in the filename as keyvalue pairs in json format is deprecated")
                 # Create one frontend image with the rbd backing file.
                 json_str = ('json:{"file.driver":"rbd",'
                             '"file.filename":"rbd:%s:mon_host=%s"}'
@@ -817,6 +861,36 @@ def run(test, params, env):
             snapshot_path = make_snapshot()
             if vm.is_alive():
                 vm.destroy()
+        elif rbd_blockcopy:
+            if enable_slice:
+                disk_cmd = ("rbd -m %s %s create %s --size 400M 2> /dev/null"
+                            % (mon_host, key_opt, disk_src_name))
+                process.run(disk_cmd, ignore_status=False, shell=True)
+                slice_dict = {"slice_type": "storage", "slice_offset": "12345",
+                              "slice_size": "52428800"}
+                params.update({"disk_slice": slice_dict})
+                logging.debug('create one volume on ceph backend storage for slice testing')
+            # Create one file on VM before doing blockcopy
+            try:
+                session = vm.wait_for_login()
+                cmd = ("mkfs.ext4 -F /dev/{0} && mount /dev/{0} /mnt && ls /mnt && (sleep 3;"
+                       " touch /mnt/rbd_blockcopyfile; umount /mnt)"
+                       .format(targetdev))
+                s, o = session.cmd_status_output(cmd, timeout=60)
+                session.close()
+                logging.info("touch one file in new added disk in VM:\n, %s, %s", s, o)
+            except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+                logging.error(str(e))
+            # Create rbd backend xml
+            rbd_blockcopy_xml_file = libvirt.create_disk_xml(params)
+            logging.debug("The rbd blockcopy xml is: %s" % rbd_blockcopy_xml_file)
+            dest_path = " --xml %s" % rbd_blockcopy_xml_file
+            options1 = params.get("rbd_pivot_option", " --wait --verbose --transient-job --pivot")
+            extra_dict = {'debug': True}
+            cmd_result = virsh.blockcopy(vm_name, targetdev,
+                                         dest_path, options1,
+                                         **extra_dict)
+            libvirt.check_exit_status(cmd_result)
         elif not create_volume:
             libvirt.set_vm_disk(vm, params)
         if test_blockcopy:
@@ -859,22 +933,51 @@ def run(test, params, env):
             check_snapshot(snap_option)
         if test_blockcopy:
             check_blockcopy(targetdev)
-        if test_disk_readonly:
+        if test_disk_readonly and not libvirt_version.version_compare(6, 0, 0):
             snap_option = params.get("snapshot_option", "")
             check_snapshot(snap_option, 'vdb')
         if test_disk_internal_snapshot:
             snap_option = params.get("snapshot_option", "")
             check_snapshot(snap_option, targetdev)
+        if test_disk_external_snapshot:
+            snap_option = params.get("snapshot_option", "")
+            check_snapshot(snap_option, targetdev)
+        # Check rbd blockcopy inside VM
+        if rbd_blockcopy:
+            try:
+                session = vm.wait_for_login()
+                cmd = ("mount /dev/{0} /mnt && ls /mnt/rbd_blockcopyfile && (sleep 3;"
+                       " umount /mnt)"
+                       .format(targetdev))
+                s, o = session.cmd_status_output(cmd, timeout=60)
+                session.close()
+                logging.info("list one file in new rbd backend disk in VM:\n, %s, %s", s, o)
+            except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+                logging.error(str(e))
+            debug_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+
+            def _check_slice_in_xml():
+                """
+                Check slice attribute in disk xml.
+                """
+                debug_vmxml = virsh.dumpxml(vm_name, "", debug=True).stdout.strip()
+                if 'slices' in debug_vmxml:
+                    return True
+                else:
+                    return False
+            if enable_slice:
+                if not _check_slice_in_xml():
+                    test.fail("Failed to find slice attribute in VM xml")
         # Detach the device.
         if attach_device:
             xml_file = libvirt.create_disk_xml(params)
-            ret = virsh.detach_device(vm_name, xml_file)
+            ret = virsh.detach_device(vm_name, xml_file, wait_for_event=True)
             libvirt.check_exit_status(ret)
             if additional_guest:
-                ret = virsh.detach_device(guest_name, xml_file)
+                ret = virsh.detach_device(guest_name, xml_file, wait_for_event=True)
                 libvirt.check_exit_status(ret)
         elif attach_disk:
-            ret = virsh.detach_disk(vm_name, targetdev)
+            ret = virsh.detach_disk(vm_name, targetdev, wait_remove_event=True)
             libvirt.check_exit_status(ret)
 
         # Check disk in vm after detachment.

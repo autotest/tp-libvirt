@@ -9,17 +9,18 @@ from avocado.core import exceptions
 
 from virttest import libvirt_storage
 from virttest import utils_misc
+from virttest import utils_split_daemons
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import secret_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def get_expect_info(new_capacity, vol_path, test, resize_option=None):
     """
-    Get the expect volume capacity and allocation size, for comparation
+    Get the expect volume capacity and allocation size, for comparison
     after volume resize. As virsh vol-info return imprecise values, so we
     need get volume info from qemu side. The process is:
     1) Transform new capacity size to bytes.
@@ -48,7 +49,7 @@ def get_expect_info(new_capacity, vol_path, test, resize_option=None):
     elif suffix in suffixes_list2:
         factor = "1000"
     else:
-        test.error("Unsupport size unit '%s'." % suffix)
+        test.error("Unsupported size unit '%s'." % suffix)
 
     try:
         # Transform the size to bytes
@@ -139,12 +140,13 @@ def set_secret_value(password, encryption_uuid):
     libvirt.check_exit_status(ret)
 
 
-def create_luks_vol(vol_name, sec_uuid, params):
+def create_luks_vol(vol_name, sec_uuid, params, test):
     """
     Create a luks volume
     :param vol_name: the name of the volume
     :param sec_uuid: secret's uuid to be used for luks encryption
     :param params: detailed params to create volume
+    :param test: test object
     """
     pool_name = params.get("pool_name")
     extra_option = params.get("extra_option", "")
@@ -153,13 +155,16 @@ def create_luks_vol(vol_name, sec_uuid, params):
     vol_arg = {}
     for key in list(params.keys()):
         if (key.startswith('vol_') and not key.startswith('vol_new')):
-            if key[4:] in ['capacity', 'allocation']:
+            if key[4:] in ['capacity', 'allocation', 'clusterSize']:
                 vol_arg[key[4:]] = int(float(utils_misc.normalize_data_size(params[key],
                                                                             "B", 1024)))
             elif key[4:] in ['owner', 'group']:
                 vol_arg[key[4:]] = int(params[key])
             else:
                 vol_arg[key[4:]] = params[key]
+                if vol_arg[key[4:]] == "qcow2" and not libvirt_version.version_compare(6, 10, 0):
+                    test.cancel("Qcow2 format with luks encryption is not"
+                                " supported in current libvirt version")
     vol_arg['name'] = vol_name
     volxml = libvirt_xml.VolXML()
     newvol = volxml.new_vol(**vol_arg)
@@ -184,7 +189,7 @@ def check_vol_info(pool_vol, vol_name, test, expect_info=None):
 
     :params pool_vol: Instance of PoolVolume.
     :params vol_name: Name of the volume.
-    :params expect_info: Expect volume info for comparation.
+    :params expect_info: Expect volume info for comparison.
     """
     vol_info = pool_vol.volume_info(vol_name)
     for key in vol_info:
@@ -227,7 +232,7 @@ def run(test, params, env):
     5. Delete the volume and pool.
 
     TODO:
-    Add volume shrink test after libvirt uptream support it.
+    Add volume shrink test after libvirt upstream support it.
     """
 
     pool_name = params.get("pool_name")
@@ -245,6 +250,8 @@ def run(test, params, env):
     b_luks_encrypt = "luks" == params.get("encryption_method")
     encryption_password = params.get("encryption_password", "redhat")
     secret_uuids = []
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     if not libvirt_version.version_compare(1, 0, 0):
         if "--allocate" in resize_option:
@@ -253,6 +260,8 @@ def run(test, params, env):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unpri_user = params.get('unprivileged_user')
     if unpri_user:
         if unpri_user.count('EXAMPLE'):
@@ -276,7 +285,7 @@ def run(test, params, env):
             pool_info = libv_pool.pool_info(pool_name)
             for key in pool_info:
                 logging.debug("Pool info: %s = %s", key, pool_info[key])
-            # Deal with vol_new_capacity, '--capacity' only accpet integer
+            # Deal with vol_new_capacity, '--capacity' only accept integer
             if vol_new_capacity == "pool_available":
                 pool_avai = pool_info["Available"].split()
                 vol_new_capacity = pool_avai[0].split('.')[0] + pool_avai[1]
@@ -290,7 +299,7 @@ def run(test, params, env):
                                                test)
             secret_uuids.append(luks_sec_uuid)
             set_secret_value(encryption_password, luks_sec_uuid)
-            create_luks_vol(vol_name, luks_sec_uuid, params)
+            create_luks_vol(vol_name, luks_sec_uuid, params, test)
         else:
             libv_pvt.pre_vol(vol_name=vol_name, vol_format=vol_format,
                              capacity=vol_capacity, allocation=None,

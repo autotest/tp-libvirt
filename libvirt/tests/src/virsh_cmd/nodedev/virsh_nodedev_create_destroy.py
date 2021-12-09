@@ -8,7 +8,8 @@ from avocado.core import exceptions
 from virttest import virsh
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 
-from provider import libvirt_version
+from virttest import libvirt_version
+from virttest import utils_split_daemons
 
 _FC_HOST_PATH = "/sys/class/fc_host"
 
@@ -109,6 +110,8 @@ def create_nodedev_from_xml(test, params):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -122,7 +125,7 @@ def create_nodedev_from_xml(test, params):
                                   unprivileged_user=unprivileged_user)
     status = result.exit_status
 
-    # Remove temprorary file
+    # Remove temporary file
     os.unlink(device_file)
 
     # Check status_error

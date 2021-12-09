@@ -5,7 +5,8 @@ import os
 from avocado.utils import process
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
-from provider import libvirt_version
+from virttest import libvirt_version
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt
 
 
@@ -93,6 +94,8 @@ def run(test, params, env):
 
     # acl polkit params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -122,7 +125,7 @@ def run(test, params, env):
         dump_nodedev_xml(dev_name=device_name, dev_opt=device_opt,
                          **virsh_dargs)
         if status_error:
-            test.fail('Nodedev dumpxml successed in negative test.')
+            test.fail('Nodedev dumpxml succeeded in negative test.')
     except Exception as e:
         if not status_error:
             test.fail('Nodedev dumpxml failed in positive test.'

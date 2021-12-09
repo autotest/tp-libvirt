@@ -2,6 +2,7 @@ import os
 import shutil
 import logging
 import platform
+import time
 
 from avocado.utils import process
 
@@ -10,6 +11,7 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.controller import Controller
@@ -17,7 +19,7 @@ from virttest.libvirt_xml.devices.controller import Controller
 
 def run(test, params, env):
     """
-    Test interafce xml options.
+    Test interface xml options.
 
     1.Prepare test environment, destroy or suspend a VM.
     2.Perform test operation.
@@ -186,6 +188,7 @@ def run(test, params, env):
         """
         prepare_hook_file(hook_script % (vm_name, hook_log))
         hook_para = "%s %s" % (hook_file, vm_name)
+        time.sleep(2)
         libvirtd.restart()
         try:
             hook_str = hook_para + " reconnect begin -"
@@ -218,8 +221,7 @@ def run(test, params, env):
 
         if output.exit_status:
             logging.debug("output.stderr1: %s", output.stderr.lower())
-            if (exit1 == "yes" and
-               "hook script execution failed" in output.stderr.lower()):
+            if (exit1 == "yes" and "hook script execution failed" in output.stderr.lower()):
                 return True
             else:
                 test.fail("Create %s domain failed:%s" %
@@ -265,8 +267,10 @@ def run(test, params, env):
             # kill the daemon with SIGHUP
             if os.path.exists(hook_log):
                 os.remove(hook_log)
-            utils_misc.signal_program('libvirtd', 1,
-                                      '/var/run')
+
+            daemon_process = utils_libvirtd.Libvirtd().service_name
+            utils_misc.signal_program(daemon_process, 1, '/var/run')
+
             hook_str = hook_file + " - reload begin SIGHUP"
             assert check_hooks(hook_str)
 
@@ -300,12 +304,16 @@ def run(test, params, env):
         sta, pid = process.getstatusoutput("pgrep qemu-kvm")
         if not pid:
             test.fail("Cannot get pid of qemu command")
-        ret = virsh.qemu_attach(pid, **virsh_dargs)
-        if ret.exit_status:
+        try:
+            ret = virsh.qemu_attach(pid, **virsh_dargs)
+            if ret.exit_status:
+                utils_misc.kill_process_tree(pid)
+                test.fail("Cannot attach qemu process")
+            else:
+                virsh.destroy(vm_test)
+        except Exception as detail:
             utils_misc.kill_process_tree(pid)
-            test.fail("Cannot attach qemu process")
-        else:
-            virsh.destroy(vm_test)
+            test.fail("Failed to attach qemu process: %s" % str(detail))
         hook_str = hook_file + " " + vm_test + " attach begin -"
         if not check_hooks(hook_str):
             test.fail("Failed to check attach hooks")
@@ -401,7 +409,10 @@ def run(test, params, env):
             libvirt.check_exit_status(ret)
             if utils_misc.wait_for(is_attached_interface, timeout=20) is not True:
                 test.fail("Attaching interface failed.")
-            hook_str = hook_file + " " + net_name + " plugged begin -"
+            if libvirt_version.version_compare(6, 0, 0):
+                hook_str = hook_file + " " + net_name + " port-created begin -"
+            else:
+                hook_str = hook_file + " " + net_name + " plugged begin -"
             assert check_hooks(hook_str)
 
             def is_detached_interface():
@@ -416,14 +427,20 @@ def run(test, params, env):
                 libvirt.check_exit_status(ret)
             if utils_misc.wait_for(is_detached_interface, timeout=50) is not True:
                 test.fail("Detaching interface failed.")
-            hook_str = hook_file + " " + net_name + " unplugged begin -"
+            if libvirt_version.version_compare(6, 0, 0):
+                hook_str = hook_file + " " + net_name + " port-deleted begin -"
+            else:
+                hook_str = hook_file + " " + net_name + " unplugged begin -"
             assert check_hooks(hook_str)
             # remove the log file
             if os.path.exists(hook_log):
                 os.remove(hook_log)
             # destroy the domain
             vm.destroy()
-            hook_str = hook_file + " " + net_name + " unplugged begin -"
+            if libvirt_version.version_compare(6, 0, 0):
+                hook_str = hook_file + " " + net_name + " port-deleted begin -"
+            else:
+                hook_str = hook_file + " " + net_name + " unplugged begin -"
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()

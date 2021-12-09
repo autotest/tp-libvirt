@@ -11,10 +11,9 @@ from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import pool_xml
-from provider import libvirt_version
+from virttest import libvirt_version
 from virttest import element_tree as ET
 from virttest import data_dir
-from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -61,7 +60,7 @@ def run(test, params, env):
     source_path = params.get("pool_source_path", "/")
     new_pool_name = params.get("new_pool_name", "")
     build_option = params.get("build_option", "")
-    iscsi_initiator = params.get("iscsi_initiator", "")
+    source_initiator = params.get("source_initiator", "")
     same_source_test = "yes" == params.get("same_source_test", "no")
     customize_initiator_iqn = "yes" == params.get("customize_initiator_iqn", "no")
     # The file for dumped pool xml
@@ -83,6 +82,9 @@ def run(test, params, env):
         if pool_type == "iscsi-direct":
             test.cancel("iSCSI-direct pool is not supported in current"
                         "libvirt version.")
+    if source_initiator and not libvirt_version.version_compare(6, 10, 0):
+        test.cancel("Source_initiator option is not supported in current"
+                    " libvirt_version.")
     if source_protocol_ver == "yes" and not libvirt_version.version_compare(4, 5, 0):
         test.cancel("source-protocol-ver is not supported on current version.")
 
@@ -109,7 +111,7 @@ def run(test, params, env):
         else:
             logging.debug("Not find pool %s in pool list.", pool_name)
         if expect_error and found:
-            test.fail("Unexpect pool '%s' exist." % pool_name)
+            test.fail("Unexpected pool '%s' exist." % pool_name)
         if not expect_error and not found:
             test.fail("Expect pool '%s' doesn't exist." % pool_name)
 
@@ -185,7 +187,8 @@ def run(test, params, env):
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
               'ip_protocal': ip_protocal, 'emulated_image': "emulated-image",
-              'pool_target': pool_target, 'iscsi_initiator': iscsi_initiator, 'source_protocol_ver': source_protocol_ver}
+              'pool_target': pool_target, 'source_initiator': source_initiator,
+              'source_protocol_ver': source_protocol_ver}
     params.update(kwargs)
 
     try:
@@ -260,7 +263,7 @@ def run(test, params, env):
         utlv.check_exit_status(result, status_error)
         if not result.exit_status:
             # Step (6)
-            # Buid pool
+            # Build pool
             # '--overwrite/--no-overwrite' just for fs/disk/logiacl type pool
             # disk/fs pool: as prepare step already make label and create filesystem
             #               for the disk, use '--overwrite' is necessary
@@ -293,7 +296,8 @@ def run(test, params, env):
 
             # Step (11)
             # Restart libvirtd and check the autostart pool
-            utils_libvirtd.libvirtd_restart()
+            utils_libvirtd.unmark_storage_autostarted()
+            utils_libvirtd.Libvirtd("virtstoraged").restart()
             option = "--autostart --persistent"
             check_pool_list(pool_name, option)
 
@@ -312,7 +316,7 @@ def run(test, params, env):
 
             # Step (14)
             # Repeat step (11)
-            utils_libvirtd.libvirtd_restart()
+            utils_libvirtd.Libvirtd("virtstoraged").restart()
             option = "--autostart"
             check_pool_list(pool_name, option, True)
 

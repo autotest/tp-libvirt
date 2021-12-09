@@ -12,7 +12,7 @@ from virttest import ceph
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import xcepts
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -21,7 +21,7 @@ def run(test, params, env):
 
     (1) Prepare backend storage device
     (2) Define secret xml and set secret value
-    (3) Test pool-create-as or virsh pool-define with authenication
+    (3) Test pool-create-as or virsh pool-define with authentication
     '''
 
     pool_options = params.get('pool_options', '')

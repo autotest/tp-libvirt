@@ -107,9 +107,9 @@ def run(test, params, env):
         if vm.is_dead():
             vm.start()
             vm.wait_for_login()
-        # Create swap partition if nessesary.
+        # Create swap partition if necessary.
         if not vm.has_swap():
-            swap_path = os.path.join(data_dir.get_tmp_dir(), 'swap.img')
+            swap_path = os.path.join(data_dir.get_data_dir(), 'swap.img')
             vm.create_swap_partition(swap_path)
         ret = virsh.dompmsuspend(vm_name, "disk", **virsh_dargs)
         libvirt.check_exit_status(ret)
@@ -167,7 +167,7 @@ def run(test, params, env):
     mnt_src = ""
 
     # This is brought by new feature:block-dev
-    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
+    if transport == "rdma":
         test.cancel("transport protocol 'rdma' is not yet supported")
     try:
         # Build new vm xml.
@@ -207,6 +207,7 @@ def run(test, params, env):
         if start_vm:
             if vm.is_dead():
                 vm.start()
+                vm.wait_for_login().close()
         else:
             if not vm.is_dead():
                 vm.destroy()
@@ -262,7 +263,7 @@ def run(test, params, env):
         if start_vm and not default_pool:
             if gluster_disk:
                 ret = virsh.detach_device(vm_name, custom_disk.xml,
-                                          flagstr=attach_option, dargs=virsh_dargs)
+                                          flagstr=attach_option, dargs=virsh_dargs, wait_for_event=True)
                 libvirt.check_exit_status(ret)
 
     finally:

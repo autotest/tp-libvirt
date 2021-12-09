@@ -185,7 +185,7 @@ def attach_additional_device(vm_name, disksize, targetdev, params):
     # To confirm attached device do not exist.
     virsh.detach_disk(vm_name, targetdev, extra="--config")
 
-    return virsh.attach_device(domain_opt=vm_name, file_opt=xmlfile,
+    return virsh.attach_device(vm_name, xmlfile,
                                flagstr="--config", debug=True)
 
 
@@ -241,7 +241,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Temparay way to avoid unmatched prompt
+    # Temporary way to avoid unmatched prompt
     params['shell_prompt'] = ".*@.*[\#\$]\s*"
     vm.params = params
 

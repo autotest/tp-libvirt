@@ -1,16 +1,18 @@
 import logging
 import os
 import re
-import glob
 import string
 import random
 
 from avocado.utils import process
 
 from virttest import virsh
-from virttest import utils_net
+from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_net
+from virttest import utils_package
 from virttest import utils_test
+from virttest import utils_sriov
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
@@ -28,19 +30,6 @@ def run(test, params, env):
     4.Reboot a guest with vf;
     5.suspend/resume a guest with vf
     """
-    def find_pf():
-        pci_address = ""
-        for pci in pci_dirs:
-            temp_iface_name = os.listdir("%s/net" % pci)[0]
-            operstate = utils_net.get_net_if_operstate(temp_iface_name)
-            if operstate == "up":
-                pf_iface_name = temp_iface_name
-                pci_address = pci
-                break
-        if pci_address == "":
-            return False
-        else:
-            return pci_address
 
     def create_address_dict(pci_id):
         """
@@ -83,6 +72,8 @@ def run(test, params, env):
         chars = string.ascii_letters + string.digits + '-_'
         alias_name = 'ua-' + ''.join(random.choice(chars) for _ in list(range(64)))
         new_iface.alias = {'name': alias_name}
+        if vlan_id:
+            new_iface.vlan = new_iface.new_vlan(**vlan_id)
         return new_iface
 
     def create_vfs(vf_num):
@@ -132,6 +123,7 @@ def run(test, params, env):
             net = net.split('_')
             length = len(net)
             net = '_'.join(net[1:length-6])
+            mac = ':'.join(net[length-6:])
             net_name.append(net)
         for pci_addr in pci_diff:
             temp_addr = pci_addr.split("_")
@@ -190,6 +182,8 @@ def run(test, params, env):
         new_iface.source = {'network': name}
         new_iface.model = "virtio"
         new_iface.mac_address = utils_net.generate_mac_address_simple()
+        if vlan_id:
+            new_iface.vlan = new_iface.new_vlan(**vlan_id)
         return new_iface
 
     def create_hostdev_network():
@@ -215,7 +209,7 @@ def run(test, params, env):
 
     def create_macvtap_network():
         """
-            Create macvtap type network xml.
+        Create macvtap type network xml.
         """
         forward_interface_list = []
         for vf_name in vf_name_list:
@@ -253,6 +247,11 @@ def run(test, params, env):
         if operation == "save":
             result = virsh.managedsave(vm_name, ignore_status=True, debug=True)
             utils_test.libvirt.check_exit_status(result, expect_error=True)
+
+        if operation == "restart_libvirtd":
+            detach_interface()
+            utils_libvirtd.libvirtd_restart()
+            interface = attach_interface()
 
     def check_info():
         """
@@ -316,6 +315,8 @@ def run(test, params, env):
             new_iface.source = {"dev": vf_name, "mode": "passthrough"}
             new_iface.mac_address = utils_net.generate_mac_address_simple()
             new_iface.model = "virtio"
+            if vlan_id:
+                new_iface.vlan = new_iface.new_vlan(**vlan_id)
         if vf_type == "macvtap_network":
             netxml = create_macvtap_network()
             result = virsh.net_define(netxml.xml, ignore_status=True)
@@ -335,12 +336,30 @@ def run(test, params, env):
             result = virsh.domiflist(vm_name, "", ignore_status=True)
             return result.stdout.find(mac_addr) == -1
 
-        result = virsh.detach_device(vm_name, new_iface.xml)
+        def check_addr_attrs():
+            live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            device = live_xml.devices
+            hostdev_list = device.by_device_tag("hostdev")
+            for hostdev in hostdev_list:
+                addr = hostdev.source.untyped_address
+                hostdev_addr_attrs = {"domain": addr.domain, "bus": addr.bus, "slot": addr.slot, "function": addr.function}
+                if hostdev_addr_attrs == vf_addr_attrs:
+                    return False
+            return True
+
+        result = utils_misc.wait_for(
+            lambda: virsh.detach_device(vm_name, new_iface.xml), 30, first=10)
         utils_test.libvirt.check_exit_status(result, expect_error=False)
-        utils_misc.wait_for(_detach_completed, timeout=60)
+        if vf_type == "hostdev":
+            check_ret = utils_misc.wait_for(check_addr_attrs, timeout=60)
+            if not check_ret:
+                test.fail("The hostdev device detach failed from xml\n")
+        else:
+            utils_misc.wait_for(_detach_completed, timeout=60)
         live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         device = live_xml.devices
         logging.debug("Domain xml after detach interface:\n %s", live_xml)
+
         if vf_type == "vf" or vf_type == "vf_pool":
             for interface in device.by_device_tag("interface"):
                 if interface.type_name == "hostdev":
@@ -375,7 +394,7 @@ def run(test, params, env):
             result = virsh.nodedev_detach(nodedev_pci_addr)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
         logging.debug("attach interface xml:\n %s", new_iface)
-        result = virsh.attach_device(vm_name, file_opt=new_iface.xml, flagstr=option, debug=True)
+        result = virsh.attach_device(vm_name, new_iface.xml, flagstr=option, debug=True)
         utils_test.libvirt.check_exit_status(result, expect_error=False)
         if option == "--config":
             result = virsh.start(vm_name)
@@ -387,8 +406,22 @@ def run(test, params, env):
             utils_test.libvirt.check_exit_status(result, expect_error=False)
         live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug(live_xml)
-        get_ip_by_mac(mac_addr, timeout=60)
+
+        if vf_type != "hostdev":
+            get_ip_by_mac(mac_addr, timeout=60)
+
         device = live_xml.devices
+
+        if vf_type == "hostdev":
+            hostdev_list = device.by_device_tag("hostdev")
+            if len(hostdev_list) == 0:
+                test.fail("The hostdev device attach failed from xml\n")
+            else:
+                for hostdev in hostdev_list:
+                    if hostdev.type == "pci":
+                        break
+                interface = hostdev
+
         if vf_type == "vf" or vf_type == "vf_pool":
             for interface in device.by_device_tag("interface"):
                 if interface.type_name == "hostdev":
@@ -397,7 +430,7 @@ def run(test, params, env):
                     break
             vf_addr_attrs = interface.hostdev_address.attrs
             pci_addr = addr_to_pci(vf_addr_attrs)
-            nic_driver = os.readlink(os.path.join(pci_device_dir, vf_addr, "driver")).split('/')[-1]
+            nic_driver = os.readlink(os.path.join(pci_device_dir, pci_addr, "driver")).split('/')[-1]
             if nic_driver != "vfio-pci":
                 test.fail("The driver of the hostdev interface is not vfio\n")
         elif vf_type == "macvtap" or vf_type == "macvtap_network":
@@ -420,7 +453,7 @@ def run(test, params, env):
 
         :param nic_num: number of nic card bond to numa node
         :param controller_index: index num used to create controllers
-        :param ctl_models: contoller topo for numa bond
+        :param ctl_models: controller topo for numa bond
         """
         index = controller_index
         if nic_num == 2:
@@ -497,8 +530,8 @@ def run(test, params, env):
                 numa_dict = {}
         # Add cpu device with numa node setting in domain xml
         vmxml_cpu = vm_xml.VMCPUXML()
-        vmxml_cpu.xml = "<cpu><numa/></cpu>"
-        vmxml_cpu.numa_cell = numa_dict_list
+        vmxml_cpu.xml = "<cpu mode='host-model'><numa/></cpu>"
+        vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
         vmxml.cpu = vmxml_cpu
 
     def create_iface_list(bus_id, nic_num, vf_list):
@@ -577,13 +610,13 @@ def run(test, params, env):
     vm = env.get_vm(params["main_vm"])
     machine_type = params.get("machine_type", "pc")
     operation = params.get("operation")
-    driver = params.get("driver", "ixgbe")
     status_error = params.get("status_error", "no") == "yes"
     model = params.get("model", "")
     managed = params.get("managed", "yes")
     attach = params.get("attach", "")
     option = params.get("option", "")
     vf_type = params.get("vf_type", "")
+    dev_type = params.get("dev_type", "")
     info_check = params.get("info_check", "no")
     info_type = params.get("info_type", "")
     vf_pool_source = params.get("vf_pool_source", "vf_list")
@@ -598,6 +631,8 @@ def run(test, params, env):
     nfv = params.get("nfv", "no") == "yes"
     ctl_models = params.get("ctl_models", "").split(' ')
     controller_index = int(params.get("controller_index", "12"))
+    vlan_id = eval(params.get("vlan_id", "None"))
+    trunk = params.get("trunk", "no") == "yes"
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -610,7 +645,7 @@ def run(test, params, env):
             logging.debug(device)
             if device.type == 'pci' and device.model == "pci-bridge":
                 pci_bridge_controllers.append(device)
-        if not pci_bridge_controllers:
+        if not pci_bridge_controllers and machine_type != 'q35':
             pci_bridge_controller = Controller("controller")
             pci_bridge_controller.type = "pci"
             pci_bridge_controller.index = "1"
@@ -630,21 +665,25 @@ def run(test, params, env):
     else:
         if not vm.is_dead():
             vm.destroy()
-    driver_dir = "/sys/bus/pci/drivers/%s" % driver
-    pci_dirs = glob.glob("%s/000*" % driver_dir)
+
     pci_device_dir = "/sys/bus/pci/devices"
     pci_address = ""
+    driver = ""
     net_name = "test-net"
 
     # Prepare interface xml
     try:
-        pf_iface_name = ""
-        pci_address = utils_misc.wait_for(find_pf, timeout=60)
-        if not pci_address:
-            test.cancel("no up pf found in the test machine")
-        pci_id = pci_address.split("/")[-1]
-        pf_name = os.listdir('%s/net' % pci_address)[0]
-        bus_slot = ':'.join(pci_address.split(':')[1:])
+        pci_id = utils_sriov.get_pf_pci()
+        if not pci_id:
+            test.cancel("NO available pf found.")
+        pci_info = utils_sriov.get_pf_info_by_pci(pci_id)
+        pf_name = pci_info.get('iface')
+        driver = pci_info.get('driver')
+        pci_address = os.path.join("/sys/bus/pci/drivers", driver, pci_id)
+        bus_slot = ':'.join(pci_id.split(':')[1:])
+        if not utils_package.package_install('pciutils'):
+            test.error('Failed to install "pciutils" which provides '
+                       'command "lspci"')
         pci_info = process.run("lspci -s %s -vv" % bus_slot).stdout_text
         logging.debug("The pci info of the sriov card is:\n %s", pci_info)
         max_vfs = int(re.findall(r"Total VFs: (.+?),", pci_info)[0]) - 1
@@ -657,23 +696,32 @@ def run(test, params, env):
 
         vf_list = []
         vf_name_list = []
+        vf_mac_list = []
 
         for i in range(vf_num):
             vf = os.readlink("%s/virtfn%s" % (pci_address, str(i)))
             vf = os.path.split(vf)[1]
             vf_list.append(vf)
             vf_name = os.listdir('%s/%s/net' % (pci_device_dir, vf))[0]
+            with open('%s/%s/net/%s/address' % (pci_device_dir, vf, vf_name), 'r') as f:
+                vf_mac = f.readline().strip()
             vf_name_list.append(vf_name)
+            vf_mac_list.append(vf_mac)
 
         if attach == "yes" and not nfv:
             vf_addr = vf_list[0]
-            new_iface = create_interface()
-            if inactive_pool:
+            if dev_type:
+                mac_addr = vf_mac_list[0]
+                new_iface = utils_test.libvirt.create_hostdev_xml(vf_addr,
+                                                                  managed=managed)
+            else:
+                new_iface = create_interface()
+                mac_addr = new_iface.mac_address
+            if inactive_pool or trunk:
                 result = virsh.attach_device(vm_name, file_opt=new_iface.xml, flagstr=option,
                                              ignore_status=True, debug=True)
-                utils_test.libvirt.check_exit_status(result, expected_error)
+                utils_test.libvirt.check_result(result, expected_error)
             else:
-                mac_addr = new_iface.mac_address
                 nodedev_pci_addr = create_nodedev_pci(vf_addr)
                 origin_driver = os.readlink(os.path.join(pci_device_dir, vf_addr, "driver")).split('/')[-1]
                 logging.debug("The driver of vf before attaching to guest is %s\n", origin_driver)
@@ -682,12 +730,36 @@ def run(test, params, env):
                     interface = attach_interface()
                     if vf_type in ["vf", "vf_pool"]:
                         vf_addr_attrs = interface.hostdev_address.attrs
+                    if vf_type == "hostdev":
+                        addr = interface.source.untyped_address
+                        vf_addr_attrs = {"domain": addr.domain, "bus": addr.bus,
+                                         "slot": addr.slot, "function": addr.function}
                     if operation != "":
                         do_operation()
                     detach_interface()
                     count += 1
                 if max_vfs_attached:
                     interface_list = []
+                    # Get max index of all pcie-root-port
+                    pcie_ctls = vmxml.get_controllers('pci', 'pcie-root-port')
+                    pcie_indexes = [int(port.get('index')) for port in pcie_ctls]
+
+                    def _add_pcie_root_port(index):
+                        """
+                        Add pcie root port with given index
+                        :param index: index of port that is going to be added
+                        :return:
+                        """
+                        pcie_root_port = Controller("controller")
+                        pcie_root_port.type = "pci"
+                        pcie_root_port.index = index
+                        pcie_root_port.model = "pcie-root-port"
+                        vmxml.add_device(pcie_root_port)
+                        vmxml.sync()
+
+                    for i in range(len(vf_list)):
+                        _add_pcie_root_port(max(pcie_indexes) + 1 + i)
+                    vm.start()
                     for vf_addr in vf_list:
                         new_iface = create_interface()
                         mac_addr = new_iface.mac_address
@@ -708,14 +780,14 @@ def run(test, params, env):
             vf_list.append(pf_addr)
             netxml = create_hostdev_network()
             result = virsh.net_define(netxml.xml, ignore_status=True, debug=True)
-            utils_test.libvirt.check_exit_status(result, expected_error)
+            utils_test.libvirt.check_result(result, expected_error)
         if duplicate_vf:
             vf_list.append(vf_list[0])
             netxml = create_hostdev_network()
             result = virsh.net_define(netxml.xml, ignore_status=True, debug=True)
-            utils_test.libvirt.check_exit_status(result, expected_error)
+            utils_test.libvirt.check_result(result, expected_error)
             result = virsh.net_create(netxml.xml, ignore_status=True, debug=True)
-            utils_test.libvirt.check_exit_status(result, expected_error)
+            utils_test.libvirt.check_result(result, expected_error)
         if nfv:
             vf_driver = os.readlink(os.path.join(pci_device_dir, vf_list[0], "driver")).split('/')[-1]
             vmxml.remove_all_device_by_type('controller')
@@ -731,7 +803,8 @@ def run(test, params, env):
             logging.debug(vmxml)
             iface_list = create_iface_list(bus_id, nic_num, vf_list)
             for iface in iface_list:
-                process.run("cat %s" % iface.xml, shell=True).stdout_text
+                txt = process.run("cat %s" % iface.xml, shell=True).stdout_text
+                logging.debug("iface_xml for attach device is %s" % txt)
                 result = virsh.attach_device(vm_name, file_opt=iface.xml, flagstr=option,
                                              ignore_status=True, debug=True)
                 utils_test.libvirt.check_exit_status(result, expect_error=False)

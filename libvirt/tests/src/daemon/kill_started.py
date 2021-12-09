@@ -6,8 +6,8 @@ import logging
 from avocado.utils import process
 
 from virttest import utils_config
+from virttest import utils_split_daemons
 from virttest.utils_libvirtd import Libvirtd
-from virttest.compat_52lts import results_stdout_52lts
 
 
 def run(test, params, env):
@@ -44,15 +44,19 @@ def run(test, params, env):
         process.run(cmdline, shell=True)
 
     pid_file = '/var/run/libvirtd.pid'
+    if utils_split_daemons.is_modular_daemon():
+        pid_file = '/var/run/virtqemud.pid'
     message_src_file = '/var/log/messages'
     message_dest_file = '/tmp/messages_tmp'
     signal_name = params.get("signal", "SIGTERM")
     should_restart = params.get("expect_restart", "yes") == "yes"
+    timeout = int(params.get("restart_timeout", 1))
     pid_should_change = params.get("expect_pid_change", "yes") == "yes"
+    expect_coredump = params.get("expect_coredump", "no") == "yes"
     sysconfig = params.get("sysconfig", None)
     check_dmesg = params.get("check_dmesg", None)
 
-    libvirtd = Libvirtd()
+    libvirtd = Libvirtd("virtqemud")
     try:
         libvirtd.start()
 
@@ -70,7 +74,7 @@ def run(test, params, env):
         send_signal(pid, signal_name)
 
         # Wait for libvirtd to restart or reload
-        time.sleep(1)
+        time.sleep(timeout)
 
         if libvirtd.is_running():
             if not should_restart:
@@ -92,11 +96,16 @@ def run(test, params, env):
         if check_dmesg:
             cmdline = 'diff %s %s' % \
                       (message_src_file, message_dest_file)
-            res = results_stdout_52lts(process.run(cmdline, shell=True, ignore_status=True))
+            res = process.run(cmdline, shell=True, ignore_status=True).stdout_text
             if check_dmesg not in res:
                 test.fail('%s should in %s , but not now' % (check_dmesg, message_src_file))
 
     finally:
+        # Clear coredump info
+        if expect_coredump:
+            cmd = 'journalctl --flush;'
+            cmd += 'journalctl --rotate; journalctl --vacuum-size=1K; journalctl --vacuum-time=1s'
+            process.run(cmd, ignore_status=True, shell=True)
         if not libvirtd.is_running():
             if os.path.exists(pid_file):
                 os.remove(pid_file)

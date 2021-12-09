@@ -30,7 +30,7 @@ def run(test, params, env):
     # nfs mount source
     vddk_libdir_src = params.get('vddk_libdir_src')
     vddk_thumbprint = params.get('vddk_thumbprint')
-    storage = params.get('storage')
+    os_pool = storage = params.get('storage')
     storage_name = params.get('storage_name')
     network = params.get('network')
     bridge = params.get('bridge')
@@ -58,6 +58,9 @@ def run(test, params, env):
     ovirt_hostname = params.get("ovirt_engine_url").split('/')[2]
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
+    skip_vm_check = params.get('skip_vm_check', 'no')
+    os_version = params.get('os_version')
+    os_type = params.get('os_type')
 
     # create different sasl_user name for different job
     params.update({'sasl_user': params.get("sasl_user") +
@@ -94,7 +97,7 @@ def run(test, params, env):
         source_ip = None
         source_pwd = None
     else:
-        test.cancel("Unspported hypervisor: %s" % hypervisor)
+        test.cancel("Unsupported hypervisor: %s" % hypervisor)
 
     if output_method == 'rhv_upload':
         # Create password file for '-o rhv_upload' to connect to ovirt
@@ -143,11 +146,11 @@ def run(test, params, env):
     v2v_params = {'target': target, 'hypervisor': hypervisor,
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
-                  'storage': storage, 'hostname': source_ip,
+                  'os_storage': storage, 'hostname': source_ip,
                   # For virsh connection
                   'password': source_pwd,
                   'new_name': vm_name + utils_misc.generate_random_string(3),
-                  'output_method': output_method, 'storage_name': storage_name,
+                  'output_method': output_method, 'os_storage_name': storage_name,
                   'input_transport': input_transport, 'vcenter_host': vpx_ip,
                   'vcenter_password': vpx_pwd,
                   'vddk_thumbprint': vddk_thumbprint,
@@ -166,7 +169,7 @@ def run(test, params, env):
     output_format = params.get('output_format')
     # output_format will be set to 'raw' in utils_v2v.v2v_cmd if it's None
     if output_format:
-        v2v_params.update({'output_format': output_format})
+        v2v_params.update({'of_format': output_format})
 
     # Set libguestfs environment variable
     if hypervisor in ('xen', 'kvm'):
@@ -180,54 +183,41 @@ def run(test, params, env):
         params['main_vm'] = v2v_params['new_name']
 
         logging.info("output_method is %s" % output_method)
+        # Check all checkpoints after convert
+        params['vmchecker'] = vmchecker = VMChecker(test, params, env)
         # Import the VM to oVirt Data Center from export domain, and start it
         if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                             timeout=v2v_timeout):
             test.error("Import VM failed")
 
-        # Check all checkpoints after convert
-        params['vmchecker'] = vmchecker = VMChecker(test, params, env)
+        # When VM is on OSP, it can't obtain IP address, therefore
+        # skipping the VM checking.
+        if skip_vm_check == 'yes':
+            logging.debug("skip vm checking")
+            return
+
         ret = vmchecker.run()
 
-        # Other checks
         err_list = []
-        os_list = [
-            'win8',
-            'win8.1',
-            'win10',
-            'win2012',
-            'win2012r2',
-            'win2008',
-            'win2016',
-            'win2019']
-        win_version = [
-            '6.2',
-            '6.3',
-            '10.0',
-            '6.2',
-            '6.3',
-            '6.0',
-            '10.0',
-            '10.0']
-        os_map = dict(list(zip(os_list, win_version)))
-        vm_arch = params.get('vm_arch')
-        os_ver = params.get('os_version')
+        virtio_win_ver = "[virtio-win-1.9.16-1,)"
+        virtio_win_qxl_os = ['win2008r2', 'win7']
+        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
 
-        if os_ver in os_list:
-            vga_log = 'The guest will be configured to use a basic VGA ' \
-                      'display driver'
-            if re.search(vga_log, v2v_ret.stdout_text):
-                logging.debug('Found vga log')
+        if os_type == 'windows':
+            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
+                virtio_win_ver)
+            qxl_warning = "there is no QXL driver for this version of Windows"
+            if virtio_win_support_qxldod and os_version in virtio_win_qxldod_os:
+                has_qxl_warning = False
+            elif os_version in virtio_win_qxl_os:
+                has_qxl_warning = False
             else:
-                err_list.append('Not find vga log')
-            if os_ver != 'win2008':
-                qxl_warn = 'virt-v2v: warning: there is no QXL driver for ' \
-                           'this version of Windows \(%s[.\s]*?%s\)' %\
-                           (os_map[os_ver], vm_arch)
-                if re.search(qxl_warn, v2v_ret.stdout_text):
-                    logging.debug('Found QXL warning')
-                else:
-                    err_list.append('Not find QXL warning')
+                has_qxl_warning = True
+
+            if has_qxl_warning and not re.search(qxl_warning, v2v_ret.stdout_text):
+                err_list.append('Not find QXL warning')
+            if not has_qxl_warning and re.search(qxl_warning, v2v_ret.stdout_text):
+                err_list.append('Unexpected QXL warning')
 
         ret.extend(err_list)
 
@@ -243,7 +233,7 @@ def run(test, params, env):
             v2v_sasl.close_session()
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,

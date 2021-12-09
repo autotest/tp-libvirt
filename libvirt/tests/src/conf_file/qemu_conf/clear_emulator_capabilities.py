@@ -48,7 +48,7 @@ def run(test, params, env):
             return caps
         else:
             test.cancel('Host do not support capabilities or '
-                        'an error has occured.')
+                        'an error has occurred.')
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "name_not_set")

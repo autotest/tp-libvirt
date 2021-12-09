@@ -1,22 +1,18 @@
-import re
 import logging
 import os
-from virttest import data_dir
+import re
+
 from avocado.utils import process
-from virttest import virsh
-from provider import libvirt_version
-from virttest import utils_test
-from virttest.libvirt_xml import vm_xml
+
+from virttest import data_dir
+from virttest import libvirt_version
 from virttest import utils_libvirtd
+from virttest import utils_misc
+from virttest import utils_split_daemons
+from virttest import utils_test
+from virttest import virsh
 
-
-def check_libvirtd_restart(pid, cmd):
-    """
-    check if libvirtd service has been restarted
-    return 1 if it is restarted, 0 for not restarted
-    """
-    libvirt_pid_now = process.run(cmd, shell=True).stdout_text.strip().split()[1]
-    return libvirt_pid_now != pid
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -27,7 +23,7 @@ def run(test, params, env):
     1.Make sure the network exists.
     2.Prepare network status.
     3.Perform virsh net-destroy operation.
-    4.Check if the network has been destroied.
+    4.Check if the network has been destroyed.
     5.Recover network environment.
     6.Confirm the test result.
     """
@@ -50,6 +46,8 @@ def run(test, params, env):
                         " libvirt version.")
 
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -122,16 +120,16 @@ def run(test, params, env):
             status = 1
 
             if status_error != 'yes':
-                cmd = "ps -ef | grep /usr/sbin/libvirtd | grep -v grep"
-                # record the libvirt pid then destroy network
-                libvirtd_pid = process.run(cmd, shell=True).stdout_text.strip().split()[1]
+                libvirtd = utils_libvirtd.Libvirtd("virtqemud")
+                daemon_name = libvirtd.service_name
+                pid_before_run = utils_misc.get_pid(daemon_name)
                 ret = virsh.net_destroy(net_ref, extra, uri=uri, debug=True,
                                         unprivileged_user=unprivileged_user,
                                         ignore_status=True)
                 utils_test.libvirt.check_exit_status(ret, expect_error=False)
                 # check_libvirtd pid no change
-                result = check_libvirtd_restart(libvirtd_pid, cmd)
-                if result:
+                pid_after_run = utils_misc.get_pid(daemon_name)
+                if pid_after_run != pid_before_run:
                     test.fail("libvirtd crash after destroy network!")
                     status = 1
                 else:
@@ -141,8 +139,8 @@ def run(test, params, env):
                     # destroy vm, check libvirtd pid no change
                     ret = virsh.destroy(vm_name)
                     utils_test.libvirt.check_exit_status(ret, expect_error=False)
-                    result = check_libvirtd_restart(libvirtd_pid, cmd)
-                    if result:
+                    pid_after_run2 = utils_misc.get_pid(daemon_name)
+                    if pid_after_run2 != pid_before_run:
                         test.fail("libvirtd crash after destroy vm!")
                         status = 1
                     else:

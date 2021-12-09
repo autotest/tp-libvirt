@@ -87,21 +87,23 @@ def run(test, params, env):
             download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
 
-    # Add pcie-to-pci-bridge when it is required
-    if add_pcie_to_pci_bridge:
-        pci_controllers = vmxml.get_controllers('pci')
-        for controller in pci_controllers:
-            if controller.get('model') == 'pcie-to-pci-bridge':
-                pci_bridge = controller
-                break
-        else:
-            contr_dict = {'controller_type': 'pci',
-                          'controller_model': 'pcie-to-pci-bridge'}
-            pci_bridge = libvirt.create_controller_xml(
-                contr_dict, "add_controller", vm_name)
-        pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
-
     try:
+        # Add pcie-to-pci-bridge when it is required
+        if add_pcie_to_pci_bridge:
+            pci_controllers = vmxml.get_controllers('pci')
+            for controller in pci_controllers:
+                if controller.get('model') == 'pcie-to-pci-bridge':
+                    pci_bridge = controller
+                    break
+            else:
+                contr_dict = {'controller_type': 'pci',
+                              'controller_model': 'pcie-to-pci-bridge'}
+                pci_bridge = libvirt.create_controller_xml(contr_dict)
+                libvirt.add_controller(vm_name, pci_bridge)
+                pci_bridge = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)\
+                    .get_controllers('pci', 'pcie-to-pci-bridge')[0]
+            pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
+
         # Update interface to virtio-transitional mode for
         # rhel6 guest to make it works for login
         iface_params = {'model': 'virtio-transitional'}
@@ -126,8 +128,8 @@ def run(test, params, env):
             slot = get_free_pci_slot()
             addr = '{"bus": %s, "slot": %s}' % (pci_bridge_index, slot)
             contr_dict.update({'controller_addr': addr})
-        libvirt.create_controller_xml(
-            contr_dict, "add_controller", vm_name)
+        cntl_add = libvirt.create_controller_xml(contr_dict)
+        libvirt.add_controller(vm_name, cntl_add)
         # vmxml will not be updated since set_vm_disk
         # sync with another dumped xml inside the function
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -157,3 +159,6 @@ def run(test, params, env):
     finally:
         vm.destroy()
         backup_xml.sync()
+
+        if guest_src_url and target_path:
+            libvirt.delete_local_disk("file", path=target_path)

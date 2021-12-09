@@ -12,6 +12,7 @@ import time
 import datetime
 import locale
 import base64
+import ipaddress
 try:
     import queue as Queue
 except ImportError:
@@ -34,7 +35,7 @@ from virttest.libvirt_xml.devices.graphics import Graphics
 from virttest.libvirt_xml.secret_xml import SecretXML
 from virttest.libvirt_xml import vm_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 q = Queue.Queue()
 
@@ -562,6 +563,11 @@ def get_expected_ports(params, expected_result):
 
         if vnc_listen_type == 'none':
             expected_vnc_port = 'not_set'
+        elif vnc_listen_type == 'network':
+            if vnc_autoport:
+                expected_vnc_port = port_allocator.allocate()
+            else:
+                expected_vnc_port = vnc_port
         elif any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
             expected_vnc_port = 'not_set'
             expected_result['vnc_port'] = 'not_set'
@@ -664,9 +670,11 @@ def get_fail_pattern(params, expected_result):
         if fail_patts or expected_spice_port == 'not_set':
             fail_patts += tls_fail_patts
 
-        for ip in expected_spice_ips:
-            if ip is not None and ip not in utils_net.get_all_ips():
-                fail_patts.append(r'binding socket to \S* failed')
+        net_type = params.get('spice_network_type')
+        if net_type not in ['nat', 'route']:
+            for ip in expected_spice_ips:
+                if ip and ip not in utils_net.get_all_ips():
+                    fail_patts.append(r'binding socket to \S* failed')
 
     if vnc_xml:
         vnc_prepare_cert = params.get("vnc_prepare_cert", "yes")
@@ -693,8 +701,10 @@ def get_fail_pattern(params, expected_result):
             vnc_fail_patts.append(r'no secret with matching uuid')
         fail_patts += vnc_fail_patts
 
-        if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
-            fail_patts.append(r'Cannot assign requested address')
+        net_type = params.get('vnc_network_type')
+        if net_type not in ['nat', 'route']:
+            if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
+                fail_patts.append(r'Cannot assign requested address')
 
     expected_result['fail_patts'] = fail_patts
 
@@ -735,9 +745,21 @@ def get_expected_spice_options(params, networks, expected_result):
 
     expected_opts = {
         'addr': listen_address,
-        'disable-ticketing': 'yes',
         'seamless-migration': 'on',
     }
+
+    if libvirt_version.version_compare(7, 3, 0):
+        expected_opts['disable-ticketing'] = 'on'
+        if copypaste == 'no':
+            expected_opts['disable-copy-paste'] = 'on'
+        elif copypaste == 'yes':
+            expected_opts['disable-copy-paste'] = 'off'
+    else:
+        expected_opts['disable-ticketing'] = 'yes'
+        if copypaste == 'no':
+            expected_opts['disable-copy-paste'] = 'yes'
+        elif copypaste == 'yes':
+            expected_opts['disable-copy-paste'] = 'no'
 
     if expected_port != 'not_set':
         expected_opts['port'] = expected_port
@@ -758,10 +780,6 @@ def get_expected_spice_options(params, networks, expected_result):
         expected_opts['playback-compression'] = playback_compression
     if graphic_passwd:
         expected_opts['passwd'] = graphic_passwd
-    if copypaste == 'no':
-        expected_opts['disable-copy-paste'] = 'yes'
-    elif copypaste == 'yes':
-        expected_opts['disable-copy-paste'] = 'no'
     if filetransfer == 'yes':
         expected_opts['disable-agent-file-xfer'] = 'no'
     if streaming_mode != 'not_set':
@@ -816,6 +834,12 @@ def get_expected_vnc_options(params, networks, expected_result):
         'port': port,
     }
 
+    if libvirt_version.version_compare(7, 2, 0):
+        # libvirt auto-populate <audio> elements for vnc since 7.2.0
+        vmxml = VMXML.new_from_dumpxml(vm_name)
+        audio_id = vmxml.get_devices(device_type="audio")[0].id
+        expected_opts['audiodev'] = "audio" + audio_id
+
     if vnc_tls == '1':
         expected_opts['tls'] = 'yes'
         if tls_x509_verify == '1':
@@ -828,7 +852,10 @@ def get_expected_vnc_options(params, networks, expected_result):
             expected_opts['x509'] = x509_dir
 
     if graphic_passwd:
-        expected_opts['passwd'] = graphic_passwd
+        if libvirt_version.version_compare(7, 3, 0):
+            expected_opts['password'] = "on"
+        else:
+            expected_opts['passwd'] = graphic_passwd
     if vnc_secret_uuid == "valid":
         expected_opts['vnc-secret'] = "vnc-tls-creds0-secret0"
         expected_opts['tls'] = 'yes'
@@ -1022,7 +1049,11 @@ def generate_spice_graphic_xml(params, expected_result):
 
     if listen_type == 'network':
         net_type = params.get("spice_network_type", "vnet")
-        listen = {'type': 'network', 'network': 'virt-test-%s' % net_type}
+        if net_type == 'macvtap':
+            address = str(expected_result['spice_ips'][0].addr)
+        else:
+            address = params.get("listen_address", "not_set")
+        listen = {'type': 'network', 'network': 'virt-test-%s' % net_type, 'address': address}
         graphic.listens = [listen]
     elif listen_type == 'address':
         address = params.get("spice_listen_address", "127.0.0.1")
@@ -1060,7 +1091,11 @@ def generate_vnc_graphic_xml(params, expected_result):
 
     if listen_type == 'network':
         net_type = params.get("vnc_network_type", "vnet")
-        listen = {'type': 'network', 'network': 'virt-test-%s' % net_type}
+        if net_type == 'macvtap':
+            address = str(expected_result['vnc_ips'][0].addr)
+        else:
+            address = params.get("listen_address", "not_set")
+        listen = {'type': 'network', 'network': 'virt-test-%s' % net_type, 'address': address}
         graphic.listens = [listen]
     elif listen_type == 'address':
         address = params.get("vnc_listen_address", "127.0.0.1")
@@ -1088,13 +1123,24 @@ def setup_networks(params, test):
     spice_listen_type = params.get("spice_listen_type", "not_set")
     if spice_listen_type == 'network':
         net_type = params.get("spice_network_type", "vnet")
+        spice_listen = params.get("spice_listen")
         if net_type not in networks:
             networks[net_type] = None
     vnc_listen_type = params.get("vnc_listen_type", "not_set")
     if vnc_listen_type == 'network':
         net_type = params.get("vnc_network_type", "vnet")
+        vnc_listen = params.get("vnc_listen")
         if net_type not in networks:
             networks[net_type] = None
+
+    ip_version = params.get('ip_version', 'not_set')
+    if ip_version == 'ipv6':
+        # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
+        # is likely to cause routes loss
+        sysctl_cmd = 'sysctl net.ipv6.conf.all.accept_ra'
+        original_accept_ra = process.run(sysctl_cmd + ' -n', shell=True).stdout_text
+        if original_accept_ra != '2':
+            process.system(sysctl_cmd + '=2')
 
     # Setup networks
     for net_type in networks:
@@ -1115,6 +1161,15 @@ def setup_networks(params, test):
                 test.cancel('Need to setup bridge_device first.')
             networks[net_type] = LibvirtNetwork(
                 net_type, iface=iface, persistent=True)
+        elif net_type in ['nat', 'route']:
+            net_kwargs = {'net_name': 'virt-test-%s' % net_type,
+                          'br_name': 'br_%s' % net_type,
+                          'address': params.get('listen_address', 'not_set'),
+                          'dhcp_start': params.get('network_dhcp_start', 'not_set'),
+                          'dhcp_end': params.get('network_dhcp_end', 'not_set'),
+                          'ip_version': ip_version,
+                          'persistent': True}
+            networks[net_type] = LibvirtNetwork(net_type, **net_kwargs)
 
     return networks
 
@@ -1150,12 +1205,13 @@ def run_remote_viewer(virt_viewer_file, opt_str):
     q.put(res.stdout_text)
 
 
-def check_connection(graphic_type, port, graphic_passwd, test, rv_log_str, rv_log_auth, opt_str, valid_time):
+def check_connection(graphic_type, port, graphic_passwd, ip, test, rv_log_str, rv_log_auth, opt_str, valid_time):
     """
     Use remote-viewer to connect guest
 
     :param graphic_type: graphic type
     :param port: port value
+    :param ip: graphic listen address value
     :param graphic_passwd: graphic password
     :param test: test instance
     :param rv_log_str: remote-viewer debug log string
@@ -1168,20 +1224,21 @@ def check_connection(graphic_type, port, graphic_passwd, test, rv_log_str, rv_lo
         virt_viewer_conf = """
 [virt-viewer]
 type=%s
-host=127.0.0.1
+host=%s
 port=%s
 username=root
 password=%s
-""" % (graphic_type, port, graphic_passwd)
+""" % (graphic_type, ip, port, graphic_passwd)
     else:
         virt_viewer_conf = """
 [virt-viewer]
 type=%s
-host=127.0.0.1
+host=%s
 port=%s
 username=root
-""" % (graphic_type, port)
+""" % (graphic_type, ip, port)
 
+    logging.debug("remote-viewer config: %s" % virt_viewer_conf)
     # Write virt-viewer config into a tmpfile
     virt_viewer_file = os.path.join(data_dir.get_tmp_dir(), "avocado_virt_viewer")
     with open(virt_viewer_file, 'w') as fd:
@@ -1363,6 +1420,8 @@ def run(test, params, env):
     filetransfer = params.get("filetransfer", "not_set")
     default_mode = params.get("defaultMode", "not_set")
     insecure_channels = params.get("insecure_channels", "not_set")
+    autoport = params.get("spice_autoport", "yes")
+    spice_tls = params.get("spice_tls", "not_set")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1371,7 +1430,12 @@ def run(test, params, env):
     env_state = EnvState(params, expected_result)
 
     vm = env.get_vm(vm_name)
-    vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+    virsh_instance = None
+    if is_negative and spice_xml and autoport == 'no' and spice_tls == '0':
+        virsh_instance = virsh.VirshPersistent(uri="qemu:///system")
+        vm_xml = VMXML.new_from_inactive_dumpxml(vm_name, virsh_instance=virsh_instance)
+    else:
+        vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
 
     config = utils_config.LibvirtQemuConfig()
@@ -1400,10 +1464,25 @@ def run(test, params, env):
             vnc_graphic = generate_vnc_graphic_xml(params, expected_result)
             logging.debug('Test VNC XML is: %s', vnc_graphic)
             vm_xml.devices = vm_xml.devices.append(vnc_graphic)
-        vm_xml.sync()
-        all_ips = utils_net.get_all_ips()
-
         fail_patts = expected_result['fail_patts']
+        if is_negative and spice_xml and autoport == 'no' and spice_tls == '0':
+            virsh_instance.remove_domain(vm_name)
+            result = virsh_instance.define(vm_xml.xml, ignore_status=True)
+            if result.exit_status:
+                logging.debug("Define %s failed as expected.\n"
+                              "Detail: %s.", vm_name, result)
+                for patt in fail_patts:
+                    if re.search(patt, result.stdout):
+                        return
+                test.fail(
+                    "Expect fail with error in %s, but failed with: %s"
+                    % (fail_patts, result.stdout))
+        else:
+            vm_xml.sync()
+        all_ips = utils_net.get_all_ips()
+        if spice_listen_type == "network" or vnc_listen_type == "network":
+            for ip in all_ips:
+                ip.addr = ipaddress.ip_address(ip.addr).compressed
         try:
             vm.start()
         except virt_vm.VMStartError as detail:
@@ -1440,7 +1519,8 @@ def run(test, params, env):
                 rv_log_auth = params.get("rv_log_auth")
                 opt_str = params.get('opt_str')
                 check_connection('spice', expected_result['spice_port'], graphic_passwd,
-                                 test, rv_log_str, rv_log_auth, opt_str, valid_time)
+                                 expected_result['spice_options']['addr'], test, rv_log_str,
+                                 rv_log_auth, opt_str, valid_time)
 
         if vnc_xml:
             vnc_opts = qemu_vnc_options(vm)
@@ -1451,7 +1531,8 @@ def run(test, params, env):
                 rv_log_auth = params.get("rv_log_auth")
                 opt_str = params.get('opt_str')
                 check_connection('vnc', expected_result['vnc_port'], graphic_passwd,
-                                 test, rv_log_str, rv_log_auth, opt_str, valid_time)
+                                 expected_result['vnc_options']['addr'], test, rv_log_str,
+                                 rv_log_auth, opt_str, valid_time)
 
         if is_negative:
             test.fail("Expect negative result. But start succeed!")

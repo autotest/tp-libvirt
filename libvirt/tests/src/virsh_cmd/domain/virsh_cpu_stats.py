@@ -15,7 +15,7 @@ def run(test, params, env):
     The command can display domain per-CPU and total statistics.
     1. Call virsh cpu-stats [domain]
     2. Call virsh cpu-stats [domain] with valid options
-    3. Call virsh cpu-stats [domain] with invalide options
+    3. Call virsh cpu-stats [domain] with invalid options
     """
 
     if not virsh.has_help_command('cpu-stats'):
@@ -123,7 +123,7 @@ def run(test, params, env):
                 system_time = int(total_list[7])
 
                 # check Total cpu_time >= User + System cpu_time
-                if user_time + system_time >= total_time:
+                if user_time + system_time > total_time:
                     test.fail("total cpu_time < user_time + "
                               "system_time")
                 logging.debug("Check total cpu_time %d >= user + system "

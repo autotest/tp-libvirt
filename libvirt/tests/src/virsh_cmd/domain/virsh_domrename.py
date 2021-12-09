@@ -36,7 +36,12 @@ def run(test, params, env):
     new_name_option = params.get("newname_opt", "")
     add_vm = "yes" == params.get("add_vm", "no")
 
-    # Replace the varaiables
+    # rename a guest with snapshot is not supported before libvirt-6.10.0
+    if pre_vm_state == "with_snapshot":
+        if not libvirt_version.version_compare(6, 10, 0):
+            status_error = True
+
+    # Replace the variables
     if vm_ref == "name":
         vm_ref = vm_name
     elif vm_ref == "uuid":
@@ -44,6 +49,9 @@ def run(test, params, env):
 
     if new_name == "vm2_name":
         vm2_name = ("%s" % vm_name[:-1])+"2"
+        new_name = vm2_name
+    elif new_name == "vm_dot":
+        vm2_name = vm_name + "."
         new_name = vm2_name
 
     # Build input params
@@ -67,7 +75,7 @@ def run(test, params, env):
         ret_clone = utils_libguestfs.virt_clone_cmd(vm_name, vm2_name,
                                                     True, timeout=360)
         if ret_clone.exit_status:
-            test.fail("Error occured when clone a second vm!")
+            test.fail("Error occurred when clone a second vm!")
         vm2 = libvirt_vm.VM(vm2_name, vm.params, vm.root_dir, vm.address_cache)
         virsh.dom_list("--name --all", debug=True)
 
@@ -137,11 +145,13 @@ def run(test, params, env):
         if new_vm.exists():
             if new_vm.is_alive():
                 new_vm.destroy(gracefully=False)
+            if pre_vm_state == "with_snapshot":
+                libvirt.clean_up_snapshots(new_name)
             new_vm.undefine()
 
         # Recover domain state
         if pre_vm_state != "shutoff":
-            if pre_vm_state == "with_snapshot":
+            if pre_vm_state == "with_snapshot" and status_error:
                 libvirt.clean_up_snapshots(vm_name)
             else:
                 if pre_vm_state == "managed_saved":

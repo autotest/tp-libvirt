@@ -378,6 +378,8 @@ def run(test, params, env):
                     if update_command in ['add-first', 'add-last', 'add']:
                         newxml = newxml.replace("engineering", "sales")
                         flag_list.append("sales")
+                    if update_command == "modify" and status_error == "yes":
+                        newxml = newxml.replace("engineering", "")
                 elif net_section == "forward-interface":
                     new_forward_iface = params.get("new_forward_iface")
                     if error_type != "interface-duplicate":
@@ -444,6 +446,11 @@ def run(test, params, env):
             if (net_section == "ip-dhcp-range" and use_in_guest == "yes" and
                     without_ip_dhcp == "no"):
                 test_xml.del_element(element="/ip/dhcp", index=section_index)
+
+            if error_type == "index-nonexist":
+                for idx in [3, 2, 1]:
+                    test_xml.del_element(element="/ip", index=idx)
+                test_xml.del_element(element="/route")
 
             if loop == 0:
                 try:
@@ -561,6 +568,10 @@ def run(test, params, env):
                     # range-mismatch error info
                     err_dic["range-mismatch"] = "couldn't locate a matching dhcp " + \
                                                 "range entry in network "
+                    # index-nonexist error info
+                    err_dic["index-nonexist"] = "couldn't update dhcp host entry " + \
+                                                "- no <ip.* element found at index 1 in network"
+
                     # host-mismatch error info
                     err_dic["host-mismatch"] = "couldn't locate a matching dhcp " + \
                                                "host entry in network "
@@ -610,6 +621,7 @@ def run(test, params, env):
                     err_dic["unrecognized"] = "unrecognized section name"
                     err_dic["interface-duplicate"] = "there is an existing interface entry " + \
                                                      "in network.* that matches"
+                    err_dic["XML error"] = "XML error: Missing required name attribute in portgroup"
 
                     if (error_type in list(err_dic.keys()) and
                             re.search(err_dic[error_type], err) or mismatch_expect):
@@ -810,12 +822,12 @@ def run(test, params, env):
                     # Start guest and check ip/mac/hostname...
                     vm.start()
                     logging.debug("vm xml is %s", vm.get_xml())
-                    session = vm.wait_for_serial_login()
+                    session = vm.wait_for_serial_login(internal_timeout=60)
                     if "ip-dhcp" in net_section:
                         dhclient_cmd = "(if pgrep dhclient;" \
                                        "then pkill dhclient; sleep 3; fi) " \
-                                       "&& dhclient -%s" % ip_version[-1]
-                        session.cmd(dhclient_cmd)
+                                       "&& dhclient -%s -lf /dev/stdout" % ip_version[-1]
+                        leases = session.cmd_output(dhclient_cmd)
                         iface_ip = utils_net.get_guest_ip_addr(session, mac,
                                                                ip_version=ip_version,
                                                                timeout=10)
@@ -833,8 +845,10 @@ def run(test, params, env):
                             test.fail("getting ip %s is not same with setting %s"
                                       % (iface_ip, new_dhcp_host_ip))
                         hostname = session.cmd_output("hostname -s").strip('\n')
-                        if hostname == new_dhcp_host_name.split('.')[0]:
-                            logging.info("getting hostname same with setting: %s", hostname)
+                        # option host-name "redhatipv4-2"
+                        dhcp_hostname = "option host-name \"%s\"" % new_dhcp_host_name.split('.')[0]
+                        if hostname == new_dhcp_host_name.split('.')[0] or dhcp_hostname in leases:
+                            logging.info("getting hostname same with setting: %s", new_dhcp_host_name.split('.')[0])
                         else:
                             test.fail("getting hostname %s is not same with "
                                       "setting: %s" % (hostname, new_dhcp_host_name))
