@@ -12,6 +12,7 @@ from virttest import utils_misc
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import libvirt_version
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.controller import Controller
@@ -480,6 +481,7 @@ def run(test, params, env):
 
     # The hook script is provided from config
     hook_script = params.get("hook_script")
+    daemon_name = params.get("daemon_name", None)
 
     # Destroy VM first
     if vm_name != "lxc_test_vm1" and vm.is_alive():
@@ -488,7 +490,10 @@ def run(test, params, env):
     # Back up xml file.
     if vm_name != "lxc_test_vm1":
         vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    libvirtd = utils_libvirtd.Libvirtd()
+    if daemon_name and utils_split_daemons.is_modular_daemon():
+        libvirtd = utils_libvirtd.Libvirtd(daemon_name)
+    else:
+        libvirtd = utils_libvirtd.Libvirtd()
 
     try:
         try:
