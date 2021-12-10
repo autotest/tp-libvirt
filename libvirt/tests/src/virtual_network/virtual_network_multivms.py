@@ -1,36 +1,18 @@
 import logging
 import time
+import re
+import sys
 
 from avocado.utils import process
+from avocado.utils import stacktrace
 
 from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
-from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
-
-
-def create_bridge(br_name, iface_name):
-    """
-    Create bridge attached to physical interface
-
-    :param br_name: bridge to be created
-    :param iface_name: physical interface name
-    :return:
-    """
-    # Make sure the bridge not exist
-    if libvirt.check_iface(br_name, "exists", "--all"):
-        return
-
-    # Create bridge using commands
-    utils_package.package_install('tmux')
-    cmd = 'tmux -c "ip link add name {0} type bridge; ip link set {1} up;' \
-          ' ip link set {1} master {0}; ip link set {0} up; pkill dhclient; ' \
-          'sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
-    process.run(cmd, shell=True, verbose=True)
 
 
 def ping_func(session, **expect):
@@ -78,6 +60,72 @@ def prepare_network(net_name, **kwargs):
     logging.debug(virsh.net_dumpxml(net_name).stdout_text)
 
 
+def check_br_tap_params(br_name, tap_name, libvirt_manage=True):
+    """
+    When macTableManager is set to libvirt, libvirt disables kernel management
+    of the MAC table (in the case of the Linux host bridge, this means enabling
+    vlan_filtering on the bridge, and disabling learning and unicast_filter for
+    all bridge ports), and explicitly adds/removes entries to the table
+    according to the MAC addresses in the domain interface configurations.
+    The bridge's vlan_filtering should be 1, and the tap device connected to
+    this bridge has unicast_flood and learning set to '0'.
+
+    :param br_name: string, name of the bridge
+    :param tap_name: string, name of the tap device
+    :param libvirt_manage: bool, whether MAC table is managed by libvirt
+    :return: True or False
+    """
+    cmd1 = 'cat /sys/class/net/%s/bridge/vlan_filtering' % br_name
+    cmd2 = 'cat /sys/class/net/%s/brif/%s/learning' % (br_name, tap_name)
+    cmd3 = 'cat /sys/class/net/%s/brif/%s/unicast_flood' % (br_name, tap_name)
+    try:
+        vlan_filtering = process.run(cmd1, ignore_status=True,
+                                     shell=True).stdout_text.strip()
+        learning = process.run(cmd2, ignore_status=True,
+                               shell=True).stdout_text.strip()
+        unicast_flood = process.run(cmd3, ignore_status=True,
+                                    shell=True).stdout_text.strip()
+        logging.debug("bridge's vlan_filtering is {1}, {0} learning is {2}, "
+                      "unicast_flood is {3}".format(tap_name, vlan_filtering,
+                                                    learning, unicast_flood))
+        if libvirt_manage:
+            assert vlan_filtering == '1'
+            assert learning == '0'
+            assert unicast_flood == '0'
+        else:
+            assert vlan_filtering == '0'
+            assert learning == '1'
+            assert unicast_flood == '1'
+    except AssertionError:
+        stacktrace.log_exc_info(sys.exc_info())
+        return False
+    return True
+
+
+def check_fdb(mac, libvirt_manage=True):
+    """
+    Check the bridge's forwarding database table for specific mac. If it's
+    managed by libvirt, the record should be static.
+
+    params mac: string, mac address to be checked in the forward database table
+    params libvirt_manage: bool, if forward database table managed by libvirt
+    params return: True or False. True if get expected result
+    """
+    cmd = 'bridge fdb show | grep %s' % mac
+    out = process.run(cmd, ignore_status=True, shell=True).stdout_text.strip()
+    logging.debug("The related record in fdb table is:\n%s", out)
+    res = re.search(r'%s.*vlan.*?static\n%s.*static' %
+                    (mac, mac), out)
+    if libvirt_manage:
+        if not res:
+            logging.debug("Can't find correct fdb record!")
+            return False
+    else:
+        if res:
+            return False
+    return True
+
+
 def run(test, params, env):
     """
     Test network/interface function on 2 vms:
@@ -94,6 +142,7 @@ def run(test, params, env):
 
     feature = params.get('feature', '')
     case = params.get('case', '')
+    create_linux_bridge = 'yes' == params.get('create_linux_bridge', 'no')
     check_ping = 'yes' == params.get('check_ping')
     expect_ping_host = 'yes' == params.get('expect_ping_host', 'no')
     expect_ping_out = 'yes' == params.get('expect_ping_out', 'no')
@@ -103,10 +152,24 @@ def run(test, params, env):
     set_all = 'yes' == params.get('set_all', 'no')
 
     rand_id = '_' + utils_misc.generate_random_string(3)
+    resume_vm = 'yes' == params.get('resume_vm', 'no')
     bridge_name = params.get('bridge_name', 'test_br0') + rand_id
     iface_name = utils_net.get_net_if(state="UP")[0]
-    test_net = 'net_isolated' + rand_id
+    test_net = feature + rand_id
     bridge_created = False
+
+    def pause_resume_vm(vm_name):
+        """
+        Use negative cmd to trigger guest io error to paused, then resume it
+        """
+        cmd_ = '''virsh qemu-monitor-command %s '{"execute":"stop"}' ''' % vm_name
+        out = process.run(cmd_, shell=True).stdout_text.strip()
+        logging.debug("The out of the qemu-monitor-command is %s", out)
+        vm = env.get_vm(vm_name)
+        if not vm.is_paused():
+            test.error("VM %s is not paused by qemu-monitor-command!" % vm_name)
+        res = virsh.resume(vm_name, debug=True)
+        libvirt.check_exit_status(res)
 
     vmxml_backup_list = []
     for vm_i in vm_list:
@@ -120,7 +183,7 @@ def run(test, params, env):
                             ' > 6.2.0 to support port isolated')
 
             if case.startswith('set_iface'):
-                create_bridge(bridge_name, iface_name)
+                utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
                 bridge_created = True
                 iface_type = case.split('_')[-1]
                 if iface_type == 'network':
@@ -203,7 +266,7 @@ def run(test, params, env):
                     session.close()
 
             if case == 'set_network':
-                create_bridge(bridge_name, iface_name)
+                utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
                 bridge_created = True
                 net_dict = {
                     'net_forward': "{'mode': 'bridge'}",
@@ -220,6 +283,32 @@ def run(test, params, env):
                                             updated_iface_dict)
                     logging.debug(virsh.domiflist(vm_i.name).stdout_text)
 
+        if feature == 'macTableManager':
+            # create network with macTableManager='libvirt'
+            if create_linux_bridge:
+                utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
+                bridge_created = True
+                net_dict = {
+                    'net_forward': "{'mode': 'bridge'}",
+                    'net_bridge': "{'name': '%s', 'macTableManager': 'libvirt'}" % bridge_name,
+                    }
+            else:
+                net_dict = {
+                    'net_forward': "{'mode': 'nat'}",
+                    'net_bridge': "{'name': '%s', 'macTableManager': 'libvirt'}" % bridge_name,
+                    'net_ip_address': params.get('net_ip_address'),
+                    'net_ip_netmask': params.get('net_ip_netmask'),
+                    'dhcp_start_ipv4': params.get('dhcp_start_ipv4'),
+                    'dhcp_end_ipv4': params.get('dhcp_end_ipv4')
+                }
+            iface_dict = {'type': 'network', 'del_mac': True,
+                          'source': "{'network': '%s'}" % test_net}
+            prepare_network(test_net, **net_dict)
+            for i in (0, 1):
+                vm_i = vm_list[i]
+                libvirt.modify_vm_iface(vm_i.name, 'update_iface', iface_dict)
+                logging.debug("After modify vm interface, check vm xml:\n%s",
+                              virsh.dumpxml(vm_i.name).stdout_text)
         # Check ping result from vm session to host, outside, the other vm
         if check_ping:
             for vm_i in vm_list:
@@ -230,15 +319,20 @@ def run(test, params, env):
                 host_ip: expect_ping_host,
                 out_ip: expect_ping_out,
             }
-
+            if resume_vm:
+                for vm_i in vm_list:
+                    vm_i.wait_for_serial_login().close()
+                    pause_resume_vm(str(vm_i.name))
             # A map of vm session and vm's ip addr
             session_n_ip = {}
             for vm_i in vm_list:
-                mac = vm_i.get_mac_address()
+                mac = vm_xml.VMXML.get_first_mac_by_name(vm_i.name)
                 sess = vm_i.wait_for_serial_login()
                 vm_ip = utils_net.get_guest_ip_addr(sess, mac)
                 session_n_ip[sess] = vm_ip
                 logging.debug('Vm %s ip: %s', vm_i.name, vm_ip)
+                if not vm_ip:
+                    test.error("Got vm %s ip as None!" % vm_i.name)
 
             # Check ping result from each vm's session
             for i in (0, 1):
@@ -271,11 +365,20 @@ def run(test, params, env):
                     if len(ip_l_before.splitlines()) == len(ip_l_after.splitlines()):
                         test.fail('Output of "ip l" is not changed afte detach, '
                                   'interface not successfully detached')
-
+        if feature == 'macTableManager':
+            for vm_i in vm_list:
+                iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm_i.name)
+                tap_name = libvirt.get_ifname_host(vm_i.name, iface_mac)
+                logging.debug("Check %s's params for vm %s", tap_name, vm_i.name)
+                res1 = check_br_tap_params(bridge_name, tap_name)
+                res2 = check_fdb(iface_mac)
+                if not res1 or (not res2):
+                    test.fail("macTableManager function check failed!")
     finally:
         for vmxml_i in vmxml_backup_list:
             vmxml_i.sync()
         virsh.net_undefine(test_net, debug=True)
+        virsh.net_destroy(test_net, debug=True)
 
         # Remove test bridge
         if bridge_created:
