@@ -23,7 +23,10 @@ def prepare_vm(guest_xml, params):
 
     guest_xml.placement = vcpu_placement
     guest_xml.current_vcpu = int(vcpu_current)
-    guest_xml.vcpu = vcpu_max
+    guest_xml.vcpu = int(vcpu_max)
+    # Remove existing vcpupin configuration if any
+    if guest_xml.xmltreefile.find('cputune'):
+        guest_xml.del_cputune()
     guest_xml.sync()
     virsh.iothreadadd(vm_name, iothread_id, '--config', ignore_status=False, debug=True)
 
