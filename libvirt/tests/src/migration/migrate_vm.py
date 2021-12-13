@@ -2924,8 +2924,9 @@ def run(test, params, env):
                                                 cleanup=True,
                                                 ports=uri_port[1:])
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
-                logging.debug("Destroy remote guest")
-                remote_virsh_session.destroy(target_vm_name)
+                if remote_virsh_session.is_alive(target_vm_name):
+                    logging.debug("Destroy remote guest")
+                    remote_virsh_session.destroy(target_vm_name)
                 logging.debug("Recover remote guest xml")
                 remote_virsh_session.define(xml_path)
             except (process.CmdError, remote.SCPError) as detail:
