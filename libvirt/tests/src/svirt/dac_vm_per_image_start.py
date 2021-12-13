@@ -95,6 +95,8 @@ def run(test, params, env):
     qemu_group = params.get("qemu_group", 'qemu')
     dynamic_ownership = "yes" == params.get("dynamic_ownership", "yes")
 
+    # When using nfs, the virt_use_nfs should be enabled
+    enable_virt_use_nfs = 'yes' == params.get("virt_use_nfs", 'no')
     # Get variables about VM and get a VM object and VMXML instance.
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -108,6 +110,8 @@ def run(test, params, env):
                     "mode. it must be in Enforcing "
                     "mode to run this test")
     utils_selinux.set_status(host_sestatus)
+    if enable_virt_use_nfs:
+        process.run("setsebool virt_use_nfs on", shell=True)
 
     qemu_sock_mod = False
     qemu_sock_path = '/var/lib/libvirt/qemu/'
