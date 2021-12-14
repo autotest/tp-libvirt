@@ -299,7 +299,9 @@ def run(test, params, env):
             else:
                 wait_for_event = True
             if vm.is_alive() and not pre_vm_state == "paused":
+                logging.debug("vm is alive")
                 vm.wait_for_login().close()
+                time.sleep(3)
             ret = virsh.change_media(vm_ref, target_device, all_options,
                                      wait_for_event=wait_for_event,
                                      event_timeout=40,
