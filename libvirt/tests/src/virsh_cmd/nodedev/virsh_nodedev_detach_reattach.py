@@ -50,8 +50,16 @@ def run(test, params, env):
         """
         # Libvirt acl polkit related params
         uri = params.get("virsh_uri")
-        if uri and not utils_split_daemons.is_modular_daemon():
-            uri = "qemu:///system"
+        # Nodedev-detach/reattach are special, the connect driver is still qemu
+        # with split daemon, and the connect_driver in polkit rule
+        # should be 'QEMU' for detach, 'nodedev' for read. update the polkit
+        # rule to include both QEMU and nodedev in such situation.
+        set_polkit = 'yes' == params.get('setup_libvirt_polkit', 'no')
+        if utils_split_daemons.is_modular_daemon() and set_polkit:
+            rule_path = '/etc/polkit-1/rules.d/500-libvirt-acl-virttest.rules'
+            cmd = '''sed -i "s/'nodedev'/'nodedev'||'QEMU'/g" %s''' % rule_path
+            process.run(cmd)
+            process.run('cat /etc/polkit-1/rules.d/500-libvirt-acl-virttest.rules')
         unprivileged_user = params.get('unprivileged_user')
         readonly = (params.get('nodedev_detach_readonly', 'no') == 'yes')
         if unprivileged_user:
@@ -62,7 +70,7 @@ def run(test, params, env):
         logging.debug('Node device name is %s.', device_address)
         CmdResult = virsh.nodedev_detach(device_address, options,
                                          unprivileged_user=unprivileged_user,
-                                         uri=uri, readonly=readonly)
+                                         uri=uri, readonly=readonly, debug=True)
         # Check the exit_status.
         libvirt.check_exit_status(CmdResult)
         # Check the driver.
@@ -91,26 +99,30 @@ def run(test, params, env):
 
     def pci_device_address():
         """
-        Get the address of pci device
+        Get the address of network device which is safe to detach
         """
+        # find a physical interface to be detached by nodedev-detach
+        cmd = "ip l | grep NO-CARRIER"
+        out = process.run(cmd, shell=True).stdout_text.strip().splitlines()
+        net_name = None
+        for link in out:
+            if "lo" not in link and "virbr0" not in link:
+                logging.debug(link)
+                net_name = link.split(":")[1].strip()
+                logging.debug("The interface to be detached is %s", net_name)
+                break
+        if not net_name:
+            test.cancel("There is no available network device to detach!")
+        # get the pci address of the interface
         net_list = virsh.nodedev_list(tree='', cap='net')
         net_lists = net_list.stdout.strip().splitlines()
-        route_cmd = " route | grep default"
-        route_default = process.run(route_cmd, shell=True).stdout_text.strip().split(' ')
-        ip_default = route_default[-1]
-
-        for default_net_name in net_lists:
-            if default_net_name.find(ip_default):
-                default_net_address = nodedev_xml.NodedevXML.new_from_dumpxml(default_net_name).parent
-                default_net_driver = get_device_driver(default_net_address)
+        net_name_string = '_' + net_name + '_'
+        for net_name_ in net_lists:
+            if net_name_string in net_name_:
+                eth_detach = net_name_
                 break
-        for net_device_name in net_lists:
-            if net_device_name.find(ip_default) == -1:
-                net_device_address = nodedev_xml.NodedevXML.new_from_dumpxml(net_device_name).parent
-                if 'pci' in net_device_address:
-                    net_device_driver = get_device_driver(net_device_address)
-                    if net_device_driver != default_net_driver:
-                        return net_device_address
+        eth_addr = nodedev_xml.NodedevXML.new_from_dumpxml(eth_detach).parent
+        return eth_addr
 
     def check_kernel_option():
         """
