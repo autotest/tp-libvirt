@@ -294,7 +294,7 @@ def run(test, params, env):
                 source = device_source
             all_options = action_twice + options_twice + " " + source
             time.sleep(5)
-            if options_twice == "--config" or pre_vm_state == "shutoff":
+            if options_twice == "--config" or pre_vm_state != "running":
                 wait_for_event = False
             else:
                 wait_for_event = True
