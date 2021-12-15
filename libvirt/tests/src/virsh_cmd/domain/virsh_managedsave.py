@@ -172,7 +172,7 @@ def run(test, params, env):
         def wait_func():
             return libvirt_guests.raw_status().stdout.count("Resuming guest")
 
-        utils_misc.wait_for(wait_func, 5)
+        utils_misc.wait_for(wait_func, 15)
         if is_systemd:
             ret = libvirt_guests.raw_status()
         logging.info("status output: %s", ret.stdout_text)
