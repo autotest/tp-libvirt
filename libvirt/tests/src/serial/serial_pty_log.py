@@ -3,24 +3,26 @@ import logging
 from virttest import libvirt_xml
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest import virsh
 
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.devices import librarian
 
 
-def check_pty_log_file(file_path):
+def check_pty_log_file(file_path, boot_prompt):
     """
     Check if pty log file has vm boot up logs
 
     :param file_path: the pty log file path
+    :param boot_prompt: the expected login prompt
     :return: True or False according the result of finding
     """
 
     with open(file_path) as fp:
         contents = fp.read()
     logging.debug("The contents of log file are : %s" % contents)
-    ret = contents.find('Login Prompts')
+    ret = contents.find(boot_prompt)
     if ret == -1:
         return False
     return True
@@ -61,6 +63,7 @@ def run(test, params, env):
     target_port = params.get('target_port', '0')
     target_model = params.get('target_model', '')
     stdio_handler = params.get('stdio_handler', "logd")
+    boot_prompt = params.get('boot_prompt', 'Login Prompts')
     vm_name = params.get("main_vm")
 
     qemu_conf = utils_config.get_conf_obj("qemu")
@@ -87,7 +90,9 @@ def run(test, params, env):
         virsh.start(vm_name, ignore_status=False)
         vm.wait_for_login().close()
 
-        if not check_pty_log_file(log_file):
+        # Need to wait for a while to get login prompt
+        if not utils_misc.wait_for(
+                lambda: check_pty_log_file(log_file, boot_prompt), 3):
             test.fail("Failed to find the vm login prompt from %s" % log_file)
 
     except Exception as e:
