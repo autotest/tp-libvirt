@@ -507,6 +507,7 @@ def run(test, params, env):
                     logging.debug("Current vmxml with watchdog dev is %s\n" % vmxml)
                     virsh.start(dom.name, **virsh_dargs)
                     session = dom.wait_for_login()
+                    watchdog_dev.try_modprobe(session)
                     try:
                         session.cmd("echo 0 > /dev/watchdog")
                     except (ShellTimeoutError, ShellProcessTerminatedError) as details:
