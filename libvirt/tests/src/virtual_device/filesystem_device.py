@@ -7,6 +7,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_test
+from virttest import utils_misc
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
@@ -95,6 +96,8 @@ def run(test, params, env):
         cmd = "systemd-run %s --socket-path=%s -o source=%s" % (path, source_socket, source_dir)
         try:
             process.run(cmd, ignore_status=False, shell=True)
+            # Make sure the socket is created
+            utils_misc.wait_for(lambda: os.path.isdir(source_socket), timeout=3)
             process.run("chown qemu:qemu %s" % source_socket, ignore_status=False)
             process.run('chcon -t svirt_image_t %s' % source_socket, ignore_status=False, shell=True)
         except Exception as err:
