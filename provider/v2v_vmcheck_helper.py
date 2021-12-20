@@ -28,6 +28,8 @@ FEATURE_SUPPORT = {
     'virtio_rng': '2.6.26',
     'cache_none': 'virt-v2v-1.42.0-4',
     'q35': 'virt-v2v-1.43.3-2'}
+# bz#1961107
+V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
 
 
 def compare_version(compare_version, real_version=None, cmd=None):
@@ -228,8 +230,9 @@ class VMChecker(object):
         # 'ori_graphic' only can be set when hypervisor is KVM. For Xen and
         # Esx, it will always be 'None' and 'vnc' will be set by default.
         graphic_type = self.params.get('ori_graphic', 'vnc')
-        # Video model will change to QXL if convert target is ovirt/RHEVM
-        if self.target == 'ovirt':
+        if utils_v2v.multiple_versions_compare(V2V_ADAPTE_SPICE_REMOVAL_VER):
+            graphic_type = 'vnc'
+        elif self.target == 'ovirt':
             graphic_type = 'spice'
         return graphic_type
 
@@ -318,6 +321,9 @@ class VMChecker(object):
             video_model = _when_target_libvirt(has_qxldod)
         if not has_virtio_win:
             video_model = 'cirrus'
+
+        if utils_v2v.multiple_versions_compare(V2V_ADAPTE_SPICE_REMOVAL_VER):
+            video_model = 'vga'
 
         return video_model
 
