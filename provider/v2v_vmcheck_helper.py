@@ -91,12 +91,10 @@ class VMChecker(object):
             rhv_bz_1961945_ver = '[4.4.6.8, 4.4.7.6)'  # bz1961945
             rhv_bz_1983610_ver = '[4.4.6.8, 4.4.8.2)'  # bz1983610
             if utils_v2v.compare_version(
-                rhv_bz_1961945_ver,
-                self.ovirt_server_version.full_version) or self.hypervisor in [
-                'xen',
-                'kvm'] and utils_v2v.compare_version(
-                rhv_bz_1983610_ver,
-                    self.ovirt_server_version.full_version) and self.input_mode != 'ova':
+                    rhv_bz_1961945_ver,
+                    self.ovirt_server_version.full_version) or self.hypervisor == 'xen' and utils_v2v.compare_version(
+                    rhv_bz_1983610_ver,
+                    self.ovirt_server_version.full_version) or self.hypervisor == 'kvm' and self.input_mode != 'ova':
                 self.boottype = int(params.get("boottype", 0))
         if compare_version(FEATURE_SUPPORT['q35']):
             self.boottype = int(params.get("boottype", 1))
