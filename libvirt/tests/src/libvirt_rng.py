@@ -219,22 +219,30 @@ def run(test, params, env):
                 src_host = source['host']
                 src_port = source['service']
 
+        result = process.run(cmd, ignore_status=True, shell=True)
+        if result.exit_status:
+            test.fail("Got error obtaining qemu cmdline:"
+                      " %s" % result.stderr_text)
+        expected_matches = []
         if backend_model == "builtin":
-            cmd += (" | grep rng-builtin")
+            expected_matches.append("rng-builtin")
         if chardev and src_host and src_port:
-            cmd += (" | grep 'chardev %s,.*host=%s,port=%s'"
-                    % (chardev, src_host, src_port))
+            expected_matches.append("chardev %s,.*host=%s,port=%s"
+                                    % (chardev, src_host, src_port))
         if rng_model == "virtio":
-            cmd += (" | grep 'device.*%s'" % dparams.get("rng_device"))
+            expected_matches.append("%s" % dparams.get("rng_device"))
         if rng_rate:
             rate = ast.literal_eval(rng_rate)
-            cmd += (" | grep 'max-bytes.*%s.*period.*%s'"
-                    % (rate['bytes'], rate['period']))
+            expected_matches.append("max-bytes.*%s" % rate['bytes'])
+            expected_matches.append("period.*%s" % rate['period'])
         if with_packed:
-            cmd += (" | grep 'packed=%s'" % driver_packed)
-        if process.run(cmd, ignore_status=True, shell=True).exit_status:
+            expected_matches.append("packed.*%s" % driver_packed)
+        if not all([re.findall(x, result.stdout_text)
+                    for x in expected_matches]):
+            logging.debug("Expected matches: %s" % expected_matches)
+            logging.debug("QEMU cmdline: %s" % result.stdout_text)
             test.fail("Can't see rng option"
-                      " in command line")
+                      " in command line. Please check the log.")
 
     def check_host():
         """
@@ -386,7 +394,7 @@ def run(test, params, env):
             if not ret:
                 test.fail("Can't find rate from output")
             rate_real = float(ret.group(1)) / float(ret.group(2))
-            logging.debug("Find rate: %s, config rate: %s",
+            logging.debug("Found rate: %s, config rate: %s",
                           rate_real, rate_conf)
             if rate_real > rate_conf * 1.2:
                 test.fail("The rate of reading exceed"
