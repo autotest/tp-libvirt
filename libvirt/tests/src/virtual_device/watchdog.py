@@ -29,7 +29,7 @@ def run(test, params, env):
 
         :param model: action when watchdog triggered
         """
-        watchdog_device = "device %s" % model
+        watchdog_device = model
         if action == "dump":
             watchdog_action = "watchdog-action pause"
         else:
@@ -238,6 +238,7 @@ def run(test, params, env):
             if not utils_misc.wait_for(lambda: watchdog_attached(vm.name), 60):
                 test.fail("Failed to hotplug watchdog device.")
         session = vm.wait_for_login()
+        logging.debug("Current XML: %s" % vm_xml.VMXML.new_from_dumpxml(vm_name))
 
         # No need to trigger watchdog after hotunplug
         if hotunplug_test:
