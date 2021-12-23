@@ -43,16 +43,16 @@ def run(test, params, env):
         with open('/proc/%s/cmdline' % vm.get_pid(), 'r') as cmdline_file:
             cmdline = cmdline_file.read()
         if bus_type == "usb" and input_type == "keyboard":
-            pattern = r"-device.%s-kbd" % bus_type
+            pattern = r"-device.*%s-kbd" % bus_type
         elif input_type == "passthrough":
-            pattern = r"-device.%s-input-host-pci" % bus_type
+            pattern = r"-device.*%s-input-host-pci" % bus_type
         else:
-            pattern = r"-device.%s-%s" % (bus_type, input_type)
+            pattern = r"-device.*%s-%s" % (bus_type, input_type)
         if not re.search(pattern, cmdline):
             test.fail("Can not find the %s input device "
                       "in qemu cmd line." % input_type)
         if with_packed:
-            pattern = r"packed=%s" % driver_packed
+            pattern = r"packed.*%s" % driver_packed
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the packed driver "
                           "in qemu cmd line")
