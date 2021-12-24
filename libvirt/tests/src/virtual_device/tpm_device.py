@@ -252,7 +252,7 @@ def run(test, params, env):
             cmdline = cmdline_file.read()
             logging.debug("Qemu cmd line info:\n %s", cmdline)
         # Check tpm model
-        pattern_list = ["-device.%s" % tpm_model]
+        pattern_list = ["-device.*%s" % tpm_model]
         # Check backend type
         if backend_type == "passthrough":
             dev_num = re.search(r"\d+", device_path).group()
@@ -260,10 +260,10 @@ def run(test, params, env):
         else:
             # emulator backend
             backend_segment = "id=tpm-tpm0,chardev=chrtpm"
-        pattern_list.append("-tpmdev.%s,%s" % (backend_type, backend_segment))
+        pattern_list.append("-tpmdev.*%s,%s" % (backend_type, backend_segment))
         # Check chardev socket for vtpm
         if backend_type == "emulator":
-            pattern_list.append("-chardev.socket,id=chrtpm,"
+            pattern_list.append("-chardev.*socket,id=chrtpm,"
                                 "path=.*/run/libvirt/qemu/swtpm/%s-%s-swtpm.sock" % (domid, vm_name))
         for pattern in pattern_list:
             if not re.search(pattern, cmdline):
