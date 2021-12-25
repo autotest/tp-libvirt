@@ -283,15 +283,15 @@ def run(test, params, env):
 
         if iface_model == "virtio":
             if host_arch == 's390x':
-                model_option = "device virtio-net-ccw"
+                model_option = "virtio-net-ccw"
             else:
-                model_option = "device virtio-net-pci"
+                model_option = "virtio-net-pci"
         elif iface_model == 'rtl8139':
-            model_option = "device rtl8139"
+            model_option = "rtl8139"
         else:
             test.error("Don't know which device driver to expect on qemu cmdline"
                        " for iface_model %s" % iface_model)
-        iface_cmdline = re.findall(r"%s,(.+),mac=%s" %
+        iface_cmdline = re.findall(r"%s.(.*mac.*%s).*" %
                                    (model_option, iface_mac), ret.stdout_text)
         if not iface_cmdline:
             test.fail("Can't see %s with mac %s in command"
@@ -323,20 +323,26 @@ def run(test, params, env):
         if iface_driver_guest:
             driver_dict.update(ast.literal_eval(iface_driver_guest))
 
-        # Only check packed attribute in qemu command line
-        if iface_driver and "packed" in ast.literal_eval(iface_driver):
-            iface_cmdline = re.findall(r"%s=%s" %
-                                       (driver_opt, driver_dict[driver_opt]), ret.stdout_text)
-
+        # get the output from cmd to be cmd_opt
         cmd_opt = {}
-        for opt in iface_cmdline[0].split(','):
-            tmp = opt.rsplit("=")
-            cmd_opt[tmp[0]] = tmp[1]
-        logging.debug("Command line options %s", cmd_opt)
+        driver_dict_cmd_ = re.search(r'{[^}]+%s[^{]+}' % iface_mac, ret.stdout_text)
+        # driver_dict_output is the value got from qemu command line
+        if driver_dict_cmd_:
+            cmd_opt_ = driver_dict_cmd_.group().replace('false', '\"off\"').replace('true', '\"on\"')
+            cmd_opt = ast.literal_eval(cmd_opt_)
+            logging.info("This is qemu-kvm new format since 6.2")
+        else:
+            logging.info("This is qemu-kvm old format before 6.2")
+
+            for opt in iface_cmdline[0].split(','):
+                tmp = opt.rsplit("=")
+                cmd_opt[tmp[0]] = tmp[1]
+        logging.debug("Command line options \n%s", cmd_opt)
+        logging.debug("setting options \n%s", driver_dict)
 
         for driver_opt in list(driver_dict.keys()):
             if (driver_opt not in cmd_opt or
-                    not cmd_opt[driver_opt] == driver_dict[driver_opt]):
+                    not str(cmd_opt[driver_opt]) == driver_dict[driver_opt]):
                 test.fail("Can't see option '%s=%s' in qemu-kvm "
                           " command line" %
                           (driver_opt, driver_dict[driver_opt]))
