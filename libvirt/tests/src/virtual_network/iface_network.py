@@ -88,7 +88,7 @@ TIMEOUT 3"""
             osxml.type = vmxml.os.type
             osxml.arch = vmxml.os.arch
             osxml.machine = vmxml.os.machine
-            osxml.loader = "/usr/share/seabios/bios.bin"
+            osxml.loader = "/usr/share/seabios/bios-256k.bin"
             osxml.bios_useserial = "yes"
             if utils_misc.compare_qemu_version(4, 0, 0, False):
                 osxml.bios_reboot_timeout = "-1"
