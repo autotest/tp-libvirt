@@ -1,6 +1,8 @@
 import logging
 import os
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
@@ -138,13 +140,11 @@ def run(test, params, env):
                 seLinuxfusefs = utils_misc.SELinuxBoolean(test_dict)
                 seLinuxfusefs.setup()
 
-        # Setup glusterfs and disk xml.
+        # Setup glusterfs
         disk_img = "gluster.%s" % disk_format
         params['disk_img'] = disk_img
-        libvirt.set_vm_disk(vm, params)
-
-        vm_xml_cxt = virsh.dumpxml(vm_name).stdout_text.strip()
-        logging.debug("The VM XML with gluster disk source: \n%s", vm_xml_cxt)
+        host_ip = gluster.setup_or_cleanup_gluster(is_setup=True, **params)
+        logging.debug("host ip: %s ", host_ip)
 
         # Check if gluster server is deployed locally
         if not host_ip:
@@ -175,11 +175,25 @@ def run(test, params, env):
             gluster_img = create_or_clean_backend_dir(gluster_uri, params)
             create_or_clean_backend_dir(gluster_uri, params, remote_session)
 
+            # Get the image path
+            image_source = vm.get_first_disk_devices()['source']
+            image_info = utils_misc.get_image_info(image_source)
+            if image_info["format"] == disk_format:
+                disk_cmd = "cp -f %s %s" % (image_source, gluster_img)
+            else:
+                # Convert the disk format
+                disk_cmd = ("qemu-img convert -f %s -O %s %s %s" %
+                            (image_info["format"], disk_format, image_source, gluster_img))
+            process.run("%s; chmod a+rw %s" % (disk_cmd, gluster_mount_dir), shell=True)
+
             logging.debug("Gluster Image is %s", gluster_img)
             gluster_backend_disk = {'disk_source_name': gluster_img}
             # Update disk xml with gluster image in backend dir
             libvirt.set_vm_disk(vm, gluster_backend_disk)
         remote_session.close()
+
+        vm_xml_cxt = virsh.dumpxml(vm_name).stdout_text.strip()
+        logging.debug("The VM XML with gluster disk source: \n%s", vm_xml_cxt)
 
         vm.wait_for_login().close()
         migrate_test.ping_vm(vm, params)
