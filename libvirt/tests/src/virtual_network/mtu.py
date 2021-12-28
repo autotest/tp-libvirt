@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import shutil
+import re
 
 from avocado.utils import process
 
@@ -160,7 +161,7 @@ def run(test, params, env):
         if qemu:
             qemu_mtu_info = process.run('ps aux|grep qemu-kvm',
                                         shell=True, verbose=True).stdout_text
-            if 'host_mtu=%s' % mtu_size in qemu_mtu_info:
+            if re.findall(r'host_mtu.*%s' % mtu_size, qemu_mtu_info):
                 logging.info('PASS on qemu cmd line check.')
             else:
                 error += 'Fail on qemu cmd line check.'
