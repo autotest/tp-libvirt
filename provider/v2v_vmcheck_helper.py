@@ -290,7 +290,7 @@ class VMChecker(object):
                 video_model = 'qxl'
             elif self.os_version in ['win7', 'win2008r2']:
                 video_model = 'qxl'
-            elif self.os_version in ['win10', 'win2016', 'win2019'] and has_qxldod:
+            elif self.os_version in ['win10', 'win2016', 'win2019', 'win11', 'win2022'] and has_qxldod:
                 video_model = 'qxl'
             else:
                 video_model = 'cirrus'
