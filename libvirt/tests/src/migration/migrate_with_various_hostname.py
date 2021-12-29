@@ -1,15 +1,18 @@
 import logging as log
 
 from avocado.utils import process
+from avocado.utils import path as utils_path
 
 from virttest import libvirt_vm
 from virttest import migration
 from virttest import remote as remote_old
 from virttest import libvirt_version
 from virttest import utils_libvirtd
+from virttest import remote
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.staging import service
 
 from provider.migration import migration_base
 
@@ -59,6 +62,30 @@ def set_hostname(hostname, test, remote_params=None):
     logging.info("Set hostname: %s" % hostname)
 
 
+def start_NM(NM_service):
+    """
+    Start NetworkManager service
+
+    :param NM_service: NetworkManager service object
+    """
+    NM_is_running = NM_service.status()
+    if not NM_is_running:
+        logging.debug("Start NetworkManager...")
+        NM_service.start()
+
+
+def stop_NM(NM_service):
+    """
+    Stop NetworkManager service
+
+    :param NM_service: NetworkManager service object
+    """
+    NM_is_running = NM_service.status()
+    if NM_is_running:
+        logging.debug("Stop NetworkManager...")
+        NM_service.stop()
+
+
 def run(test, params, env):
     """
     Run the test
@@ -103,6 +130,8 @@ def run(test, params, env):
     dst_session = None
     dst_libvirtd = None
     src_libvirtd = None
+    src_NM_service = None
+    dest_NM_service = None
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -120,8 +149,38 @@ def run(test, params, env):
                                                     r"[\#\$]\s*$")
             dst_libvirtd = utils_libvirtd.Libvirtd(session=dst_session)
             src_libvirtd = utils_libvirtd.Libvirtd()
+
+            try:
+                # Check local NetworkManager service
+                NM = utils_path.find_command("NetworkManager")
+            except utils_path.CmdNotFoundError:
+                logging.debug("No NetworkManager command found on source.")
+                NM = None
+
+            if NM is not None:
+                # Stop local NetworkManager service
+                src_NM_service = service.Factory.create_service("NetworkManager")
+                if src_NM_service is not None:
+                    stop_NM(src_NM_service)
+
             set_hostname(src_hostname, test)
             src_libvirtd.restart()
+
+            # Check remote NetworkManager service
+            check_cmd = "rpm -q NetworkManager"
+            check_result = remote_old.run_remote_cmd(check_cmd, server_params, ignore_status=False)
+            if check_result.exit_status:
+                logging.debug("No NetworkManager command found on target.")
+            else:
+                # Stop remote NetworkManager service
+                remote_runner = remote.RemoteRunner(host=server_ip,
+                                                    username=server_user,
+                                                    password=server_pwd)
+                runner = remote_runner.run
+                dest_NM_service = service.Factory.create_service("NetworkManager", run=runner)
+                if dest_NM_service is not None:
+                    stop_NM(dest_NM_service)
+
             set_hostname(dst_hostname, test, remote_params=server_params)
             dst_libvirtd.restart()
 
@@ -167,6 +226,12 @@ def run(test, params, env):
         migration_test.cleanup_vm(vm, dest_uri)
 
         if set_src_and_dst_hostname:
+            if src_NM_service is not None:
+                start_NM(src_NM_service)
+
+            if dest_NM_service is not None:
+                start_NM(dest_NM_service)
+
             set_hostname(old_dst_hostname, test, remote_params=server_params)
             if dst_libvirtd:
                 dst_libvirtd.restart()
