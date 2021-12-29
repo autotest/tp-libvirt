@@ -206,6 +206,8 @@ def run(test, params, env):
         backend_source_list = dparams.get("backend_source",
                                           "").split()
         cmd = ("ps -ef | grep %s | grep -v grep" % vm_name)
+        logging.debug("Qemu cmd line info:\n")
+        process.run(cmd, ignore_status=True, shell=True)
         chardev = src_host = src_port = None
         if backend_type == "tcp":
             chardev = "socket"
@@ -223,10 +225,10 @@ def run(test, params, env):
             cmd += (" | grep 'chardev %s,.*host=%s,port=%s'"
                     % (chardev, src_host, src_port))
         if rng_model == "virtio":
-            cmd += (" | grep 'device %s'" % dparams.get("rng_device"))
+            cmd += (" | grep 'device.*%s'" % dparams.get("rng_device"))
         if rng_rate:
             rate = ast.literal_eval(rng_rate)
-            cmd += (" | grep 'max-bytes=%s,period=%s'"
+            cmd += (" | grep 'max-bytes.*%s.*period.*%s'"
                     % (rate['bytes'], rate['period']))
         if with_packed:
             cmd += (" | grep 'packed=%s'" % driver_packed)
