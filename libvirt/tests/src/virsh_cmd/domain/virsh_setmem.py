@@ -284,7 +284,10 @@ def run(test, params, env):
     # Check guest dumpxml and qemu command in with_packed attribute
     if with_packed:
         expect_xml_line = expect_xml_line % driver_packed
-        expect_qemu_line = expect_qemu_line % driver_packed
+        if utils_misc.compare_qemu_version(6, 2, 0, is_rhev=False):
+            expect_qemu_line = expect_qemu_line % "true"
+        else:
+            expect_qemu_line = expect_qemu_line % driver_packed
         libvirt.check_dumpxml(vm, expect_xml_line)
         libvirt.check_qemu_cmd_line(expect_qemu_line)
 
