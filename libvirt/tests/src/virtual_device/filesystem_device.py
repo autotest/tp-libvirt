@@ -13,6 +13,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 from virttest.utils_test import libvirt_device_utils
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_pcicontr
 
 
 def run(test, params, env):
@@ -259,6 +260,7 @@ def run(test, params, env):
                         vmxml.add_device(fs)
                         vmxml.sync()
             logging.debug(vmxml)
+            libvirt_pcicontr.reset_pci_num(vm_names[index])
             result = virsh.start(vm_names[index], debug=True)
             if hotplug_unplug:
                 for fs_dev in fs_devs:
