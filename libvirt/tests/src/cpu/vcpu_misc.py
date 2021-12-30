@@ -1,10 +1,12 @@
 import logging
+import os
 import re
 
 from avocado.utils import process
 
 from virttest import libvirt_version
 from virttest import virsh
+from virttest.libvirt_xml import domcapability_xml
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -53,6 +55,20 @@ def run(test, params, env):
             cpu_xml = vmxml.cpu
         else:
             cpu_xml = vm_xml.VMCPUXML()
+
+        if customize_cpu_features:
+            for idx in range(len(cpu_xml.get_feature_list()) - 1, -1, -1):
+                cpu_xml.remove_feature(idx)
+            domcapa_xml = domcapability_xml.DomCapabilityXML()
+            features = domcapa_xml.get_additional_feature_list(
+                'host-model', ignore_features=None)
+            for feature in features:
+                for feature_name, feature_policy in feature.items():
+                    # For host-passthrough mode, adding "invtsc" requires
+                    # more settings, so it will be ignored.
+                    if feature_name != "invtsc":
+                        cpu_xml.add_feature(feature_name, feature_policy)
+
         if cpu_mode:
             cpu_xml.mode = cpu_mode
         if cpu_vendor_id:
@@ -103,6 +119,19 @@ def run(test, params, env):
                                            **virsh_dargs)
         libvirt.check_exit_status(cmd_result)
 
+    def check_feature_list(vm, original_dict):
+        """
+        Compare new cpu feature list and original cpu
+
+        :param vm: VM object
+        :original_dict: Cpu feature dict , {"name1":"policy1","name2":"policy2"}
+        """
+        new_cpu_xml = vm_xml.VMXML.new_from_dumpxml(vm.name).cpu
+        new_feature_dict = new_cpu_xml.get_dict_type_feature()
+        if new_feature_dict != original_dict:
+            test.fail('CPU feature lists are different, original is :%s,'
+                      ' new is %s:' % (original_dict, new_feature_dict))
+
     libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
@@ -123,8 +152,9 @@ def run(test, params, env):
     cpu_vendor_id = None
     expected_qemuline = None
     cmd_in_guest = params.get("cmd_in_guest")
-
+    customize_cpu_features = "yes" == params.get("customize_cpu_features", "no")
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
 
     try:
         if check_vendor_id:
@@ -146,6 +176,8 @@ def run(test, params, env):
 
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         logging.debug("Pre-test xml is %s", vmxml.xmltreefile)
+        cpu_xml = vmxml.cpu
+        feature_dict = cpu_xml.get_dict_type_feature()
 
         if expected_str_before_startup:
             libvirt.check_dumpxml(vm, expected_str_before_startup)
@@ -181,10 +213,25 @@ def run(test, params, env):
                 vm_session.close()
                 if cpu_mode == 'maximum':
                     check_vm_cpu_model(output.strip(), cmd_in_guest, test)
+
+            # Add case: Check cpu xml after domain Managedsaved and restored
+            if test_operations:
+                for item in test_operations.split(','):
+                    if item == "managedsave_restore":
+                        # (1)Domain Manage saved
+                        virsh.managedsave(vm_name, ignore_status=False, debug=True)
+                        check_feature_list(vm, feature_dict)
+                        # (2)Domain Restore
+                        virsh.restore(managed_save_file, ignore_status=False, debug=True)
+                        # (5)Check mode and feature list here
+                        libvirt.check_dumpxml(vm, cpu_mode)
+                        check_feature_list(vm, feature_dict)
+
     finally:
         logging.debug("Recover test environment")
+        if os.path.exists(managed_save_file):
+            virsh.managedsave_remove(vm_name, debug=True)
         if vm.is_alive():
             vm.destroy()
-
         libvirt.clean_up_snapshots(vm_name, domxml=bkxml)
         bkxml.sync()
