@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 from avocado.utils import process
 
@@ -89,6 +90,73 @@ def check_libvirtd_process_id(ori_pid_libvirtd, test):
             test.fail("Libvirtd crash after attaching ccw addr devices")
 
 
+def create_same_pci_slot_disk(params):
+    """
+    Create disk with existed pci slot
+
+    :param params: dict wrapped with params
+    """
+    type_name = params.get("type_name")
+    disk_device = params.get("device_type")
+    device_target = params.get("target_dev")
+    device_bus = params.get("target_bus")
+    device_format = params.get("target_format")
+    source_file_path = params.get("virt_disk_device_source")
+    disk_src_dict = {"attrs": {"file": source_file_path}}
+    vm_name = params.get("main_vm")
+
+    if source_file_path:
+        libvirt.create_local_disk("file", source_file_path, 1, device_format)
+    pci_slot_addr_disk = libvirt_disk.create_primitive_disk_xml(
+        type_name, disk_device,
+        device_target, device_bus,
+        device_format, disk_src_dict, None)
+
+    # Get existed disk address
+    addr = vm_xml.VMXML.get_disk_address(vm_name, 'vda')
+    if not addr:
+        raise Exception("Failed to get vda disk address")
+
+    pci_addr_dict = tr_pci_address_to_dict(addr)
+    pci_slot_addr_disk.address = pci_slot_addr_disk.new_disk_address(
+        **{"attrs": pci_addr_dict})
+    logging.debug("create_pci_slot_addr_disk xml: %s", pci_slot_addr_disk)
+    return pci_slot_addr_disk
+
+
+def tr_pci_address_to_dict(pci_addr_str):
+    """
+    Translate string format pci address to dict, and increment function element
+
+    :param pci_addr_str: pci address in string format
+    """
+    addr_pci = pci_addr_str.split(":")[0]
+    addr_misc_list = pci_addr_str.split(":")[1].split('.')
+    addr_dict = {}
+    addr_dict.update({'type': addr_pci})
+    addr_dict.update({'domain': addr_misc_list[0]})
+    addr_dict.update({'bus': addr_misc_list[1]})
+    addr_dict.update({'slot': addr_misc_list[2]})
+    # Increment function in hex format
+    val = int(addr_misc_list[3], base=16)
+    addr_dict.update({'function': str(hex(val + 1))})
+    return addr_dict
+
+
+def check_multifunction_is_on(vm_name, test):
+    """
+    Check multifunction is on
+
+    :param vm_name: VM name
+    :param test: test assert object
+    """
+    result = virsh.dumpxml(vm_name).stdout_text.strip()
+    logging.debug("test dumpxml:%s", result)
+    pattern_str = r"multifunction=.*on.*"
+    if not re.search(pattern_str, result):
+        test.fail("multifunction should be set to 'on' if two disks share pci slot")
+
+
 def run(test, params, env):
     """
     Test attach device with ccw address option.
@@ -119,6 +187,8 @@ def run(test, params, env):
     device_obj = None
 
     # Back up xml file.
+    if vm.is_alive():
+        vm.destroy(gracefully=False)
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -128,6 +198,8 @@ def run(test, params, env):
             device_obj = create_ccw_addr_rng(params)
         elif backend_device == "controller":
             device_obj = create_ccw_addr_controller(params)
+        elif backend_device == "same_pci_slot":
+            device_obj = create_same_pci_slot_disk(params)
         # Check libvirtd should not crash during the process
         if not utils_split_daemons.is_modular_daemon():
             ori_pid_libvirtd = process.getoutput("pidof libvirtd")
@@ -166,6 +238,9 @@ def run(test, params, env):
     except Exception as ex:
         test.fail("unexpected exception happen: %s" % str(ex))
         check_libvirtd_process_id(ori_pid_libvirtd, test)
+    else:
+        if backend_device == "same_pci_slot":
+            check_multifunction_is_on(vm_name, test)
     finally:
         # Recover VM.
         if vm.is_alive():
