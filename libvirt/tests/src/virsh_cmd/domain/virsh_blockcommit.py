@@ -5,6 +5,7 @@ import collections
 
 import aexpect
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from multiprocessing.pool import ThreadPool
@@ -440,10 +441,14 @@ def run(test, params, env):
                 ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide rbd host first.")
-
+                detected_distro = distro.detect()
+                rbd_img_prefix = '_'.join(['rbd', detected_distro.name,
+                                           detected_distro.version,
+                                           detected_distro.release,
+                                           detected_distro.arch])
                 params.update(
                    {"disk_source_name": os.path.join(
-                      pool_name, 'rbd_'+utils_misc.generate_random_string(4)+'.img')})
+                      pool_name, rbd_img_prefix + '.img')})
                 if utils_package.package_install(["ceph-common"]):
                     ceph.rbd_image_rm(mon_host, *params.get("disk_source_name").split('/'))
                 else:
