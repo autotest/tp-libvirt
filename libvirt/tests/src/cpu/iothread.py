@@ -312,10 +312,12 @@ def run(test, params, env):
         :param dargs: standardized virsh function API keywords
         :raise: test.fail if disk is not detached
         """
-        virsh.detach_disk(vm_name, disk_path, debug=True)
 
         def _check_disk(target):
             return target not in vm.get_blk_devices()
+
+        utils_misc.wait_for(lambda: not _check_disk(target), 10, 3)
+        virsh.detach_disk(vm_name, disk_path, debug=True)
 
         if not utils_misc.wait_for(lambda: _check_disk(target), 10):
             test.fail("Disk {} is not detached.".format(target))
