@@ -336,6 +336,11 @@ def run(test, params, env):
                     add_disk(dom.name, new_disk, 'vdb', '')
                     expected_events_list.append("'device-added' for %s:"
                                                 " virtio-disk1")
+
+                    def _check_disk(target):
+                        return target not in dom.get_blk_devices()
+
+                    utils_misc.wait_for(lambda: not _check_disk('vdb'), 10, 3)
                     virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
