@@ -289,7 +289,7 @@ def run(test, params, env):
             backing_file_path = os.path.join(root_dir, key)
             external_snap_shot = "%s/%s" % (backing_file_path, value)
             snapshot_external_disks.append(external_snap_shot)
-            options = "%s --diskspec %s,file=%s" % (meta_options, disk_target, external_snap_shot)
+            options = "%s %s --diskspec %s,file=%s" % ('snap-%s' % key, meta_options, disk_target, external_snap_shot)
             cmd_result = virsh.snapshot_create_as(vm_name, options,
                                                   ignore_status=False,
                                                   debug=True)
