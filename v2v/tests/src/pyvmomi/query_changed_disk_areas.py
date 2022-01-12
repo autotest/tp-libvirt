@@ -4,6 +4,8 @@ from virttest.utils_pyvmomi import VSphere, vim
 from virttest.remote import wait_for_login
 from virttest.utils_misc import wait_for
 
+LOG = logging.getLogger('avocado.v2v.' + __name__)
+
 
 def run(test, params, env):
     """
@@ -81,7 +83,7 @@ def run(test, params, env):
         if not vm_ipaddr:
             test.fail('Get VM IP address failed')
 
-        logging.info("VM's (%s) IP address is %s", vm_name, vm_ipaddr)
+        LOG.info("VM's (%s) IP address is %s", vm_name, vm_ipaddr)
 
         conn_kwargs = {
             'client': vm_client,
@@ -96,7 +98,7 @@ def run(test, params, env):
         # Write some fixed length of data
         cmd = 'dd if=/dev/urandom of=/dev/sdb bs=6000 count=10000 seek=1000'
         res = vm_session.cmd_output(cmd)
-        logging.debug('Session outputs:\n%s', res)
+        LOG.debug('Session outputs:\n%s', res)
 
         # Power off at once
         conn.power_off()
@@ -111,7 +113,7 @@ def run(test, params, env):
         for change in disk_change_info.changedArea:
             total += change.length
 
-        logging.info('total change length is %s', total)
+        LOG.info('total change length is %s', total)
         if not 60000000 <= total <= 61000000:
             test.fail('Unexpected change size')
 

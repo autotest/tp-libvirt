@@ -19,6 +19,8 @@ from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
 
+LOG = logging.getLogger('avocado.v2v.' + __name__)
+
 
 def run(test, params, env):
     """
@@ -86,7 +88,7 @@ def run(test, params, env):
     if output_mode == 'rhev':
         params.update({'sasl_user': params.get("sasl_user") +
                        utils_misc.generate_random_string(3)})
-        logging.info('sals user name is %s' % params.get("sasl_user"))
+        LOG.info('sals user name is %s' % params.get("sasl_user"))
         if output_method == 'rhv_upload':
             # Create password file for '-o rhv_upload' to connect to ovirt
             with open(rhv_passwd_file, 'w') as f:
@@ -101,7 +103,7 @@ def run(test, params, env):
         """
         Log error and update error list
         """
-        logging.error(msg)
+        LOG.error(msg)
         error_list.append(msg)
 
     def check_BSOD():
@@ -120,7 +122,7 @@ def run(test, params, env):
             virsh.screenshot(vm_name, screenshot)
             similar = ppm_utils.image_histogram_compare(screenshot, match_img)
             if similar > bar:
-                logging.info('Meet BSOD with similarity %s' % similar)
+                LOG.info('Meet BSOD with similarity %s' % similar)
                 return
             time.sleep(1)
         log_fail('No BSOD as expected')
@@ -158,7 +160,7 @@ def run(test, params, env):
                 if checkpoint != 'win2008r2_ostk':
                     ret = vmchecker.run()
                     if len(ret) == 0:
-                        logging.info("All common checkpoints passed")
+                        LOG.info("All common checkpoints passed")
                 if checkpoint == 'win2008r2_ostk':
                     check_BSOD()
                 # Merge 2 error lists
@@ -237,7 +239,7 @@ def run(test, params, env):
                 shutil.copytree(src_dir, dest_dir)
             else:
                 shutil.copy(src_dir, dest_dir)
-            logging.info('Copy ova from %s to %s', src_dir, dest_dir)
+            LOG.info('Copy ova from %s to %s', src_dir, dest_dir)
         if output_format:
             v2v_params.update({'of_format': output_format})
         # Create libvirt dir pool
@@ -257,9 +259,9 @@ def run(test, params, env):
             v2v_params['os_directory'] = data_dir.get_tmp_dir()
 
         if checkpoint == 'ova_relative_path':
-            logging.debug('Current dir: %s', os.getcwd())
+            LOG.debug('Current dir: %s', os.getcwd())
             ova_dir = params.get('ova_dir')
-            logging.info('Change to dir: %s', ova_dir)
+            LOG.info('Change to dir: %s', ova_dir)
             os.chdir(ova_dir)
 
         # Set libguestfs environment variable
