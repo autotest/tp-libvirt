@@ -185,6 +185,7 @@ def run(test, params, env):
     expected_fails_msg.append(error_msg)
 
     device_obj = None
+    ori_pid_libvirtd = None
 
     # Back up xml file.
     if vm.is_alive():
