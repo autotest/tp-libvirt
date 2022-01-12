@@ -9,6 +9,8 @@ from virttest import utils_misc
 from virttest.utils_v2v import multiple_versions_compare
 from virttest.utils_v2v import params_get
 
+LOG = logging.getLogger('avocado.v2v.' + __name__)
+
 
 def run(test, params, env):
     """
@@ -41,7 +43,7 @@ EOF
         with open(tmp_logfile) as fd:
             ptn = r'(\d+)\s+->\s+\'(pipe|socket):'
             cont = fd.read()
-            logging.debug('all fds:\n%s', cont)
+            LOG.debug('all fds:\n%s', cont)
             for i, _ in re.findall(ptn, cont):
                 if int(i) > 2:
                     count += 1
@@ -98,12 +100,12 @@ nbdkit -rfv -U - --exportname / \
 
             # replace thumbprint with correct value
             nbdkit_cmd = nbdkit_cmd.strip()[:-2] + vddk_thumbprint
-            logging.info('nbdkit command:\n%s', nbdkit_cmd)
+            LOG.info('nbdkit command:\n%s', nbdkit_cmd)
 
             if checkpoint == 'vddk_stats':
                 vddk_stats = params_get(params, "vddk_stats")
                 nbdkit_cmd = nbdkit_cmd + ' -D vddk.stats=%s' % vddk_stats
-                logging.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
+                LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
 
             # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text

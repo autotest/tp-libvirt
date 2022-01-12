@@ -12,6 +12,8 @@ from virttest import remote
 
 from provider.v2v_vmcheck_helper import VMChecker
 
+LOG = logging.getLogger('avocado.v2v.' + __name__)
+
 
 def run(test, params, env):
     """
@@ -65,7 +67,7 @@ def run(test, params, env):
     # create different sasl_user name for different job
     params.update({'sasl_user': params.get("sasl_user") +
                    utils_misc.generate_random_string(3)})
-    logging.info('sals user name is %s' % params.get("sasl_user"))
+    LOG.info('sals user name is %s' % params.get("sasl_user"))
 
     # Prepare step for different hypervisor
     if hypervisor == "xen":
@@ -112,7 +114,7 @@ def run(test, params, env):
     # Create libvirt URI
     v2v_uri = utils_v2v.Uri(hypervisor)
     remote_uri = v2v_uri.get_uri(source_ip, vpx_dc, esx_ip)
-    logging.debug("libvirt URI for converting: %s", remote_uri)
+    LOG.debug("libvirt URI for converting: %s", remote_uri)
 
     # Make sure the VM exist before convert
     v2v_virsh = None
@@ -182,7 +184,7 @@ def run(test, params, env):
 
         params['main_vm'] = v2v_params['new_name']
 
-        logging.info("output_method is %s" % output_method)
+        LOG.info("output_method is %s" % output_method)
         # Check all checkpoints after convert
         params['vmchecker'] = vmchecker = VMChecker(test, params, env)
         # Import the VM to oVirt Data Center from export domain, and start it
@@ -193,7 +195,7 @@ def run(test, params, env):
         # When VM is on OSP, it can't obtain IP address, therefore
         # skipping the VM checking.
         if skip_vm_check == 'yes':
-            logging.debug("skip vm checking")
+            LOG.debug("skip vm checking")
             return
 
         ret = vmchecker.run()
@@ -222,7 +224,7 @@ def run(test, params, env):
         ret.extend(err_list)
 
         if len(ret) == 0:
-            logging.info("All checkpoints passed")
+            LOG.info("All checkpoints passed")
         else:
             test.fail("%d checkpoints failed: %s" % (len(ret), ret))
     finally:

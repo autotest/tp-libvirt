@@ -13,6 +13,8 @@ from virttest.libvirt_xml import vm_xml
 
 from provider.v2v_vmcheck_helper import VMChecker
 
+LOG = logging.getLogger('avocado.v2v.' + __name__)
+
 
 def run(test, params, env):
     """
@@ -80,7 +82,7 @@ def run(test, params, env):
     # Create libvirt URI for the source node
     v2v_uri = utils_v2v.Uri(hypervisor)
     remote_uri = v2v_uri.get_uri(source_ip, vpx_dc, esx_ip)
-    logging.debug("Remote host uri for converting: %s", remote_uri)
+    LOG.debug("Remote host uri for converting: %s", remote_uri)
 
     # Make sure the VM exist before convert
     virsh_dargs = {'uri': remote_uri, 'remote_ip': source_ip,
@@ -141,13 +143,13 @@ def run(test, params, env):
         if ret.exit_status != 0:
             raise exceptions.TestFail("Convert VM failed")
 
-        logging.debug("XML info:\n%s", virsh.dumpxml(vm_name))
+        LOG.debug("XML info:\n%s", virsh.dumpxml(vm_name))
         vm = env.create_vm("libvirt", "libvirt", vm_name, params, test.bindir)
         # Win10 is not supported by some cpu model,
         # need to modify to 'host-model'
         unsupport_list = ['win10', 'win2016', 'win2019']
         if params.get('os_version') in unsupport_list:
-            logging.info(
+            LOG.info(
                 'Set cpu mode to "host-model" for %s.',
                 unsupport_list)
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -174,7 +176,7 @@ def run(test, params, env):
             vmchecker.cleanup()
 
         if len(ret) == 0:
-            logging.info("All checkpoints passed")
+            LOG.info("All checkpoints passed")
         else:
             raise exceptions.TestFail(
                 "%d checkpoints failed: %s" %
