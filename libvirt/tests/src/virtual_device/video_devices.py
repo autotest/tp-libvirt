@@ -6,7 +6,6 @@ from virttest.libvirt_xml.devices.video import Video
 from virttest.utils_test import libvirt
 from virttest import virsh
 from virttest import libvirt_version
-from virttest import utils_misc
 
 from six import iteritems
 
@@ -123,10 +122,7 @@ def run(test, params, env):
             elif model_type == "virtio":
                 pattern = r"-device.*virtio-gpu-pci"
                 if with_packed:
-                    if utils_misc.compare_qemu_version(6, 2, 0, is_rhev=False):
-                        pattern = r"-device.*virtio-gpu-pci.*packed\W{1,2}%s" % "true"
-                    else:
-                        pattern = r"-device.*virtio-gpu-pci.*packed\W{1,2}%s" % driver_packed
+                    pattern = r"-device.*virtio-gpu-pci.*packed\W{1,2}(true|on)"
             if guest_arch == 's390x':
                 pattern = s390x_pattern
             if not re.search(pattern, cmdline):
