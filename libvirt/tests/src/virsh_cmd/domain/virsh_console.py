@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import platform
 
 import aexpect
@@ -11,6 +11,11 @@ from virttest.libvirt_xml import vm_xml
 
 
 CMD_TIMEOUT = 30
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def xml_console_config(vm_name, serial_type='pty',

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import difflib
 
 from aexpect import ExpectTimeoutError
@@ -9,6 +9,11 @@ from virttest import utils_misc
 from virttest import remote
 from virttest.libvirt_xml import VMXML
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest import utils_misc
@@ -8,6 +8,11 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml.devices.sound import Sound
 from virttest.libvirt_xml.devices.interface import Interface
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

@@ -6,7 +6,7 @@ This module is meant to wrap test cases to validate virsh blockcommit with relat
 :copyright: 2021 Red Hat Inc.
 """
 
-import logging
+import logging as log
 import os
 import time
 import threading
@@ -24,6 +24,11 @@ from virttest.utils_test import libvirt
 
 from virttest.utils_libvirt import libvirt_ceph_utils
 from virttest.utils_libvirt import libvirt_disk
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

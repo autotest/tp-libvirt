@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from virttest import libvirt_vm
 from virttest import migration
@@ -13,6 +13,11 @@ from virttest.utils_libvirt import libvirt_config
 from virttest.utils_libvirt import libvirt_disk
 
 from provider.migration import migration_base
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_used_port(func_returns):

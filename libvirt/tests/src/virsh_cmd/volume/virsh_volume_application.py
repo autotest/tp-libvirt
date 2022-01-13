@@ -1,6 +1,6 @@
 import os
 import time
-import logging
+import logging as log
 
 from avocado.utils import process
 
@@ -11,6 +11,11 @@ from virttest import utils_selinux
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.tests import unattended_install
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def create_volumes(test, new_pool, volume_count, volume_size):

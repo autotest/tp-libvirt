@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import math
 import os
 import re
@@ -13,6 +13,11 @@ from virttest import virsh
 from virttest.libvirt_cgroup import CgroupTest
 
 from avocado.utils import process
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import re
 
@@ -13,6 +13,11 @@ from virttest.libvirt_xml import vm_xml, xcepts
 
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def create_ccw_addr_controller(params):

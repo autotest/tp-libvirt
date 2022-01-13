@@ -1,9 +1,14 @@
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest.staging.utils_memory import get_huge_page_size
 from virttest.staging.utils_memory import get_num_huge_pages
 from virttest.staging.utils_memory import set_num_huge_pages
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

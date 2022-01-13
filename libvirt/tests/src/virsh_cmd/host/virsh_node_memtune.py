@@ -1,11 +1,16 @@
 import os
-import logging
+import logging as log
 
 from avocado.core import exceptions
 from avocado.utils import process
 from virttest import virsh
 
 _SYSFS_MEMORY_KSM_PATH = "/sys/kernel/mm/ksm"
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def recovery_ksm_files_contents(ksm_params, change_list):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 import os
 import time
@@ -13,6 +13,11 @@ from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def set_options(iface_type=None, iface_source=None, iface_mac=None,

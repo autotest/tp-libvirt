@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -15,6 +15,11 @@ from virttest.utils_test import libvirt
 from provider.interface import interface_base
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_soft_memlock(exp_memlock):

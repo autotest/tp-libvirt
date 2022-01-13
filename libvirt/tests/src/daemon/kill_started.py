@@ -1,13 +1,18 @@
 import os
 import time
 import signal
-import logging
+import logging as log
 
 from avocado.utils import process
 
 from virttest import utils_config
 from virttest import utils_split_daemons
 from virttest.utils_libvirtd import Libvirtd
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

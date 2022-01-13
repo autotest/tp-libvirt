@@ -1,6 +1,6 @@
 import os
 import time
-import logging
+import logging as log
 import shutil
 import subprocess
 
@@ -8,6 +8,11 @@ from virttest import virsh
 from virttest import utils_test
 from virttest import utils_misc
 from virttest import data_dir
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def func_in_thread(vm, timeout, test):

@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 import aexpect
 import platform
 import time
@@ -24,6 +24,11 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest import libvirt_version
 
 TMP_DATA_DIR = data_dir.get_data_dir()
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

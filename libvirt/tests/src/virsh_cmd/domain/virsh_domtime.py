@@ -1,5 +1,5 @@
 import datetime
-import logging
+import logging as log
 import re
 import time
 
@@ -10,6 +10,11 @@ from virttest import error_context
 from virttest import utils_time
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 @error_context.context_aware

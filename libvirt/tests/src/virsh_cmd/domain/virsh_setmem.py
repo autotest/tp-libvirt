@@ -1,6 +1,6 @@
 import re
 import os
-import logging
+import logging as log
 import time
 
 from virttest import virsh
@@ -10,6 +10,11 @@ from virttest import utils_misc
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def manipulate_domain(test, vm_name, action, recover=False):

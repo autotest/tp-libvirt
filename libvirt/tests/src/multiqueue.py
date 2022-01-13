@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import time
 import threading
 import re
@@ -11,6 +11,11 @@ from virttest import remote
 from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def config_xml_multiqueue(vm_name, vcpu=1, multiqueue=4):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 import threading
 
@@ -11,6 +11,11 @@ from virttest import utils_package
 from virttest import virsh
 
 from virttest.staging.utils_memory import read_from_numastat
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_qemu_total_for_nodes():

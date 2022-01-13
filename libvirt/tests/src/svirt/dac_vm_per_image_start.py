@@ -2,7 +2,7 @@ import os
 import stat
 import pwd
 import grp
-import logging
+import logging as log
 
 from avocado.utils import process
 from avocado.utils import astring
@@ -16,6 +16,11 @@ from virttest import data_dir
 from virttest import libvirt_version
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def format_user_group_str(user, group):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import ast
 
 from virttest import virsh
@@ -6,6 +6,11 @@ from virttest import virt_vm
 
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_event_value(vm_name, perf_option, event):

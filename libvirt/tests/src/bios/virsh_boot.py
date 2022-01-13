@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import re
 from aexpect.utils import astring
@@ -27,6 +27,11 @@ cleanup_gluster = False
 cleanup_iso_file = False
 cleanup_image_file = False
 cleanup_released_image_file = False
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_stripped_output(cont, custom_codes=None):

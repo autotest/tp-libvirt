@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from virttest import libvirt_xml
 from virttest import utils_config
@@ -8,6 +8,11 @@ from virttest import virsh
 
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.devices import librarian
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_pty_log_file(file_path, boot_prompt):

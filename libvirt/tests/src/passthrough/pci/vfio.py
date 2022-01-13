@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import tempfile
 import re
 
@@ -12,6 +12,11 @@ from virttest import utils_misc
 from virttest import virt_vm
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import vm_xml
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def add_devices_to_iommu_group(vfio_controller, pci_id_list):

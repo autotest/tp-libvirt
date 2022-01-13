@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import re
 
@@ -26,6 +26,11 @@ from virttest.utils_test import libvirt
 from virttest import libvirt_version
 
 MIGRATE_RET = False
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_output(test, output_msg, params):

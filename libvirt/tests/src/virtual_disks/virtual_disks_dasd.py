@@ -1,6 +1,6 @@
 # pylint: disable=spelling
 # disable pylint spell checker to allow for dasda, fdasda, vdb, vda, virtio, blk
-import logging
+import logging as log
 import re
 
 from avocado.core.exceptions import TestError
@@ -14,6 +14,11 @@ from provider.vfio import ccw
 
 TEST_DASD_ID = None
 TARGET = "vdb"  # suppose guest has only one disk 'vda'
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_partitioned_dasd_path():

@@ -6,7 +6,7 @@ import os
 import random
 import socket
 import shutil
-import logging
+import logging as log
 import threading
 import time
 import datetime
@@ -38,6 +38,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest import libvirt_version
 
 q = Queue.Queue()
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 class PortAllocator(object):

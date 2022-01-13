@@ -12,7 +12,7 @@
 # Copyright: Red Hat Inc. 2020
 # Author: Sebastian Mitterle <smitterl@redhat.com>
 
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest.utils_zcrypt import CryptoDeviceInfoBuilder, \
@@ -23,6 +23,11 @@ from virttest.utils_misc import wait_for
 
 # minimal supported hwtype
 MIN_HWTYPE = 10
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from avocado.utils import cpu as cpuutil
 
@@ -8,6 +8,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 from virttest import utils_libvirtd
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_vcpu_placement(test, params):

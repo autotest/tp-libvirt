@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from virttest import libvirt_vm
 from virttest import migration
@@ -7,6 +7,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 from provider.migration import migration_base
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

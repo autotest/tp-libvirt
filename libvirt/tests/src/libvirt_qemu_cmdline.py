@@ -3,7 +3,7 @@ Test libvirt support features in qemu cmdline.
 BTW it not limited to hypervisors CPU/machine features.
 """
 import re
-import logging
+import logging as log
 import platform
 
 from virttest import virsh
@@ -13,6 +13,11 @@ from virttest.utils_test import libvirt
 from virttest import libvirt_version
 
 from avocado.utils import process, astring
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def config_feature_pv_eoi(test, vmxml, **kwargs):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import threading
 import time
 import os
@@ -21,6 +21,11 @@ global ret_setmmdt
 global ret_migration
 ret_setmmdt = False
 ret_migration = False
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def thread_func_setmmdt(domain, downtime, extra, dargs):

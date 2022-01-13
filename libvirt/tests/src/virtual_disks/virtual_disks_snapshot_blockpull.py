@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import locale
 import base64
 
@@ -21,6 +21,11 @@ from virttest.utils_libvirt import libvirt_ceph_utils
 from virttest.utils_nbd import NbdExport
 
 from virttest.libvirt_xml import vm_xml
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
