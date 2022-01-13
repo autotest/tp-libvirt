@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from avocado.core.exceptions import TestError
 
@@ -14,6 +14,11 @@ DASD_DISK = "/dev/dasda"
 DASD_PART = "/dev/dasda1"
 # default mount path inside guest
 MOUNT = "/mnt"
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def read_write_operations_work(session, chpids, makefs=True):
