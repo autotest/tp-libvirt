@@ -59,6 +59,7 @@ def destroy_active_pool_on_remote(params):
     :return True if successful, otherwise False
     """
     ret = True
+    remote_session = None
 
     remote_ip = params.get("migrate_dest_host")
     remote_user = params.get("migrate_dest_user", "root")
