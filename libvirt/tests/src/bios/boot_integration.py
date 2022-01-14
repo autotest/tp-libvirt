@@ -202,6 +202,8 @@ def run(test, params, env):
     snapshot_take = int(params.get("snapshot_take", "1"))
     postfix = params.get("postfix", "")
 
+    external_snapshot = None
+
     # Back VM XML
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
