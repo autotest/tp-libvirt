@@ -166,11 +166,6 @@ def run(test, params, env):
                 check_grub_file(vmchecker.checker, 'console_xvc0')
             if checkpoint in ('vnc_autoport', 'vnc_encrypt'):
                 vmchecker.check_graphics(params[checkpoint])
-            if checkpoint == 'sdl':
-                if output_mode == 'libvirt':
-                    vmchecker.check_graphics({'type': 'vnc'})
-                elif output_mode == 'rhev':
-                    vmchecker.check_graphics({'type': 'spice'})
             if checkpoint == 'pv_with_regular_kernel':
                 check_kernel(vmchecker.checker)
             if checkpoint in ['sound', 'pcspk']:
