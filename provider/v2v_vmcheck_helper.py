@@ -523,6 +523,8 @@ class VMChecker(object):
             'Virtio GPU': ['1050'],
             'Virtio input': ['1052'],
             'Inter-VM shared memory': ['1110'],
+            # https://pci-ids.ucw.cz/read/PC/1234/1111
+            'vga': ['1111'],
             # QXL paravirtual graphic card
             'qxl': ['0100'],
             # Cirrus Logic
