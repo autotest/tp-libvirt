@@ -279,4 +279,7 @@ def run(test, params, env):
         except AttributeError:
             pass
         for backup_xml in backup_xml_list:
-            backup_xml.sync()
+            if "--nowait" in domstats_option:
+                backup_xml.sync(options="--snapshots-metadata")
+            else:
+                backup_xml.sync()
