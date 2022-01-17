@@ -679,7 +679,10 @@ def run(test, params, env):
         if dom_newname:
             virsh.domrename(dom_newname, dom.name, **virsh_dargs)
         for xml in vmxml_backup:
-            xml.sync()
+            if "blockcommit" in events_list:
+                xml.sync(options="--snapshots-metadata")
+            else:
+                xml.sync()
         if os.path.exists(dump_path):
             shutil.rmtree(dump_path)
             os.mkdir(dump_path)
