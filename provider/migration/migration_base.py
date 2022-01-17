@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import types
 import re
 import signal                                        # pylint: disable=W0611
@@ -9,6 +9,11 @@ from virttest import utils_misc                      # pylint: disable=W0611
 from virttest.utils_conn import TLSConnection
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.migration import MigrationTest
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def parse_funcs(action_during_mig, test, params):
