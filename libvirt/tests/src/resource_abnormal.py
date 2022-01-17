@@ -2,7 +2,7 @@ import os
 import time
 import stat
 import signal
-import logging
+import logging as log
 import threading
 
 from avocado.utils import process
@@ -32,12 +32,16 @@ from virttest.utils_iptables import Iptables
 from virttest.utils_misc import SELinuxBoolean
 
 
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
+
+
 class Vol_clone(object):
 
     """
     Test volume clone with abnormal resource
     """
-
     def __init__(self, test, params):
         self.pvtest = None
         self.pool = None

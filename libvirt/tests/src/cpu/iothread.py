@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 import os
 
@@ -16,6 +16,11 @@ from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 
 ORG_IOTHREAD_POOL = {}
 UPDATE_IOTHREAD_POOL = {}
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

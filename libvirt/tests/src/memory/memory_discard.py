@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import ast
 import time
 
@@ -12,6 +12,11 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging import utils_memory
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

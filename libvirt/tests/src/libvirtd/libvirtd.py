@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import threading
 import re
 try:
@@ -12,6 +12,11 @@ from virttest import utils_misc
 from virttest import utils_libvirtd
 
 msg_queue = Queue.Queue()
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def start_journal():

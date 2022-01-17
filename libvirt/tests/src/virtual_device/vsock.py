@@ -2,7 +2,7 @@ import os
 import re
 import random
 import uuid
-import logging
+import logging as log
 import time
 
 from threading import Thread
@@ -25,6 +25,11 @@ NC_VSOCK_CMD = os.path.join(NC_VSOCK_DIR, 'nc-vsock')
 NC_VSOCK_SRV_OUT = os.path.join(NC_VSOCK_DIR, "server_out.txt")
 NC_VSOCK_CLI_TXT = os.path.join(NC_VSOCK_DIR, "client_in.txt")
 VSOCK_PORT = 1234
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

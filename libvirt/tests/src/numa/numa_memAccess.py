@@ -1,9 +1,14 @@
-import logging
+import logging as log
 
 from virttest.utils_test import libvirt
 from virttest import libvirt_xml
 from virttest import utils_test
 from virttest import virsh
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def define_and_check_xml(vmxml, params):

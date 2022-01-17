@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -17,6 +17,11 @@ from virttest.utils_test import libvirt as utlv
 
 _TIMEOUT = 5
 _BY_PATH_DIR = "/dev/disk/by-path"
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_symbols_by_blk(blkdev, method="by-path"):

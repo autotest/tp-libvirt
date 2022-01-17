@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import threading
 import time
 
@@ -26,6 +26,11 @@ ret_migration = True
 ret_jobabort = True
 ret_downtime_tolerable = True
 flag_migration = True
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def make_migration_options(method, optionstr="", timeout=60):

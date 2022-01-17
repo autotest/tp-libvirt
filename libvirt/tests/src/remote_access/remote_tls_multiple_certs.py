@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 
 import aexpect
@@ -15,6 +15,11 @@ from virttest import utils_misc
 from virttest import utils_split_daemons
 from virttest import remote as remote_old
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_server_details(params):

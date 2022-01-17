@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 
 from virttest import data_dir
@@ -15,6 +15,11 @@ from provider.interface import interface_base
 from provider.interface import check_points
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

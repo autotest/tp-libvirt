@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import time
 import errno
 import socket
@@ -22,6 +22,11 @@ from virttest.libvirt_xml.devices.graphics import Graphics
 from virttest import libvirt_version
 
 from avocado.utils import astring
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 class Console(aexpect.ShellSession):

@@ -1,5 +1,5 @@
 import json
-import logging
+import logging as log
 import re
 
 from avocado.core import exceptions
@@ -10,6 +10,11 @@ from virttest import utils_misc
 from virttest import virsh
 
 import xml.etree.ElementTree as ET
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_deprecated_name_list_qmp(vm_name, cmd):

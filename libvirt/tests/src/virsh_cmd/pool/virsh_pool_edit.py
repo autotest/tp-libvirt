@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import aexpect
 
 from virttest import virsh
@@ -8,6 +8,11 @@ from virttest import data_dir
 from virttest import remote
 from virttest.libvirt_xml import pool_xml
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def edit_pool(test, pool, edit_cmd):

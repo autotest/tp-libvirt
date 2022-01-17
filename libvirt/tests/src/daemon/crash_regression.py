@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 
 from six.moves import xrange
 
@@ -14,6 +14,11 @@ from virttest.libvirt_xml.xcepts import LibvirtXMLError
 from virttest.libvirt_xml.vm_xml import VMXML, VMCPUXML, VMPMXML
 from virttest.libvirt_xml.network_xml import NetworkXML, IPXML
 from virttest.libvirt_xml.devices import interface
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run_destroy_console(params, libvirtd, vm):

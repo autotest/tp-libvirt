@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import threading
 import re
@@ -16,6 +16,11 @@ from virttest.utils_test import libvirt as utlv
 
 
 q = Queue.Queue()
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def prepare_vol_xml(vol_name, vol_size, vol_format):

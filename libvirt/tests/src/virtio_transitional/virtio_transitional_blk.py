@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 
 from avocado.utils import download
 
@@ -13,6 +13,11 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import devices
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def find_device(vm, params):

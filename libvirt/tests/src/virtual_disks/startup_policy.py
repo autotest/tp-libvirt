@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 import shutil
 
 import aexpect
@@ -18,6 +18,11 @@ from virttest.libvirt_xml import pool_xml
 from virttest.xml_utils import XMLTreeFile
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

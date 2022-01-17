@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import time
 import re
@@ -27,6 +27,11 @@ from virttest.utils_test import libvirt as utl
 from virttest.libvirt_xml.devices.disk import Disk
 
 from provider import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 class JobTimeout(Exception):

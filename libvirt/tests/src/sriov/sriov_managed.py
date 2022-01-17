@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from provider.sriov import sriov_base
 
@@ -12,6 +12,11 @@ from virttest.utils_libvirt import libvirt_network
 from virttest.utils_libvirt import libvirt_vfio
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 
 from avocado.utils.software_manager.backends import rpm
@@ -17,6 +17,11 @@ from virttest.utils_test import libvirt
 
 DEFAULT_NET = 'default'
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def setup_firewalld():

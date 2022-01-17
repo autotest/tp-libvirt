@@ -1,5 +1,5 @@
 import re
-import logging
+import logging as log
 import tempfile
 import platform
 
@@ -15,6 +15,11 @@ from virttest.utils_libvirt import libvirt_pcicontr
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.vm_xml import VMCPUXML
 from virttest.libvirt_xml.devices.controller import Controller
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def remove_devices(vm_xml, type):

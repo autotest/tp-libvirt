@@ -1,7 +1,7 @@
 import os
 import re
 import base64
-import logging
+import logging as log
 import locale
 import time
 from tempfile import mktemp
@@ -18,6 +18,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.secret_xml import SecretXML
 
 _VIRT_SECRETS_PATH = "/etc/libvirt/secrets"
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_secret(params):

@@ -1,6 +1,6 @@
 import os
 import time
-import logging
+import logging as log
 
 from avocado.utils import cpu as cpu_util
 
@@ -11,6 +11,11 @@ from virttest import libvirt_xml
 from virttest import cpu
 from virttest import utils_package
 from virttest import utils_test
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

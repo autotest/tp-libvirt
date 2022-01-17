@@ -1,10 +1,15 @@
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_split_daemons
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_list(filter_ref):

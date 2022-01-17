@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from avocado.utils import process
 
@@ -7,6 +7,11 @@ from virttest.libvirt_xml import NetworkXML
 from virttest.libvirt_xml import LibvirtXMLError
 from virttest import virsh
 from virttest import xml_utils
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def do_low_level_test(virsh_dargs, test_xml, options_ref, extra):

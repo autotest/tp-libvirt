@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 import threading
 import time
 
@@ -19,6 +19,11 @@ _MPATH_DIR = "/dev/mapper/"
 _BYPATH_DIR = "/dev/disk/by-path/"
 _VM_FILE_PATH = "/tmp/test.txt"
 _REPEAT = 10
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def convert_img_to_dev(test, src_fmt, dest_fmt, img_src, blk_dev):

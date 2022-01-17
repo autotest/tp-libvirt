@@ -1,5 +1,5 @@
 import time
-import logging
+import logging as log
 import os
 import re
 
@@ -13,6 +13,11 @@ from virttest.utils_misc import wait_for
 from virttest import data_dir
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def prepare_boot_xml(vmxml, params):

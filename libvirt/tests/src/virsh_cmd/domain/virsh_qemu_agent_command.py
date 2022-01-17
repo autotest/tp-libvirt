@@ -1,6 +1,6 @@
 import os
 import time
-import logging
+import logging as log
 
 import aexpect
 
@@ -11,6 +11,11 @@ from virttest import data_dir
 from virttest import remote
 from virttest import utils_libvirtd
 from virttest import utils_misc
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def reset_domain(test, vm, vm_state, needs_agent=False, guest_cpu_busy=False,

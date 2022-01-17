@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import random
 
 from avocado.utils import cpu
@@ -11,6 +11,11 @@ from virttest.cpu import cpus_parser
 from virttest.staging import utils_cgroup
 from virttest.virt_vm import VMStartError
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_emulatorpin_from_cgroup(params, test):

@@ -1,12 +1,17 @@
 import os
 import time
-import logging
+import logging as log
 
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utl
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def finish_job(vm_name, target, timeout, test):

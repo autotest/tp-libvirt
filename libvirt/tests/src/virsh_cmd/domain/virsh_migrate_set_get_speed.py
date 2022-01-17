@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from virttest import ssh_key
 from virttest import virsh
@@ -23,6 +23,11 @@ UINT32_MiB = UINT32_MAX // (1024 * 1024)
 INT64_MiB = INT64_MAX // (1024 * 1024)
 UINT64_MiB = UINT64_MAX // (1024 * 1024)
 DEFAULT = INT64_MiB
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
