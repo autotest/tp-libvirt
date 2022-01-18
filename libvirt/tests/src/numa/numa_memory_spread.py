@@ -7,6 +7,7 @@ from avocado.utils import process
 
 from virttest import libvirt_xml
 from virttest import utils_misc
+from virttest import utils_test
 from virttest import utils_package
 from virttest import virsh
 
@@ -91,9 +92,7 @@ def prepare_host_for_test(params, test):
     return numa_memory, oversize, undersize, memory_to_eat, neighbour, nodeset_string
 
 
-def prepare_guest_for_test(
-        vm_name, session, test, oversize,
-        nodeset_string, memory_to_eat):
+def prepare_guest_for_test(vm_name, session, test, oversize, memory_to_eat):
     """
     Setup guest
 
@@ -101,16 +100,8 @@ def prepare_guest_for_test(
     :param session: current session to execute commands on
     :param test: test object
     :param oversize: memory to be taken
-    :param nodeset_string: nodeset string with nodes to be spread on
     :param memory_to_eat: The memory guest will use
     """
-    result = virsh.numatune(vm_name, debug=True)
-    if result.exit_status:
-        test.fail("Something went wrong during the virsh numatune command.")
-    result = virsh.numatune(vm_name, mode='restrictive', nodeset=nodeset_string, debug=True)
-    if result.exit_status:
-        test.fail("Something went wrong during the 'virsh numatune restrictive {}' "
-                  "command.".format(nodeset_string))
     result = virsh.setmem(vm_name, oversize, debug=True)
     if result.exit_status:
         test.fail("Something went wrong during the 'virsh setmem {}' "
@@ -178,19 +169,58 @@ def check_cgget_output(test, cgget_message):
         test.fail('{} not found in cgget output'.format(cgget_message))
 
 
-def run_memhog(test, session, test_memory, memhog_rt):
+def check_numa_memory(test, params, neighbour, total_prior, total_after):
     """
-    Run memhog in guest to consume memory
+    Check numa memory limit and cgroup info
 
     :param test: test object
+    :param params: parameters used
+    :param neighbour: the neighbour numa node
+    :param total_prior: total memory taken by qemu on all numa nodes before memhog
+    :param total_after: total memory taken by qemu on all numa nodes after memhog
+    """
+    limit = int(params.get("limit_mb"))
+    # And check the limit
+    if total_after[int(neighbour)] - total_prior[int(neighbour)] < limit:
+        test.fail('Total memory taken by the memhog on a neighbour node{} '
+                  'is not within limit: {}MB and hence, the memory was '
+                  'probably not spread properly.'.format(neighbour, limit))
+    # The cgget check is ignored for >= RHEL9
+    if distro.detect().name == 'rhel' and int(distro.detect().version) < 9:
+        cgget_message = params.get('cgget_message')
+        check_cgget_output(test, cgget_message)
+
+
+def make_memory_spread(test, vm, session, memory_to_eat, memhog_rt):
+    """
+    Run memhog in guest to make memory spread
+
+    :param test: test object
+    :param vm: vm object
     :param session: guest session
-    :param test_memory: the memory that guest needs to consume
+    :param memory_to_eat: the memory that guest needs to consume
     :param memhog_rt: save error message
     """
-    try:
-        session.cmd('memhog -r1 {}k'.format(test_memory), timeout=120)
-    except Exception as err:
-        memhog_rt["err"] = str(err)
+    def run_memhog(test, session, test_memory, memhog_rt):
+        try:
+            session.cmd('memhog -r1 {}k'.format(test_memory), timeout=120)
+        except Exception as err:
+            memhog_rt["err"] = str(err)
+    # Start consuming memory
+    memhog_thread = threading.Thread(target=run_memhog,
+                                     args=(test, session,
+                                           memory_to_eat, memhog_rt))
+    memhog_thread.setDaemon(True)
+    memhog_thread.start()
+    while True:
+        if memhog_thread.is_alive():
+            if vm.is_dead():
+                test.fail("The VM crashed when memhog was executed.")
+        else:
+            if memhog_rt:
+                test.fail("Failed to run memhog:{}".
+                          format(memhog_rt["err"]))
+            break
 
 
 def run(test, params, env):
@@ -201,6 +231,9 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    status_error = "yes" == params.get("status_error", "no")
+    memory_mode = params.get("memory_mode")
+    error_message = params.get("error_message")
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
     memhog_rt = {}
 
@@ -216,42 +249,34 @@ def run(test, params, env):
         # Prepare VM XML
         prepare_vm_xml_for_test(vm_name, numa_memory, oversize, undersize)
         # Start the VM
-        if vm.is_dead:
-            vm.start()
+        virsh.start(vm_name, ignore_status=False, debug=True)
         session = vm.wait_for_login()
-        # Prepare guest
-        prepare_guest_for_test(
-            vm_name, session, test, oversize,
-            nodeset_string, memory_to_eat)
-        # And get the numastat prior the test
-        total_prior = get_qemu_total_for_nodes()
-        # Start test
-        memhog_thread = threading.Thread(target=run_memhog,
-                                         args=(test, session,
-                                               memory_to_eat, memhog_rt))
-        memhog_thread.setDaemon(True)
-        memhog_thread.start()
-        while True:
-            if memhog_thread.is_alive():
-                if vm.is_dead():
-                    test.fail("The VM crashed when memhog was executed.")
+        # Check guest numatune status
+        result = virsh.numatune(vm_name, debug=True)
+        if result.exit_status:
+            test.fail("Something went wrong during the virsh numatune command.")
+        # Change guest numatune status
+        result = virsh.numatune(vm_name, mode=memory_mode, nodeset=nodeset_string, debug=True)
+        if result.exit_status:
+            if status_error:
+                # libvirt forbid memory migration for strict mode
+                utils_test.libvirt.check_status_output(result.exit_status,
+                                                       result.stderr_text,
+                                                       expected_fails=[error_message])
             else:
-                if memhog_rt:
-                    test.fail("Failed to run memhog:{}".
-                              format(memhog_rt["err"]))
-                break
-        # Get the numastat after the test
-        total_after = get_qemu_total_for_nodes()
-        limit = int(params.get("limit_mb"))
-        # And check the limit
-        if total_after[int(neighbour)] - total_prior[int(neighbour)] < limit:
-            test.fail('Total memory taken by the memhog on a neighbour node{} '
-                      'is not within limit: {}MB and hence, the memory was '
-                      'probably not spread properly.'.format(neighbour, limit))
-        # The cgget check is ignored for >= RHEL9
-        if distro.detect().name == 'rhel' and int(distro.detect().version) < 9:
-            cgget_message = params.get('cgget_message')
-            check_cgget_output(test, cgget_message)
+                test.fail("Something went wrong during the 'virsh numatune {} {}' "
+                          "command.".format(memory_mode, nodeset_string))
+        if not status_error:
+            # Prepare Guest
+            prepare_guest_for_test(vm_name, session, test,
+                                   oversize, memory_to_eat)
+            # And get the numastat prior the test
+            total_prior = get_qemu_total_for_nodes()
+            # Consume guest memory to make memory spread
+            make_memory_spread(test, vm, session, memory_to_eat, memhog_rt)
+            # Get the numastat after the test
+            total_after = get_qemu_total_for_nodes()
+            check_numa_memory(test, params, neighbour, total_prior, total_after)
 
     finally:
         backup_xml.sync()
