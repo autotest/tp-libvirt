@@ -123,6 +123,7 @@ def run(test, params, env):
         mac_addr = vm_ifaces[0].get_mac_address()
         opts = ' '.join([iface_type, "--mac %s" % mac_addr])
         virsh.detach_interface(vm_name, option=opts, debug=True,
+                               wait_for_event=True,
                                ignore_status=False)
         libvirt_network.check_network_connection(net_name, vf_no-1)
 
