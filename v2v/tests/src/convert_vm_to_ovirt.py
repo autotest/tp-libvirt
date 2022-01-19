@@ -201,7 +201,7 @@ def run(test, params, env):
         err_list = []
         virtio_win_ver = "[virtio-win-1.9.16-1,)"
         virtio_win_qxl_os = ['win2008r2', 'win7']
-        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
+        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019', 'win11', 'win2022']
 
         if os_type == 'windows':
             virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
