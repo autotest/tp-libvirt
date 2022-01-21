@@ -176,6 +176,7 @@ de
 deduplicate
 del
 deplist
+deps
 desc
 dest
 desturi
@@ -844,6 +845,7 @@ schedinfo
 schid
 scp
 scsi
+schid
 sd
 sda
 sdb
