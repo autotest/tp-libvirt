@@ -3,6 +3,7 @@ import re
 
 from avocado.utils import process
 from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
 from virttest import libvirt_version
@@ -35,7 +36,9 @@ def run(test, params, env):
             with open(disk_source, 'wb') as source_file:
                 source_file.seek((512 * 1024 * 1024) - 1)
                 source_file.write(str(0).encode())
-            virsh.attach_disk(vm_name, disk_source, front_device, debug=True)
+            out = virsh.attach_disk(vm_name, disk_source, front_device, debug=True)
+            utils_misc.wait_for(lambda: (out.stdout ==
+                                "Disk attached successfully"), 10)
             vm_ref = vm_name
             if "--all" in extra:
                 disk_source = ""
