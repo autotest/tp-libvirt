@@ -134,8 +134,8 @@ def run(test, params, env):
 
         # run numatune live change numa memory config
         for node in left_node:
-            virsh.numatune(vm_name, 'strict', str(node), options,
-                           debug=True, ignore_status=False)
+            virsh.numatune(vm_name, numa_memory.get('memory_mode'), str(node),
+                           options, debug=True, ignore_status=False)
 
             vmxml_new = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
             numa_memory_new = vmxml_new.numa_memory

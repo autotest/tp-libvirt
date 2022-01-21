@@ -107,9 +107,9 @@ def prepare_guest_for_test(
     result = virsh.numatune(vm_name, debug=True)
     if result.exit_status:
         test.fail("Something went wrong during the virsh numatune command.")
-    result = virsh.numatune(vm_name, mode='0', nodeset=nodeset_string, debug=True)
+    result = virsh.numatune(vm_name, mode='restrictive', nodeset=nodeset_string, debug=True)
     if result.exit_status:
-        test.fail("Something went wrong during the 'virsh numatune 0 {}' "
+        test.fail("Something went wrong during the 'virsh numatune restrictive {}' "
                   "command.".format(nodeset_string))
     result = virsh.setmem(vm_name, oversize, debug=True)
     if result.exit_status:
