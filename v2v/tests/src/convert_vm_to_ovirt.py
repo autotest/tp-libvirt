@@ -56,6 +56,7 @@ def check_qxl_warning(buf, os_type, os_version):
 
     return err_list
 
+
 def run(test, params, env):
     """
     Convert a remote vm to remote ovirt node.
