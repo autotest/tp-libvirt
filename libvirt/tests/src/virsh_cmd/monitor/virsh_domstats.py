@@ -1,4 +1,5 @@
 import logging as log
+import re
 
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
@@ -199,6 +200,82 @@ def check_output(output, vm, vm_state, options):
     return False not in check_pass
 
 
+def add_iothread(vm_name, iothread_add_id_list):
+    """
+    Add iothread to the vm
+    :param vm_name: vm name
+    :param iothread_add_id_list: list, iothread id list to add
+    """
+    for one_iothread in iothread_add_id_list:
+        virsh.iothreadadd(vm_name, one_iothread, '',
+                          ignore_status=False, debug=True)
+
+
+def del_iothread(vm_name, iothread_del_id_list):
+    """
+    Delete iothread from the vm
+    :param vm_name: vm name
+    :param iothread_del_id_list: list, iothread id list to delete
+    """
+    for one_iothread in iothread_del_id_list:
+        virsh.iothreaddel(vm_name, one_iothread, "",
+                          ignore_status=False, debug=True)
+
+
+def check_domstats_for_iothread(iothread_add_id_list,
+                                iothread_del_id_list,
+                                domstats_output,
+                                test):
+    """
+    Verify iothread info in domstats output
+    :param iothread_add_id_list: list, iothread id list to add
+    :param iothread_del_id_list: list, iothread id list to delete
+    :param domstats_output: output of virsh domstats --iothread
+    :param test: test object
+    :raises: test.fail if the result is not expected
+    """
+    iothread_left_id_list = iothread_add_id_list
+    if iothread_del_id_list:
+        iothread_left_id_list = list(set(iothread_add_id_list).difference(set(iothread_del_id_list)))
+    iothread_count_str = "iothread.count=%s" % len(iothread_left_id_list)
+    if not re.findall(iothread_count_str, domstats_output):
+        test.fail("iothread number is expected to {}, "
+                  "but not found in domstats output "
+                  "\n{}".format(len(iothread_left_id_list),
+                                domstats_output))
+    for one_id in iothread_left_id_list:
+        iothread_str = 'iothread.%s' % one_id
+        if not re.findall(iothread_str, domstats_output):
+            test.fail("Expected iothread {} is "
+                      "not found in domstats output "
+                      "{}".format(one_id, domstats_output))
+
+
+def test_iothread(vm_name, iothread_add_ids, iothread_del_ids,
+                  domstats_output, test):
+    """
+    Check domstats by operating iothread
+    :param vm_name: vm name
+    :param iothread_add_ids: list, iothread id to be added
+    :param iothread_del_ids: list, iothread id to be deleted
+    :param domstats_output: output of virsh domstats --iothread
+    :param test: test object
+    """
+    check_domstats_for_iothread(iothread_add_ids,
+                                None,
+                                domstats_output,
+                                test)
+    del_iothread(vm_name, iothread_del_ids)
+    output = virsh.domstats(vm_name,
+                            '--iothread',
+                            ignore_status=False,
+                            debug=True).stdout_text.strip()
+    check_domstats_for_iothread(iothread_add_ids,
+                                iothread_del_ids,
+                                output,
+                                test)
+
+
 def run(test, params, env):
     """
     Test command: virsh domstats.
@@ -215,6 +292,8 @@ def run(test, params, env):
     domstats_option = params.get("domstats_option")
     raw_print = "yes" == params.get("raw_print", "no")
     enforce_command = "yes" == params.get("enforce_command", "no")
+    iothread_add_ids = eval(params.get("iothread_add_ids", '[]'))
+    iothread_del_ids = eval(params.get("iothread_del_ids", '[]'))
     status_error = (params.get("status_error", "no") == "yes")
 
     if "--nowait" in domstats_option and not libvirt_version.version_compare(4, 5, 0):
@@ -257,7 +336,8 @@ def run(test, params, env):
             pool = ThreadPool(processes=1)
             async_result = pool.apply_async(create_snap, (vm_list, '--no-metadata'))
             return_val = async_result.get()
-
+        if "--iothread" in domstats_option:
+            add_iothread(vm_list, iothread_add_ids)
         # Run virsh command
         result = virsh.domstats(vm_list, domstats_option, ignore_status=True,
                                 debug=True)
@@ -277,6 +357,9 @@ def run(test, params, env):
                 for vm in vms:
                     if not check_output(output, vm, vm_state, domstats_option):
                         test.fail("Check command output failed")
+            if "--iothread" in domstats_option:
+                test_iothread(vm_list, iothread_add_ids,
+                              iothread_del_ids, output, test)
     finally:
         try:
             for vm in vms:
