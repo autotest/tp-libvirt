@@ -272,7 +272,7 @@ def run(test, params, env):
             elif "--security-info" in cmd_flag:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
-                password = "xyzxyzabcabc"
+                password = params.get("vnc_password", "aabbccdd")
                 # Add graphics vnc if guest doesn't have
                 if not vmxml.get_devices(device_type="graphics"):
                     logging.debug("Guest doesn't have graphic, add one")
