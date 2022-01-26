@@ -129,7 +129,7 @@ def run(test, params, env):
                 pattern = r"-device.*virtio-gpu-pci"
                 if with_packed:
                     if utils_misc.compare_qemu_version(6, 2, 0, is_rhev=False):
-                        pattern = r"-device.*virtio-gpu-pci.*packed\W{1,2}%s" % "true"
+                        pattern = r"-device.*virtio-gpu-pci.*packed\W{1,2}(on|true)"
                     else:
                         pattern = r"-device.*virtio-gpu-pci.*packed\W{1,2}%s" % driver_packed
             if guest_arch == 's390x':
