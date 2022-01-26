@@ -17,7 +17,7 @@ def run(test, params, env):
     Basic nbdkit tests
     """
     checkpoint = params.get('checkpoint')
-    version_requried = params.get('version_requried')
+    version_required = params.get('version_required')
 
     def test_filter_stats_fd_leak():
         """
@@ -140,9 +140,9 @@ nbdkit -rfv -U - --exportname / \
         if cmd_result.exit_status == 0 or expected_msg in cmd_result.stdout_text:
             test.fail('failed to test memory_max_disk_size')
 
-    if version_requried and not multiple_versions_compare(
-            version_requried):
-        test.cancel("Testing requires version: %s" % version_requried)
+    if version_required and not multiple_versions_compare(
+            version_required):
+        test.cancel("Testing requires version: %s" % version_required)
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
