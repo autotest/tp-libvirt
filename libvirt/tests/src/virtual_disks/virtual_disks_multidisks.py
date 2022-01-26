@@ -17,6 +17,7 @@ from virttest import nfs
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_disk
+from virttest import utils_split_daemons
 from virttest import data_dir
 from virttest import utils_selinux
 from virttest import utils_package
@@ -1997,7 +1998,7 @@ def run(test, params, env):
                 if not disk_detach_error:
                     utils_misc.wait_for(_check_disk_detach, timeout=20)
                 # Give time to log file to collect more events
-                if virtio_disk_hot_unplug_event_watch:
+                if virtio_disk_hot_unplug_event_watch and not utils_split_daemons.is_modular_daemon():
                     result = utils_misc.wait_for(lambda: check_info_in_libvird_log_file('"event": "DEVICE_DELETED"'), timeout=20)
                     if not result:
                         test.fail("Failed to get expected messages from log file: %s."
