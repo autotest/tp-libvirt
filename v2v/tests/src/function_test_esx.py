@@ -40,7 +40,7 @@ def run(test, params, env):
     enable_legacy_cp = params.get(
         "enable_legacy_crypto_policies",
         'no') == 'yes'
-    version_requried = params.get("version_requried")
+    version_required = params.get("version_required")
     unprivileged_user = params_get(params, 'unprivileged_user')
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")
@@ -695,9 +695,9 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
-        if version_requried and not utils_v2v.multiple_versions_compare(
-                version_requried):
-            test.cancel("Testing requires version: %s" % version_requried)
+        if version_required and not utils_v2v.multiple_versions_compare(
+                version_required):
+            test.cancel("Testing requires version: %s" % version_required)
 
         # See man virt-v2v-input-xen(1)
         if enable_legacy_cp:
