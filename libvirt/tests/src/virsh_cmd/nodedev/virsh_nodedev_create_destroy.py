@@ -174,6 +174,8 @@ def destroy_nodedev(test, params):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
