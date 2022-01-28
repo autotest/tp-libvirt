@@ -30,7 +30,7 @@ def read_write_operations_work(session, chpids, makefs=True):
     Per default the device gets a new filesystem setup.
 
     :param session: logged in guest session
-    :param chipds: string representing CHPIDs, e.g. 11122122
+    :param chpids: string representing CHPIDs, e.g. 11122122
     :param makefs: if False, the device is expected to have a valid
                    filesystem already
     :return: True on success
@@ -146,6 +146,21 @@ def mount(session):
         raise TestError("Couldn't mount partition. %s" % out)
 
 
+def set_device_offline(device_id, session=None):
+    """
+    Sets device offline
+
+    :param device_id: cssid.ssid.devno, e.g. 0.0.560a
+    :param session: guest session, command is run on host if None
+    :raises TestError: if the device can't be set offline
+    """
+
+    cmd = "chccwdev -d %s" % device_id
+    err, out = cmd_status_output(cmd, shell=True, session=session)
+    if err:
+        raise TestError("Could not set device offline. %s" % out)
+
+
 def set_device_online(device_id, session=None):
     """
     Sets device online
@@ -165,7 +180,7 @@ def get_first_device_identifiers(chpids, session):
     """
     Gets the usual device identifier cssid.ssid.devno
 
-    :param chpids: chipids where the disk is connected, e.g. "11122122"
+    :param chpids: chpids where the disk is connected, e.g. "11122122"
     :param session: guest session
     :return: Pair of strings, "cssid.ssid.devno" "cssid.ssid.schid"
     :raises TestError: if the device can't be found inside guest
@@ -176,7 +191,7 @@ def get_first_device_identifiers(chpids, session):
     devices_inside_guest = [x for x in paths.devices
                             if x[paths.HEADER["CHPIDs"]] == chpids]
     if not devices_inside_guest:
-        raise TestError("Device with chipds %s wasn't"
+        raise TestError("Device with chpids %s wasn't"
                         " found inside guest" % chpids)
     first = devices_inside_guest[0]
     return first[paths.HEADER["Device"]], first[paths.HEADER["Subchan."]]
@@ -188,7 +203,7 @@ def device_is_listed(session, chpids):
     path ids.
 
     :param session: guest console session
-    :param chipds: chpids where the disk is connected, e.g. "11122122"
+    :param chpids: chpids where the disk is connected, e.g. "11122122"
     :return: True if device is listed
     """
 
