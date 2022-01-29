@@ -23,6 +23,7 @@ from virttest.utils_test import libvirt as utlv
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
+from provider.v2v_vmcheck_helper import V2V_ADAPTE_SPICE_REMOVAL_VER
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -632,8 +633,13 @@ def run(test, params, env):
                     vmchecker.check_graphics({'type': graph_type})
                     video_type = vmchecker.xmltree.find(
                         './devices/video/model').get('type')
-                    if video_type.lower() != 'qxl':
-                        log_fail('Video expect QXL, actual %s' % video_type)
+                    if utils_v2v.multiple_versions_compare(V2V_ADAPTE_SPICE_REMOVAL_VER):
+                        expect_video_type = 'vga'
+                    else:
+                        expect_video_type = 'qxl'
+
+                    if video_type.lower() != expect_video_type:
+                        log_fail('Video expect %s, actual %s' % (expect_video_type, video_type))
             if checkpoint.startswith('listen'):
                 listen_type = vmchecker.xmltree.find(
                     './devices/graphics/listen').get('type')
@@ -786,7 +792,7 @@ def run(test, params, env):
             check_boot()
         if checkpoint.startswith('host_no_space'):
             session = aexpect.ShellSession('sh')
-            large_file = create_large_file(session, 1000)
+            large_file = create_large_file(session, 800)
             if checkpoint == 'host_no_space_setcache':
                 LOG.info('Set LIBGUESTFS_CACHEDIR=/home')
                 os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
