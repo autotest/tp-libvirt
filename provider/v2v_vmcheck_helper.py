@@ -983,8 +983,13 @@ def check_json_output(params):
     # Check content of the json file
     with open(json_file) as fp:
         vm = json.load(fp)
-        if vm['name'] != vm_name and len(vm['disks']) != disk_count:
+        if vm['name'] != vm_name or len(vm['disks']) != disk_count:
             LOG.error('Verify content failed in %s' % json_file)
+            result = False
+
+        if utils_v2v.multiple_versions_compare(
+                V2V_ADAPTE_SPICE_REMOVAL_VER) and vm['guestcaps']['video'] != 'vga':
+            LOG.error('Verify video failed: actual value is %s' % vm['guestcaps']['video'])
             result = False
 
     return result
