@@ -134,7 +134,7 @@ def run(test, params, env):
         """
         Get export domain uuid, image uuid and vol uuid from command output.
         """
-        tmp_target = re.findall(r"qemu-img\s'convert'\s.+\s'(\S+)'\n", output)
+        tmp_target = re.findall(r"RHV: (?:disk:|will export \S+ to) (\S+)", output)
         if len(tmp_target) < 1:
             test.error("Fail to find tmp target file name when converting vm"
                        " disk image")
@@ -334,44 +334,6 @@ def run(test, params, env):
             LOG.info('%-15s:%18s <-> %s', key, source_info[key], check_map[key])
             if str(check_map[key]) not in source_info[key]:
                 fail.append(key)
-
-        # Check disk info
-        disk = list(xml.get_disk_all_by_expr('device==disk').values())[0]
-
-        def _get_disk_subelement_attr_value(obj, attr, subattr):
-            if obj.find(attr) is not None:
-                return obj.find(attr).get(subattr)
-        bus = _get_disk_subelement_attr_value(disk, 'target', 'bus')
-        driver_type = _get_disk_subelement_attr_value(disk, 'driver', 'type')
-        path = _get_disk_subelement_attr_value(disk, 'source', 'file')
-
-        # For esx, disk output is like "disks: json: { ... } (raw) [scsi]"
-        # For xen, disk output is like "disks: json: { ... } [ide]"
-        # For kvm, disk output is like "/rhel8.0-2.qcow2 (qcow2) [virtio-blk]"
-        if hypervisor == 'kvm':
-            disks_info_pattern = r"%s \(%s\) \[%s" % (path, driver_type, bus)
-        elif hypervisor == 'esx':
-            # replace '.vmdk' with '-flat.vmdk', this is done in v2v
-            path_pattern1 = path.split()[1].replace('.vmdk', '-flat.vmdk')
-            # In newer qemu version, '_' is replaced with '%5f'.
-            path_pattern2 = path_pattern1.replace('_', '%5f')
-            # nbd:unix:/tmp/v2vnbdkit.u44G6C/nbdkit1.sock:exportname=/ (raw)
-            # [scsi]
-            path_pattern_nbd = r'nbd:unix:/.*? \(raw\) \[%s\]' % bus
-            # For esx, '(raw)' is fixed? Let's see if others will be met.
-            disks_info_pattern = '|'.join(
-                [path_pattern_nbd] + [
-                    r"https://%s/folder/%s\?dcPath=data&dsName=esx.*} \(raw\) \[%s" %
-                    (remote_host, i, bus) for i in [
-                        path_pattern1, path_pattern2]])
-        elif hypervisor == 'xen':
-            disks_info_pattern = "file\.path.*%s.*file\.host.*%s.* \[%s" % (
-                path, remote_host, bus)
-
-        source_disks = source_info['disks'].split()
-        LOG.info('disks:%s<->%s', source_info['disks'], disks_info_pattern)
-        if not re.search(disks_info_pattern, source_info['disks']):
-            fail.append('disks')
 
         # Check nic info
         nic = list(xml.get_iface_all().values())[0]
