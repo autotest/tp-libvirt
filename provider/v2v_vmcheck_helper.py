@@ -292,6 +292,9 @@ class VMChecker(object):
                 video_model = 'qxl'
             elif self.os_version in ['win7', 'win2008r2']:
                 video_model = 'qxl'
+            # win11 and win2022 don't have qxldod driver in virtio-win, but they are unexpectedly
+            # inspected to win10 and win2016 by v2v, so the qxl driver is installed by mistake.
+            # this only affects RHEL8.
             elif self.os_version in ['win10', 'win2016', 'win2019', 'win11', 'win2022'] and has_qxldod:
                 video_model = 'qxl'
             else:
@@ -751,8 +754,14 @@ class VMChecker(object):
         expect_adapter = 'Microsoft Basic Display Driver'
         virtio_win_qxl_os = ['win2008r2', 'win7']
         virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
+        # bz1997446, bz2012658
+        # Those guests are incorrectly inspected to other versions, so
+        # the QXL drivers are installed unexpectedly. This only happens
+        # in RHEL8 and the issue is not going to be fixed. so add a
+        # workaround to pass the checking.
+        unexpected_qxldod_os = ['win11', 'win2022']
         if has_virtio_win and expect_video == 'qxl':
-            if has_qxldod and self.os_version in virtio_win_qxldod_os:
+            if has_qxldod and self.os_version in virtio_win_qxldod_os + unexpected_qxldod_os:
                 expect_adapter = 'Red Hat QXL controller'
             elif self.os_version in virtio_win_qxl_os:
                 expect_adapter = 'Red Hat QXL GPU'
