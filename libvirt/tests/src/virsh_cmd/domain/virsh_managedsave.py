@@ -347,6 +347,11 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
     # Get config files.
     qemu_config = utils_config.LibvirtQemuConfig()
+    libvirt_guests_file = "/etc/sysconfig/libvirt-guests"
+    libvirt_guests_file_create = False
+    if not os.path.exists(libvirt_guests_file):
+        process.run("touch %s" % libvirt_guests_file, verbose=True)
+        libvirt_guests_file_create = True
     libvirt_guests_config = utils_config.LibvirtGuestsConfig()
     # Get libvirt-guests service
     libvirt_guests = Factory.create_service("libvirt-guests")
@@ -516,6 +521,8 @@ def run(test, params, env):
         qemu_config.restore()
         libvirt_guests_config.restore()
         libvirtd.restart()
+        if libvirt_guests_file_create:
+            os.remove(libvirt_guests_file)
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True, debug=True)
