@@ -170,6 +170,7 @@ def run(test, params, env):
     qemu_conf_list = eval(params.get("qemu_conf_list", "[]"))
     qemu_conf_path = params.get("qemu_conf_path")
     min_port = params.get("min_port")
+    status_error = "yes" == params.get("status_error", "no")
 
     vm_session = None
     qemu_conf_remote = None
@@ -267,7 +268,10 @@ def run(test, params, env):
                                        bk_uri, dest_uri, test)
 
         if migrate_again:
+            if not status_error:
+                virsh.destroy(vm_name, uri=dest_uri, debug=True, ignore_status=True)
             if not vm.is_alive():
+                vm.connect_uri = bk_uri
                 vm.start()
             vm_session = vm.wait_for_login()
             action_during_mig = migration_base.parse_funcs(params.get('action_during_mig_again'),
