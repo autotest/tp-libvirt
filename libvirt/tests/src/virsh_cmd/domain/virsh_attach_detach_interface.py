@@ -497,11 +497,14 @@ def run(test, params, env):
         options = set_options(iface_type, None, iface_mac,
                               options_suffix, "detach")
 
+        wait_for_event = True
+        if options_suffix == "--config":
+            wait_for_event = False
         # Start detach-interface test
         if save_restore == "yes" and vm_ref == dom_id:
             vm_ref = vm_name
         detach_result = virsh.detach_interface(
-            vm_ref, options, wait_for_event=True, **virsh_dargs)
+            vm_ref, options, wait_for_event=wait_for_event, **virsh_dargs)
         detach_status = detach_result.exit_status
         detach_msg = detach_result.stderr.strip()
 
