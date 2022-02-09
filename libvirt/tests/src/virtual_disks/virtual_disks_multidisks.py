@@ -1973,6 +1973,20 @@ def run(test, params, env):
                 dt_options = ""
                 if devices[i] == "cdrom":
                     dt_options = "--config"
+                # Make sure that VM is completely booted before detach operation
+                if vm.is_alive():
+                    vm.wait_for_login().close()
+
+                def _check_disk(target):
+                    """
+                    Check disk with specific target
+
+                    :param target: target device
+                    """
+                    return target in vm.get_blk_devices()
+
+                utils_misc.wait_for(lambda: _check_disk(device_targets[i]), 10, 3)
+
                 ret = virsh.detach_disk(vm_name, device_targets[i],
                                         dt_options, wait_remove_event=True,
                                         **virsh_dargs)
