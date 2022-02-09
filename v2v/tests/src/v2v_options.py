@@ -555,6 +555,18 @@ def run(test, params, env):
                     test.fail('Found "%s" in /var/log/messages' % msg_content)
             if checkpoint == 'print_estimate_tofile':
                 check_print_estimate(estimate_file)
+            if checkpoint == 'copy_to_local':
+                vm_disk = vm_name + '-disk1'
+                vm_xml_name = vm_name + '.xml'
+                check_result = False
+                if os.path.exists(vm_disk) and os.path.exists(vm_xml_name):
+                    check_result = True
+                for i in [vm_disk, vm_xml_name]:
+                    if os.path.isfile(i):
+                        os.remove(i)
+                if not check_result:
+                    test.fail('Not found disk or xml created by virt-v2v-copy-to-local')
+
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             test.fail(log_check)
