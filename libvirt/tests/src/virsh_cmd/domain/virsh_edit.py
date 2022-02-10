@@ -44,7 +44,7 @@ def run(test, params, env):
     # check whether vim editor is set as $EDITOR in environment
     try:
         vim = path.find_command("vim")
-    except path.path.CmdNotFoundError:
+    except path.CmdNotFoundError:
         if not utils_package.package_install("vim"):
             test.cancel("virsh edit need vim editor for using regex to edit "
                         "vmxml")
