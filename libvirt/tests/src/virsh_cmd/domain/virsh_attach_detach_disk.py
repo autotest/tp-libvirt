@@ -135,6 +135,23 @@ def run(test, params, env):
             else:
                 test.cancel("Current libvirt version doesn't support shareable feature")
 
+    def wait_for_disk(vm, target):
+        """
+        wait for target disk until it is available
+
+        :param vm: vm object
+        :param target: target device
+        """
+        def _check_disk(target):
+            """
+            Check disk with specific target
+
+            :param target: target device
+            """
+            return target in vm.get_blk_devices()
+
+        utils_misc.wait_for(lambda: _check_disk(target), 10, 3)
+
     # Get test command.
     test_cmd = params.get("at_dt_disk_test_cmd", "attach-disk")
 
@@ -357,6 +374,7 @@ def run(test, params, env):
                    % (ret.stdout.strip(), device_source_name))
             if process.system(cmd, ignore_status=True, shell=True):
                 test.error("Check disk with source image name failed")
+        wait_for_disk(vm, device_target)
         status = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True).exit_status
 
@@ -376,10 +394,12 @@ def run(test, params, env):
                                        device_target2, at_options,
                                        debug=True).exit_status
         elif test_cmd == "detach-disk":
+            wait_for_disk(vm, device_target2)
             status = virsh.detach_disk(vm_ref, device_target2, dt_options,
                                        debug=True).exit_status
     if test_systemlink_twice:
         # Detach lvm previously attached.
+        wait_for_disk(vm, device_target)
         result = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True)
         libvirt.check_exit_status(result)
@@ -399,6 +419,7 @@ def run(test, params, env):
                                    debug=True)
         libvirt.check_exit_status(result)
         # Detach lvm 01 again.
+        wait_for_disk(vm, device_target)
         result = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True)
         libvirt.check_exit_status(result)
