@@ -664,6 +664,8 @@ def run(test, params, env):
                 suspend_vm(vm)
             elif action == 'cancel_concurrent_migration':
                 cancel_bg_migration()
+            elif action == 'check_ipaddr':
+                check_ipaddress(ipaddress)
             time.sleep(3)
 
     def do_actions_after_migrate(params):
@@ -989,6 +991,22 @@ def run(test, params, env):
         logging.debug("status:[%d], stdout:[%s], stderr:[%s]",
                       p.returncode, stdout, stderr)
 
+    def check_ipaddress(ipaddress):
+        """
+        Parses netstat output for check ip address on remote
+
+        :param ipaddress: ip address
+        """
+        cmd = "netstat -tunap|grep 4915"
+        result = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target,
+                                       ignore_status=False)
+        pat_str = r'.*%s:(\d*).*ESTABLISHED.*qemu-kvm.*' % ipaddress[:17]
+        search = re.search(pat_str, result.stdout_text.strip())
+        if search:
+            logging.debug("Check ip address: %s", ipaddress)
+        else:
+            test.fail("Pattern '%s' is not matched in '%s'" % (pat_str, result.stdout_text.strip()))
+
     migration_test = migration.MigrationTest()
     migration_test.check_parameters(params)
 
@@ -1094,6 +1112,8 @@ def run(test, params, env):
     arch = platform.machine()
     if any([hpt_resize, contrl_index, htm_state]) and 'ppc64' not in arch:
         test.cancel("The case is PPC only.")
+
+    ipaddress = params.get("ipaddress", None)
 
     # For TLS
     tls_recovery = params.get("tls_auto_recovery", "yes")
