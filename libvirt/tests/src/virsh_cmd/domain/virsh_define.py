@@ -103,7 +103,9 @@ def run(test, params, env):
             if not ret.exit_status:
                 virsh.undefine(vm_name)
             # restore the original vm
-            virsh.define(xml_backup_file)
+            ret = virsh.define(xml_backup_file)
+            if ret.duration > 3:
+                test.fail("Define timeout: expected no more than 3s; actually spent %.2fs" % ret.duration)
         return
 
     assert uuid is not None
