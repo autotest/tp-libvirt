@@ -3,7 +3,7 @@ import re
 import time
 import base64
 import json
-import logging
+import logging as log
 import platform
 import aexpect
 import locale
@@ -37,6 +37,11 @@ from virttest.staging import lv_utils
 from virttest.utils_libvirt import libvirt_pcicontr
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -1755,10 +1760,18 @@ def run(test, params, env):
             if len(serial) != 0 and serial[0] != "":
                 cmd += " | grep serial=%s" % serial[0]
             if len(wwn) != 0 and wwn[0] != "":
+                wwn0_value = wwn[0]
+                # After libvirt 7.9.0, qemu output becomes json format,
+                # therefore wwn in hex is changed to decimal
+                if libvirt_version.version_compare(7, 9, 0):
+                    wwn0_value = str(int(wwn[0], 16))
                 if len(wwn) > 1:
-                    cmd += " | grep -E \"wwn=(0x)?%s.*wwn=(0x)?%s\"" % (wwn[0], wwn[1])
+                    wwn1_value = wwn[1]
+                    if libvirt_version.version_compare(7, 9, 0):
+                        wwn1_value = str(int(wwn[1], 16))
+                    cmd += " | grep -E \"wwn=(0x)?%s.*wwn=(0x)?%s\"" % (wwn0_value, wwn1_value)
                 else:
-                    cmd += " | grep -E \"wwn=(0x)?%s\"" % wwn[0]
+                    cmd += " | grep -E \"wwn=(0x)?%s\"" % wwn0_value
             if vendor != "":
                 cmd += " | grep vendor=%s" % vendor
             if product != "":

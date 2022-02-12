@@ -1,14 +1,14 @@
 import os
-import logging
+import logging as log
 import tempfile
 import collections
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
-from virttest import utils_misc
 from virttest import utils_package
 from virttest import libvirt_storage
 from virttest import ceph
@@ -19,6 +19,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_chain_xml(disk_xml, chain_lst):
@@ -294,12 +299,15 @@ def run(test, params, env):
                 ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide ceph host first.")
-
+                detected_distro = distro.detect()
+                rbd_img_prefix = '_'.join(['rbd', detected_distro.name,
+                                           detected_distro.version,
+                                           detected_distro.release,
+                                           detected_distro.arch])
                 params.update(
                    {"disk_source_name": os.path.join(
                       pool_name,
-                      'rbd_blockpull_' + utils_misc.generate_random_string(4) +
-                      '.img')})
+                      rbd_img_prefix + '.img')})
                 if utils_package.package_install(["ceph-common"]):
                     ceph.rbd_image_rm(
                         mon_host, *params.get("disk_source_name").split('/'))

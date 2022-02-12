@@ -1,7 +1,7 @@
 import os
 import re
 import time
-import logging
+import logging as log
 
 from avocado.utils import process
 from avocado.utils import software_manager
@@ -16,6 +16,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging.utils_memory import drop_caches
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -172,7 +177,7 @@ def run(test, params, env):
         def wait_func():
             return libvirt_guests.raw_status().stdout.count("Resuming guest")
 
-        utils_misc.wait_for(wait_func, 5)
+        utils_misc.wait_for(wait_func, 15)
         if is_systemd:
             ret = libvirt_guests.raw_status()
         logging.info("status output: %s", ret.stdout_text)
@@ -342,6 +347,11 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
     # Get config files.
     qemu_config = utils_config.LibvirtQemuConfig()
+    libvirt_guests_file = "/etc/sysconfig/libvirt-guests"
+    libvirt_guests_file_create = False
+    if not os.path.exists(libvirt_guests_file):
+        process.run("touch %s" % libvirt_guests_file, verbose=True)
+        libvirt_guests_file_create = True
     libvirt_guests_config = utils_config.LibvirtGuestsConfig()
     # Get libvirt-guests service
     libvirt_guests = Factory.create_service("libvirt-guests")
@@ -511,6 +521,8 @@ def run(test, params, env):
         qemu_config.restore()
         libvirt_guests_config.restore()
         libvirtd.restart()
+        if libvirt_guests_file_create:
+            os.remove(libvirt_guests_file)
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True, debug=True)

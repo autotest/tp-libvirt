@@ -6,7 +6,7 @@ This module is meant to wrap test cases to validate virsh blockcommit with relat
 :copyright: 2021 Red Hat Inc.
 """
 
-import logging
+import logging as log
 import os
 import time
 import threading
@@ -24,6 +24,11 @@ from virttest.utils_test import libvirt
 
 from virttest.utils_libvirt import libvirt_ceph_utils
 from virttest.utils_libvirt import libvirt_disk
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -222,7 +227,7 @@ def run(test, params, env):
         replace_disk_image, backing_chain_list = libvirt_disk.make_syslink_path_backing_files(
             pre_set_root_dir, volume_path_list, disk_format)
         params.update({'disk_source_name': replace_disk_image,
-                       'disk_type': 'file',
+                       'disk_type': 'block',
                        'disk_format': 'qcow2',
                        'disk_source_protocol': 'file'})
         blk_source_image_after_converted = os.path.join(pre_set_root_dir, syslink_top_img)
@@ -375,6 +380,7 @@ def run(test, params, env):
         if disk_src_protocol == "rbd":
             replace_disk_image, blk_source_image_after_converted, backing_chain_list = setup_rbd_env()
         if disk_src_protocol == "pool":
+            pre_set_root_dir = os.path.join(data_dir.get_tmp_dir(), "images")
             replace_disk_image, blk_source_image_after_converted, skip_first_one, backing_chain_list = setup_volume_pool_env()
         libvirt.set_vm_disk(vm, params, tmp_dir)
 
@@ -409,7 +415,7 @@ def run(test, params, env):
 
         # Do snapshots
         _, snapshot_external_disks = libvirt_disk.create_reuse_external_snapshots(
-            vm, pre_set_root_dir, skip_first_one, disk_target)
+            vm, pre_set_root_dir, skip_first_one, disk_target, disk_type)
         # Set blockcommit_options
         phase_two_blockcommit_options = "--verbose --keep-relative --shallow --active --pivot"
 

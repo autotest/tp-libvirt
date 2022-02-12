@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from avocado.utils import cpu
 
@@ -8,6 +8,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_misc
 
 
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
+
+
 def prepare_vm(guest_xml, params):
     """
     Configure guest xml before the test.
@@ -15,17 +20,29 @@ def prepare_vm(guest_xml, params):
     :param guest_xml: the guest xml
     :param params: the dict the cases use
     """
-    vcpu_placement = params.get("vcpu_placement", "static")
-    iothread_id = params.get("iothread_id", "1")
-    vcpu_current = params.get("vcpu_current", 3)
-    vcpu_max = params.get("vcpu_max", 4)
+    logging.debug("Begin to prepare vm xml")
+    iothread_id = params.get("iothread_id")
     vm_name = params.get("main_vm")
+    vcpu_attrs = eval(params.get('vcpu_attrs', '{}'))
+    if vcpu_attrs:
+        guest_xml.setup_attrs(**vcpu_attrs)
 
-    guest_xml.placement = vcpu_placement
-    guest_xml.current_vcpu = int(vcpu_current)
-    guest_xml.vcpu = vcpu_max
+    if guest_xml.xmltreefile.find('cputune'):
+        guest_xml.del_cputune()
+
+    cputune = vm_xml.VMCPUTuneXML()
+    cputune_attrs = params.get('cputune_attrs')
+    if cputune_attrs and cputune_attrs.count("%s"):
+        cputune_attrs = cputune_attrs % params.get('cpulist', '0')
+    if cputune_attrs:
+        cputune_attrs = eval(cputune_attrs)
+        cputune.setup_attrs(**cputune_attrs)
+        guest_xml.cputune = cputune
+
     guest_xml.sync()
-    virsh.iothreadadd(vm_name, iothread_id, '--config', ignore_status=False, debug=True)
+    if iothread_id:
+        virsh.iothreadadd(vm_name, iothread_id, '--config',
+                          ignore_status=False, debug=True)
 
 
 def run_func(func_name, vm_name, pattern=r'(\d+) +(\S+)'):
@@ -150,9 +167,8 @@ def check_to_skip_case(params, test):
     :param test: test object
     :raises: test.cancel if skip criteria are matched
     """
-    vcpu_placement = params.get("vcpu_placement", "static")
-
-    if vcpu_placement == 'auto':
+    need_2_numa_node = "yes" == params.get("need_2_numa_node", "no")
+    if need_2_numa_node:
         host_numa_node = utils_misc.NumaInfo()
         node_list = host_numa_node.online_nodes_withmem
         logging.debug("host online nodes with memory %s", node_list)
@@ -161,84 +177,133 @@ def check_to_skip_case(params, test):
                         "but found '%s' numa host node" % len(node_list))
 
 
-def run(test, params, env):
+def test_change_vcpupin_emulatorpin_iothreadpin(test, guest_xml, cpu_max_index, vm, params):
     """
-    Test commands: virsh.vcpupin, virsh.iothreadpin, virsh.emulatorpin.
-
-    Steps:
-    - Configure the test VM
     - Check default values are correct
     - Perform virsh vcpupin, check iothreadpin and emulatorpin are not impacted
     - Perform virsh emulatorpin, check vcpupin and iothreadpin are not impacted
     - Perform virsh iotheadpin, check vcpupin and emulatorpin are not impacted
-    - Recover test environment
-    """
 
-    start_vm = params.get("start_vm", "yes") == "yes"
-    change_vcpupin = params.get("change_vcpupin", "no") == 'yes'
-    change_emulatorpin = params.get("change_emulatorpin", "no") == 'yes'
-    change_iothreadpin = params.get("change_iothreadpin", "no") == 'yes'
+    :param test: test object
+    :param guest_xml: vm xml
+    :param cpu_max_index: int, cpu maximum index on host
+    :param vm: vm instance
+    :param params: test dict
+    :return: None
+    """
+    def _check_result(vcpupin_result, emulatorpin_result, iothreadpin_result,
+                      changed_vcpupin, changed_emulatorpin, changed_iothreadpin):
+        """
+        Internal common function to check the command result
+
+        :param vcpupin_result: dict, the vcpupin command result
+        :param emulatorpin_result: dict, the emulatorpin command result
+        :param iothreadpin_result: dict, the iothreadpin command result
+        :param changed_vcpupin: dict, the changed value for vcpupin
+        :param changed_emulatorpin: dict, the changed value for emulatorpin
+        :param changed_iothreadpin: dict, the changed value for iothreadpin
+        :return: None
+        """
+        check_vcpupin(vcpupin_result, changed_vcpupin, vm.name, test)
+        check_emulatorpin(emulatorpin_result, changed_emulatorpin, vm.name, test)
+        check_iothreadpin(iothreadpin_result, changed_iothreadpin, vm.name, test)
+
+    prepare_vm(guest_xml, params)
+    vm.start()
+    logging.debug("After vm starts, vm xml is:"
+                  "%s\n", vm_xml.VMXML.new_from_dumpxml(vm.name))
+
+    logging.debug("Get default vcpupin/emulatorpin/iothreadpin values of the vm")
+    vcpupin_result, emulatorpin_result, iothreadpin_result = get_current_values(vm.name)
+    logging.debug("Check and compare default vcpupin/emulatorpin/iothreadpin values")
+    compare_results(vcpupin_result, emulatorpin_result,
+                    iothreadpin_result, params.get("iothread_id"), test)
+
+    # Change vcpupin, then check vcpupin, and emulatorpin/iothreadpin
+    # should not be effected.
+    logging.debug("Now change vcpupin value to the guest")
+    cpu_list = "0-%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
+    virsh.vcpupin(vm.name, "0", cpu_list, None, debug=True, ignore_status=False)
+    changed_vcpupin = {'0': cpu_list}
+    _check_result(vcpupin_result, emulatorpin_result, iothreadpin_result,
+                  changed_vcpupin, None, None)
+
+    # Change emulatorpin, then check emulatorpin, and vcpupin/iothreadpin
+    # should not be effected
+    logging.debug("Now change emulatorpin value to the guest")
+    vcpupin_result, emulatorpin_result, iothreadpin_result = get_current_values(vm.name)
+    cpu_list = "0,%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
+    virsh.emulatorpin(vm.name, cpu_list, ignore_status=False, debug=True)
+    changed_emulatorpin = {'*': cpu_list}
+    _check_result(vcpupin_result, emulatorpin_result, iothreadpin_result,
+                  None, changed_emulatorpin, None)
+
+    # Change iothreadpin, then check iothreadpin, and vcpupin/emulatorpin
+    # should not be effected
+    logging.debug("Now change iothreadpin value to the guest")
+    vcpupin_result, emulatorpin_result, iothreadpin_result = get_current_values(vm.name)
+    cpu_list = "%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
+    iothread_id = params.get("iothread_id")
+    virsh.iothreadpin(vm.name, iothread_id, cpu_list, ignore_status=False, debug=True)
+    changed_iothreadpin = {iothread_id: cpu_list}
+    _check_result(vcpupin_result, emulatorpin_result, iothreadpin_result,
+                  None, None, changed_iothreadpin)
+
+
+def test_start_with_emulatorpin(test, guest_xml, cpu_max_index, vm, params):
+    """
+    Start vm with emulatorpin info and check values with virsh command and guest xml
+
+    :param test: test object
+    :param guest_xml: vm xml
+    :param cpu_max_index: int, cpu maximum index on host
+    :param vm: vm object
+    :param params: test dict
+    :return: None
+    :raises: test.fail if emulatorpin info is not expected
+    """
+    # Config emulatorpin info in the guest xml
+    cpulist = '%s' % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
+    params['cpulist'] = cpulist
+    prepare_vm(guest_xml, params)
+
+    vm.start()
+    logging.debug("After vm starts, vm xml is:"
+                  "%s\n", vm_xml.VMXML.new_from_dumpxml(vm.name))
+    # Check emulatorpin value from virsh command
+    emulatorpin_current = run_func(virsh.emulatorpin, vm.name,
+                                   pattern=r"(\*): +(\S+)")
+    if emulatorpin_current['*'] != cpulist:
+        test.fail("Expect the emulatorpin from virsh cmd is '%s', "
+                  "but found '%s'".format(cpulist, emulatorpin_current['*']))
+    # Check emulatorpin value from guest xml
+    guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+    if guest_xml.cputune.emulatorpin != cpulist:
+        test.fail("Expect the emulatorpin from guest xml is '%s', "
+                  "but found '%s'".format(cpulist, guest_xml.cputune.emulatorpin))
+
+
+def run(test, params, env):
+    """
+    Test commands: virsh.vcpupin, virsh.iothreadpin, virsh.emulatorpin.
+    """
+    check_to_skip_case(params, test)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    check_to_skip_case(params, test)
-
-    if vm.is_alive():
-        vm.destroy()
 
     original_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_copy = original_vm_xml.copy()
-    prepare_vm(original_vm_xml, params)
 
     host_cpus = cpu.online_cpus_count()
     cpu_max_index = int(host_cpus) - 1
+    test_case = params.get("test_case", "")
+    run_test = eval("test_%s" % test_case)
 
     try:
-
-        if start_vm:
-            vm.start()
-        logging.debug("After vm starts, vm xml is:"
-                      "%s\n", vm_xml.VMXML.new_from_dumpxml(vm_name))
-        logging.debug("Get default vcpupin/emulatorpin/iothreadpin values of the vm")
-        vcpupin_result, emulatorpin_result, iothreadpin_result = get_current_values(vm_name)
-        logging.debug("Check and compare default vcpupin/emulatorpin/iothreadpin values")
-        compare_results(vcpupin_result, emulatorpin_result,
-                        iothreadpin_result, params.get("iothreadid", '1'), test)
-        if change_vcpupin:
-            # Change vcpupin, then check vcpupin, and emulatorpin/iothreadpin
-            # should not be effected.
-            logging.debug("Now change vcpupin value to the guest")
-            cpu_list = "0-%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
-            virsh.vcpupin(vm_name, "0", cpu_list, None, debug=True, ignore_status=False)
-            changed_vcpupin = {'0': cpu_list}
-            check_vcpupin(vcpupin_result, changed_vcpupin, vm_name, test)
-            check_emulatorpin(emulatorpin_result, None, vm_name, test)
-            check_iothreadpin(iothreadpin_result, None, vm_name, test)
-
-        if change_emulatorpin:
-            # Change emulatorpin, then check emulatorpin, and vcpupin/iothreadpin
-            # should not be effected
-            logging.debug("Now change emulatorpin value to the guest")
-            vcpupin_result, emulatorpin_result, iothreadpin_result = get_current_values(vm_name)
-            cpu_list = "0,%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
-            virsh.emulatorpin(vm_name, cpu_list, ignore_status=False, debug=True)
-            changed_emulatorpin = {'*': cpu_list}
-            check_emulatorpin(emulatorpin_result, changed_emulatorpin, vm_name, test)
-            check_vcpupin(vcpupin_result, None, vm_name, test)
-            check_iothreadpin(iothreadpin_result, None, vm_name, test)
-
-        if change_iothreadpin:
-            # Change iothreadpin, then check iothreadpin, and vcpupin/emulatorpin
-            # should not be effected
-            logging.debug("Now change iothreadpin value to the guest")
-            vcpupin_result, emulatorpin_result, iothreadpin_result = get_current_values(vm_name)
-            cpu_list = "%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
-            iothread_id = params.get("iothread_id", "1")
-            virsh.iothreadpin(vm_name, iothread_id, cpu_list,  ignore_status=False, debug=True)
-            changed_iothreadpin = {iothread_id: cpu_list}
-            check_iothreadpin(iothreadpin_result, changed_iothreadpin, vm_name, test)
-            check_vcpupin(vcpupin_result, None, vm_name, test)
-            check_emulatorpin(emulatorpin_result, None, vm_name, test)
+        if vm.is_alive():
+            vm.destroy()
+        run_test(test, original_vm_xml, cpu_max_index, vm, params)
     finally:
         vm_xml_copy.sync()
         if vm.is_alive():

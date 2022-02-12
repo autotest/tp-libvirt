@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import time
 
 
@@ -12,6 +12,11 @@ DEACTIVATE_FORWARDING = 0
 FORWARD_COUNTER_TIMEOUT = 360
 CHECK_INTERVAL = 60
 FORWARD_VALUE_PATH = None
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def update_kvm_parameter(hz):

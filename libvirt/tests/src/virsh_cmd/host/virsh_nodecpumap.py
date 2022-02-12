@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import random
 
 from avocado.utils import process
@@ -7,6 +7,11 @@ from avocado.utils import cpu
 from virttest import virsh
 
 SYSFS_SYSTEM_PATH = "/sys/devices/system/cpu"
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_present_cpu():

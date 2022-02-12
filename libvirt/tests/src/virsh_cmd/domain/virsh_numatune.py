@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from avocado.utils import path as utils_path
 from avocado.utils import process
@@ -10,6 +10,11 @@ from virttest import utils_misc
 from virttest.cpu import cpus_parser
 from virttest.libvirt_xml.xcepts import LibvirtXMLAccessorError
 from virttest.staging import utils_cgroup
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_numatune_xml(params):

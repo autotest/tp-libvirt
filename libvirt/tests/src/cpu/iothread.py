@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 import os
 
@@ -16,6 +16,11 @@ from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 
 ORG_IOTHREAD_POOL = {}
 UPDATE_IOTHREAD_POOL = {}
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -312,10 +317,12 @@ def run(test, params, env):
         :param dargs: standardized virsh function API keywords
         :raise: test.fail if disk is not detached
         """
-        virsh.detach_disk(vm_name, disk_path, debug=True)
 
         def _check_disk(target):
             return target not in vm.get_blk_devices()
+
+        utils_misc.wait_for(lambda: not _check_disk(target), 10, 3)
+        virsh.detach_disk(vm_name, disk_path, debug=True)
 
         if not utils_misc.wait_for(lambda: _check_disk(target), 10):
             test.fail("Disk {} is not detached.".format(target))

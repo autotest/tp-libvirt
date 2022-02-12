@@ -1,5 +1,5 @@
 import time
-import logging
+import logging as log
 
 from avocado.utils import process
 
@@ -7,6 +7,11 @@ from virttest import virsh
 from virttest import libvirt_vm
 from virttest.remote import LoginTimeoutError
 from virttest.remote import LoginProcessTerminatedError
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 class TimeoutError(Exception):

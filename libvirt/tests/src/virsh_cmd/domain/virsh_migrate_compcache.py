@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import subprocess
 import time
 
@@ -8,6 +8,11 @@ from avocado.utils import path as utils_path
 from virttest import virsh
 from virttest import ssh_key
 from virttest import migration
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_page_size():

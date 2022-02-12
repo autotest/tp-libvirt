@@ -1,6 +1,6 @@
 import re
 import os
-import logging
+import logging as log
 
 from virttest import ssh_key
 from virttest import data_dir
@@ -8,6 +8,11 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.vm_xml import VMCPUXML
 from virttest import cpu
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

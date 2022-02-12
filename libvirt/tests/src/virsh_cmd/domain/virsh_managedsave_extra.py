@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import shutil
 
@@ -12,6 +12,11 @@ from virttest.libvirt_xml.devices import graphics
 from virttest.utils_test import libvirt
 
 MANAGEDSAVE_FILE = '/var/lib/libvirt/qemu/save/%s.save'
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 from shutil import copyfile
 from avocado.core import exceptions
 from avocado.utils import process
@@ -16,6 +16,11 @@ from virttest.libvirt_xml.devices import disk
 from virttest.utils_test import libvirt as utlv
 
 _DELAY_TIME = 5
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def mount_and_dd(session, mount_disk):

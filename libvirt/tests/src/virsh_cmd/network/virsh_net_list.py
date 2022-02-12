@@ -1,5 +1,5 @@
 import re
-import logging
+import logging as log
 
 from avocado.core import exceptions
 from virttest import virsh
@@ -7,6 +7,11 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import network_xml
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

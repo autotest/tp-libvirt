@@ -1,11 +1,16 @@
 import re
-import logging
+import logging as log
 
 from virttest.libvirt_xml.devices.sound import Sound
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import virsh
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -52,23 +57,23 @@ def run(test, params, env):
             cmdline = cmdline_file.read()
         # Check sound model
         if sound_model == "ac97":
-            pattern = r"-device.AC97"
+            pattern = r"-device.*AC97"
         elif sound_model == "ich6":
-            pattern = r"-device.intel-hda"
+            pattern = r"-device.*intel-hda"
         else:
-            pattern = r"-device.ich9-intel-hda"
+            pattern = r"-device.*ich9-intel-hda"
         if not re.search(pattern, cmdline):
             test.fail("Can not find the %s sound device "
                       "in qemu cmd line." % sound_model)
         # Check codec type
         if sound_model in ["ich6", "ich9"]:
             if codec_type == "micro":
-                pattern = r"-device.hda-micro"
+                pattern = r"-device.*hda-micro"
             else:
                 # Duplex is default in qemu cli even codec not set
                 # But before 0.9.13, no codec_type so no default
                 if libvirt_version.version_compare(0, 9, 13):
-                    pattern = r"-device.hda-duplex"
+                    pattern = r"-device.*hda-duplex"
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the %s codec for sound dev "
                           "in qemu cmd line." % codec_type)

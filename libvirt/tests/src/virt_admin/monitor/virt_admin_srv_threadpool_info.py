@@ -20,8 +20,9 @@ def run(test, params, env):
 
     if not server_name:
         server_name = virt_admin.check_server_name()
+
     config = virt_admin.managed_daemon_config()
-    daemon = utils_libvirtd.Libvirtd()
+    daemon = utils_libvirtd.Libvirtd("virtproxyd")
 
     try:
         if server_name == "admin":
@@ -33,10 +34,10 @@ def run(test, params, env):
             config.prio_workers = prio_workers
 
         daemon.restart()
-        vp = virt_admin.VirtadminPersistent()
-        result = vp.srv_threadpool_info(server_name, ignore_status=True, debug=True)
+        result = virt_admin.srv_threadpool_info(server_name, ignore_status=True,
+                                                debug=True)
 
-        output = result.stdout.strip().splitlines()
+        output = result.stdout_text.strip().splitlines()
         out_split = [item.split(':') for item in output]
         out_dict = dict([[item[0].strip(), item[1].strip()] for item in out_split])
 

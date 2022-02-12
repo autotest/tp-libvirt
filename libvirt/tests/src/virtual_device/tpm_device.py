@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 import time
 import platform
 import shutil
@@ -24,6 +24,11 @@ from avocado.utils import service
 from avocado.utils import process
 from avocado.utils import astring
 from avocado.utils import path as utils_path
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -252,7 +257,7 @@ def run(test, params, env):
             cmdline = cmdline_file.read()
             logging.debug("Qemu cmd line info:\n %s", cmdline)
         # Check tpm model
-        pattern_list = ["-device.%s" % tpm_model]
+        pattern_list = ["-device.*%s" % tpm_model]
         # Check backend type
         if backend_type == "passthrough":
             dev_num = re.search(r"\d+", device_path).group()
@@ -260,10 +265,10 @@ def run(test, params, env):
         else:
             # emulator backend
             backend_segment = "id=tpm-tpm0,chardev=chrtpm"
-        pattern_list.append("-tpmdev.%s,%s" % (backend_type, backend_segment))
+        pattern_list.append("-tpmdev.*%s,%s" % (backend_type, backend_segment))
         # Check chardev socket for vtpm
         if backend_type == "emulator":
-            pattern_list.append("-chardev.socket,id=chrtpm,"
+            pattern_list.append("-chardev.*socket,id=chrtpm,"
                                 "path=.*/run/libvirt/qemu/swtpm/%s-%s-swtpm.sock" % (domid, vm_name))
         for pattern in pattern_list:
             if not re.search(pattern, cmdline):
@@ -482,7 +487,10 @@ def run(test, params, env):
         for test_sh in ["test_smoke.sh", "test_space.sh"]:
             pattern = "ok .* selftests: tpm2: %s" % test_sh
             if not re.search(pattern, output) or ("not ok" in output):
-                test.fail("test suite check failed.")
+                if "ERROR" in output:
+                    test.fail("test suite check failed: %s" % re.findall(r'test_.* ... ERROR', output))
+                else:
+                    test.fail("test suite check failed.")
         logging.info("------PASS on kernel test suite check------")
 
     def persistent_test(vm, vm_xml):

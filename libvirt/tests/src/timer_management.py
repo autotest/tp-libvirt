@@ -3,7 +3,7 @@ Test module for timer management.
 """
 
 import os
-import logging
+import logging as log
 import time
 
 from avocado.core import exceptions
@@ -19,6 +19,11 @@ from virttest.libvirt_xml import xcepts
 from virttest import libvirt_version
 
 CLOCK_SOURCE_PATH = '/sys/devices/system/clocksource/clocksource0/'
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def set_clock_xml(test, vm, params):

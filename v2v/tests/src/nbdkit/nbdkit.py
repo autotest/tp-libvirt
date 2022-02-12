@@ -9,13 +9,15 @@ from virttest import utils_misc
 from virttest.utils_v2v import multiple_versions_compare
 from virttest.utils_v2v import params_get
 
+LOG = logging.getLogger('avocado.v2v.' + __name__)
+
 
 def run(test, params, env):
     """
     Basic nbdkit tests
     """
     checkpoint = params.get('checkpoint')
-    version_requried = params.get('version_requried')
+    version_required = params.get('version_required')
 
     def test_filter_stats_fd_leak():
         """
@@ -41,7 +43,7 @@ EOF
         with open(tmp_logfile) as fd:
             ptn = r'(\d+)\s+->\s+\'(pipe|socket):'
             cont = fd.read()
-            logging.debug('all fds:\n%s', cont)
+            LOG.debug('all fds:\n%s', cont)
             for i, _ in re.findall(ptn, cont):
                 if int(i) > 2:
                     count += 1
@@ -98,12 +100,12 @@ nbdkit -rfv -U - --exportname / \
 
             # replace thumbprint with correct value
             nbdkit_cmd = nbdkit_cmd.strip()[:-2] + vddk_thumbprint
-            logging.info('nbdkit command:\n%s', nbdkit_cmd)
+            LOG.info('nbdkit command:\n%s', nbdkit_cmd)
 
             if checkpoint == 'vddk_stats':
                 vddk_stats = params_get(params, "vddk_stats")
                 nbdkit_cmd = nbdkit_cmd + ' -D vddk.stats=%s' % vddk_stats
-                logging.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
+                LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
 
             # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
@@ -138,9 +140,9 @@ nbdkit -rfv -U - --exportname / \
         if cmd_result.exit_status == 0 or expected_msg in cmd_result.stdout_text:
             test.fail('failed to test memory_max_disk_size')
 
-    if version_requried and not multiple_versions_compare(
-            version_requried):
-        test.cancel("Testing requires version: %s" % version_requried)
+    if version_required and not multiple_versions_compare(
+            version_required):
+        test.cancel("Testing requires version: %s" % version_required)
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()

@@ -1,9 +1,14 @@
-import logging
+import logging as log
 import aexpect
 
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import remote
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def edit_filter_xml(test, filter_name, edit_cmd):

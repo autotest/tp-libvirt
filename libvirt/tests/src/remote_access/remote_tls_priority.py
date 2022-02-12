@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest import remote
@@ -10,6 +10,11 @@ from virttest import remote as remote_old
 from virttest.utils_conn import TLSConnection
 from virttest.utils_test.libvirt import remotely_control_libvirtd
 from virttest.utils_test.libvirt import customize_libvirt_config
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def change_parameter_on_remote(connect_params, replacement_dict):

@@ -1,5 +1,6 @@
-import logging
+import logging as log
 import re
+import threading
 
 from avocado.utils import distro
 from avocado.utils import process
@@ -10,6 +11,11 @@ from virttest import utils_package
 from virttest import virsh
 
 from virttest.staging.utils_memory import read_from_numastat
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_qemu_total_for_nodes():
@@ -101,9 +107,9 @@ def prepare_guest_for_test(
     result = virsh.numatune(vm_name, debug=True)
     if result.exit_status:
         test.fail("Something went wrong during the virsh numatune command.")
-    result = virsh.numatune(vm_name, mode='0', nodeset=nodeset_string, debug=True)
+    result = virsh.numatune(vm_name, mode='restrictive', nodeset=nodeset_string, debug=True)
     if result.exit_status:
-        test.fail("Something went wrong during the 'virsh numatune 0 {}' "
+        test.fail("Something went wrong during the 'virsh numatune restrictive {}' "
                   "command.".format(nodeset_string))
     result = virsh.setmem(vm_name, oversize, debug=True)
     if result.exit_status:
@@ -172,6 +178,21 @@ def check_cgget_output(test, cgget_message):
         test.fail('{} not found in cgget output'.format(cgget_message))
 
 
+def run_memhog(test, session, test_memory, memhog_rt):
+    """
+    Run memhog in guest to consume memory
+
+    :param test: test object
+    :param session: guest session
+    :param test_memory: the memory that guest needs to consume
+    :param memhog_rt: save error message
+    """
+    try:
+        session.cmd('memhog -r1 {}k'.format(test_memory), timeout=120)
+    except Exception as err:
+        memhog_rt["err"] = str(err)
+
+
 def run(test, params, env):
     """
     Test Live update the numatune nodeset and memory can spread to other node
@@ -181,6 +202,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
+    memhog_rt = {}
 
     try:
         # Prepare host
@@ -204,11 +226,20 @@ def run(test, params, env):
         # And get the numastat prior the test
         total_prior = get_qemu_total_for_nodes()
         # Start test
-        result = session.cmd('memhog -r1 {}k'.format(memory_to_eat),
-                             timeout=120)
-        logging.debug(result)
-        if vm.is_dead():
-            test.fail('The VM crashed when memhog was executed.')
+        memhog_thread = threading.Thread(target=run_memhog,
+                                         args=(test, session,
+                                               memory_to_eat, memhog_rt))
+        memhog_thread.setDaemon(True)
+        memhog_thread.start()
+        while True:
+            if memhog_thread.is_alive():
+                if vm.is_dead():
+                    test.fail("The VM crashed when memhog was executed.")
+            else:
+                if memhog_rt:
+                    test.fail("Failed to run memhog:{}".
+                              format(memhog_rt["err"]))
+                break
         # Get the numastat after the test
         total_after = get_qemu_total_for_nodes()
         limit = int(params.get("limit_mb"))

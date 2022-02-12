@@ -1,7 +1,7 @@
 import os
 import time
 import re
-import logging
+import logging as log
 import signal
 import aexpect
 import shutil
@@ -23,6 +23,11 @@ from virttest.libvirt_xml.devices.panic import Panic
 from virttest.libvirt_xml.devices.watchdog import Watchdog
 
 from xml.dom.minidom import parseString
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -59,6 +64,7 @@ def run(test, params, env):
     dump_path = '/var/lib/libvirt/qemu/dump'
     part_format = params.get("part_format")
     strict_order = "yes" == params.get("strict_order", "no")
+    dom_newname = params.get("dom_newname")
     if qemu_monitor_test:
         event_cmd = "qemu-monitor-event"
     events_list = params.get("events_list")
@@ -193,7 +199,7 @@ def run(test, params, env):
                 logging.debug("Current event is: %s", event)
                 if event in ['start', 'restore', 'create', 'edit', 'define',
                              'undefine', 'crash', 'device-removal-failed',
-                             'watchdog', 'io-error']:
+                             'watchdog', 'io-error', 'domrename']:
                     if dom.is_alive():
                         dom.destroy()
                         if event in ['create', 'define']:
@@ -335,6 +341,11 @@ def run(test, params, env):
                     add_disk(dom.name, new_disk, 'vdb', '')
                     expected_events_list.append("'device-added' for %s:"
                                                 " virtio-disk1")
+
+                    def _check_disk(target):
+                        return target not in dom.get_blk_devices()
+
+                    utils_misc.wait_for(lambda: not _check_disk('vdb'), 10, 3)
                     virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
@@ -434,16 +445,24 @@ def run(test, params, env):
                                    options="",
                                    key=metadata_key,
                                    **virsh_dargs)
-                    expected_events_list.append("'metadata-change' for %s: "
-                                                "element http://app.org/")
+                    if not libvirt_version.version_compare(7, 10, 0):
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "element http://app.org/")
+                    else:
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "type element, uri http://app.org/")
                 elif event == "metadata_remove":
                     virsh.metadata(dom.name,
                                    metadata_uri,
                                    options="--remove",
                                    key=metadata_key,
                                    **virsh_dargs)
-                    expected_events_list.append("'metadata-change' for %s: "
-                                                "element http://app.org/")
+                    if not libvirt_version.version_compare(7, 10, 0):
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "element http://app.org/")
+                    else:
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "type element, uri http://app.org/")
                 elif event == "blockcommit":
                     disk_path = dom.get_blk_devices()['vda']['source']
                     virsh.snapshot_create_as(dom.name, "s1 --disk-only --no-metadata", **virsh_dargs)
@@ -498,6 +517,7 @@ def run(test, params, env):
                     logging.debug("Current vmxml with watchdog dev is %s\n" % vmxml)
                     virsh.start(dom.name, **virsh_dargs)
                     session = dom.wait_for_login()
+                    watchdog_dev.try_modprobe(session)
                     try:
                         session.cmd("echo 0 > /dev/watchdog")
                     except (ShellTimeoutError, ShellProcessTerminatedError) as details:
@@ -539,6 +559,14 @@ def run(test, params, env):
                     ret = virsh.domstate(dom.name, "--reason", **virsh_dargs)
                     if ret.stdout.strip() != "paused (I/O error)":
                         test.fail("Domain state should still be paused due to I/O error!")
+                elif event == "domrename":
+                    virsh.domrename(dom.name, dom_newname, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s: Undefined Renamed")
+                    expected_events_list.append("'lifecycle' for %s: Defined Renamed")
+                elif event == "kill_qemu":
+                    os.kill(dom.get_pid(), getattr(signal, signal_name))
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Stopped Failed")
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
@@ -571,12 +599,15 @@ def run(test, params, env):
         logging.debug("Actual events: %s", output)
         event_idx = 0
         for dom_name, event in expected_events_list:
+            logging.debug("my event_idx is %s" % event_idx)
             if event in expected_events_list[0] and not strict_order:
                 event_idx = 0
             if re.search("block-threshold", event):
                 event_str = "block-threshold"
             else:
                 event_str = "event " + event % ("domain.*%s.*" % dom_name)
+            if 'Defined Renamed' in event_str:
+                event_str = event_str.replace(dom_name, dom_newname)
             logging.info("Expected event: %s", event_str)
             match = re.search(event_str, output[event_idx:])
             if match:
@@ -650,6 +681,8 @@ def run(test, params, env):
             if dom.is_alive():
                 dom.destroy()
         virsh_session.close()
+        if dom_newname:
+            virsh.domrename(dom_newname, dom.name, **virsh_dargs)
         for xml in vmxml_backup:
             xml.sync()
         if os.path.exists(dump_path):

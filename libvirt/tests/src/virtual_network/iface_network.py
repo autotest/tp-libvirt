@@ -2,7 +2,7 @@ import re
 import os
 import sys
 import ast
-import logging
+import logging as log
 import platform
 import shutil
 
@@ -25,6 +25,11 @@ from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -88,7 +93,7 @@ TIMEOUT 3"""
             osxml.type = vmxml.os.type
             osxml.arch = vmxml.os.arch
             osxml.machine = vmxml.os.machine
-            osxml.loader = "/usr/share/seabios/bios.bin"
+            osxml.loader = "/usr/share/seabios/bios-256k.bin"
             osxml.bios_useserial = "yes"
             if utils_misc.compare_qemu_version(4, 0, 0, False):
                 osxml.bios_reboot_timeout = "-1"
@@ -129,6 +134,8 @@ TIMEOUT 3"""
             source['dev'] = net_ifs[0]
         del iface.source
         iface.source = source
+        if iface_vlan:
+            iface.vlan = iface.new_vlan(**iface_vlan)
         if iface_model:
             iface.model = get_iface_model(iface_model, host_arch)
         if iface_rom:
@@ -617,6 +624,7 @@ TIMEOUT 3"""
     iface_boot = params.get("iface_boot")
     iface_model = params.get("iface_model")
     iface_driver = params.get("iface_driver")
+    iface_vlan = eval(params.get("iface_vlan", "None"))
     multiple_guests = params.get("multiple_guests")
     create_network = "yes" == params.get("create_network", "no")
     attach_iface = "yes" == params.get("attach_iface", "no")

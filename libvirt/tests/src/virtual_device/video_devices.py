@@ -1,4 +1,4 @@
-import logging
+import logging as Log
 import re
 
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -11,6 +11,11 @@ from six import iteritems
 
 from math import ceil
 from math import log
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = Log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -100,15 +105,15 @@ def run(test, params, env):
         cmdline = open('/proc/%s/cmdline' % vm.get_pid()).read().replace("\x00", " ")
         logging.debug("the cmdline is: %s" % cmdline)
         # s390x only supports virtio
-        s390x_pattern = r"-device\svirtio-gpu-ccw"
+        s390x_pattern = r"-device.*virtio-gpu-ccw"
         # aarch64 only supports virtio
-        aarch64_pattern = r"-device\svirtio-gpu-pci"
+        aarch64_pattern = r"-device.*virtio-gpu-pci"
 
         if is_primary or is_primary is None:
             if model_type == "vga":
-                pattern = r"-device\sVGA"
+                pattern = r"-device.*VGA"
             else:
-                pattern = r"-device\s%s-vga" % model_type
+                pattern = r"-device.*%s-vga" % model_type
             if guest_arch == 's390x':
                 pattern = s390x_pattern
             elif guest_arch == 'aarch64':
@@ -118,11 +123,11 @@ def run(test, params, env):
                           "in qemu cmd line." % model_type)
         else:
             if model_type == "qxl":
-                pattern = r"-device\sqxl,"
+                pattern = r"-device.*qxl,"
             elif model_type == "virtio":
-                pattern = r"-device\svirtio-gpu-pci"
+                pattern = r"-device.*virtio-gpu-pci"
                 if with_packed:
-                    pattern = r"-device\svirtio-gpu-pci.*packed=%s" % driver_packed
+                    pattern = r"-device.*virtio-gpu-pci.*packed\W{1,2}(true|on)"
             if guest_arch == 's390x':
                 pattern = s390x_pattern
             if not re.search(pattern, cmdline):
@@ -137,14 +142,14 @@ def run(test, params, env):
         cmdline = open('/proc/%s/cmdline' % vm.get_pid()).read().replace("\x00", " ")
         logging.debug("the cmdline is: %s" % cmdline)
         # s390x only supports virtio
-        s390x_pattern = r"-device\svirtio-gpu-ccw\S+max_outputs=%s"
+        s390x_pattern = r"-device.*virtio-gpu-ccw.*max_outputs\W{1,2}%s"
         # aarch64 only supports virtio
-        aarch64_pattern = r"-device\svirtio-gpu-pci\S+max_outputs=%s"
+        aarch64_pattern = r"-device.*virtio-gpu-pci.*max_outputs\W{1,2}%s"
 
         if is_primary or is_primary is None:
             model_heads = kwargs.get("model_heads", default_primary_heads)
             if model_type == "qxl" or model_type == "virtio":
-                pattern = r"-device\s%s-vga\S+max_outputs=%s" % (model_type, model_heads)
+                pattern = r"-device.*%s-vga.*max_outputs\W{1,2}%s" % (model_type, model_heads)
                 if guest_arch == 's390x':
                     pattern = s390x_pattern % model_heads
                 elif guest_arch == 'aarch64':
@@ -157,7 +162,7 @@ def run(test, params, env):
             if model_type == "qxl":
                 pattern = r"-device\sqxl\S+max_outputs=%s" % model_heads
             elif model_type == "virtio":
-                pattern = r"-device\svirtio-gpu-pci\S+max_outputs=%s" % model_heads
+                pattern = r"-device.*virtio-gpu-pci.*max_outputs\W{1,2}%s" % model_heads
             if guest_arch == 's390x':
                 pattern = s390x_pattern % model_heads
             if not re.search(pattern, cmdline):
@@ -174,16 +179,16 @@ def run(test, params, env):
 
         if mem_type == "ram" or mem_type == "vram":
             cmd_mem_size = str(int(mem_size)*1024)
-            pattern = r"-device\sqxl-vga\S+%s_size=%s" % (mem_type, cmd_mem_size)
+            pattern = r"-device.*qxl-vga.*%s_size\W{1,2}%s" % (mem_type, cmd_mem_size)
         if mem_type == "vram" and model_type == "vga":
             cmd_mem_size = str(int(mem_size)//1024)
-            pattern = r"-device\sVGA\S+vgamem_mb=%s" % cmd_mem_size
+            pattern = r"-device.*VGA.*vgamem_mb\W{1,2}%s" % cmd_mem_size
         if mem_type == "vgamem":
             cmd_mem_size = str(int(mem_size)//1024)
-            pattern = r"-device\sqxl-vga\S+vgamem_mb=%s" % cmd_mem_size
+            pattern = r"-device.*qxl-vga.*vgamem_mb\W{1,2}%s" % cmd_mem_size
         if mem_type == "vram64":
             cmd_mem_size = str(int(mem_size)//1024)
-            pattern = r"-device\sqxl-vga\S+vram64_size_mb=%s" % cmd_mem_size
+            pattern = r"-device.*qxl-vga.*vram64_size_mb\W{1,2}%s" % cmd_mem_size
 
         if not re.search(pattern, cmdline):
             test.fail("The %s memory size of %s video device "

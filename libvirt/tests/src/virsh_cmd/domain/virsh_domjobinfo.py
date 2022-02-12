@@ -1,6 +1,6 @@
 import os
 import subprocess
-import logging
+import logging as log
 import time
 import locale
 
@@ -8,6 +8,11 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -64,7 +69,7 @@ def run(test, params, env):
             if out_dict["Job type"].strip() != job_type:
                 test.fail("Expect %s Job type but got %s" %
                           (job_type, out_dict["Job type"].strip()))
-            if out_dict["Operation"].strip() != actions.capitalize():
+            if job_type != "None" and out_dict["Operation"].strip() != actions.capitalize():
                 test.fail("Expect %s Operation but got %s" %
                           (actions.capitalize(), out_dict["Operation"].strip()))
 
@@ -89,6 +94,7 @@ def run(test, params, env):
     act_opt = params.get("dump_opt", "")
     vm_ref = params.get("domjobinfo_vm_ref")
     status_error = params.get("status_error", "no")
+    keep_complete = "yes" == params.get("keep_complete", "no")
     libvirtd = params.get("libvirtd", "on")
     # Use tmp_pipe to act as target file for job operation in subprocess,
     # such as vm.dump, vm.save, etc.
@@ -183,7 +189,13 @@ def run(test, params, env):
             except OSError:
                 pass
 
-    # Get completed domjobinfo
+    # Get completed domjobinfo with --keep-completed option, next completed domjobinfo gathering will still get statistics.
+    if keep_complete:
+        time.sleep(5)
+        vm_ref_tmp = "%s --completed --keep-completed" % vm_ref
+        virsh.domjobinfo(vm_ref_tmp, ignore_status=False, debug=True)
+
+    # Get completed domjobinfo.(Without -keep-completed option, later completed domjobinfo gathering will get None.)
     if status_error == "no":
         time.sleep(5)
         if act_opt != "--live" and vm_ref == domid:
@@ -192,6 +204,10 @@ def run(test, params, env):
         vm_ref = "%s --completed" % vm_ref
         ret_cmplt = virsh.domjobinfo(vm_ref, ignore_status=True, debug=True)
         status_cmplt = ret_cmplt.exit_status
+
+    # Get completed domjobinfo again, get None.
+    if keep_complete:
+        ret_cmplt_later = virsh.domjobinfo(vm_ref, ignore_status=True, debug=True)
 
     # Recover the environment.
     if actions == "managedsave":
@@ -225,3 +241,7 @@ def run(test, params, env):
         info_list[info_list.index("Expected downtime")] = "Total downtime"
         logging.debug("The expected info_list for completed job is %s", info_list)
         cmp_jobinfo(ret_cmplt, info_list, "Completed", actions)
+        # Check output of later "virsh domjobinfo --completed"
+        if keep_complete:
+            info_list = ["Job type"]
+            cmp_jobinfo(ret_cmplt_later, info_list, "None", actions)

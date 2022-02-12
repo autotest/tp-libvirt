@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 import time
 
@@ -11,6 +11,11 @@ from virttest.utils_test import libvirt
 
 
 memtune_types = ['hard_limit', 'soft_limit', 'swap_hard_limit']
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_limit(path, expected_value, limit_name, cgname, vm, test, acceptable_minus=8):

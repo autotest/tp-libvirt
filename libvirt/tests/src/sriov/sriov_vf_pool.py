@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from provider.sriov import sriov_base
 
@@ -13,6 +13,11 @@ from virttest.utils_libvirt import libvirt_network
 from virttest.utils_libvirt import libvirt_pcicontr
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def create_network(params):
@@ -118,6 +123,7 @@ def run(test, params, env):
         mac_addr = vm_ifaces[0].get_mac_address()
         opts = ' '.join([iface_type, "--mac %s" % mac_addr])
         virsh.detach_interface(vm_name, option=opts, debug=True,
+                               wait_for_event=True,
                                ignore_status=False)
         libvirt_network.check_network_connection(net_name, vf_no-1)
 

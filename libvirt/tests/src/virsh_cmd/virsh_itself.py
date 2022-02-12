@@ -1,10 +1,15 @@
-import logging
+import logging as log
 import aexpect
 
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import element_tree
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def sh_escape(sh_str):

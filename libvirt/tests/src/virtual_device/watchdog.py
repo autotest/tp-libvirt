@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 import random
 import string
@@ -11,6 +11,11 @@ from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.watchdog import Watchdog
 from virttest.libvirt_xml.devices.controller import Controller
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -29,7 +34,7 @@ def run(test, params, env):
 
         :param model: action when watchdog triggered
         """
-        watchdog_device = "device %s" % model
+        watchdog_device = model
         if action == "dump":
             watchdog_action = "watchdog-action pause"
         else:
@@ -45,7 +50,7 @@ def run(test, params, env):
         cmd = "gsettings set org.gnome.settings-daemon.plugins.power button-power shutdown"
         session.cmd(cmd, ignore_all_errors=True)
         try:
-            try_modprobe(model, session, test)
+            try_modprobe(watchdog_dev, session, test)
             logging.info("dmesg watchdog messages: %s" % session.cmd("dmesg | grep -i %s" % model,
                                                                      ignore_all_errors=True))
             session.cmd("lsmod | grep %s" % model)
@@ -54,23 +59,17 @@ def run(test, params, env):
             session.close()
             test.fail("Failed to trigger watchdog: %s" % e)
 
-    def try_modprobe(model, session, test):
+    def try_modprobe(watchdog_dev, session, test):
         """
         Tries to load watchdog kernel module, fails test on error
-        :param model: watchdog model, e.g. diag288
+
+        :param watchdog_dev: Watchdog instance
         :param session: guest session to run command
         :param test: test object
         :return: None
         """
-        handled_types = {"ib700": "ib700wdt", "diag288": "diag288_wdt"}
-        if model not in handled_types.keys():
-            return
-        module = handled_types.get(model)
-        try:
-            session.cmd("modprobe %s" % module)
-        except aexpect.ShellCmdError:
-            session.close()
-            test.fail("Failed to load module %s" % module)
+        if not watchdog_dev.try_modprobe(session):
+            test.fail("Failed to load module for %s" % watchdog_dev.model_type)
 
     def watchdog_attached(vm_name):
         """
@@ -238,6 +237,7 @@ def run(test, params, env):
             if not utils_misc.wait_for(lambda: watchdog_attached(vm.name), 60):
                 test.fail("Failed to hotplug watchdog device.")
         session = vm.wait_for_login()
+        logging.debug("Current XML: %s" % vm_xml.VMXML.new_from_dumpxml(vm_name))
 
         # No need to trigger watchdog after hotunplug
         if hotunplug_test:

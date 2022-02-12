@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 from tempfile import mktemp
 
 from avocado.core import exceptions
@@ -12,6 +12,11 @@ from virttest import libvirt_version
 from virttest import utils_split_daemons
 
 _FC_HOST_PATH = "/sys/class/fc_host"
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_nodedev(dev_name, dev_parent=None):
@@ -169,6 +174,8 @@ def destroy_nodedev(test, params):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):

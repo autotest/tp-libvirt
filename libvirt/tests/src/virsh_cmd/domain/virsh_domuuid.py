@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest import libvirt_xml
@@ -6,6 +6,11 @@ from virttest import utils_libvirtd
 from virttest import libvirt_version
 
 from virttest.utils_test.libvirt import check_domuuid_compliant_with_rfc4122
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

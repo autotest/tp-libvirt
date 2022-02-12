@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 
 from avocado.utils import process
 from avocado.core import exceptions
@@ -14,6 +14,11 @@ from virttest import utils_test
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import data_dir
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -129,8 +134,8 @@ def run(test, params, env):
 
         # run numatune live change numa memory config
         for node in left_node:
-            virsh.numatune(vm_name, 'strict', str(node), options,
-                           debug=True, ignore_status=False)
+            virsh.numatune(vm_name, numa_memory.get('memory_mode'), str(node),
+                           options, debug=True, ignore_status=False)
 
             vmxml_new = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
             numa_memory_new = vmxml_new.numa_memory

@@ -1,10 +1,15 @@
 import os
 import time
-import logging
+import logging as log
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -294,11 +299,11 @@ def run(test, params, env):
                 source = device_source
             all_options = action_twice + options_twice + " " + source
             time.sleep(5)
-            if options_twice == "--config" or pre_vm_state == "shutoff":
+            if options_twice == "--config" or pre_vm_state != "running":
                 wait_for_event = False
             else:
                 wait_for_event = True
-            if vm.is_alive():
+            if vm.is_alive() and not pre_vm_state == "paused":
                 vm.wait_for_login().close()
             ret = virsh.change_media(vm_ref, target_device, all_options,
                                      wait_for_event=wait_for_event,

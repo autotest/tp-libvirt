@@ -2,7 +2,7 @@ import os
 import stat
 import pwd
 import grp
-import logging
+import logging as log
 
 from avocado.utils import process
 from avocado.utils import astring
@@ -16,6 +16,11 @@ from virttest import data_dir
 from virttest import libvirt_version
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def format_user_group_str(user, group):
@@ -95,6 +100,8 @@ def run(test, params, env):
     qemu_group = params.get("qemu_group", 'qemu')
     dynamic_ownership = "yes" == params.get("dynamic_ownership", "yes")
 
+    # When using nfs, the virt_use_nfs should be enabled
+    enable_virt_use_nfs = 'yes' == params.get("virt_use_nfs", 'no')
     # Get variables about VM and get a VM object and VMXML instance.
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -108,6 +115,8 @@ def run(test, params, env):
                     "mode. it must be in Enforcing "
                     "mode to run this test")
     utils_selinux.set_status(host_sestatus)
+    if enable_virt_use_nfs:
+        process.run("setsebool virt_use_nfs on", shell=True)
 
     qemu_sock_mod = False
     qemu_sock_path = '/var/lib/libvirt/qemu/'

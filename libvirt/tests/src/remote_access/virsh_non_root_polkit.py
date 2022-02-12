@@ -1,4 +1,4 @@
-import logging
+import logging as log
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -6,6 +6,11 @@ from avocado.utils import process
 from virttest import remote
 from virttest import utils_misc
 from virttest.utils_test.libvirt import connect_libvirtd
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def local_access(params, test):

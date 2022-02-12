@@ -1,9 +1,14 @@
 import os
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def reset_domain(vm, vm_state, maxvcpu, curvcpu, sockets,

@@ -1,6 +1,6 @@
 import re
 import os
-import logging
+import logging as log
 
 from avocado.core import exceptions
 
@@ -14,6 +14,11 @@ from virttest.libvirt_xml import pool_xml
 from virttest import libvirt_version
 from virttest import element_tree as ET
 from virttest import data_dir
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -156,22 +161,28 @@ def run(test, params, env):
         """
         if pool_info is None:
             test.fail("Pool info dictionary is needed.")
-        val_tup = ('Capacity', 'Allocation', 'Available')
-        if check_point in val_tup and float(value.split()[0]):
-            # As from bytes to GiB, could cause deviation, and it should not
-            # exceed 1 percent.
-            if is_in_range(float(pool_info[check_point].split()[0]),
-                           float(value.split()[0]), 1):
-                logging.debug("Pool '%s' is '%s'.", check_point, value)
-            else:
-                test.fail("Pool '%s' isn't '%s'." %
-                          (check_point, value))
+        # If pool info does not return the value you need to check,
+        # raise appropriate error message.
+        if pool_info.get(check_point) is None:
+            test.fail("The value {} you checked is not returned"
+                      " in pool_info : {}".format(check_point, pool_info))
         else:
-            if pool_info[check_point] == value:
-                logging.debug("Pool '%s' is '%s'.", check_point, value)
+            val_tup = ('Capacity', 'Allocation', 'Available')
+            if check_point in val_tup and float(value.split()[0]):
+                # As from bytes to GiB, could cause deviation, and it should not
+                # exceed 1 percent.
+                if is_in_range(float(pool_info[check_point].split()[0]),
+                               float(value.split()[0]), 1):
+                    logging.debug("Pool '%s' is '%s'.", check_point, value)
+                else:
+                    test.fail("Pool '%s' isn't '%s'." %
+                              (check_point, value))
             else:
-                test.fail("Pool '%s' isn't '%s'." %
-                          (check_point, value))
+                if pool_info[check_point] == value:
+                    logging.debug("Pool '%s' is '%s'.", check_point, value)
+                else:
+                    test.fail("Pool '%s' isn't '%s'." %
+                              (check_point, value))
 
     # Stop multipathd to avoid start pool fail(For fs like pool, the new add
     # disk may in use by device-mapper, so start pool will report disk already
@@ -297,7 +308,7 @@ def run(test, params, env):
             # Step (11)
             # Restart libvirtd and check the autostart pool
             utils_libvirtd.unmark_storage_autostarted()
-            utils_libvirtd.libvirtd_restart()
+            utils_libvirtd.Libvirtd("virtstoraged").restart()
             option = "--autostart --persistent"
             check_pool_list(pool_name, option)
 
@@ -316,7 +327,7 @@ def run(test, params, env):
 
             # Step (14)
             # Repeat step (11)
-            utils_libvirtd.libvirtd_restart()
+            utils_libvirtd.Libvirtd("virtstoraged").restart()
             option = "--autostart"
             check_pool_list(pool_name, option, True)
 
@@ -370,7 +381,11 @@ def run(test, params, env):
                 new_info = _pool.pool_info(pool_name)
                 check_items = ["Capacity", "Allocation", "Available"]
                 for i in check_items:
-                    check_pool_info(pool_info, i, new_info[i])
+                    if new_info.get(i) is None:
+                        test.fail("The value {} you checked is not returned "
+                                  "in pool_info : {}".format(i, new_info))
+                    else:
+                        check_pool_info(pool_info, i, new_info[i])
 
             # Step (21)
             # Undefine pool, this should fail as the pool is active

@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import re
 import tempfile
 
@@ -17,6 +17,11 @@ from virttest.utils_test import libvirt as utlv
 from virttest.utils_libvirt import libvirt_pcicontr
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -192,6 +197,7 @@ def run(test, params, env):
         if not multi_gluster_disks:
             # Fix No more available PCI slots
             libvirt_pcicontr.reset_pci_num(vm_name, 15)
+            vm.start()
             # Do the attach action.
             out = process.run("qemu-img info %s" % img_path, shell=True)
             logging.debug("The img info is:\n%s" % out.stdout.strip())

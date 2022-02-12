@@ -2,7 +2,7 @@ import re
 import os
 import ast
 import shutil
-import logging
+import logging as log
 import uuid
 import aexpect
 import socket
@@ -20,6 +20,11 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import rng
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -206,6 +211,8 @@ def run(test, params, env):
         backend_source_list = dparams.get("backend_source",
                                           "").split()
         cmd = ("ps -ef | grep %s | grep -v grep" % vm_name)
+        logging.debug("Qemu cmd line info:\n")
+        process.run(cmd, ignore_status=True, shell=True)
         chardev = src_host = src_port = None
         if backend_type == "tcp":
             chardev = "socket"
@@ -217,22 +224,30 @@ def run(test, params, env):
                 src_host = source['host']
                 src_port = source['service']
 
+        result = process.run(cmd, ignore_status=True, shell=True)
+        if result.exit_status:
+            test.fail("Got error obtaining qemu cmdline:"
+                      " %s" % result.stderr_text)
+        expected_matches = []
         if backend_model == "builtin":
-            cmd += (" | grep rng-builtin")
+            expected_matches.append("rng-builtin")
         if chardev and src_host and src_port:
-            cmd += (" | grep 'chardev %s,.*host=%s,port=%s'"
-                    % (chardev, src_host, src_port))
+            expected_matches.append("chardev %s,.*host=%s,port=%s"
+                                    % (chardev, src_host, src_port))
         if rng_model == "virtio":
-            cmd += (" | grep 'device %s'" % dparams.get("rng_device"))
+            expected_matches.append("%s" % dparams.get("rng_device"))
         if rng_rate:
             rate = ast.literal_eval(rng_rate)
-            cmd += (" | grep 'max-bytes=%s,period=%s'"
-                    % (rate['bytes'], rate['period']))
+            expected_matches.append("max-bytes.*%s" % rate['bytes'])
+            expected_matches.append("period.*%s" % rate['period'])
         if with_packed:
-            cmd += (" | grep 'packed=%s'" % driver_packed)
-        if process.run(cmd, ignore_status=True, shell=True).exit_status:
+            expected_matches.append("packed.*%s" % driver_packed)
+        if not all([re.findall(x, result.stdout_text)
+                    for x in expected_matches]):
+            logging.debug("Expected matches: %s" % expected_matches)
+            logging.debug("QEMU cmdline: %s" % result.stdout_text)
             test.fail("Can't see rng option"
-                      " in command line")
+                      " in command line. Please check the log.")
 
     def check_host():
         """
@@ -327,7 +342,8 @@ def run(test, params, env):
             else:
                 logging.info("Hexdump do not fail with error")
 
-    def check_guest(session, expect_fail=False):
+    def check_guest(session, expect_fail=False,
+                    set_virtio_current=False):
         """
         Check random device on guest
 
@@ -342,8 +358,18 @@ def run(test, params, env):
         rng_currt = session.cmd_output("cat %s" % rng_files[1],
                                        timeout=timeout).strip()
         logging.debug("rng avail:%s, current:%s", rng_avail, rng_currt)
+        if not rng_avail.count("virtio"):
+            test.fail("Failed to check rng file on guest."
+                      " The virtio device is not available.")
+        if set_virtio_current:
+            virtio_dev = [x for x in rng_avail.split('\n') if 'virtio' in x][0]
+            _ = session.cmd_output(("echo -n %s > %s" %
+                                    (virtio_dev, rng_files[1])),
+                                   timeout=timeout)
+            rng_currt = virtio_dev
         if not rng_currt.count("virtio") or rng_currt not in rng_avail:
-            test.fail("Failed to check rng file on guest")
+            test.fail("Failed to check rng file on guest."
+                      " The virtio device is not the current rng device.")
 
         # Read the random device
         rng_rate = params.get("rng_rate")
@@ -384,7 +410,7 @@ def run(test, params, env):
             if not ret:
                 test.fail("Can't find rate from output")
             rate_real = float(ret.group(1)) / float(ret.group(2))
-            logging.debug("Find rate: %s, config rate: %s",
+            logging.debug("Found rate: %s, config rate: %s",
                           rate_real, rate_conf)
             if rate_real > rate_conf * 1.2:
                 test.fail("The rate of reading exceed"
@@ -448,6 +474,7 @@ def run(test, params, env):
 
     test_host = "yes" == params.get("test_host", "no")
     test_guest = "yes" == params.get("test_guest", "no")
+    set_virtio_current = "yes" == params.get("set_virtio_current", "no")
     test_guest_dump = "yes" == params.get("test_guest_dump", "no")
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
     test_snapshot = "yes" == params.get("test_snapshot", "no")
@@ -603,7 +630,7 @@ def run(test, params, env):
                 check_host()
             session = vm.wait_for_login()
             if test_guest:
-                check_guest(session)
+                check_guest(session, set_virtio_current=set_virtio_current)
             if test_guest_dump:
                 check_guest_dump(session, True)
             if test_snapshot:

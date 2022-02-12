@@ -1,5 +1,5 @@
 import re
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest import utils_net
@@ -13,6 +13,11 @@ driver_dict = {'virtio': 'virtio_net', '-': '8139cp', 'e1000': 'e1000',
 # Regular expression for the below output
 #      vnet0      bridge     virbr0     virtio      52:54:00:b2:b3:b4
 rg = re.compile(r"^(\w+)\s+(\w+)\s+(\w+)\s+(\S+)\s+(([a-fA-F0-9]{2}:?){6})")
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

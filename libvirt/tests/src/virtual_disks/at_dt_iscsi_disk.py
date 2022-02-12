@@ -2,7 +2,7 @@ import os
 import re
 import time
 import base64
-import logging
+import logging as log
 import platform
 import locale
 
@@ -23,6 +23,11 @@ from virttest.libvirt_xml.devices.controller import Controller
 from virttest.staging import lv_utils
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def clean_up_lvm(device_source, vg_name, lv_name):

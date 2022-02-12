@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 
 from avocado.core import exceptions
 
@@ -15,6 +15,11 @@ from virttest import remote
 
 from virttest.utils_misc import is_qemu_capability_supported as qemu_test
 from virttest.utils_libvirt import libvirt_config
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def create_destroy_pool_on_remote(test, action, params):

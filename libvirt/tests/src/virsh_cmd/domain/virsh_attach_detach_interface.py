@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 import os
 import time
@@ -13,6 +13,11 @@ from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def set_options(iface_type=None, iface_source=None, iface_mac=None,
@@ -492,11 +497,14 @@ def run(test, params, env):
         options = set_options(iface_type, None, iface_mac,
                               options_suffix, "detach")
 
+        wait_for_event = True
+        if options_suffix == "--config":
+            wait_for_event = False
         # Start detach-interface test
         if save_restore == "yes" and vm_ref == dom_id:
             vm_ref = vm_name
         detach_result = virsh.detach_interface(
-            vm_ref, options, wait_remove_event=True, **virsh_dargs)
+            vm_ref, options, wait_for_event=wait_for_event, **virsh_dargs)
         detach_status = detach_result.exit_status
         detach_msg = detach_result.stderr.strip()
 

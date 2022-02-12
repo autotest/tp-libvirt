@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import re
 import signal
@@ -51,6 +51,11 @@ from virttest import libvirt_version
 MIGRATE_RET = False
 
 
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
+
+
 def destroy_active_pool_on_remote(params):
     """
     This is to destroy active pool with same target path as pool_target
@@ -59,6 +64,7 @@ def destroy_active_pool_on_remote(params):
     :return True if successful, otherwise False
     """
     ret = True
+    remote_session = None
 
     remote_ip = params.get("migrate_dest_host")
     remote_user = params.get("migrate_dest_user", "root")
@@ -1189,6 +1195,7 @@ def run(test, params, env):
     test_dict = dict(params)
     vm_name = test_dict.get("main_vm")
     vm = env.get_vm(vm_name)
+    uri = params.get("desuri")
     start_vm = test_dict.get("start_vm", "no")
     transport = test_dict.get("transport")
     plus = test_dict.get("conn_plus", "+")

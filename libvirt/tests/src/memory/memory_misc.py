@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import re
 
 from avocado.utils import process
@@ -11,6 +11,11 @@ from virttest.libvirt_xml.devices.memory import Memory
 from virttest.utils_test import libvirt
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -260,9 +265,11 @@ def run(test, params, env):
         dimm_device_num = len(dimm_devices_attrs)
         qemu_cmd = 'pgrep -a qemu'
         qemu_cmd_output = process.run(qemu_cmd, verbose=True).stdout_text
-        if qemu_cmd_output.count('-device pc-dimm') != dimm_device_num:
+        qemu_cmd_num = len(re.findall("-device.*?pc-dimm", qemu_cmd_output))
+        if qemu_cmd_num != dimm_device_num:
             test.fail('The amount of dimm device in qemu command line does not'
-                      ' match vmxml, should be %d' % dimm_device_num)
+                      ' match vmxml, expect %d, but get %d' % (dimm_device_num,
+                                                               qemu_cmd_num))
 
         # Attach a mem device
         at_dimm_device_attrs = eval(params.get('at_dimm_device'))
@@ -276,9 +283,11 @@ def run(test, params, env):
 
         # Check qemu cmd line for attached dimm device
         new_qemu_cmd_output = process.run(qemu_cmd, verbose=True).stdout_text
-        if new_qemu_cmd_output.count('-device pc-dimm') != dimm_device_num + 1:
+        new_qemu_cmd_num = len(re.findall("-device.*?pc-dimm", new_qemu_cmd_output))
+        if new_qemu_cmd_num != dimm_device_num + 1:
             test.fail('The amount of dimm device in qemu command line does not'
-                      ' match vmxml, should be %d' % (dimm_device_num + 1))
+                      ' match vmxml, expect %d, but get %d' % (dimm_device_num + 1,
+                                                               new_qemu_cmd_num))
         libvirt.check_qemu_cmd_line(qemu_check)
 
     def setup_test_audit_size(case):

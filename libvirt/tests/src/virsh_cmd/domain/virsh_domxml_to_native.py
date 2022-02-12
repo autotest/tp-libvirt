@@ -1,6 +1,6 @@
 import re
 import os
-import logging
+import logging as log
 
 from avocado.utils import process
 
@@ -8,6 +8,11 @@ from virttest import virsh
 from virttest import libvirt_version
 from virttest import utils_libvirtd
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -64,7 +69,7 @@ def run(test, params, env):
                 # turned into
                 # -blockdev {"driver":"file",...,"discard":"unmap"} in order to
                 # match the qemu command line format
-                if e in ['-blockdev', '-object']:
+                if e in ['-blockdev', '-object', '-compat', '-audiodev']:
                     enext = enext.strip("'")
                 # Append this and the next and set our skip flag
                 retlist.append(e + " " + enext)

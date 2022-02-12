@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 
 from avocado.utils import process
 from avocado.core import exceptions
@@ -12,6 +12,11 @@ from virttest.libvirt_xml import pool_xml
 from virttest.staging import lv_utils
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -192,7 +197,7 @@ def run(test, params, env):
             logging.info("Try to restart libvirtd")
             # Remove the autostart management file
             utils_libvirtd.unmark_storage_autostarted()
-            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd = utils_libvirtd.Libvirtd("virtstoraged")
             libvirtd.restart()
             check_pool(pool_name, pool_type, checkpoint="State",
                        expect_value="active", expect_error=status_error)
@@ -216,7 +221,7 @@ def run(test, params, env):
 
                 # Repeat step (3)
                 logging.debug("Try to restart libvirtd")
-                libvirtd = utils_libvirtd.Libvirtd()
+                libvirtd = utils_libvirtd.Libvirtd('virtstoraged')
                 libvirtd.restart()
                 check_pool(pool_name, pool_type, checkpoint='State',
                            expect_value="inactive", expect_error=status_error)
@@ -236,6 +241,6 @@ def run(test, params, env):
             if os.path.exists(p_xml):
                 os.remove(p_xml)
         except exceptions.TestFail as details:
-            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd = utils_libvirtd.Libvirtd('virtstoraged')
             libvirtd.restart()
             logging.error(str(details))

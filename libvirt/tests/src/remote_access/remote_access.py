@@ -1,6 +1,6 @@
 import re
 import os
-import logging
+import logging as log
 import json
 
 from avocado.utils import distro
@@ -23,6 +23,11 @@ from virttest.utils_test.libvirt import connect_libvirtd
 from virttest.utils_test.libvirt import customize_libvirt_config
 from virttest.utils_test.libvirt import remotely_control_libvirtd
 from virttest.utils_net import check_listening_port_remote_by_service
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def remote_access(params, test):

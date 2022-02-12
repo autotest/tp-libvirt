@@ -1,8 +1,13 @@
-import logging
+import logging as log
 import re
 
 from virttest.libvirt_xml.vm_xml import VMXML, VMFeaturesXML
 from virttest import virsh
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -69,9 +74,13 @@ def raise_if_only_zero_entries(session):
     :param session: guest session
     :raises AssertionError: if check fails
     """
-    out = session.cmd_output('cat /sys/kernel/debug/diag_stat|grep "diag 318"')
+    out = session.cmd_output('cat /sys/kernel/debug/diag_stat')
     logging.debug("diag_stat contains: %s", out)
-    no_zeros = out.replace("0", "").replace("diag 318", "")
+    diag_318_line = [x for x in out.split('\n') if 'diag 318' in x]
+    if not diag_318_line:
+        raise AssertionError("No diag 318 entry."
+                             " Please, check log.")
+    no_zeros = diag_318_line[0].replace("0", "").replace("diag 318", "")
     if not re.search(r"\d", no_zeros):
-        raise AssertionError("Expected counters to be none zero, got: %s"
-                             % out)
+        raise AssertionError("Expected counters to be none zero."
+                             " Please, check log.")

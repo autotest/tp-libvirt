@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import time
 import re
@@ -27,6 +27,11 @@ from virttest.utils_test import libvirt as utl
 from virttest.libvirt_xml.devices.disk import Disk
 
 from provider import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 class JobTimeout(Exception):
@@ -172,6 +177,9 @@ def finish_job(vm_name, target, timeout):
     """
     job_time = 0
     while job_time < timeout:
+        # Check cmd execute status and report error directly if have
+        virsh.blockjob(vm_name, target, "--info", debug=True, ignore_status=False)
+
         # As BZ#1359679, blockjob may disappear during the process,
         # so we need check it all the time
         if utl.check_blockjob(vm_name, target, 'none', '0'):

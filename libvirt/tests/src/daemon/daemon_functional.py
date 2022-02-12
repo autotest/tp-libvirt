@@ -1,6 +1,6 @@
 import os
 import time
-import logging
+import logging as log
 
 from avocado.utils import process
 
@@ -12,6 +12,11 @@ from virttest.utils_libvirtd import LibvirtdSession
 from virttest.utils_libvirtd import Libvirtd
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -89,10 +94,7 @@ def run(test, params, env):
         """
         Check whether the config file take effects by checking max_clients.
         """
-        if daemon_name == "libvirtd":
-            connect_uri = "qemu:///system"
-        else:
-            connect_uri = daemon_name + ":///system"
+        connect_uri = daemon_name + ":///system"
         vp = virt_admin.VirtadminPersistent(uri=connect_uri)
         result = vp.srv_clients_info(daemon_name, uri=connect_uri, ignore_status=True, debug=True)
         output = result.stdout.strip().splitlines()

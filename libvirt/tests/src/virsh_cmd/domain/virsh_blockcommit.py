@@ -1,10 +1,11 @@
 import os
-import logging
+import logging as log
 import tempfile
 import collections
 
 import aexpect
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from multiprocessing.pool import ThreadPool
@@ -21,6 +22,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def get_images_with_xattr(vm):
@@ -144,7 +150,7 @@ def run(test, params, env):
                 snapshot_external_disks.append(disk_external)
                 options += " %s,snapshot=external,file=%s" % (disk,
                                                               disk_external)
-
+                clean_snap_file(disk_external)
             if is_check_snapshot_tree:
                 options = options.replace("--no-metadata", "")
             cmd_result = virsh.snapshot_create_as(vm_name, options,
@@ -195,6 +201,33 @@ def run(test, params, env):
         # If check_snapshot_tree is True, check snapshot tree output.
         if is_check_snapshot_tree:
             check_snapshot_tree()
+
+    def check_vm_disk_file(vm):
+        """
+        Check current vm disk source.
+
+        :param vm: The vm to be checked
+        """
+        image_name1, image_format = params.get("image_name", "image"), params.get("image_format", "qcow2")
+        image_dir = os.path.join(data_dir.get_data_dir(), image_name1)
+        original_image_path = image_dir + "." + image_format
+        logging.debug("Source file should be : %s", original_image_path)
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        disk = vmxml.get_devices('disk')[0]
+        logging.debug("Current disk info is : %s", disk)
+        if disk.source.attrs['file'] != original_image_path:
+            test.error("Please check current vm disk source")
+
+    def clean_snap_file(snap_path):
+        """
+        Clean the existed duplicate snap file.
+
+        :param snap_path: snap file path
+        """
+        if os.path.exists(snap_path):
+            os.remove(snap_path)
+            logging.debug("Cleaned snap file before creating :%s" % snap_path)
 
     def get_first_disk_source():
         """
@@ -289,7 +322,7 @@ def run(test, params, env):
             backing_file_path = os.path.join(root_dir, key)
             external_snap_shot = "%s/%s" % (backing_file_path, value)
             snapshot_external_disks.append(external_snap_shot)
-            options = "%s --diskspec %s,file=%s" % (meta_options, disk_target, external_snap_shot)
+            options = "%s %s --diskspec %s,file=%s" % ('snap-%s' % key, meta_options, disk_target, external_snap_shot)
             cmd_result = virsh.snapshot_create_as(vm_name, options,
                                                   ignore_status=False,
                                                   debug=True)
@@ -389,7 +422,7 @@ def run(test, params, env):
     if len(exsiting_snaps) != 0:
         test.fail("There are snapshots created for %s already" %
                   vm_name)
-
+    check_vm_disk_file(vm)
     snapshot_external_disks = []
     cmd_session = None
     # Prepare a blank params to confirm if delete the configure at the end of the test
@@ -413,10 +446,14 @@ def run(test, params, env):
                 ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide rbd host first.")
-
+                detected_distro = distro.detect()
+                rbd_img_prefix = '_'.join(['rbd', detected_distro.name,
+                                           detected_distro.version,
+                                           detected_distro.release,
+                                           detected_distro.arch])
                 params.update(
                    {"disk_source_name": os.path.join(
-                      pool_name, 'rbd_'+utils_misc.generate_random_string(4)+'.img')})
+                      pool_name, rbd_img_prefix + '.img')})
                 if utils_package.package_install(["ceph-common"]):
                     ceph.rbd_image_rm(mon_host, *params.get("disk_source_name").split('/'))
                 else:

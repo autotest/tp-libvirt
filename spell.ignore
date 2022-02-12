@@ -112,6 +112,8 @@ chipset
 chmod
 chnaged
 chown
+chpid
+chpids
 chronyc
 Chunfu
 chwen
@@ -165,6 +167,8 @@ dac
 DAC
 darget
 dargs
+dasd
+dasda
 datetime
 DAX
 dbus
@@ -270,6 +274,7 @@ failover
 fallocate
 fc
 fd
+fdasd
 fdisk
 fds
 fdset
@@ -409,6 +414,7 @@ initscripts
 inodes
 inpect
 installroot
+invtsc
 inx
 io
 ioapci
@@ -480,6 +486,7 @@ libvird
 libvirt
 Libvirt
 libvirtd
+libvirtdconf
 libvirtd's
 libvirt's
 libvirts
@@ -526,6 +533,7 @@ LXC
 lzop
 macvlan
 macvtap
+makefs
 Makesure
 managedsave
 Managedsave
@@ -547,6 +555,7 @@ mcast
 MCS
 md
 mdev
+mdevctl
 mem
 memballoon
 memhog
@@ -831,6 +840,7 @@ sasl
 sata
 scenaries
 schedinfo
+schid
 scp
 scsi
 sd
@@ -935,6 +945,7 @@ sys
 sysconfig
 sysfs
 sysinfo
+syslibvirtd
 syslog
 syspath
 sysprep
@@ -1029,6 +1040,7 @@ unprotect
 Unprotect
 Unregister
 unresettable
+Unsets
 untar
 upadte
 Updae

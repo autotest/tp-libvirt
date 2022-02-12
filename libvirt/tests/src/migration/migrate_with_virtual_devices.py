@@ -1,6 +1,6 @@
 import ast
 import aexpect
-import logging
+import logging as log
 
 from avocado.utils import process
 
@@ -10,6 +10,11 @@ from virttest.utils_test import libvirt
 from virttest import utils_misc
 from virttest import virsh, libvirt_version
 from virttest import migration_template as mt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 class DeviceNotFoundError(mt.Error):

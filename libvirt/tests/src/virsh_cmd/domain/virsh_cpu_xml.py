@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 import tempfile
 
@@ -6,6 +6,11 @@ from virttest import data_dir
 from virttest import virsh               # pylint: disable=W0611
 
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):

@@ -12,6 +12,50 @@ from virttest import remote
 
 from provider.v2v_vmcheck_helper import VMChecker
 
+LOG = logging.getLogger('avocado.v2v.' + __name__)
+
+
+def check_qxl_warning(buf, os_type, os_version):
+    """
+    Check the qxl warning message
+    :param buf: the v2v debug log
+    :param os_type: the guest's os_type(linux, windows)
+    :param os_version: the guest's os version
+    """
+    err_list = []
+    virtio_win_ver = "[virtio-win-1.9.16-1,)"
+    virtio_win_qxl_os = ['win2008r2', 'win7']
+    virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
+    unexpected_qxldod_os = ['win11', 'win2022']
+    v2v_unsupport_qxl_ver = "[virt-v2v-1.45.96,)"
+
+    # RHEL9 doesn't support qxl.
+    if utils_v2v.multiple_versions_compare(v2v_unsupport_qxl_ver):
+        return err_list
+
+    # Skip qxl check for win11 and win2022. The virtio-win doesn't include
+    # qxl driver for them. But because of bugs in libguestfs, they are inspected
+    # to win10 and win2016 unexpectedly. so the qxl driver is installed by
+    # mistake. I think the warning check can be skipped here. And the warning
+    # is not that important, either.
+    if os_type == 'windows' and os_version not in unexpected_qxldod_os:
+        virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
+            virtio_win_ver)
+        qxl_warning = "there is no QXL driver for this version of Windows"
+        if virtio_win_support_qxldod and os_version in virtio_win_qxldod_os:
+            has_qxl_warning = False
+        elif os_version in virtio_win_qxl_os:
+            has_qxl_warning = False
+        else:
+            has_qxl_warning = True
+
+        if has_qxl_warning and not re.search(qxl_warning, buf):
+            err_list.append('Not find QXL warning')
+        if not has_qxl_warning and re.search(qxl_warning, buf):
+            err_list.append('Unexpected QXL warning')
+
+    return err_list
+
 
 def run(test, params, env):
     """
@@ -65,7 +109,7 @@ def run(test, params, env):
     # create different sasl_user name for different job
     params.update({'sasl_user': params.get("sasl_user") +
                    utils_misc.generate_random_string(3)})
-    logging.info('sals user name is %s' % params.get("sasl_user"))
+    LOG.info('sals user name is %s' % params.get("sasl_user"))
 
     # Prepare step for different hypervisor
     if hypervisor == "xen":
@@ -112,7 +156,7 @@ def run(test, params, env):
     # Create libvirt URI
     v2v_uri = utils_v2v.Uri(hypervisor)
     remote_uri = v2v_uri.get_uri(source_ip, vpx_dc, esx_ip)
-    logging.debug("libvirt URI for converting: %s", remote_uri)
+    LOG.debug("libvirt URI for converting: %s", remote_uri)
 
     # Make sure the VM exist before convert
     v2v_virsh = None
@@ -182,7 +226,7 @@ def run(test, params, env):
 
         params['main_vm'] = v2v_params['new_name']
 
-        logging.info("output_method is %s" % output_method)
+        LOG.info("output_method is %s" % output_method)
         # Check all checkpoints after convert
         params['vmchecker'] = vmchecker = VMChecker(test, params, env)
         # Import the VM to oVirt Data Center from export domain, and start it
@@ -193,36 +237,14 @@ def run(test, params, env):
         # When VM is on OSP, it can't obtain IP address, therefore
         # skipping the VM checking.
         if skip_vm_check == 'yes':
-            logging.debug("skip vm checking")
+            LOG.debug("skip vm checking")
             return
 
         ret = vmchecker.run()
-
-        err_list = []
-        virtio_win_ver = "[virtio-win-1.9.16-1,)"
-        virtio_win_qxl_os = ['win2008r2', 'win7']
-        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
-
-        if os_type == 'windows':
-            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
-                virtio_win_ver)
-            qxl_warning = "there is no QXL driver for this version of Windows"
-            if virtio_win_support_qxldod and os_version in virtio_win_qxldod_os:
-                has_qxl_warning = False
-            elif os_version in virtio_win_qxl_os:
-                has_qxl_warning = False
-            else:
-                has_qxl_warning = True
-
-            if has_qxl_warning and not re.search(qxl_warning, v2v_ret.stdout_text):
-                err_list.append('Not find QXL warning')
-            if not has_qxl_warning and re.search(qxl_warning, v2v_ret.stdout_text):
-                err_list.append('Unexpected QXL warning')
-
-        ret.extend(err_list)
+        ret.extend(check_qxl_warning(v2v_ret.stdout_text, os_type, os_version))
 
         if len(ret) == 0:
-            logging.info("All checkpoints passed")
+            LOG.info("All checkpoints passed")
         else:
             test.fail("%d checkpoints failed: %s" % (len(ret), ret))
     finally:

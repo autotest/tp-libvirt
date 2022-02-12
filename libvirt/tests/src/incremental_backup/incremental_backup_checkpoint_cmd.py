@@ -1,6 +1,6 @@
 import os
 import re
-import logging
+import logging as log
 import operator
 
 from virttest import virsh
@@ -12,6 +12,11 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import checkpoint_xml
 from virttest.libvirt_xml.devices import graphics
 from virttest.utils_test import libvirt
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -267,7 +272,7 @@ def run(test, params, env):
             elif "--security-info" in cmd_flag:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
-                password = "xyzxyzabcabc"
+                password = params.get("vnc_password", "aabbccdd")
                 # Add graphics vnc if guest doesn't have
                 if not vmxml.get_devices(device_type="graphics"):
                     logging.debug("Guest doesn't have graphic, add one")

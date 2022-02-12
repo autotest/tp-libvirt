@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import string
 import hashlib
 import locale
@@ -22,6 +22,11 @@ from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt as utlv
 
 from virttest import libvirt_version
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def digest(path, offset, length):
@@ -384,6 +389,7 @@ def run(test, params, env):
             result = virsh.vol_download(file_name, download_file_path, options,
                                         unprivileged_user=unpri_user,
                                         uri=uri, debug=True)
+            libvirt.check_exit_status(result)
 
             #Check download image size.
             one_g_in_bytes = 1073741824

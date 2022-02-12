@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 
 from virttest import virsh
 from virttest import xml_utils
@@ -10,6 +10,11 @@ from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_version
 
 NWFILTER_ETC_DIR = "/etc/libvirt/nwfilter"
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def check_list(uuid, name):

@@ -1,5 +1,5 @@
 import os
-import logging
+import logging as log
 import re
 import tempfile
 import time
@@ -13,6 +13,11 @@ from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml import vm_xml
 from avocado.utils import process
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -447,6 +452,11 @@ def run(test, params, env):
                     without_ip_dhcp == "no"):
                 test_xml.del_element(element="/ip/dhcp", index=section_index)
 
+            if error_type == "index-nonexist":
+                for idx in [3, 2, 1]:
+                    test_xml.del_element(element="/ip", index=idx)
+                test_xml.del_element(element="/route")
+
             if loop == 0:
                 try:
                     # Define and start network
@@ -563,6 +573,10 @@ def run(test, params, env):
                     # range-mismatch error info
                     err_dic["range-mismatch"] = "couldn't locate a matching dhcp " + \
                                                 "range entry in network "
+                    # index-nonexist error info
+                    err_dic["index-nonexist"] = "couldn't update dhcp host entry " + \
+                                                "- no <ip.* element found at index 1 in network"
+
                     # host-mismatch error info
                     err_dic["host-mismatch"] = "couldn't locate a matching dhcp " + \
                                                "host entry in network "

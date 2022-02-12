@@ -1,4 +1,4 @@
-import logging
+import logging as log
 import os
 
 from uuid import uuid1
@@ -12,6 +12,11 @@ from tempfile import mktemp
 
 # minimal supported hwtype
 HWTYPE = 11
+
+
+# Using as lower capital is not the best way to do, but this is just a
+# workaround to avoid changing the entire file.
+logging = log.getLogger('avocado.' + __name__)
 
 
 def find_devices_by_cap(test, cap_type):
