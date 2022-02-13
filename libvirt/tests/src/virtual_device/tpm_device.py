@@ -77,6 +77,10 @@ def run(test, params, env):
     uefi_disk_url = params.get("uefi_disk_url", "")
     download_file_path = os.path.join(data_dir.get_data_dir(), "uefi_disk.qcow2")
     persistent_state = ("yes" == params.get("persistent_state", "no"))
+    check_pcrbanks = ('yes' == params.get("check_pcrbanks", "no"))
+    active_pcr_banks = params.get("active_pcr_banks")
+    if active_pcr_banks:
+        active_pcr_banks = active_pcr_banks.split(",")
 
     libvirt_version.is_libvirt_feature_supported(params)
 
@@ -444,6 +448,23 @@ def run(test, params, env):
                         logging.debug("Command output: %s", d_output)
                 elif expect_fail:
                     test.fail("Expect fail but guest tpm still works")
+                if active_pcr_banks or check_pcrbanks:
+                    output3 = session.cmd_output("tpm2_pcrread")
+                    logging.debug("Command output:\n %s", output3)
+                    actual_pcrbanks = []
+                    if output3.find('sha256') != 6:
+                        actual_pcrbanks.append('sha1')
+                    if output3.find('sha384') != output3.find('sha256') + 8:
+                        actual_pcrbanks.append('sha256')
+                    if output3.find('sha512') != output3.find('sha384') + 8:
+                        actual_pcrbanks.append('sha384')
+                    if 'sha512' not in output3[-8:]:
+                        actual_pcrbanks.append('sha512')
+                    logging.debug("Actual active PCR banks in guest are: %s", actual_pcrbanks)
+                    if active_pcr_banks and active_pcr_banks != actual_pcrbanks:
+                        test.fail("Actual active PCR banks in guest do not match configured in xml.")
+                    elif check_pcrbanks and actual_pcrbanks != ["sha256"]:
+                        test.fail("Default PCR bank is not sha256: %s" % actual_pcrbanks)
         logging.info("------PASS on guest tpm device work check------")
 
     def run_test_suite_in_guest(session):
@@ -578,6 +599,11 @@ def run(test, params, env):
                             sec_uuids.append(new_encryption_uuid)
                     if secret_uuid == 'nonexist':
                         backend.encryption_secret = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+                    if active_pcr_banks:
+                        backend_pcrbank = backend.ActivePCRBanks()
+                        for pcrbank in active_pcr_banks:
+                            backend_pcrbank.add_pcrbank(pcrbank)
+                        backend.active_pcr_banks = backend_pcrbank
             tpm_dev.backend = backend
         logging.debug("tpm dev xml to add is:\n %s", tpm_dev)
         for num in range(tpm_num):
