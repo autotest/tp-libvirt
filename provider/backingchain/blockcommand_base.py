@@ -4,7 +4,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest.utils_test import libvirt
 
-LOG = logging.getLogger('avocado.backingchain.blockcommand_base.')
+LOG = logging.getLogger('avocado.' + __name__)
 
 
 class BlockCommand(object):

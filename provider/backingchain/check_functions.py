@@ -2,6 +2,7 @@ import logging
 import re
 
 from avocado.utils import process
+
 from virttest import libvirt_storage
 
 LOG = logging.getLogger('avocado.backingchain.checkfunction')
