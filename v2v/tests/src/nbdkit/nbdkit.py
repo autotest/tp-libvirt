@@ -140,6 +140,15 @@ nbdkit -rfv -U - --exportname / \
         if cmd_result.exit_status == 0 or expected_msg in cmd_result.stdout_text:
             test.fail('failed to test memory_max_disk_size')
 
+    def test_data_corruption():
+        """
+        check case for bz1990134
+        """
+        cmd = """nbdkit --filter=cow data "33 * 100000" --run 'nbdsh -u $uri -c "h.trim(100000, 0)" ; nbdcopy $uri - | hexdump -C'"""
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        if cmd_result.exit_status != 0 or '21 21' in cmd_result.stdout_text:
+            test.fail('failed to test data_corruption')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -150,5 +159,7 @@ nbdkit -rfv -U - --exportname / \
         test_has_run_againt_vddk7_0()
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
+    elif checkpoint == 'data_corruption':
+        test_data_corruption()
     else:
         test.error('Not found testcase: %s' % checkpoint)
