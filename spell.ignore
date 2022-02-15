@@ -556,6 +556,7 @@ MCS
 md
 mdev
 mdevctl
+mellanox
 mem
 memballoon
 memhog
