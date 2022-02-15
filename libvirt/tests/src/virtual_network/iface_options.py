@@ -343,6 +343,11 @@ def run(test, params, env):
                 tmp = opt.rsplit("=")
                 cmd_opt[tmp[0]] = tmp[1]
         logging.debug("Command line options \n%s", cmd_opt)
+        # Because '_' in below attribute name in guest xml will be converted to
+        # '-' in corresponding qemu command line for this page_per_vq option,
+        # we replace it here for the convenience of further comparing.
+        if 'page_per_vq' in driver_dict:
+            driver_dict['page-per-vq'] = driver_dict.pop('page_per_vq')
         logging.debug("setting options \n%s", driver_dict)
 
         for driver_opt in list(driver_dict.keys()):
