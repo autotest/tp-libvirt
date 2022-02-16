@@ -1128,6 +1128,7 @@ def run(test, params, env):
     remove_dict = {}
     remote_libvirt_file = None
     src_libvirt_file = None
+    runner_on_target = None
 
     # Local variables
     vm_name = params.get("migrate_main_vm")
