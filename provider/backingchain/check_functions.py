@@ -3,6 +3,7 @@ import re
 
 from avocado.utils import process
 from virttest import libvirt_storage
+from virttest import utils_misc
 
 LOG = logging.getLogger('avocado.backingchain.checkfunction')
 
@@ -38,6 +39,48 @@ class Checkfunction(object):
         # Run specific check backing chain function
         if not check_bc(blockcommand, vmxml, target_dev, bc_chain):
             self.test.fail('Backing chain check after %s failed' % blockcommand)
+
+    def _get_image_size_with_bytes(self, expected_value):
+        """
+        Handle the image size that setting in cfg file to bytes unit.
+
+        :param expected_value: image size that setting in cfg file.
+        """
+        expected_number = int(re.findall(r'\d+', expected_value)[0])
+        expected_unit = re.findall(r"\D+", expected_value)[0]
+
+        if expected_unit == "kib":
+            expected_value = expected_number * 1024
+        elif expected_unit in ["b", "k", "m", "g"]:
+            expected_value = expected_number * 1024 ** ["b", "k", "m", "g"]. \
+                index(expected_unit)
+        else:
+            self.test.error("Unknown scale value:%s", expected_unit)
+        return int(expected_value)
+
+    def check_image_info(self, image_path, check_item, expected_value):
+        """
+        Check value is expected in image info
+
+        :param image_path: image path
+        :param check_item: The item you want to check.
+        :param expected_value: expected item value
+        """
+        image_info = utils_misc.get_image_info(image_path)
+
+        if image_info.get(check_item) is None:
+            self.test.fail("The {} value:{} you checked is"
+                           " not returned in image_info:{}".
+                           format(check_item, expected_value, image_info))
+        else:
+            actual_value = image_info[check_item]
+            # Get actual value
+            if check_item == 'vsize':
+                expected_value = self._get_image_size_with_bytes(expected_value)
+            # check item value
+            if actual_value != expected_value:
+                self.test.fail('The value :{} is not expected value:'
+                               '{}'.format(actual_value, expected_value))
 
     def check_bc_base_top(self, command, vmxml, dev, bc_chain):
         """
