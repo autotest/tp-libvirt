@@ -27,6 +27,7 @@ def run(test, params, env):
     file_xml_declaration = params.get('file_xml_declaration')
     virsh_function = eval(params.get('virsh_function'))
     err_msg = params.get('err_msg')
+    out_msg = params.get('out_msg')
     data_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
     file_content = None
     file_path = os.path.join(os.path.dirname(__file__), file_path)
@@ -45,6 +46,9 @@ def run(test, params, env):
 
     if virsh_function:
         ret = virsh_function(data_file, ignore_status=True, debug=True)
-        libvirt.check_result(ret,
-                             expected_fails=err_msg,
-                             check_both_on_error=True)
+        if not ret.exit_status and out_msg:
+            libvirt.check_result(ret, expected_match=out_msg)
+        else:
+            libvirt.check_result(ret,
+                                 expected_fails=err_msg,
+                                 check_both_on_error=True)
