@@ -1974,7 +1974,7 @@ def run(test, params, env):
                 if devices[i] == "cdrom":
                     dt_options = "--config"
                 ret = virsh.detach_disk(vm_name, device_targets[i],
-                                        dt_options, wait_remove_event=True,
+                                        dt_options, wait_for_event=True,
                                         **virsh_dargs)
                 disk_detach_error = False
                 if len(device_attach_error) > i:
