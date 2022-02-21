@@ -202,11 +202,6 @@ def run(test, params, env):
                 # 'iothreads' may not invalid number in negative tests
                 logging.debug("Can't convert '%s' to integer type",
                               dom_iothreads)
-        if default_pool:
-            disks_dev = vmxml.get_devices(device_type="disk")
-            for disk in disks_dev:
-                vmxml.del_device(disk)
-            vmxml.sync()
 
         # If hot plug, start VM first, otherwise stop VM if running.
         if start_vm:
