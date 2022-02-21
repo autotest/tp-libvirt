@@ -1087,10 +1087,6 @@ def run(test, params, env):
     # params for cache matrix test
     cache = params.get("cache")
     remove_cache = "yes" == params.get("remove_cache", "no")
-    err_msg = params.get("err_msg")
-    extra_args = {'func_params': params,
-                  'status_error': params.get("status_error", "no"),
-                  'err_msg': err_msg}
     arch = platform.machine()
     if any([hpt_resize, contrl_index, htm_state]) and 'ppc64' not in arch:
         test.cancel("The case is PPC only.")
@@ -1135,6 +1131,20 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vm.verify_alive()
     bk_uri = vm.connect_uri
+
+    vm_err_msg = params.get("vm_err_msg", "")
+    if vm_err_msg:
+        if int(distro.detect().version) <= 8:
+            params.update({"err_msg": vm_err_msg})
+        else:
+            guest_log_file = os.path.join("/var/log/libvirt/qemu/", "%s.log" % vm_name)
+            # Delete vm log on remote
+            cmd = "rm -f %s" % guest_log_file
+            remote.run_remote_cmd(cmd, params, ignore_status=False)
+    err_msg = params.get("err_msg")
+    extra_args = {'func_params': params,
+                  'status_error': params.get("status_error", "no"),
+                  'err_msg': err_msg}
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -1505,6 +1515,9 @@ def run(test, params, env):
         if grep_str_not_in_remote_log:
             libvirt.check_logfile(grep_str_not_in_remote_log, log_file, False,
                                   cmd_parms, runner_on_target)
+        if vm_err_msg and int(distro.detect().version) > 8:
+            libvirt.check_logfile(vm_err_msg, guest_log_file, True, cmd_parms,
+                                  runner_on_target)
 
         if check_event_output:
             if check_log_interval:
