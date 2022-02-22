@@ -1755,10 +1755,10 @@ def run(test, params, env):
             iothread = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                   "driver", "iothread")
             if iothread:
-                cmd += " | grep iothread=iothread%s" % iothread
+                cmd += " | grep -E 'iothread\W+iothread%s'" % iothread
 
             if len(serial) != 0 and serial[0] != "":
-                cmd += " | grep serial=%s" % serial[0]
+                cmd += " | grep -E 'serial\W+%s'" % serial[0]
             if len(wwn) != 0 and wwn[0] != "":
                 wwn0_value = wwn[0]
                 # After libvirt 7.9.0, qemu output becomes json format,
@@ -1769,13 +1769,13 @@ def run(test, params, env):
                     wwn1_value = wwn[1]
                     if libvirt_version.version_compare(7, 9, 0):
                         wwn1_value = str(int(wwn[1], 16))
-                    cmd += " | grep -E \"wwn=(0x)?%s.*wwn=(0x)?%s\"" % (wwn0_value, wwn1_value)
+                    cmd += " | grep -E 'wwn.*%s.*wwn.*%s'" % (wwn0_value, wwn1_value)
                 else:
-                    cmd += " | grep -E \"wwn=(0x)?%s\"" % wwn0_value
+                    cmd += " | grep -E 'wwn.*%s'" % wwn0_value
             if vendor != "":
-                cmd += " | grep vendor=%s" % vendor
+                cmd += " | grep -E 'vendor\W+%s'" % vendor
             if product != "":
-                cmd += " | grep \"product=%s\"" % product
+                cmd += " | grep -E 'product\W+%s'" % product
 
             num_queues = ""
             ioeventfd = ""
@@ -1794,13 +1794,13 @@ def run(test, params, env):
                         elif d[0].strip() == "max_sectors":
                             max_sectors = d[1].strip()
             if num_queues != "":
-                cmd += " | grep num_queues=%s" % num_queues
+                cmd += " | grep -E 'num_queues\W+%s'" % num_queues
             if ioeventfd:
                 cmd += " | grep ioeventfd=%s" % ioeventfd
             if cmd_per_lun:
-                cmd += " | grep cmd_per_lun=%s" % cmd_per_lun
+                cmd += " | grep -E 'cmd_per_lun\W+%s'" % cmd_per_lun
             if max_sectors:
-                cmd += " | grep max_sectors=%s" % max_sectors
+                cmd += " | grep -E 'max_sectors\W+%s'" % max_sectors
             iface_event_idx = ""
             if iface_driver != "":
                 for driver_option in iface_driver.split(','):
@@ -1858,7 +1858,7 @@ def run(test, params, env):
                 if device_bus[0] == 'scsi':
                     dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                         "alias", "name")
-                    cmd += " | grep drive.*id=%s" % dev_id
+                    cmd += " | grep -E 'drive\W+id\W+%s'" % dev_id
             else:
                 dev_bus = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                          "address", "bus"), 16)
@@ -1871,7 +1871,7 @@ def run(test, params, env):
                         device_option = "scsi=off"
                     # scsi=on/off flag is removed from qemu command line after libvirt 6.6.0, so update cmd to make code compatible.
                     if libvirt_version.version_compare(6, 6, 0):
-                        cmd += (" | grep virtio-blk-pci,bus=pci.%x,addr=0x%x"
+                        cmd += (" | grep -E 'virtio-blk-pci\W+bus\W+pci.%x\W+addr\W+0x%x'"
                                 % (dev_bus, pci_slot))
                     else:
                         cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
@@ -1901,7 +1901,7 @@ def run(test, params, env):
                         device_option = "scsi-cd"
                     else:
                         device_option = "scsi-hd"
-                    cmd += (" | grep %s,bus=scsi%d.%d,.*drive=.*,id=%s"
+                    cmd += (" | grep -E '%s\W+bus\W+scsi%d.%d.*drive.*id\W+%s'"
                             % (device_option, dev_bus, dev_unit, dev_id))
                 if device_bus[0] == "usb":
                     dev_port = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
@@ -1913,20 +1913,14 @@ def run(test, params, env):
                         usb_bus_str = "usb%s.0" % dev_bus
                         if dev_bus == 0:
                             usb_bus_str = "usb.0"
-                        cmd += (" | grep usb-storage,bus=%s,port=%s,"
-                                "drive=.*,id=%s"
+                        cmd += (" | grep -E 'usb-storage\W+bus\W+%s\W+port\W+%s.*drive.*id\W+%s'"
                                 % (usb_bus_str, dev_port, dev_id))
                     if "input" in usb_devices:
                         input_addr = get_device_addr('input', 'tablet')
-                        cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
-                                "port=%s" % (input_addr["bus"],
-                                             input_addr["port"]))
+                        cmd += (" | grep -E 'usb-tablet\W+id\W+input[0-9]\W+bus\W+usb.%s\W+port\W+%s'" % (input_addr["bus"], input_addr["port"]))
                     if "hub" in usb_devices:
                         hub_addr = get_device_addr('hub', 'usb')
-                        cmd += (" | grep usb-hub,id=hub0,bus=usb.%s,"
-                                "port=%s" % (hub_addr["bus"],
-                                             hub_addr["port"]))
-
+                        cmd += (" | grep -E 'usb-hub\W+id\W+hub0\W+bus\W+usb.%s\W+port\W+%s'" % (hub_addr["bus"], hub_addr["port"]))
             time.sleep(1)
             if process.system(cmd, ignore_status=True, shell=True):
                 test.fail("Can not see disk option"
