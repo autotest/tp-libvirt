@@ -2,11 +2,13 @@ import logging as log
 
 from provider.sriov import sriov_base
 
+from virttest import utils_misc
 from virttest import utils_sriov
 from virttest import virsh
 
 from virttest.libvirt_xml import nodedev_xml
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_vfio
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
@@ -161,6 +163,8 @@ def run(test, params, env):
 
         logging.info("Detach and reattach the device and check vf's mac.")
         nodedev_test(dev_name, no_reset=True)
+        utils_misc.wait_for(
+            lambda: libvirt_vfio.check_vfio_pci(vf_pci, True, True), 10, 5)
         compare_vf_mac(pf_name, vf_mac)
 
         logging.info("Cold-plug the device into the VM.")
