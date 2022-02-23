@@ -252,6 +252,13 @@ def run(test, params, env):
     status_error = params.get("status_error")
     shutdown_timeout = params.get("shutdown_timeout", "300")
 
+    # Create libvirt guest config file if not existed
+    libvirt_guests_file = "/etc/sysconfig/libvirt-guests"
+    libvirt_guests_file_create = False
+    if not os.path.exists(libvirt_guests_file):
+        process.run("touch %s" % libvirt_guests_file, verbose=True)
+        libvirt_guests_file_create = True
+
     config = utils_config.LibvirtGuestsConfig()
     libvirt_guests_service = service.Factory.create_service("libvirt-guests")
     if not libvirt_guests_service.status():
@@ -331,6 +338,9 @@ def run(test, params, env):
             if dom.is_alive():
                 dom.destroy(gracefully=False)
             virsh.remove_domain(dom.name, "--remove-all-storage")
+
+        if libvirt_guests_file_create:
+            os.remove(libvirt_guests_file)
 
         if nfs_vol:
             cleanup_nfs_backend_guest(vmxml_backup)
