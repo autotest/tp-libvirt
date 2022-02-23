@@ -131,6 +131,8 @@ def run(test, params, env):
                                      options=net_event_option, **virsh_dargs)
             utlv.check_exit_status(result, status_error)
 
+        time.sleep(1)
+
         if not status_error:
             # Verify 'lifecycle' events
             if not net_event_list and net_event_name == 'lifecycle':
