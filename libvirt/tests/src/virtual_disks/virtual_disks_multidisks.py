@@ -15,6 +15,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import nfs
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 from virttest import utils_misc
 from virttest import utils_disk
 from virttest import data_dir
@@ -24,6 +25,7 @@ from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.utils_config import LibvirtQemuConfig
 from virttest.utils_config import LibvirtdConfig
+from virttest.utils_config import VirtQemudConfig
 
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
@@ -862,7 +864,7 @@ def run(test, params, env):
         log_outputs = "1:file:%s" % log_config_path
         libvirtd_config.log_outputs = log_outputs
         libvirtd_config.log_filters = "1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"
-        utils_libvirtd.libvirtd_restart()
+        utils_libvirtd.Libvirtd('virtqemud').restart()
 
     def check_info_in_libvird_log_file(matchedMsg=None):
         """
@@ -1058,7 +1060,7 @@ def run(test, params, env):
     # Configure libvirtd log level and path.
     log_file = params.get("log_file", "libvirtd.log")
     log_config_path = os.path.join(data_dir.get_data_dir(), log_file)
-    libvirtd_config = LibvirtdConfig()
+    libvirtd_config = VirtQemudConfig() if utils_split_daemons.is_modular_daemon() else LibvirtdConfig()
 
     if virtio_disk_hot_unplug_event_watch:
         config_libvirtd_log()
@@ -1169,7 +1171,7 @@ def run(test, params, env):
     qemu_config = LibvirtQemuConfig()
     if test_disks_format:
         qemu_config.allow_disk_format_probing = True
-        utils_libvirtd.libvirtd_restart()
+        utils_libvirtd.Libvirtd('virtqemud').restart()
 
     # Create virtual device file.
     disks = []
