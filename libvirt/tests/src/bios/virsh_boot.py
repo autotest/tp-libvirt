@@ -1,9 +1,9 @@
 import logging as log
 import os
 import re
-from aexpect.utils import astring
-from aexpect.exceptions import ShellProcessTerminatedError
 
+from aexpect.exceptions import ShellProcessTerminatedError
+from aexpect.utils import astring
 from avocado.utils import process
 
 from virttest import remote
@@ -13,13 +13,13 @@ from virttest import utils_misc
 from virttest import data_dir
 from virttest import ceph
 from virttest import gluster
+from virttest import libvirt_version
 
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
-from virttest import libvirt_version
 
 # Global test env cleanup variables
 cleanup_iscsi = False
@@ -270,6 +270,7 @@ def setup_test_env(params, test):
             with open(key_file, 'w') as f:
                 f.write("[%s]\n\tkey = %s\n" %
                         (client_name, client_key))
+
             key_opt = "--keyring %s" % key_file
 
             # Delete the disk if it exists
@@ -676,9 +677,11 @@ def run(test, params, env):
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ''
+    keyring_file = ''
     try:
         # Create config file if it doesn't exist
         ceph_cfg = ceph.create_config_file(params.get("mon_host"))
+        keyring_file = ceph.create_keyring_file(params.get("client_name"), params.get('client_key'))
         setup_test_env(params, test)
         apply_boot_options(vmxml, params, test)
         blk_source = vm.get_first_disk_devices()['source']
@@ -747,8 +750,9 @@ def run(test, params, env):
         logging.debug("Succeed to boot %s" % vm_name)
     finally:
         # Remove ceph configure file if created.
-        if ceph_cfg:
-            os.remove(ceph_cfg)
+        for a_file in [ceph_cfg, keyring_file]:
+            if os.path.exists(a_file):
+                os.remove(a_file)
         logging.debug("Start to cleanup")
         if vm.is_alive:
             vm.destroy()
