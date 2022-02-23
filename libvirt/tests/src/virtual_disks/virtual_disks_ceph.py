@@ -982,7 +982,7 @@ def run(test, params, env):
                 ret = virsh.detach_device(guest_name, xml_file, wait_for_event=True)
                 libvirt.check_exit_status(ret)
         elif attach_disk:
-            ret = virsh.detach_disk(vm_name, targetdev, wait_remove_event=True)
+            ret = virsh.detach_disk(vm_name, targetdev, wait_for_event=True)
             libvirt.check_exit_status(ret)
 
         # Check disk in vm after detachment.
