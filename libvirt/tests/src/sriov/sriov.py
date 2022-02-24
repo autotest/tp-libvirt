@@ -118,7 +118,7 @@ def run(test, params, env):
             except process.CmdError:
                 raise test.fail("Get net list with 'virsh nodedev-list' failed\n")
 
-        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=300)
+        net_diff = utils_misc.wait_for(_vf_init_completed, 300, 10)
         pci_list_sriov = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
         pci_list_sriov = set(pci_list_sriov)
         pci_diff = list(pci_list_sriov.difference(pci_list_before))
