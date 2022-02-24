@@ -302,6 +302,7 @@ def run(test, params, env):
             # Reset VM to initial state
             vmxml_backup.sync("--snapshots-metadata")
             vm.start()
+            vm.wait_for_login()
             snap_del_disks = libvirt_disk.make_external_disk_snapshots(vm, disk_target, snapshot_prefix, snapshot_take)
             tmp_option = opt.get('blkcomopt')
             top_file = opt.get('top')
@@ -439,6 +440,7 @@ def run(test, params, env):
                 # Reset VM to initial state
                 vmxml_backup.sync("--snapshots-metadata")
                 vm.start()
+                vm.wait_for_login()
             snap_del_disks = libvirt_disk.make_external_disk_snapshots(vm, disk_target, snapshot_prefix, snapshot_take)
             scenarios = prepare_case_scenarios(snap_del_disks, base_file)
             libvirt_disk.cleanup_snapshots(vm, snap_del_disks)
