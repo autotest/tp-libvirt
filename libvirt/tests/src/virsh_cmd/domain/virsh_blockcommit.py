@@ -489,12 +489,16 @@ def run(test, params, env):
             vm.prepare_guest_agent()
 
         if repeatedly_do_blockcommit_pivot:
+            # Make sure vm boot successfully before snapshot
+            vm.wait_for_login()
             do_blockcommit_pivot_repeatedly()
 
         # Create block type disk on file backing file
         if block_disk_type_based_on_file_backing_file or block_disk_type_based_on_gluster_backing_file:
             if not vm.is_alive():
                 vm.start()
+            # Make sure vm boot successfully before snapshot
+            vm.wait_for_login()
             first_src_file = get_first_disk_source()
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
             iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True)
@@ -864,6 +868,8 @@ def run(test, params, env):
                     test.fail("blockcommit failed: %s" % output)
 
         if not pivot_opt and snap_in_mirror:
+            # Make sure vm boot successfully before snapshot
+            vm.wait_for_login()
             # do snapshot during mirror phase
             snap_path = "%s/%s.snap" % (tmp_dir, vm_name)
             snap_opt = "--disk-only --atomic --no-metadata "
