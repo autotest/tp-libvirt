@@ -6,6 +6,7 @@ import tempfile
 from avocado.utils import process
 from virttest import data_dir
 from virttest import utils_misc
+from virttest.utils_conn import build_server_key, build_CA
 from virttest.utils_v2v import multiple_versions_compare
 from virttest.utils_v2v import params_get
 
@@ -111,11 +112,14 @@ nbdkit -rfv -U - --exportname / \
             output = process.run(nbdkit_cmd, shell=True).stdout_text
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
             if checkpoint == 'vddk_stats':
-                if vddk_stats == 1 and not re.search(r'VDDK function stats', output):
+                if vddk_stats == 1 and not re.search(
+                        r'VDDK function stats', output):
                     test.fail('failed to test vddk_stats')
-                if vddk_stats == 0 and re.search(r'VDDK function stats', output):
+                if vddk_stats == 0 and re.search(
+                        r'VDDK function stats', output):
                     test.fail('failed to test vddk_stats')
-            if checkpoint == 'has_run_againt_vddk7_0' and not re.search(r'virtual size', output):
+            if checkpoint == 'has_run_againt_vddk7_0' and not re.search(
+                    r'virtual size', output):
                 test.fail('failed to test has_run_againt_vddk7_0')
 
     def test_memory_max_disk_size():
@@ -149,6 +153,28 @@ nbdkit -rfv -U - --exportname / \
         if cmd_result.exit_status != 0 or '21 21' in cmd_result.stdout_text:
             test.fail('failed to test data_corruption')
 
+    def test_cve_2019_14850():
+        """
+        check case for bz1757263
+        """
+        cred_dict = {
+            'cakey': 'ca-key.pem',
+            'cacert': 'ca-cert.pem',
+            'serverkey': 'server-key.pem',
+            'servercert': 'server-cert.pem'}
+        tls_dir = data_dir.get_tmp_dir()
+        build_CA(tls_dir, credential_dict=cred_dict)
+        build_server_key(
+            tls_dir,
+            credential_dict=cred_dict,
+            server_ip='127.0.0.0')
+        cmd1 = """echo | nbdkit -fv --tls=require --tls-certificates=/root null --run "nc localhost 10809" --tls-verify-peer"""
+        cmd2 = "nbdkit -fv null --run 'sleep 1 >/dev/tcp/localhost/10809' 2>&1"
+        for cmd in [cmd1, cmd2]:
+            cmd_result = process.run(cmd, shell=True, ignore_status=True)
+            if 'open readonly' in cmd_result.stdout_text:
+                test.fail('failed to test cve_2019_14850')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -161,5 +187,7 @@ nbdkit -rfv -U - --exportname / \
         test_memory_max_disk_size()
     elif checkpoint == 'data_corruption':
         test_data_corruption()
+    elif checkpoint == 'cve_2019_14850':
+        test_cve_2019_14850()
     else:
         test.error('Not found testcase: %s' % checkpoint)
