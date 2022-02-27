@@ -5,7 +5,6 @@ import logging as log
 
 from avocado.utils import process
 
-from virttest import utils_config
 from virttest import utils_split_daemons
 from virttest.utils_libvirtd import Libvirtd
 
@@ -58,17 +57,12 @@ def run(test, params, env):
     timeout = int(params.get("restart_timeout", 1))
     pid_should_change = params.get("expect_pid_change", "yes") == "yes"
     expect_coredump = params.get("expect_coredump", "no") == "yes"
-    sysconfig = params.get("sysconfig", None)
     check_dmesg = params.get("check_dmesg", None)
 
     libvirtd = Libvirtd("virtqemud")
     try:
         libvirtd.start()
 
-        if sysconfig:
-            config = utils_config.LibvirtdSysConfig()
-            setattr(config, sysconfig.split('=')[0], sysconfig.split('=')[1])
-            libvirtd.restart()
         if check_dmesg:
             start_mark(message_src_file, message_dest_file)
 
@@ -117,6 +111,3 @@ def run(test, params, env):
                 libvirtd.start()
                 test.fail("Pid file should not reside")
             libvirtd.start()
-        if sysconfig:
-            config.restore()
-            libvirtd.restart()
