@@ -1,13 +1,20 @@
-#import logging
+import os
+import re
+import shutil
+import logging
+
 from virttest.utils_test import libvirt
 from avocado.utils import process
 
+from virttest import data_dir
 from virttest import libvirt_vm
 from virttest import remote
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
 from virttest import libvirt_version
+
+LOG = logging.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -35,6 +42,8 @@ def run(test, params, env):
     local_pwd = params.get("local_pwd", "LOCAL.EXAMPLE.COM")
     paused_after_start_vm = "yes" == params.get("paused_after_start_vm", "no")
     destroy_readonly = "yes" == params.get("destroy_readonly", "no")
+    start_destroy_times = params.get("start_destroy_times", "")
+    limit_nofile = params.get("limit_nofile", "")
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
                                local_ip.count("EXAMPLE.COM")):
         test.cancel(
@@ -50,6 +59,21 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
+
+    def modify_virtual_daemon(service_path, modify_info):
+        """
+        Modify libvirtd or virtqemud service
+
+        :param service_path: service path
+        :param modify_info: service modify info
+        """
+        ori_value = process.getoutput("cat %s | grep LimitNOFILE" % service_path, shell=True)
+        with open(service_path, 'r+') as f:
+            content = f.read()
+            content = re.sub(ori_value, modify_info, content)
+            f.seek(0)
+            f.write(content)
+            f.truncate()
 
     if vm_ref == "id":
         vm_ref = domid
@@ -74,6 +98,41 @@ def run(test, params, env):
                                unprivileged_user=unprivileged_user,
                                uri=uri, debug=True).exit_status
         output = ""
+
+        if start_destroy_times:
+            status = 0
+            try:
+                modify_service = "{}.service".format(
+                                    utils_libvirtd.Libvirtd().service_name)
+                LOG.debug("Modify service {}".format(modify_service))
+                service_path = "/usr/lib/systemd/system/{}"\
+                               .format(modify_service)
+                LOG.debug("Service path is: {}".format(service_path))
+
+                # Backup original libvirtd.service
+                backup_file = os.path.join(data_dir.get_tmp_dir(),
+                                           "{}-bak".format(modify_service))
+                shutil.copy(service_path, backup_file)
+
+                # Decrease domain number to speed up test
+                modify_virtual_daemon(service_path, limit_nofile)
+                process.run("systemctl daemon-reload")
+                utils_libvirtd.Libvirtd(modify_service).restart()
+
+                # Keep start/destroy guest to see whether domain unix socket
+                # was cleaned up.
+                for i in range(int(start_destroy_times)):
+                    LOG.debug("Start guest {} times".format(i))
+                    ret = virsh.start(vm_name)
+                    if ret.exit_status:
+                        test.fail("Failed to start guest: {}".format(ret.stderr_text))
+                    virsh.destroy(vm_name)
+            finally:
+                # Recover libvirtd.service
+                shutil.copy(backup_file, service_path)
+                process.run("systemctl daemon-reload")
+                utils_libvirtd.Libvirtd(modify_service).restart()
+
     else:
         status = 0
         try:
