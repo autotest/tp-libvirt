@@ -125,6 +125,15 @@ def run(test, params, env):
         cmd_result = process.run(cmd, shell=True)
         logging.debug("new block device is: %s", device_source)
         cmd = "lsscsi | grep %s | awk '{print $1}'" % device_source
+
+        def _check_lun_info():
+            """
+            Check lun information
+            """
+            cmd_result = process.run(cmd, shell=True)
+            lun_info = re.findall("\d+", str(cmd_result.stdout.strip()))
+            return len(lun_info) == 4
+        utils_misc.wait_for(lambda: _check_lun_info, timeout=50)
         cmd_result = process.run(cmd, shell=True)
         lun_info = re.findall("\d+", str(cmd_result.stdout.strip()))
         if len(lun_info) != 4:
