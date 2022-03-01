@@ -252,6 +252,66 @@ def run(test, params, env):
             session.close()
         return fs_info
 
+    def parse_interface_info(lines):
+        """
+        Parse the info returned from 'ip a' cmd
+
+        :param lines: The list of interface info to be parsed
+        :return: a dict of  guest interface name, mac addr, and other info,
+        an example of the dict is: {'if.0.name': 'lo', 'if.0.hwaddr': '00:00:00:00:00:00',
+        'if.0.addr.0.type': 'ipv4', 'if.0.addr.0.addr': '127.0.0.1',
+        'if.0.addr.0.prefix': '8', 'if.0.addr.1.type': 'ipv6', 'if.0.addr.1.addr': '::1',
+        'if.0.addr.1.prefix': '128', 'if.0.addr.count': '2', 'if.1.name': 'enp1s0',
+        'if.1.hwaddr': '52:54:00:33:2c:67', 'if.1.addr.0.type': 'ipv4',
+        'if.1.addr.0.addr': '192.168.122.177', 'if.1.addr.0.prefix': '24',
+        'if.1.addr.1.type': 'ipv6', 'if.1.addr.1.addr': 'fe80::5054:ff:fe33:2c67',
+        'if.1.addr.1.prefix': '64', 'if.1.addr.count': '2', 'if.count': '2'}
+        """
+        if_info = {}
+        count = -1
+        addr_count = 0
+        for line in lines:
+            iterms = line.split()
+            if iterms[0][0].isdigit():
+                # the number of addresses of last interface
+                if count >= 0:
+                    if_info[key_prefix + '.addr.count'] = str(addr_count + 1)
+                count += 1
+                addr_count = -1
+                key_prefix = 'if.' + str(count)
+                if_info[key_prefix + '.name'] = iterms[1][:-1]
+            if iterms[0].startswith("link/"):
+                if_info[key_prefix + '.hwaddr'] = iterms[1]
+            if iterms[0].startswith('inet'):
+                addr_count += 1
+                if_type = 'ipv4' if iterms[0] == 'inet' else 'ipv6'
+                if_info[key_prefix + '.addr.' + str(addr_count) + '.type'] = if_type
+                addr = iterms[1].split('/')[0]
+                prefix = iterms[1].split('/')[1]
+                if_info[key_prefix + '.addr.' + str(addr_count) + '.addr'] = addr
+                if_info[key_prefix + '.addr.' + str(addr_count) + '.prefix'] = prefix
+        # the number of addresses of the last interface
+        if_info[key_prefix + '.addr.count'] = str(addr_count + 1)
+        if_info['if.count'] = str(count + 1)
+        return if_info
+
+    def check_guest_interface_info():
+        """
+        check the info of guest interfaces from guest side
+
+        :return: the guest interface info from guest side
+        """
+        if_info = {}
+        session = vm.wait_for_login()
+        try:
+            ip_cmd = 'ip a'
+            ip_lines = session.cmd_output(ip_cmd).strip().splitlines()
+            if_info = parse_interface_info(ip_lines)
+        finally:
+            session.close()
+        logging.debug("if_info is %s", if_info)
+        return if_info
+
     vm_name = params.get("main_vm")
     option = params.get("option", " ")
     added_user_name = params.get("added_user_name")
