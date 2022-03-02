@@ -166,10 +166,10 @@ def run(test, params, env):
 
             # create partition and file system
             session.cmd("parted -s %s mklabel msdos" % new_disk)
-            session.cmd("parted -s %s mkpart primary ext3 '0%%' '100%%'" %
+            session.cmd("parted -s %s mkpart primary ext4 '0%%' '100%%'" %
                         new_disk)
             # mount disk and write file in it
-            session.cmd("mkfs.ext3 %s1" % new_disk)
+            session.cmd("mkfs.ext4 %s1" % new_disk)
             session.cmd("mkdir -p %s && mount %s1 %s" %
                         (mnt_dir, new_disk, mnt_dir))
 
