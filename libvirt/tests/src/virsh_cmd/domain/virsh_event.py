@@ -172,9 +172,14 @@ def run(test, params, env):
             cpu_idx += 2
             numa_dict_list.append(numa_dict)
             numa_dict = {}
+        if vmxml.xmltreefile.find('cpu'):
+            vmxml_cpu = vmxml.cpu
+            logging.debug("Existing cpu configuration in guest xml:\n%s", vmxml_cpu)
+            vmxml_cpu.mode = 'host-model'
+        else:
+            vmxml_cpu = vm_xml.VMCPUXML()
+            vmxml_cpu.xml = "<cpu mode='host-model'><numa/></cpu>"
         vmxml.vcpu = numa_nodes * 2
-        vmxml_cpu = vm_xml.VMCPUXML()
-        vmxml_cpu.xml = "<cpu><numa/></cpu>"
         vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
         logging.debug(vmxml_cpu.numa_cell)
         vmxml.cpu = vmxml_cpu
