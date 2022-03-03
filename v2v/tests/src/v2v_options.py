@@ -134,7 +134,8 @@ def run(test, params, env):
         """
         Get export domain uuid, image uuid and vol uuid from command output.
         """
-        tmp_target = re.findall(r"RHV: (?:disk:|will export \S+ to) (\S+)", output)
+        tmp_target = re.findall(
+            r"RHV: (?:disk:|will export \S+ to) (\S+)", output)
         if len(tmp_target) < 1:
             test.error("Fail to find tmp target file name when converting vm"
                        " disk image")
@@ -331,7 +332,11 @@ def run(test, params, env):
 
         LOG.info('KEY:\tSOURCE<-> XML')
         for key in check_map:
-            LOG.info('%-15s:%18s <-> %s', key, source_info[key], check_map[key])
+            LOG.info(
+                '%-15s:%18s <-> %s',
+                key,
+                source_info[key],
+                check_map[key])
             if str(check_map[key]) not in source_info[key]:
                 fail.append(key)
 
@@ -349,8 +354,12 @@ def run(test, params, env):
         # Check cpu features
         if hypervisor in ['kvm', 'xen']:
             feature_list = xml.features.get_feature_list()
-            LOG.info('CPU features:%s<->%s', source_info['CPU features'], feature_list)
-            if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
+            LOG.info(
+                'CPU features:%s<->%s',
+                source_info['CPU features'],
+                feature_list)
+            if sorted(source_info['CPU features'].split(
+                    ',')) != sorted(feature_list):
                 fail.append('CPU features')
 
         if fail:
@@ -403,18 +412,23 @@ def run(test, params, env):
         output = to_text(result.stdout + result.stderr, errors=error_flag)
         output_stdout = to_text(result.stdout, errors=error_flag)
         if status_error:
-            if checkpoint == 'length_of_error':
+            if checkpoint in ['length_of_error', 'line_no_wrap']:
                 log_lines = output.split('\n')
-                v2v_start = False
                 for line in log_lines:
                     if line.startswith('virt-v2v:'):
                         v2v_start = True
-                    if line.startswith('libvirt:'):
+                    else:
                         v2v_start = False
                     # 76 is the max length in v2v
-                    if v2v_start and len(line) > 76:
-                        test.fail('Error log longer than 76 characters: %s' %
-                                  line)
+                    if v2v_start:
+                        if checkpoint == 'length_of_error' and len(line) > 76:
+                            test.fail(
+                                'Error log longer than 76 characters: %s' %
+                                line)
+                        if checkpoint == 'line_no_wrap' and len(line) < 76:
+                            test.fail(
+                                'Error log is shorter than 76 characters: %s' %
+                                line)
             if checkpoint == 'disk_not_exist':
                 vol_list = virsh.vol_list(pool_name)
                 LOG.info(vol_list)
@@ -494,7 +508,7 @@ def run(test, params, env):
                         win_img,
                         ignore_status=True).exit_status == 0:
                     test.fail('Command "%s" success' % command % win_img)
-            #check 'yum deplist virt-v2v'
+            # check 'yum deplist virt-v2v'
             if checkpoint == 'deplist':
                 if 'platform-python' not in output:
                     test.fail('platform-python is not in dependency')
@@ -526,7 +540,8 @@ def run(test, params, env):
                     with open(params['example_file']) as f:
                         for line in f:
                             if line.strip() not in output_stdout.strip():
-                                if utils_v2v.multiple_versions_compare(V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
+                                if utils_v2v.multiple_versions_compare(
+                                        V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
                                     continue
                 else:
                     test.error('No content to compare with')
@@ -565,7 +580,8 @@ def run(test, params, env):
                     if os.path.isfile(i):
                         os.remove(i)
                 if not check_result:
-                    test.fail('Not found disk or xml created by virt-v2v-copy-to-local')
+                    test.fail(
+                        'Not found disk or xml created by virt-v2v-copy-to-local')
 
         log_check = utils_v2v.check_log(params, output)
         if log_check:
@@ -699,8 +715,7 @@ def run(test, params, env):
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
-        elif checkpoint not in ['length_of_error', 'empty_nic_source_network',
-                                'empty_nic_source_bridge', 'machine_readable']:
+        elif checkpoint not in ['length_of_error', 'empty_nic_source_network', 'line_no_wrap', 'empty_nic_source_bridge', 'machine_readable']:
             v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
@@ -855,6 +870,10 @@ def run(test, params, env):
                 output_func=utils_misc.log_line,
                 output_params=(params['tail_log'],)
             )
+        if checkpoint == 'length_of_error':
+            if utils_v2v.v2v_supported_option('--wrap'):
+                v2v_options += ' --wrap'
+
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
         if new_vm_name:
