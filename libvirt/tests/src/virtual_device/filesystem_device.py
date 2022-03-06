@@ -9,8 +9,10 @@ from virttest import virsh
 from virttest import utils_test
 from virttest import utils_misc
 from virttest import libvirt_version
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
+from virttest.utils_config import LibvirtQemuConfig
 from virttest.utils_test import libvirt_device_utils
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_pcicontr
@@ -213,6 +215,7 @@ def run(test, params, env):
     destroy_start = params.get("destroy_start", "no") == "yes"
     bug_url = params.get("bug_url", "")
     script_content = params.get("stress_script", "")
+    stdio_handler_file = "file" == params.get("stdio_handler")
 
     fs_devs = []
     vms = []
@@ -297,10 +300,15 @@ def run(test, params, env):
             libvirt_pcicontr.reset_pci_num(vm_names[index])
             result = virsh.start(vm_names[index], debug=True)
             if hotplug_unplug:
+                if stdio_handler_file:
+                    qemu_config = LibvirtQemuConfig()
+                    qemu_config.stdio_handler = "file"
+                    utils_libvirtd.Libvirtd().restart()
                 for fs_dev in fs_devs:
                     ret = virsh.attach_device(vm_names[index], fs_dev.xml,
                                               ignore_status=True, debug=True)
                     libvirt.check_exit_status(ret, status_error)
+
                 if status_error:
                     return
             if status_error and not managedsave:
@@ -382,6 +390,17 @@ def run(test, params, env):
                     for fs_dev in fs_devs:
                         if detach_device_alias:
                             alias = fs_dev.alias['name']
+                            cmd = 'lsof /var/log/libvirt/qemu/%s-%s-virtiofsd.log' % (vm.name, alias)
+                            output = process.run(cmd).stdout_text.splitlines()
+                            for item in output[1:]:
+                                if stdio_handler_file:
+                                    if item.split()[0] != "virtiofsd":
+                                        test.fail("When setting stdio_handler as file, the command"
+                                                  "to write log should be virtiofsd!")
+                                else:
+                                    if item.split()[0] != "virtlogd":
+                                        test.fail("When setting stdio_handler as logd, the command"
+                                                  "to write log should be virtlogd!")
                             ret = virsh.detach_device_alias(vm.name, alias, ignore_status=True,
                                                             debug=True, wait_for_event=True)
                         else:
@@ -403,3 +422,6 @@ def run(test, params, env):
         if launched_mode == "externally":
             process.run('restorecon %s' % path, ignore_status=False, shell=True)
         utils_memory.set_num_huge_pages(backup_huge_pages_num)
+        if stdio_handler_file:
+            qemu_config.restore()
+            utils_libvirtd.Libvirtd().restart()
