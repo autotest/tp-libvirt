@@ -1,4 +1,7 @@
 import logging
+import os
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
@@ -25,6 +28,8 @@ class BlockCommand(object):
         self.snap_name_list = []
         self.tmp_dir = data_dir.get_data_dir()
         self.new_image_path = ''
+        self.old_parts = []
+        self.original_disk_source = ''
 
     def prepare_iscsi(self):
         """
@@ -82,3 +87,19 @@ class BlockCommand(object):
                                      debug=True)
             self.snap_path_list.append(self.tmp_dir + 'snap%d' % i)
             self.snap_name_list.append('snap%d' % i)
+
+    def backingchain_common_teardown(self):
+        """
+        Clean all new created snap
+        """
+        LOG.info('Start cleaning up.')
+        for ss in self.snap_name_list:
+            virsh.snapshot_delete(self.vm.name, '%s --metadata' % ss, debug=True)
+        for sp in self.snap_path_list:
+            process.run('rm -f %s' % sp)
+        # clean left first disk snap file that created along with new disk
+        image_path = os.path.dirname(self.original_disk_source)
+        if image_path != '':
+            for sf in os.listdir(image_path):
+                if 'snap' in sf:
+                    process.run('rm -f %s/%s' % (image_path, sf))
