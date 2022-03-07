@@ -5,6 +5,9 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest.utils_libvirt import libvirt_secret
+from virttest.libvirt_xml.devices.disk import Disk
+from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 LOG = logging.getLogger('avocado.' + __name__)
@@ -103,3 +106,34 @@ class BlockCommand(object):
             for sf in os.listdir(image_path):
                 if 'snap' in sf:
                     process.run('rm -f %s/%s' % (image_path, sf))
+
+    def prepare_secret_disk(self, image_path, secret_disk_dict=None):
+        """
+        Add secret disk for domain.
+
+        :params image_path: image path for disk source file
+        :secret_disk_dict: secret disk dict to add new disk
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
+        sec_dict = eval(self.params.get("sec_dict", '{}'))
+        device_target = self.params.get("target_disk", "vdd")
+        sec_passwd = self.params.get("private_key_password")
+        if not secret_disk_dict:
+            secret_disk_dict = {'type_name': "file",
+                                'target': {"dev": device_target, "bus": "virtio"},
+                                'driver': {"name": "qemu", "type": "qcow2"},
+                                'source': {'encryption': {"encryption": 'luks',
+                                                          "secret": {"type": "passphrase"}}}}
+        # Create secret
+        libvirt_secret.clean_up_secrets()
+        sec_uuid = libvirt_secret.create_secret(sec_dict=sec_dict)
+        virsh.secret_set_value(sec_uuid, sec_passwd, encode=True,
+                               debug=True)
+
+        secret_disk_dict['source']['encryption']['secret']["uuid"] = sec_uuid
+        secret_disk_dict['source']['attrs'] = {'file': image_path}
+        new_disk = Disk()
+        new_disk.setup_attrs(**secret_disk_dict)
+        vmxml.devices = vmxml.devices.append(new_disk)
+        vmxml.xmltreefile.write()
+        vmxml.sync()
