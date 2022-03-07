@@ -3,6 +3,7 @@ import re
 import logging as log
 import platform
 
+from avocado.utils import cpu as cputils
 from avocado.utils import process
 
 from virttest import virsh
@@ -27,6 +28,7 @@ def run(test, params, env):
     (1) Call virsh nodeinfo
     (2) Call virsh nodeinfo with an unexpected option
     (3) Call virsh nodeinfo with libvirtd service stop
+    (4) Disable/enable vcpu, then call virsh nodeinfo
     """
     def _check_nodeinfo(nodeinfo_output, verify_str, column):
         cmd = "echo \"%s\" | grep \"%s\" | awk '{print $%s}'" % (
@@ -49,10 +51,12 @@ def run(test, params, env):
         cpus_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU(s)", 2)
         cmd = "cat /sys/devices/system/cpu/cpu*/online | grep 1 | wc -l"
         cpus_online = process.run(cmd, ignore_status=True,
-                                  shell=True).stdout.strip()
+                                  shell=True).stdout_text.strip()
+
         cmd = "cat /sys/devices/system/cpu/cpu*/online | wc -l"
         cpus_total = process.run(cmd, ignore_status=True,
-                                 shell=True).stdout.strip()
+                                 shell=True).stdout_text.strip()
+
         if not os.path.exists('/sys/devices/system/cpu/cpu0/online'):
             cpus_online = str(int(cpus_online) + 1)
             cpus_total = str(int(cpus_total) + 1)
@@ -126,17 +130,31 @@ def run(test, params, env):
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
         cores_per_socket_os = cmd_result.stdout_text.strip()
         spec_numa = False
+
+        numa_cells_nodeinfo = _check_nodeinfo(
+            nodeinfo_output, 'NUMA cell(s)', 3)
+        cmd = 'cat /proc/cpuinfo |grep "physical id"|sort |uniq|wc -l'
+        logging.debug("cpu_sockets_nodeinfo=%d", cpu_sockets_nodeinfo)
+        logging.debug("numa_cells_nodeinfo=%d", numa_cells_nodeinfo)
+
+        cmd_ret = process.run(cmd, ignore_status=True, shell=True)
+        if int(cmd_ret.stdout_text.strip()) != int(numa_cells_nodeinfo) * int(cpu_sockets_nodeinfo):
+            test.fail("Command {} output {} isn't equal to "
+                      "NUMA cell(s) {} * CPU sockets {}".format(cmd,
+                                                                cmd_ret.stdout_text.strip(),
+                                                                numa_cells_nodeinfo,
+                                                                cpu_sockets_nodeinfo))
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
             # for spec NUMA arch, the output of nodeinfo is in a spec format
             cpus_os = cpu.get_cpu_info().get("CPU(s)")
-            numa_cells_nodeinfo = _check_nodeinfo(
-                nodeinfo_output, 'NUMA cell(s)', 3)
+
             if (re.match(cores_per_socket_nodeinfo, cpus_os) and
                     re.match(numa_cells_nodeinfo, "1")):
                 spec_numa = True
             else:
                 test.fail("Virsh nodeinfo output didn't match "
                           "CPU(s) or Core(s) per socket of host OS")
+
         if cores_per_socket_nodeinfo != cpu_topology['cores']:
             test.fail("Virsh nodeinfo output didn't match Core(s) "
                       "per socket of virsh capabilities output")
@@ -169,14 +187,32 @@ def run(test, params, env):
             test.fail("Virsh nodeinfo output didn't match "
                       "Memory size")
 
+    def test_disable_enable_cpu():
+        """
+        Test disable a host cpu and check nodeinfo result
+        """
+        online_list = cputils.online_list()
+        # Choose the last online host cpu to offline
+        cputils.offline(online_list[-1])
+
+        cmd_result = virsh.nodeinfo(ignore_status=True)
+        output_check(cmd_result.stdout_text.strip())
+
+        # Make the last host cpu online again
+        cputils.online(online_list[-1])
+
     # Prepare libvirtd service
-    if "libvirtd" in params:
-        libvirtd = params.get("libvirtd")
-        if libvirtd == "off":
-            utils_libvirtd.libvirtd_stop()
+
+    libvirtd = params.get("libvirtd", "on")
+    if libvirtd == 'off':
+        utils_libvirtd.libvirtd_stop()
 
     # Run test case
     option = params.get("virsh_node_options")
+    disable_enable_vcpu = "yes" == params.get("disable_enable_vcpu", "no")
+    # Test vcpu disable if needed
+    if disable_enable_vcpu:
+        test_disable_enable_cpu()
     cmd_result = virsh.nodeinfo(ignore_status=True, extra=option)
     logging.info("Output:\n%s", cmd_result.stdout.strip())
     logging.info("Status: %d", cmd_result.exit_status)
@@ -190,6 +226,7 @@ def run(test, params, env):
 
     # Check status_error
     status_error = params.get("status_error")
+
     if status_error == "yes":
         if status == 0:
             if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
