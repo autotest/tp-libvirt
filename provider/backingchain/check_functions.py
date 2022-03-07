@@ -5,7 +5,7 @@ from avocado.utils import process
 from virttest import libvirt_storage
 from virttest import utils_misc
 
-LOG = logging.getLogger('avocado.backingchain.checkfunction')
+LOG = logging.getLogger('avocado.' + __name__)
 
 
 class Checkfunction(object):
@@ -117,7 +117,8 @@ class Checkfunction(object):
             LOG.error('Unsupported command: %s', command)
             return False
         if src_path != bc_chain[index]:
-            LOG.error('Expect source file to be %s, but got %s', bc_chain[index], src_path)
+            LOG.error('Expect source file to be %s, '
+                      'but got %s' % (bc_chain[index], src_path))
             return False
         bs = disk.find('backingStore')
         LOG.debug('Current backing store: %s', bs)
