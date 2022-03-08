@@ -148,21 +148,24 @@ def run(test, params, env):
             vm.cleanup_serial_console()
         vm.create_serial_console()
         session = vm.wait_for_serial_login(timeout=240)
+        iface_name = utils_misc.wait_for(
+            lambda: utils_net.get_linux_ifname(session, mac_addr), 30,
+            first=5, ignore_errors=True)
+        if not iface_name:
+            test.fail("no interface with MAC address %s found" % mac_addr)
 
         def get_ip():
             return utils_net.get_guest_ip_addr(session, mac_addr)
 
         try:
             ip_addr = ""
-            iface_name = utils_net.get_linux_ifname(session, mac_addr)
-            if iface_name is None:
-                test.fail("no interface with MAC address %s found" % mac_addr)
             session.cmd("pkill -9 dhclient", ignore_all_errors=True)
             session.cmd("dhclient %s " % iface_name, ignore_all_errors=True)
             ip_addr = utils_misc.wait_for(get_ip, 20)
             logging.debug("The ip addr is %s", ip_addr)
-        except Exception:
-            logging.warning("Find %s with MAC address %s but no ip for it" % (iface_name, mac_addr))
+        except utils_net.IPAddrGetError:
+            logging.warning("Find %s with MAC address %s but no ip for it",
+                            iface_name, mac_addr)
         finally:
             session.close()
         return ip_addr
