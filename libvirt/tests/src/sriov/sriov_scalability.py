@@ -43,14 +43,16 @@ def create_network(net_name, pf_name, params):
     libvirt_network.create_or_del_network(net_dict)
 
 
-def get_pf_id_list(pf_info):
+def get_pf_id_list(pf_info, driver):
     """
     Get id of PFs
 
     :param pf_info: Dict, pfs' info
+    :param driver: str, pfs' driver
     :return: List, pfs' id, eg. ['0000:05:00.0', '0000:05:00.1']
     """
-    return [pf.get("pci_id") for pf in pf_info.values()]
+    return [pf.get("pci_id") for pf in pf_info.values()
+            if pf.get("driver") == driver]
 
 
 def run(test, params, env):
@@ -82,7 +84,7 @@ def run(test, params, env):
         if len(pf_info) < 2:
             test.cancel("This test requires at least 2 PFs.")
 
-        pf_id_list = get_pf_id_list(pf_info)
+        pf_id_list = get_pf_id_list(pf_info, driver)
         for pf_pci in pf_id_list:
             sriov_base.recover_vf(pf_pci, params)
             sriov_base.setup_vf(pf_pci, params)
@@ -98,7 +100,7 @@ def run(test, params, env):
         1. Disable VFs
         2. Clean up networks
         """
-        pf_id_list = get_pf_id_list(pf_info)
+        pf_id_list = get_pf_id_list(pf_info, driver)
         for pf_pci in pf_id_list:
             sriov_base.recover_vf(pf_pci, params, timeout=240)
         net_info = get_net_dict(pf_info)
@@ -158,7 +160,7 @@ def run(test, params, env):
         :param pf_info: PFs info
         :return: Network parameters
         """
-        pf_id_list = get_pf_id_list(pf_info)
+        pf_id_list = get_pf_id_list(pf_info, driver)
         return dict(zip([utils_sriov.get_iface_name(pf_pci)
                         for pf_pci in pf_id_list], ['hostdevnet'+str(x) for x in
                                                     range(len(pf_id_list))]))
@@ -185,6 +187,8 @@ def run(test, params, env):
         test_case in locals() else teardown_default
 
     pf_info = utils_sriov.get_pf_info()
+    pf_pci = utils_sriov.get_pf_pci()
+    driver = utils_sriov.get_pf_info_by_pci(pf_pci).get('driver')
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
