@@ -1982,7 +1982,8 @@ def run(test, params, env):
                 utils_misc.wait_for(lambda: _check_disk(device_targets[i]), 10, 3)
 
                 ret = virsh.detach_disk(vm_name, device_targets[i],
-                                        dt_options, wait_for_event=True,
+                                        dt_options, wait_for_event=True if
+                                        "--config" not in dt_options else False,
                                         **virsh_dargs)
                 disk_detach_error = False
                 if len(device_attach_error) > i:
