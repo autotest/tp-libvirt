@@ -267,11 +267,8 @@ def run(test, params, env):
             xml = NodedevXML.new_from_dumpxml(nodedev_pci)
             if info_type == "pf_info":
                 product_info = xml.cap.product_info
-                max_count = xml.max_count
                 if pci_info.find(product_info) == -1:
                     test.fail("The product_info show in nodedev-dumpxml is wrong\n")
-                if int(max_count) != max_vfs:
-                    test.fail("The maxCount show in nodedev-dumpxml is wrong\n")
             if info_type == "vf_order":
                 vf_addr_list = xml.cap.virt_functions
                 if len(vf_addr_list) != max_vfs:
