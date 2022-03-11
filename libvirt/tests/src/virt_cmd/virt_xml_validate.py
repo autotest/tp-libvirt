@@ -8,7 +8,7 @@ from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import data_dir
-from virttest import utils_secret
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 
 
@@ -149,7 +149,7 @@ def secret_validate(test, secret_volume, file=None, **virsh_dargs):
     Test for schema secret
     """
     # Clean up dirty secrets in test environments if there are.
-    utils_secret.clean_up_secrets()
+    libvirt_secret.clean_up_secrets()
     sec_params = {"sec_usage": "volume",
                   "sec_volume": secret_volume,
                   "sec_desc": "Test for schema secret."
@@ -245,6 +245,6 @@ def run(test, params, env):
             test.fail("xml fails to validate\n"
                       "Detail: %s." % cmd_result)
     finally:
-        utils_secret.clean_up_secrets()
+        libvirt_secret.clean_up_secrets()
         if secret_volume and os.path.isfile(secret_volume):
             os.remove(secret_volume)

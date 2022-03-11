@@ -10,10 +10,10 @@ from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
-from virttest import utils_secret
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.utils_nbd import NbdExport
+from virttest.utils_libvirt import libvirt_secret
 
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
@@ -200,7 +200,7 @@ def run(test, params, env):
             # this feature is enabled after libvirt 6.6.0
             if not libvirt_version.version_compare(6, 6, 0):
                 test.cancel("current libvirt version doesn't support client private key encryption")
-            utils_secret.clean_up_secrets()
+            libvirt_secret.clean_up_secrets()
             private_key_sec_uuid = libvirt.create_secret(params)
             logging.debug("A secret created with uuid = '%s'", private_key_sec_uuid)
             private_key_sec_passwd = params.get("private_key_password", "redhat")
@@ -288,7 +288,7 @@ def run(test, params, env):
             libvirt.check_exit_status(result, status_error)
     finally:
         if enable_private_key_encryption:
-            utils_secret.clean_up_secrets()
+            libvirt_secret.clean_up_secrets()
         # Clean up backend storage and TLS
         try:
             if nbd:

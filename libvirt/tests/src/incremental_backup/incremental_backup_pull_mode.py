@@ -12,12 +12,12 @@ from virttest import utils_backup
 from virttest import utils_disk
 from virttest import utils_libvirtd
 from virttest import utils_misc
-from virttest import utils_secret
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt
 from virttest.utils_config import LibvirtQemuConfig
 from virttest.utils_conn import TLSConnection
+from virttest.utils_libvirt import libvirt_secret
+from virttest.utils_test import libvirt
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -136,7 +136,7 @@ def run(test, params, env):
 
         # Prepare libvirt secret
         if scratch_luks_encrypted:
-            utils_secret.clean_up_secrets()
+            libvirt_secret.clean_up_secrets()
             luks_secret_uuid = libvirt.create_secret(params)
             virsh.secret_set_value(luks_secret_uuid, luks_passphrase,
                                    encode=True, debug=True)
