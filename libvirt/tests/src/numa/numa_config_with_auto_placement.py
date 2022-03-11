@@ -190,13 +190,12 @@ def check_cgget_output(test, cgget_message):
     slice_line = None
     cpuset_lines = re.split('\s', cpuset_slices.stdout_text)
     for line in cpuset_lines:
-        if re.search('machine\.slice', line):
-            machine_found = True
-            continue
-        if machine_found and len(line) > 1:
+        if re.search('machine-qemu', line):
             slice_line = line.strip()
             # No more lines need to be checked
             break
+    if not slice_line:
+        test.error("'machine-qemu' is not found in 'systemd-cgls cpuset' output")
     slice_line = slice_line.replace('\\', '\\\\')[2:]
     for item in ['emulator', 'vcpu0']:
         result = process.run('cgget -g cpuset /machine.slice/{}/libvirt/{}'.
