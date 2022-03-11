@@ -1,11 +1,13 @@
 import logging as log
 import ast
+import os
 import re
 import shutil
 
 from avocado.utils import distro
 from avocado.utils import process
 
+from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_net
@@ -142,7 +144,8 @@ def run(test, params, env):
             if not hotplug:
                 libvirt.modify_vm_iface(vm_name, 'update_iface', iface_dict)
             else:
-                iface_attach_xml = libvirt.modify_vm_iface(vm_name, 'get_xml', iface_dict)
+                iface_attach_xml = os.path.join(data_dir.get_data_dir(), "iface_attach.xml")
+                shutil.copyfile(libvirt.modify_vm_iface(vm_name, 'get_xml', iface_dict), iface_attach_xml)
                 libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
 
         try:
@@ -191,4 +194,6 @@ def run(test, params, env):
         # Try to recovery ovs bridge
         if utils_net.ovs_br_exists(bridge_name):
             utils_net.del_ovs_bridge(bridge_name)
+        if "iface_attach_xml" in locals():
+            os.remove(iface_attach_xml)
         vmxml_backup.sync()
