@@ -576,7 +576,7 @@ def run(test, params, env):
         vm.create_serial_console()
         session = vm.wait_for_serial_login(timeout=240)
         vf_pci = "/sys/bus/pci/drivers/%s" % vf_driver
-        vf_dir = session.cmd_output("ls -d %s/00*" % vf_pci).strip().split('\n')
+        vf_dir = session.cmd_output("ls -d %s/00*" % vf_pci).strip().split()
         for vf in vf_dir:
             numa_node = session.cmd_output('cat %s/numa_node' % vf).strip().split('\n')[-1]
             logging.debug("The vf is attached to numa node %s\n", numa_node)
