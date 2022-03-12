@@ -29,7 +29,8 @@ FEATURE_SUPPORT = {
     'libosinfo': 'virt-v2v-1.40.2-2.el7',
     'virtio_rng': '2.6.26',
     'cache_none': 'virt-v2v-1.42.0-4',
-    'q35': 'virt-v2v-1.43.3-2'}
+    'q35': 'virt-v2v-1.43.3-2',
+    'virtio_model': 'virt-v2v-1.45.97-4'}
 # bz#1961107
 V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
 
@@ -620,6 +621,14 @@ class VMChecker(object):
             for disk in root.findall("./devices/disk/driver[@cache]"):
                 if disk.get('cache') == 'none':
                     self.log_err(err_msg)
+
+        LOG.info("Checking model='virtio-transitional' not existing in VM XML")
+        if self.os_type == 'windows' and self.target == 'libvirt' and compare_version(
+                FEATURE_SUPPORT['virtio_model']):
+            root = ET.fromstring(self.vmxml)
+            err_msg = "Checking model='virtio-transitional' not existing failed"
+            if root.findall(".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
+                self.log_err(err_msg)
 
     def check_linux_vm(self):
         """
