@@ -6,6 +6,7 @@ from virttest import remote as remote_old
 from virttest import virsh
 from virttest import libvirt_remote
 from virttest import libvirt_version
+from virttest import utils_net
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -171,6 +172,8 @@ def run(test, params, env):
     qemu_conf_path = params.get("qemu_conf_path")
     min_port = params.get("min_port")
     status_error = "yes" == params.get("status_error", "no")
+    set_migration_host = "yes" == params.get("set_migration_host", "no")
+    src_hosts_dict = eval(params.get("src_hosts_conf", "{}"))
 
     vm_session = None
     qemu_conf_remote = None
@@ -188,13 +191,25 @@ def run(test, params, env):
         if migrate_tls_force_default:
             value_list = ["migrate_tls_force"]
             # Setup migrate_tls_force default value on remote
-            server_params['file_path'] = "/etc/libvirt/qemu.conf"
+            server_params['file_path'] = qemu_conf_path
             remove_key_remote = libvirt_config.remove_key_in_conf(value_list,
                                                                   "qemu",
                                                                   remote_params=server_params)
             # Setup migrate_tls_force default value on local
             remove_key_local = libvirt_config.remove_key_in_conf(value_list,
                                                                  "qemu")
+
+        if set_migration_host:
+            value_list = ["migration_host"]
+            server_params['file_path'] = qemu_conf_path
+            remove_key_remote = libvirt_config.remove_key_in_conf(value_list,
+                                                                  "qemu",
+                                                                  remote_params=server_params)
+            # backup /etc/hosts
+            backup_hosts = "cp -f /etc/hosts /etc/hosts.bak"
+            remote_old.run_remote_cmd(backup_hosts, params, ignore_status=False)
+            if not utils_net.map_hostname_ipaddress(src_hosts_dict):
+                test.error("Failed to set /etc/hosts on source host.")
 
         if check_port:
             server_params['file_path'] = qemu_conf_path
@@ -205,7 +220,7 @@ def run(test, params, env):
         # Update only remote qemu conf
         if qemu_conf_dest:
             qemu_conf_remote = libvirt_remote.update_remote_file(
-                server_params, qemu_conf_dest, "/etc/libvirt/qemu.conf")
+                server_params, qemu_conf_dest, qemu_conf_path)
         # Update local or both sides configuration files
         local_both_conf_obj = update_local_or_both_conf_file(params)
         # Setup TLS
@@ -323,6 +338,11 @@ def run(test, params, env):
             logging.debug("Recover remote qemu configurations")
             del qemu_conf_remote
         # Restore local or both sides conf and restart libvirtd
+
+        # Restore /etc/hosts
+        if set_migration_host:
+            restore_hosts = "mv -f /etc/hosts.bak /etc/hosts"
+            remote_old.run_remote_cmd(restore_hosts, params, ignore_status=False)
 
         recover_config_file(local_both_conf_obj, params)
         if remove_key_remote:
