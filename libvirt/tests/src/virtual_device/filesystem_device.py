@@ -151,6 +151,35 @@ def run(test, params, env):
                 session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=True)
             session.close()
 
+    def check_detached_xml(vm):
+        """
+        Check whether there is xml about the filesystem device
+        in the vm xml
+
+        :param vm: the vm to be checked
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        filesystems = vmxml.devices.by_device_tag('filesystem')
+        if filesystems:
+            test.fail("There should be no filesystem devices in guest "
+                      "xml after hotunplug")
+
+    def check_filesystem_in_guest(vm, fs_dev):
+        """
+        Check whether there is virtiofs in vm
+
+        :param vm: the vm to be checked
+        :param fs_dev: the virtiofs device to be checked
+        """
+        session = vm.wait_for_login()
+        mount_dir = '/var/tmp/' + fs_dev.target['dir']
+        cmd = "mkdir %s; mount -t virtiofs %s %s" % (mount_dir, fs_dev.target['dir'], mount_dir)
+        status, output = session.cmd_status_output(cmd, timeout=300)
+        session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=True)
+        if not status:
+            test.fail("Mount virtiofs should failed after hotunplug device. %s" % output)
+        session.close()
+
     start_vm = params.get("start_vm", "no")
     vm_names = params.get("vms", "avocado-vt-vm1").split()
     cache_mode = params.get("cache_mode", "none")
@@ -350,14 +379,17 @@ def run(test, params, env):
             elif hotplug_unplug:
                 for vm in vms:
                     umount_fs(vm)
-                    if detach_device_alias:
-                        alias = fs_dev.alias['name']
-                        ret = virsh.detach_device_alias(vm.name, alias,
-                                                        ignore_status=True, debug=True)
-                    else:
-                        ret = virsh.detach_device(vm.name, fs_dev.xml,
-                                                  ignore_status=True, debug=True)
-                    libvirt.check_exit_status(ret, status_error)
+                    for fs_dev in fs_devs:
+                        if detach_device_alias:
+                            alias = fs_dev.alias['name']
+                            ret = virsh.detach_device_alias(vm.name, alias, ignore_status=True,
+                                                            debug=True, wait_for_event=True)
+                        else:
+                            ret = virsh.detach_device(vm.name, fs_dev.xml, ignore_status=True,
+                                                      debug=True, wait_for_event=True)
+                        libvirt.check_exit_status(ret, status_error)
+                        check_filesystem_in_guest(vm, fs_dev)
+                    check_detached_xml(vm)
     finally:
         for vm in vms:
             if vm.is_alive():
