@@ -9,8 +9,8 @@ from virttest import virsh
 from virttest import utils_package
 from virttest import ceph
 from virttest import utils_disk
-from virttest import utils_secret
 
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 from virttest.utils_nbd import NbdExport
 
@@ -99,7 +99,7 @@ def run(test, params, env):
     disks_img = []
     try:
         # Clean up dirty secrets in test environments if there are.
-        utils_secret.clean_up_secrets()
+        libvirt_secret.clean_up_secrets()
         # Setup backend storage
         if backend_storage_type == "file":
             image_filename = params.get("image_filename", "raw.img")

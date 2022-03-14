@@ -7,9 +7,9 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_misc
-from virttest import utils_secret
-from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_embedded_qemu
+from virttest.utils_libvirt import libvirt_secret
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
@@ -110,7 +110,7 @@ def run(test, params, env):
         if expected_secret:
             libvirt.create_local_disk(disk_type="file", extra=extra_luks_parameter,
                                       path=img_path, size=int(img_cap), disk_format=img_format)
-            utils_secret.clean_up_secrets()
+            libvirt_secret.clean_up_secrets()
             sec_params = {"sec_usage": "volume",
                           "sec_volume": img_path,
                           "sec_desc": "Secret for volume."
@@ -158,7 +158,7 @@ def run(test, params, env):
             test.fail("process did not exit successfully")
         virt_qemu_run.exit()
         process.run('pkill -9 qemu-kvm', ignore_status=True, shell=True)
-        utils_secret.clean_up_secrets()
+        libvirt_secret.clean_up_secrets()
         if os.path.exists(secret_value_file):
             os.remove(secret_value_file)
         if os.path.exists(secret_file):

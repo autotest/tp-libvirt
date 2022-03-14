@@ -10,13 +10,13 @@ from virttest import virt_vm
 from virttest import virsh
 
 from virttest import utils_disk
-from virttest import utils_secret
 
 
 from virttest.utils_test import libvirt
 
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_ceph_utils
+from virttest.utils_libvirt import libvirt_secret
 
 from virttest.utils_nbd import NbdExport
 
@@ -346,7 +346,7 @@ def run(test, params, env):
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
-        utils_secret.clean_up_secrets()
+        libvirt_secret.clean_up_secrets()
 
         # Setup backend storage
         if backend_storage_type == "iscsi":
@@ -408,7 +408,7 @@ def run(test, params, env):
     finally:
         # Recover VM.
         libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
-        utils_secret.clean_up_secrets()
+        libvirt_secret.clean_up_secrets()
         if vm.is_alive():
             vm.destroy(gracefully=False)
         vmxml_backup.sync()

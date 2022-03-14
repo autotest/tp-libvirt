@@ -19,10 +19,10 @@ from virttest import virsh
 from virttest import qemu_storage
 from virttest import data_dir
 from virttest import utils_misc
-from virttest import utils_secret
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
 from virttest.utils_test import libvirt as utl
+from virttest.utils_libvirt import libvirt_secret
 
 from virttest.libvirt_xml.devices.disk import Disk
 
@@ -591,7 +591,7 @@ def run(test, params, env):
         tmp_file += dest_extension
         if not dest_path:
             if enable_iscsi_auth:
-                utils_secret.clean_up_secrets()
+                libvirt_secret.clean_up_secrets()
                 setup_auth_enabled_iscsi_disk(vm, params)
                 dest_path = os.path.join(tmp_dir, tmp_file)
             elif with_blockdev:

@@ -7,11 +7,11 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_disk
 from virttest import utils_backup
-from virttest import utils_secret
 from virttest import utils_misc
 from virttest import xml_utils
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 
 
@@ -105,7 +105,7 @@ def run(test, params, env):
 
         # Prepare libvirt secret
         if scratch_luks_encrypted:
-            utils_secret.clean_up_secrets()
+            libvirt_secret.clean_up_secrets()
             luks_secret_uuid = libvirt.create_secret(params)
             virsh.secret_set_value(luks_secret_uuid, luks_passphrase,
                                    encode=True, debug=True)
