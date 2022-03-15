@@ -105,3 +105,59 @@ def detach_iface_device(vm_name, dev_type):
     virsh.detach_device(vm_name, iface.xml, wait_for_event=True,
                         debug=True, ignore_status=False)
     libvirt_vmxml.check_guest_xml(vm_name, dev_type, status_error=True)
+
+
+def get_vm_iface_dev(vm, iface_dict):
+    """
+    Update the first interface of VM according to the given parameters
+    and return it or create one if there's no interface.
+
+    :param vm: VM object
+    :param iface_dict: Interface parameters to update
+    :return: The updated interface device
+    """
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+    ifaces = vmxml.get_devices('interface')
+    if ifaces:
+        iface = ifaces[0]
+        iface.setup_attrs(**iface_dict)
+    else:
+        iface = create_iface('network', iface_dict)
+    return iface
+
+
+def parse_virsh_opts(params):
+    """
+    Parse virsh options from parames
+
+    :param params: Dictionary with the test parameters
+    :return: The udpated virsh options
+    """
+    virsh_opt = ''
+    if params.get('virsh_opt') == 'no_option':
+        return virsh_opt
+    else:
+        for item in params.get('virsh_opt', '').split('_'):
+            if item:
+                virsh_opt += ' --%s' % item
+    return virsh_opt
+
+
+def update_iface_device(vm, params):
+    """
+    Update an interface by virsh update-device
+
+    :param vm: VM object
+    :param params: Dictionary with the test parameters
+    """
+    status_error = "yes" == params.get("status_error", "no")
+    error_msg = params.get("error_msg")
+    iface_dict = eval(params.get('iface_dict', '{}'))
+
+    iface = get_vm_iface_dev(vm, iface_dict)
+    virsh_opt = parse_virsh_opts(params)
+    result = virsh.update_device(vm.name, iface.xml, flagstr=virsh_opt,
+                                 debug=True)
+    libvirt.check_exit_status(result, status_error)
+    if error_msg:
+        libvirt.check_result(result, error_msg)
