@@ -127,7 +127,7 @@ def run(test, params, env):
                                             "libvirtiscsi")
                 auth_sec_dict = {"sec_usage": "iscsi",
                                  "sec_target": auth_sec_usage}
-                auth_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                auth_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
                 # Set password of auth secret
                 virsh.secret_set_value(auth_sec_uuid, chap_passwd,
                                        encode=True, debug=True)
@@ -173,7 +173,7 @@ def run(test, params, env):
                 key_opt = "--keyring %s" % key_file
                 auth_sec_dict = {"sec_usage": auth_sec_usage_type,
                                  "sec_name": "ceph_auth_secret"}
-                auth_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                auth_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
                 virsh.secret_set_value(auth_sec_uuid, ceph_auth_key,
                                        ignore_status=False, debug=True)
                 disk_auth_dict = {"auth_user": ceph_auth_user,

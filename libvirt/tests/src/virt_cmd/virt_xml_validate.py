@@ -154,7 +154,7 @@ def secret_validate(test, secret_volume, file=None, **virsh_dargs):
                   "sec_volume": secret_volume,
                   "sec_desc": "Test for schema secret."
                   }
-    sec_uuid = libvirt.create_secret(sec_params)
+    sec_uuid = libvirt_secret.create_secret(sec_params)
     if sec_uuid:
         try:
             virsh.secret_dumpxml(sec_uuid, to_file=file, **virsh_dargs)

@@ -1228,7 +1228,7 @@ def run(test, params, env):
                                  "sec_usage": "vtpm",
                                  "sec_name": "VTPM_example"}
                 libvirt_secret.clean_up_secrets()
-                tpm_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                tpm_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
                 logging.debug("tpm sec uuid on source: %s", tpm_sec_uuid)
                 tpm_args.update({"encryption_secret": tpm_sec_uuid})
                 add_tpm(vm, tpm_args)
@@ -1240,8 +1240,8 @@ def run(test, params, env):
                 libvirt_secret.clean_up_secrets(remote_virsh_session)
                 logging.debug("create secret on target")
                 auth_sec_dict.update({"sec_uuid": tpm_sec_uuid})
-                dest_tmp_sec_uuid = libvirt.create_secret(auth_sec_dict,
-                                                          remote_virsh_dargs)
+                dest_tmp_sec_uuid = libvirt_secret.create_secret(
+                    auth_sec_dict, remote_virsh_dargs)
                 logging.debug("tpm sec uuid on target: %s", dest_tmp_sec_uuid)
                 if dst_secret_value:
                     if not remote_virsh_session:

@@ -106,7 +106,7 @@ def run(test, params, env):
         # Prepare libvirt secret
         if scratch_luks_encrypted:
             libvirt_secret.clean_up_secrets()
-            luks_secret_uuid = libvirt.create_secret(params)
+            luks_secret_uuid = libvirt_secret.create_secret(params)
             virsh.secret_set_value(luks_secret_uuid, luks_passphrase,
                                    encode=True, debug=True)
 

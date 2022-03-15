@@ -115,7 +115,7 @@ def run(test, params, env):
                           "sec_volume": img_path,
                           "sec_desc": "Secret for volume."
                           }
-            sec_uuid = libvirt.create_secret(sec_params)
+            sec_uuid = libvirt_secret.create_secret(sec_params)
             if sec_uuid:
                 try:
                     virsh.secret_dumpxml(sec_uuid, to_file=secret_file)

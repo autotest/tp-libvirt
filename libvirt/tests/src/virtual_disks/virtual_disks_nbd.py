@@ -201,7 +201,7 @@ def run(test, params, env):
             if not libvirt_version.version_compare(6, 6, 0):
                 test.cancel("current libvirt version doesn't support client private key encryption")
             libvirt_secret.clean_up_secrets()
-            private_key_sec_uuid = libvirt.create_secret(params)
+            private_key_sec_uuid = libvirt_secret.create_secret(params)
             logging.debug("A secret created with uuid = '%s'", private_key_sec_uuid)
             private_key_sec_passwd = params.get("private_key_password", "redhat")
             ret = virsh.secret_set_value(private_key_sec_uuid, private_key_sec_passwd,

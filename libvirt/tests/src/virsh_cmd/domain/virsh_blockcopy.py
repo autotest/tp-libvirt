@@ -259,7 +259,7 @@ def setup_auth_enabled_iscsi_disk(vm, params):
                                 "libvirtiscsi")
     auth_sec_dict = {"sec_usage": "iscsi",
                      "sec_target": auth_sec_usage}
-    auth_sec_uuid = utl.create_secret(auth_sec_dict)
+    auth_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
     # Set password of auth secret
     virsh.secret_set_value(auth_sec_uuid, chap_passwd,
                            encode=True, debug=True)

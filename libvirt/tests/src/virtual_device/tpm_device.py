@@ -17,6 +17,7 @@ from virttest import libvirt_version
 
 from virttest.libvirt_xml.devices.tpm import Tpm
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 from virttest.virt_vm import VMStartError
 
@@ -582,7 +583,7 @@ def run(test, params, env):
                                          "sec_desc": "sample vTPM secret",
                                          "sec_usage": "vtpm",
                                          "sec_name": "VTPM_example"}
-                        encryption_uuid = libvirt.create_secret(auth_sec_dict)
+                        encryption_uuid = libvirt_secret.create_secret(auth_sec_dict)
                         if secret_value != 'none':
                             virsh.secret_set_value(encryption_uuid, "open sesame", encode=True, debug=True)
                         sec_uuids.append(encryption_uuid)
@@ -594,7 +595,7 @@ def run(test, params, env):
                         if secret_uuid == "change":
                             auth_sec_dict["sec_desc"] = "sample2 vTPM secret"
                             auth_sec_dict["sec_name"] = "VTPM_example2"
-                            new_encryption_uuid = libvirt.create_secret(auth_sec_dict)
+                            new_encryption_uuid = libvirt_secret.create_secret(auth_sec_dict)
                             virsh.secret_set_value(new_encryption_uuid, "open sesame", encode=True, debug=True)
                             sec_uuids.append(new_encryption_uuid)
                     if secret_uuid == 'nonexist':

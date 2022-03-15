@@ -14,6 +14,7 @@ from virttest import utils_package
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_secret
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -128,7 +129,7 @@ def run(test, params, env):
                     key_opt = "--keyring %s" % key_file
                     auth_sec_dict = {"sec_usage": auth_sec_usage_type,
                                      "sec_name": "ceph_auth_secret"}
-                    auth_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                    auth_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
                     virsh.secret_set_value(auth_sec_uuid, ceph_auth_key,
                                            debug=True)
                     disk_params_auth = {"auth_user": ceph_auth_user,

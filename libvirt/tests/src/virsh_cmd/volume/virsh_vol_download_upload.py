@@ -18,6 +18,7 @@ from virttest import virt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt as utlv
 
@@ -222,7 +223,7 @@ def run(test, params, env):
                     test.cancel("LUKS format not supported in "
                                 "current libvirt version")
                 params['sec_volume'] = os.path.join(pool_target, vol_name)
-                luks_sec_uuid = utlv.create_secret(params)
+                luks_sec_uuid = libvirt_secret.create_secret(params)
                 ret = virsh.secret_set_value(luks_sec_uuid,
                                              encryption_password,
                                              encode=True)

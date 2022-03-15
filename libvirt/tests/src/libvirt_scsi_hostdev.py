@@ -12,6 +12,7 @@ from virttest import remote
 from virttest import virsh
 from virttest import utils_disk
 from virttest import utils_misc
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest import libvirt_version
@@ -359,7 +360,7 @@ def run(test, params, env):
                 chap_user = params.get("chap_user", "redhat")
                 chap_passwd = params.get("chap_password", "password")
                 auth_sec_dict = {"sec_usage": "iscsi", "sec_target": auth_sec_usage}
-                auth_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                auth_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
                 virsh.secret_set_value(auth_sec_uuid, chap_passwd,
                                        encode=True, debug=True)
                 params['auth_user'] = chap_user

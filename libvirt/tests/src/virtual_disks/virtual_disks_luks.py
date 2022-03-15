@@ -16,6 +16,7 @@ from virttest import ceph
 from virttest import gluster
 from virttest import utils_disk
 from virttest import libvirt_storage
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 
 from virttest.libvirt_xml import vm_xml, vol_xml, xcepts
@@ -255,7 +256,7 @@ def run(test, params, env):
             for dirty_secret_uuid in dirty_secret_list:
                 virsh.secret_undefine(dirty_secret_uuid)
         # Create secret
-        luks_sec_uuid = libvirt.create_secret(params)
+        luks_sec_uuid = libvirt_secret.create_secret(params)
         logging.debug("A secret created with uuid = '%s'", luks_sec_uuid)
         ret = virsh.secret_set_value(luks_sec_uuid, luks_secret_passwd,
                                      encode=True, debug=True)
@@ -275,7 +276,7 @@ def run(test, params, env):
                                                 "libvirtiscsi")
                     auth_sec_dict = {"sec_usage": "iscsi",
                                      "sec_target": auth_sec_usage}
-                    auth_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                    auth_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
                     # Set password of auth secret (not luks encryption secret)
                     virsh.secret_set_value(auth_sec_uuid, chap_passwd,
                                            encode=True, debug=True)
@@ -345,7 +346,7 @@ def run(test, params, env):
                     key_opt = "--keyring %s" % key_file
                     auth_sec_dict = {"sec_usage": auth_sec_usage_type,
                                      "sec_name": "ceph_auth_secret"}
-                    auth_sec_uuid = libvirt.create_secret(auth_sec_dict)
+                    auth_sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
                     virsh.secret_set_value(auth_sec_uuid, ceph_auth_key,
                                            debug=True)
                     disk_auth_dict = {"auth_user": ceph_auth_user,

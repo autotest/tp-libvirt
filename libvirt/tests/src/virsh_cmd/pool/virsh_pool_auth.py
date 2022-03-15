@@ -5,6 +5,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_storage
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 from virttest import data_dir
 from virttest import utils_package
@@ -168,7 +169,7 @@ def run(test, params, env):
         encode = True
         if sec_usage == "ceph":
             encode = False  # Ceph key already encoded
-        sec_uuid = libvirt.create_secret(auth_sec_dict)
+        sec_uuid = libvirt_secret.create_secret(auth_sec_dict)
         virsh.secret_set_value(sec_uuid, sec_password, encode=encode, debug=True)
 
         if sec_usage == "iscsi":
