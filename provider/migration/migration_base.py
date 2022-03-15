@@ -9,6 +9,7 @@ from virttest import utils_misc                      # pylint: disable=W0611
 from virttest.utils_conn import TLSConnection
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.migration import MigrationTest
+from virttest.libvirt_xml import vm_xml
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -227,3 +228,27 @@ def set_migrate_speed_to_high(params):
 
     mode = 'both' if '--postcopy' in postcopy_options else 'precopy'
     MigrationTest().control_migrate_speed(vm_name, int(migrate_speed_high), mode)
+
+
+def execute_statistics_command(params):
+    """
+    Execute statistics command
+
+    :param params: dict, used to setup the connection
+    """
+    vm_name = params.get("migrate_main_vm")
+    disk_type = params.get("disk_type")
+
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    disks = vmxml.get_disk_all_by_expr('type==%s' % disk_type, 'device==disk')
+    logging.debug("disks: %s", disks)
+    debug_kargs = {'ignore_status': False, 'debug': True}
+    for disk in list(disks.values()):
+        disk_source = disk.find('source').get('dev')
+        disk_target = disk.find('target').get('dev')
+        logging.debug("disk_source: %s", disk_source)
+        logging.debug("disk_target: %s", disk_target)
+        virsh.domblkstat(vm_name, disk_target, "", **debug_kargs)
+        virsh.domblkinfo(vm_name, disk_source, **debug_kargs)
+        virsh.domstats(vm_name, **debug_kargs)
+        virsh.dommemstat(vm_name, **debug_kargs)

@@ -1,5 +1,7 @@
 import logging as log
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import migration
 from virttest import remote as remote_old
@@ -117,6 +119,51 @@ def recover_config_file(conf_obj, params):
                                      config_object=conf_obj)
 
 
+def setup_loop_dev(block_device, remote_params=None):
+    """
+    Setup a loop device  for test
+
+    :param block_device: block device name
+    :param remote_params: Dict of parameters, which should include:
+                          server_ip, server_user, server_pwd
+    """
+    loop_dev = None
+    # Find a free loop device
+    cmd = "losetup --find"
+    if remote_params:
+        loop_dev = remote_old.run_remote_cmd(cmd, remote_params, ignore_status=False).stdout_text.strip()
+    else:
+        loop_dev = process.run(cmd, shell=True).stdout_text.strip()
+    logging.debug("loop dev: %s", loop_dev)
+    # Setup a loop device
+    cmd = 'losetup %s %s' % (loop_dev, block_device)
+    if remote_params:
+        remote_old.run_remote_cmd(cmd, remote_params, ignore_status=False)
+    else:
+        process.run(cmd, shell=True)
+    return loop_dev
+
+
+def prepare_block_device(params, vm_name):
+    """
+    Prepare block_device for test
+
+    :param params: dict, parameters used
+    :param vm_name: vm name
+    """
+    target_dev = params.get("target_dev")
+    block_device = params.get("nfs_mount_dir") + '/' + params.get("block_device_name")
+    libvirt.create_local_disk("file", block_device, '1', "qcow2")
+
+    source_loop_dev = setup_loop_dev(block_device)
+    target_loop_dev = setup_loop_dev(block_device, remote_params=params)
+
+    # Attach block device to guest
+    result = virsh.attach_disk(vm_name, source_loop_dev, target_dev, debug=True)
+    libvirt.check_exit_status(result)
+    return (source_loop_dev, target_loop_dev)
+
+
 def run(test, params, env):
     """
     Run the test
@@ -174,10 +221,13 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     set_migration_host = "yes" == params.get("set_migration_host", "no")
     src_hosts_dict = eval(params.get("src_hosts_conf", "{}"))
+    exec_statistics_cmd = "yes" == params.get("exec_statistics_cmd", "no")
 
     vm_session = None
     qemu_conf_remote = None
     (remove_key_local, remove_key_remote) = (None, None)
+    source_loop_dev = None
+    target_loop_dev = None
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -249,6 +299,10 @@ def run(test, params, env):
                       vm_xml.VMXML.new_from_dumpxml(vm_name))
 
         vm_session = vm.wait_for_login()
+        if exec_statistics_cmd:
+            (source_loop_dev, target_loop_dev) = prepare_block_device(params, vm_name)
+            logging.debug("Guest xml with block device:\n%s",
+                          vm_xml.VMXML.new_from_dumpxml(vm_name))
         if action_during_mig:
             if poweroff_src_vm:
                 params.update({'vm_session': vm_session})
@@ -331,19 +385,21 @@ def run(test, params, env):
         vm.connect_uri = bk_uri
         if vm_session:
             vm_session.close()
+        if exec_statistics_cmd:
+            process.run('losetup -d %s' % source_loop_dev, shell=True)
+            remote_old.run_remote_cmd('losetup -d %s' % target_loop_dev, params, ignore_status=False)
+
         # Clean VM on destination and source
         migration_test.cleanup_vm(vm, dest_uri)
         # Restore remote qemu conf and restart libvirtd
         if qemu_conf_remote:
             logging.debug("Recover remote qemu configurations")
             del qemu_conf_remote
-        # Restore local or both sides conf and restart libvirtd
-
         # Restore /etc/hosts
         if set_migration_host:
             restore_hosts = "mv -f /etc/hosts.bak /etc/hosts"
             remote_old.run_remote_cmd(restore_hosts, params, ignore_status=False)
-
+        # Restore local or both sides conf and restart libvirtd
         recover_config_file(local_both_conf_obj, params)
         if remove_key_remote:
             del remove_key_remote
