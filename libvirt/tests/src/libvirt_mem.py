@@ -18,18 +18,17 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_numeric
-from virttest import utils_hotplug
 from virttest import libvirt_version
 from virttest import virt_vm
 from virttest import data_dir
-from virttest.utils_test import libvirt
+
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
+from virttest.utils_libvirt import libvirt_memory
+from virttest.utils_test import libvirt
 from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
 from virttest.staging.utils_memory import read_from_numastat
-
-from virttest import libvirt_version
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -520,12 +519,12 @@ def run(test, params, env):
                 # If any error excepted, command error status should be
                 # checked in the last time
                 device_alias = "ua-" + str(uuid.uuid4())
-                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                       mem_addr, tg_sizeunit,
-                                                       pg_unit, tg_node,
-                                                       node_mask, mem_model,
-                                                       mem_discard,
-                                                       device_alias)
+                dev_xml = libvirt_memory.create_mem_xml(tg_size, pg_size,
+                                                        mem_addr, tg_sizeunit,
+                                                        pg_unit, tg_node,
+                                                        node_mask, mem_model,
+                                                        mem_discard,
+                                                        device_alias)
                 randvar = randvar + 1
                 logging.debug("attaching device count = %s", x)
                 if x == at_times - 1:
@@ -582,10 +581,10 @@ def run(test, params, env):
             process.run('ps -ef|grep qemu', shell=True, verbose=True)
             session = vm.wait_for_login()
             original_mem = vm.get_totalmem_sys()
-            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                   mem_addr, tg_sizeunit,
-                                                   pg_unit, tg_node,
-                                                   node_mask, mem_model)
+            dev_xml = libvirt_memory.create_mem_xml(tg_size, pg_size,
+                                                    mem_addr, tg_sizeunit,
+                                                    pg_unit, tg_node,
+                                                    node_mask, mem_model)
             add_device(dev_xml, True)
             mem_after = vm.get_totalmem_sys()
             params['delta'] = mem_after - original_mem
@@ -659,11 +658,11 @@ def run(test, params, env):
         # Detach the memory device
         unplug_failed_with_known_error = False
         if detach_device:
-            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                   mem_addr, tg_sizeunit,
-                                                   pg_unit, tg_node,
-                                                   node_mask, mem_model,
-                                                   mem_discard)
+            dev_xml = libvirt_memory.create_mem_xml(tg_size, pg_size,
+                                                    mem_addr, tg_sizeunit,
+                                                    pg_unit, tg_node,
+                                                    node_mask, mem_model,
+                                                    mem_discard)
             for x in xrange(at_times):
                 if not detach_alias:
                     ret = virsh.detach_device(vm_name, dev_xml.xml,

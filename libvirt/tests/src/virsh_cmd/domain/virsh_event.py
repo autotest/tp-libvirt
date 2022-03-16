@@ -15,12 +15,12 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import remote
 from virttest import utils_misc
-from virttest import utils_hotplug
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest.libvirt_xml.devices.watchdog import Watchdog
+from virttest.utils_libvirt import libvirt_memory
+from virttest.utils_test import libvirt as utlv
 
 from xml.dom.minidom import parseString
 
@@ -493,7 +493,7 @@ def run(test, params, env):
                     prepare_vmxml_mem(vmxml)
                     tg_size = params.get("dimm_size")
                     tg_sizeunit = params.get("dimm_unit")
-                    dimm_xml = utils_hotplug.create_mem_xml(tg_size, None, None, tg_sizeunit)
+                    dimm_xml = libvirt_memory.create_mem_xml(tg_size, None, None, tg_sizeunit)
                     virsh.attach_device(dom.name, dimm_xml.xml,
                                         flagstr="--config", **virsh_dargs)
                     vmxml_dimm = vm_xml.VMXML.new_from_dumpxml(dom.name)

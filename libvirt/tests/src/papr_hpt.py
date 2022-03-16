@@ -7,10 +7,10 @@ from avocado.utils import cpu
 from avocado.utils import process
 
 from virttest import virsh
-from virttest import utils_hotplug
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_test import libvirt
 from virttest.staging import utils_memory
 
@@ -208,7 +208,7 @@ def run(test, params, env):
                 check_hp_in_vm(session, maxpagesize * 1024)
 
             if resizing == 'enabled':
-                mem_xml = utils_hotplug.create_mem_xml(
+                mem_xml = libvirt_memory.create_mem_xml(
                     tg_size=int(params.get('mem_size', 2048000)),
                     tg_sizeunit=params.get('size_unit', 'KiB'),
                     tg_node=int(params.get('mem_node', 0)),

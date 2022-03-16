@@ -7,10 +7,10 @@ from avocado.utils import process
 
 from virttest import libvirt_version
 from virttest import virsh
-from virttest import utils_hotplug
 from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
+from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_test import libvirt
 
 
@@ -91,7 +91,7 @@ def run(test, params, env):
         """
         Create xml of nvdimm memory device
         """
-        mem_xml = utils_hotplug.create_mem_xml(
+        mem_xml = libvirt_memory.create_mem_xml(
             tg_size=mem_param['target_size'],
             mem_addr={'slot': mem_param['address_slot']},
             tg_sizeunit=mem_param['target_size_unit'],

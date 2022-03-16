@@ -4,12 +4,12 @@ import time
 
 from virttest import virsh
 from virttest import virt_vm
-from virttest import utils_hotplug
 from virttest import utils_config
 from virttest import utils_misc
 from virttest import utils_libvirtd
 
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_test import libvirt
 from virttest.staging import utils_memory
 
@@ -105,7 +105,7 @@ def run(test, params, env):
         """
         Create xml of dimm memory device
         """
-        mem_xml = utils_hotplug.create_mem_xml(
+        mem_xml = libvirt_memory.create_mem_xml(
             pg_size=int(mem_param['source_pagesize']),
             tg_size=mem_param['target_size'],
             tg_sizeunit=mem_param['target_size_unit'],

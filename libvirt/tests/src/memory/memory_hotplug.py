@@ -2,13 +2,12 @@ import logging as log
 import os
 import re
 
-from virttest import utils_hotplug
 from virttest import utils_sys
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_cpu
 from virttest.utils_test import libvirt
-
+from virttest.utils_libvirt import libvirt_memory
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -73,7 +72,7 @@ def create_mem_device(params):
         k.replace('mem_device_', ''): v
         for k, v in params.items() if k.startswith('mem_device_')
     }
-    return utils_hotplug.create_mem_xml(**mem_device_params)
+    return libvirt_memory.create_mem_xml(**mem_device_params)
 
 
 def check_event(target_event, event_output):

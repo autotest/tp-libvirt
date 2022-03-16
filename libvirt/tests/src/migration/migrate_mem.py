@@ -10,13 +10,12 @@ from virttest import utils_split_daemons
 from virttest import utils_misc
 from virttest import remote
 from virttest import virt_vm
-from virttest import utils_hotplug
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_cpu
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_config
-
+from virttest.utils_libvirt import libvirt_memory
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -108,7 +107,7 @@ def run(test, params, env):
 
             dimm_params = {k.replace('memdev_', ''): v
                            for k, v in params.items() if k.startswith('memdev_')}
-            dimm_xml = utils_hotplug.create_mem_xml(**dimm_params)
+            dimm_xml = libvirt_memory.create_mem_xml(**dimm_params)
 
             libvirt.add_vm_device(new_xml, dimm_xml)
             logging.debug(virsh.dumpxml(vm_name))
