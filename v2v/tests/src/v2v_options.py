@@ -845,6 +845,9 @@ def run(test, params, env):
             cmd = 'echo "%s" >> ~/.ssh/authorized_keys' % public_key
             process.run(cmd, shell=True)
 
+        if checkpoint == 'length_of_error' and utils_v2v.v2v_supported_option('--wrap'):
+            v2v_options += ' --wrap'
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -870,9 +873,6 @@ def run(test, params, env):
                 output_func=utils_misc.log_line,
                 output_params=(params['tail_log'],)
             )
-        if checkpoint == 'length_of_error':
-            if utils_v2v.v2v_supported_option('--wrap'):
-                v2v_options += ' --wrap'
 
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)

@@ -18,7 +18,9 @@ from virttest import utils_selinux
 from virttest import remote
 from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
+from virttest.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
@@ -37,6 +39,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     hypervisor = params.get("hypervisor")
     vm_name = params.get('main_vm', 'EXAMPLE')
     target = params.get('target')
@@ -94,13 +97,8 @@ def run(test, params, env):
     vddk_thumbprint = params.get('vddk_thumbprint')
 
     # Prepare step for different hypervisor
-    if hypervisor == "xen":
-        # See man virt-v2v-input-xen(1)
-        process.run(
-            'update-crypto-policies --set LEGACY',
-            verbose=True,
-            ignore_status=True,
-            shell=True)
+    if enable_legacy_policy:
+        update_crypto_policy("LEGACY")
 
     if hypervisor == "esx":
         source_ip = params.get("vpx_hostname")
@@ -912,14 +910,9 @@ def run(test, params, env):
             v2v_virsh.close_session()
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
+        if enable_legacy_policy:
+            update_crypto_policy()
         if hypervisor == "xen":
-            # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing environment.
-            process.run(
-                'update-crypto-policies --set DEFAULT',
-                verbose=True,
-                ignore_status=True,
-                shell=True)
             utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run('ssh-agent -k')
         if output_mode == 'rhev' and v2v_sasl:

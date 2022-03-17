@@ -13,7 +13,10 @@ from virttest import utils_sasl
 from virttest import data_dir
 from virttest import ppm_utils
 from virttest import remote
+
+from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
+from virttest.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
@@ -35,6 +38,7 @@ def run(test, params, env):
     # name
     vm_name = params['original_vm_name'] = params.get('main_vm', 'EXAMPLE')
     unprivileged_user = params.get('unprivileged_user')
+    enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     target = params.get('target')
     input_mode = params.get('input_mode')
     input_file = params.get('input_file')
@@ -179,6 +183,8 @@ def run(test, params, env):
                 (len(error_list), error_list))
 
     try:
+        if enable_legacy_policy:
+            update_crypto_policy("LEGACY")
         if checkpoint == 'regular_user_sudo':
             regular_sudo_config = '/etc/sudoers.d/v2v_test'
             with open(regular_sudo_config, 'w') as fd:
@@ -295,3 +301,5 @@ def run(test, params, env):
             process.system("userdel -fr %s" % unprivileged_user)
         if input_mode == 'vmx' and input_transport == 'ssh':
             process.run("killall ssh-agent")
+        if enable_legacy_policy:
+            update_crypto_policy()

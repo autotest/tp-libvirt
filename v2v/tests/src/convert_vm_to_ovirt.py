@@ -9,6 +9,8 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import utils_sasl
 from virttest import remote
+from virttest.utils_conn import update_crypto_policy
+from virttest.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -65,6 +67,7 @@ def run(test, params, env):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
 
+    enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     vm_name = params.get("main_vm")
     target = params.get("target")
     hypervisor = params.get("hypervisor")
@@ -112,13 +115,8 @@ def run(test, params, env):
     LOG.info('sals user name is %s' % params.get("sasl_user"))
 
     # Prepare step for different hypervisor
-    if hypervisor == "xen":
-        # See man virt-v2v-input-xen(1)
-        process.run(
-            'update-crypto-policies --set LEGACY',
-            verbose=True,
-            ignore_status=True,
-            shell=True)
+    if enable_legacy_policy:
+        update_crypto_policy("LEGACY")
 
     if hypervisor == "esx":
         source_ip = vpx_ip
@@ -253,14 +251,9 @@ def run(test, params, env):
         if v2v_sasl:
             v2v_sasl.cleanup()
             v2v_sasl.close_session()
+        if enable_legacy_policy:
+            update_crypto_policy()
         if hypervisor == "xen":
-            # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing environment.
-            process.run(
-                'update-crypto-policies --set DEFAULT',
-                verbose=True,
-                ignore_status=True,
-                shell=True)
             utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")
         # Cleanup constant files

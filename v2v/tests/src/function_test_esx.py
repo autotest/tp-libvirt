@@ -13,6 +13,7 @@ from virttest import utils_sasl
 from virttest import utils_v2v
 from virttest import virsh
 from virttest import remote
+from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
 from virttest.utils_v2v import params_get
 from avocado.utils import process
@@ -37,9 +38,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
-    enable_legacy_cp = params.get(
-        "enable_legacy_crypto_policies",
-        'no') == 'yes'
+    enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
     unprivileged_user = params_get(params, 'unprivileged_user')
     vpx_hostname = params.get('vpx_hostname')
@@ -700,12 +699,8 @@ def run(test, params, env):
             test.cancel("Testing requires version: %s" % version_required)
 
         # See man virt-v2v-input-xen(1)
-        if enable_legacy_cp:
-            process.run(
-                'update-crypto-policies --set LEGACY',
-                verbose=True,
-                ignore_status=True,
-                shell=True)
+        if enable_legacy_policy:
+            update_crypto_policy("LEGACY")
 
         v2v_params = {
             'hostname': remote_host, 'hypervisor': 'esx', 'main_vm': vm_name,
@@ -983,12 +978,8 @@ def run(test, params, env):
         check_result(v2v_result, status_error)
 
     finally:
-        if enable_legacy_cp:
-            process.run(
-                'update-crypto-policies --set DEFAULT',
-                verbose=True,
-                ignore_status=True,
-                shell=True)
+        if enable_legacy_policy:
+            update_crypto_policy()
         if checkpoint[0].startswith('virtio_win'):
             utils_package.package_install(['virtio-win'])
         if 'virtio_win_iso_mount' in checkpoint:
