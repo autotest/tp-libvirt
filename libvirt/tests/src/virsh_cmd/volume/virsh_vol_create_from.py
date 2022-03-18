@@ -54,7 +54,7 @@ def run(test, params, env):
 
         pvt = utlv.PoolVolumeTest(test, params)
         pvt.pre_pool(src_pool_name, src_pool_type, src_pool_target,
-                     src_emulated_image, image_size="100M",
+                     src_emulated_image, image_size="60M",
                      pre_disk_vol=["1M"])
 
         if src_pool_type != dest_pool_type:
