@@ -16,6 +16,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.network_xml import NetworkXML
+from virttest.libvirt_xml.devices import interface
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -142,7 +143,8 @@ def run(test, params, env):
             if not hotplug:
                 libvirt.modify_vm_iface(vm_name, 'update_iface', iface_dict)
             else:
-                iface_attach_xml = libvirt.modify_vm_iface(vm_name, 'get_xml', iface_dict)
+                new_iface = interface.Interface('network')
+                new_iface.xml = libvirt.modify_vm_iface(vm_name, 'get_xml', iface_dict)
                 libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
 
         try:
@@ -151,7 +153,7 @@ def run(test, params, env):
             if start_error:
                 test.fail("VM started unexpectedly")
             if hotplug:
-                virsh.attach_device(vm_name, iface_attach_xml, debug=True,
+                virsh.attach_device(vm_name, new_iface.xml, debug=True,
                                     ignore_status=False)
             iface_name = libvirt.get_ifname_host(vm_name, iface_mac)
             if test_ovs_port:
