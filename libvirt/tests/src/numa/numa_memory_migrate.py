@@ -10,6 +10,7 @@ from virttest import utils_misc
 from virttest import cpu
 from virttest import utils_test
 
+from virttest.utils_libvirt import libvirt_numa
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -61,12 +62,11 @@ def run(test, params, env):
 
     try:
         if numa_memory.get('nodeset'):
+            numa_nodeset_format = numa_memory.get('nodeset')
+            numa_memory['nodeset'] = libvirt_numa.parse_numa_nodeset_to_str(numa_nodeset_format,
+                                                                            node_list)
             used_node = cpu.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
-            for i in used_node:
-                if i not in node_list:
-                    raise exceptions.TestSkipError("nodeset %s out of range" %
-                                                   numa_memory['nodeset'])
 
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.numa_memory = numa_memory
