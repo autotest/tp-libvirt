@@ -8,6 +8,7 @@ from virttest import libvirt_version
 from virttest import utils_iptables
 from virttest import virt_admin
 from virttest import remote
+from virttest import utils_libvirtd
 from virttest.utils_conn import TLSConnection
 from virttest.utils_test import libvirt
 
@@ -100,6 +101,14 @@ def run(test, params, env):
     if not libvirt_version.version_compare(6, 2, 0):
         test.cancel("This libvirt version doesn't support "
                     "virt-admin server-update-tls.")
+    remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                           server_user, server_pwd,
+                                           r"[\#\$]\s*$")
+    remote_daemon = utils_libvirtd.Libvirtd("virtproxyd", session=remote_session)
+    if not remote_daemon.is_running():
+        remote_daemon.start()
+    remote_session.close()
+
     try:
         vp = virt_admin.VirtadminPersistent(**remote_virt_dargs)
 
