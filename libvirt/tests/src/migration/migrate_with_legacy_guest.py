@@ -70,6 +70,7 @@ def run(test, params, env):
                     'model': iface_model,
                     'del_addr': True,
                     'source': '{"network": "default"}'}
+    set_crypto_policy = params.get("set_crypto_policy")
 
     check_memballoon = "yes" == params.get("check_memballoon")
     membal_model = params.get("membal_model")
@@ -135,6 +136,8 @@ def run(test, params, env):
                 libvirt.modify_vm_iface(vm_name, "update_iface", iface_dict)
             if not check_disk:
                 params["disk_model"] = "virtio-transitional"
+        if set_crypto_policy:
+            utils_conn.update_crypto_policy(set_crypto_policy)
 
         if check_interface:
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
@@ -255,3 +258,5 @@ def run(test, params, env):
         libvirt.delete_local_disk("file", path=source_file)
         if guest_src_url and blk_source:
             libvirt.delete_local_disk("file", path=blk_source)
+        if set_crypto_policy:
+            utils_conn.update_crypto_policy()
