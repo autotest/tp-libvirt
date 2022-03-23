@@ -379,7 +379,7 @@ def run(test, params, env):
                 return len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) == interface_num + 1
 
             ret = virsh.attach_interface(vm_name,
-                                         ("network %s --mac %s" % (net_name, mac_addr)))
+                                         ("network %s --mac %s --model virtio" % (net_name, mac_addr)))
             libvirt.check_exit_status(ret)
             if utils_misc.wait_for(is_attached_interface, timeout=20) is not True:
                 test.fail("Attaching interface failed.")
