@@ -5,12 +5,15 @@ import string
 import os
 import glob
 import aexpect
+import shutil
 
+from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.watchdog import Watchdog
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest.utils_test import libvirt
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -243,7 +246,10 @@ def run(test, params, env):
         if hotunplug_test:
             cur_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
             cur_watchdog = cur_xml.xmltreefile.find('devices/watchdog')
-            cur_watchdog_xml = Watchdog.new_from_element(cur_watchdog).xml
+            watchdog_obj = Watchdog.new_from_element(cur_watchdog)
+            libvirt.wait_for_file_over('</watchdog>', watchdog_obj.xml)
+            cur_watchdog_xml = os.path.join(data_dir.get_data_dir(), "watchdog.xml")
+            shutil.copyfile(watchdog_obj.xml, cur_watchdog_xml)
             detach_result = virsh.detach_device(vm_name, cur_watchdog_xml,
                                                 ignore_status=True, debug=True)
             if detach_result.exit_status:
@@ -267,4 +273,6 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         if name_length != "default":
             vm_xml.VMXML.vm_rename(vm, origin_name)
+        if "cur_watchdog_xml" in locals():
+            os.remove(cur_watchdog_xml)
         backup_xml.sync()
