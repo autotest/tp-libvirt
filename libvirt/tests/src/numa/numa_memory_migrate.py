@@ -1,9 +1,7 @@
-import os
 import logging as log
+import re
 
-from avocado.utils import process
 from avocado.core import exceptions
-from avocado.utils import path
 
 from virttest import virt_vm
 from virttest import libvirt_xml
@@ -11,9 +9,6 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import cpu
 from virttest import utils_test
-from virttest import utils_config
-from virttest import utils_libvirtd
-from virttest import data_dir
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -25,14 +20,7 @@ def run(test, params, env):
     """
     Test numa memory migrate with live numa tuning
     """
-    numad_log = []
     memory_status = []
-
-    def _logger(line):
-        """
-        Callback function to log libvirtd output.
-        """
-        numad_log.append(line)
 
     def mem_compare(used_node, left_node):
         """
@@ -71,35 +59,7 @@ def run(test, params, env):
         if value:
             numa_memory[mem_param.split('_')[1]] = value
 
-    # Prepare libvirtd session with log level as 1
-    config_path = os.path.join(data_dir.get_tmp_dir(), "virt-test.conf")
-    with open(config_path, 'a') as f:
-        pass
-    config = utils_config.LibvirtdConfig(config_path)
-    config.log_level = 1
-    arg_str = "--config %s" % config_path
-    numad_reg = ".*numad"
-    libvirtd = utils_libvirtd.LibvirtdSession(logging_handler=_logger,
-                                              logging_pattern=numad_reg)
-
     try:
-        libvirtd.start(arg_str=arg_str)
-        # As libvirtd start as session use root, need stop virtlogd service
-        # and start it as daemon to fix selinux denial
-        try:
-            path.find_command('virtlogd')
-            process.run("service virtlogd stop", ignore_status=True, shell=True)
-            process.run("virtlogd -d", shell=True)
-        except path.CmdNotFoundError:
-            pass
-
-        # Allow for more times to libvirtd restarted successfully.
-        ret = utils_misc.wait_for(lambda: libvirtd.is_working(),
-                                  timeout=240,
-                                  step=1)
-        if not ret:
-            test.fail("Libvirtd hang after restarted")
-
         if numa_memory.get('nodeset'):
             used_node = cpu.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
@@ -115,18 +75,19 @@ def run(test, params, env):
 
         try:
             vm.start()
-            vm.wait_for_login()
+            vm.wait_for_login().close()
         except virt_vm.VMStartError as e:
             raise exceptions.TestFail("Test failed in positive case.\n "
                                       "error: %s" % e)
 
         # get left used node beside current using
         if numa_memory.get('placement') == 'auto':
-            if not numad_log:
-                raise exceptions.TestFail("numad usage not found in libvirtd"
-                                          " log")
-            logging.debug("numad log list is %s", numad_log)
-            numad_ret = numad_log[1].split("numad: ")[-1]
+            log_file = params.get("libvirtd_debug_file")
+            check_res = utils_test.libvirt.check_logfile('Nodeset returned from numad:', log_file)
+            # Sample: Nodeset returned from numad: 0-1
+            match_obj = re.search(r'Nodeset returned from numad:\s(.*)', check_res.stdout_text)
+            numad_ret = match_obj.group(1)
+            logging.debug("Nodeset returned from numad: %s", numad_ret)
             used_node = cpu.cpus_parser(numad_ret)
             logging.debug("numad nodes are %s", used_node)
 
@@ -170,17 +131,6 @@ def run(test, params, env):
             mem_compare(used_node, left_node_new)
 
     finally:
-        try:
-            path.find_command('virtlogd')
-            process.run('pkill virtlogd', ignore_status=True, shell=True)
-            process.run('systemctl restart virtlogd.socket', ignore_status=True, shell=True)
-        except path.CmdNotFoundError:
-            pass
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        libvirtd.exit()
-        if config_path:
-            config.restore()
-            if os.path.exists(config_path):
-                os.remove(config_path)
         backup_xml.sync()
