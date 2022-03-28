@@ -47,15 +47,14 @@ def run(test, params, env):
         3) Do blockjob with raw option twice and check cur value is changing
         4) Execute with --pivot and check raw option return empty
         """
-        options = params.get('option_value', '')
         # Confirm blockcopy not finished.
         if not libvirt.check_blockjob(vm_name, dev, "progress", "100"):
-            res_1 = virsh.blockjob(vm_name, dev, options=options, debug=True,
+            res_1 = virsh.blockjob(vm_name, dev, options=test_option, debug=True,
                                    ignore_status=False)
             cur1 = libvirt_misc.convert_to_dict(res_1.stdout_text.strip(),
                                                 pattern=r'(\S+)=(\S+)')['cur']
             time.sleep(1)
-            res_2 = virsh.blockjob(vm_name, dev, options=options, debug=True,
+            res_2 = virsh.blockjob(vm_name, dev, options=test_option, debug=True,
                                    ignore_status=False)
             cur2 = libvirt_misc.convert_to_dict(res_2.stdout_text.strip(),
                                                 pattern=r'(\S+)=(\S+)')['cur']
@@ -75,7 +74,7 @@ def run(test, params, env):
             else:
                 test.fail("Blockjob timeout in 100 sec.")
             # Check no output after abort.
-            result = virsh.blockjob(vm_name, dev, options=options,
+            result = virsh.blockjob(vm_name, dev, options=test_option,
                                     debug=True,
                                     ignore_status=False)
             if result.stdout_text.strip():
@@ -96,10 +95,41 @@ def run(test, params, env):
         # Clean copy file
         process.run('rm -rf %s' % tmp_copy_path)
 
+    def setup_blockjob_async():
+        setup_blockjob_raw()
+
+    def test_blockjob_async():
+        """
+        Check --async options which implies --abort;
+        request but don't wait for job end
+
+        1) Execute async option after blockcopy operation.
+        2) Check run time less than 2 seconds.
+        3) Check blockjob --info get no block job.
+        """
+
+        res = virsh.blockjob(vm_name, dev, options=test_option,
+                             debug=True, ignore_status=False).duration
+        if res > 2:
+            test.fail('After blockjob with --async, the blockcopy not '
+                      'aborted immediately, spent %s seconds.' % res)
+
+        ret = virsh.blockjob(vm_name, dev, "--info", debug=True)
+        if "No current block job" not in ret.stdout_text.strip():
+            test.fail('After executing blockjob with --async,'
+                      ' blockjob still working')
+
+    def teardown_blockjob_async():
+        """
+        After blockcopy, clean file
+        """
+        teardown_blockjob_raw()
+
     # Process cartesian parameters
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     case_name = params.get('case_name', 'blockjob')
+    test_option = params.get('option_value', '')
     dev = params.get('disk')
     # Create object
     test_obj = blockcommand_base.BlockCommand(test, vm, params)
