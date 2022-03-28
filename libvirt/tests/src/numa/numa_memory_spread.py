@@ -62,7 +62,7 @@ def prepare_host_for_test(params, test):
     numa_memory = {
         'mode': params.get('memory_mode', 'strict'),
         # If nodeset is not defined in config, take a first node with memory.
-        'nodeset': params.get('memory_nodeset', online_nodes[0])
+        'nodeset': params.get('memory_nodeset', str(online_nodes[0]))
     }
     # Get the size of a main node
     nodeset_size = int(numa_info.read_from_node_meminfo(
@@ -71,6 +71,7 @@ def prepare_host_for_test(params, test):
     for node in online_nodes:
         if str(node) != numa_memory['nodeset']:
             neighbour = node
+            logging.debug("neighbour node is {}".format(neighbour))
             break
     nodeset_nb_size = int(numa_info.read_from_node_meminfo(
         int(neighbour), 'MemTotal'))
