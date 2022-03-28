@@ -822,6 +822,7 @@ def run(test, params, env):
     remove_dict = {}
     remote_libvirt_file = None
     src_libvirt_file = None
+    scsi_disk = None
 
     try:
         # Change the disk of the vm to shared disk
