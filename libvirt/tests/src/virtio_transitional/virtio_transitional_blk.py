@@ -6,6 +6,7 @@ from avocado.utils import download
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_conn
 from virttest import utils_misc
 from virttest import libvirt_version
 from virttest import utils_libvirtd
@@ -220,6 +221,7 @@ def run(test, params, env):
     pci_bridge_index = None
     tmp_dir = data_dir.get_tmp_dir()
     guest_src_url = params.get("guest_src_url")
+    set_crypto_policy = params.get("set_crypto_policy")
 
     if not libvirt_version.version_compare(5, 0, 0):
         test.cancel("This libvirt version doesn't support "
@@ -231,7 +233,8 @@ def run(test, params, env):
         if not os.path.exists(target_path):
             download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
-
+    if set_crypto_policy:
+        utils_conn.update_crypto_policy(set_crypto_policy)
     try:
         if add_pcie_to_pci_bridge:
             pci_controllers = vmxml.get_controllers('pci')
@@ -282,3 +285,5 @@ def run(test, params, env):
         backup_xml.sync()
         if guest_src_url and target_path:
             libvirt.delete_local_disk("file", path=target_path)
+        if set_crypto_policy:
+            utils_conn.update_crypto_policy()

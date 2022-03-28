@@ -8,6 +8,7 @@ from avocado.core import exceptions
 from virttest import virsh
 from virttest import virt_vm
 from virttest import data_dir
+from virttest import utils_conn
 from virttest import utils_net
 from virttest import utils_test
 from virttest import utils_misc
@@ -274,6 +275,7 @@ def run(test, params, env):
     guest_src_url = params.get("guest_src_url")
     params['disk_model'] = params['virtio_model']
     guest_os_type = params['os_type']
+    set_crypto_policy = params.get("set_crypto_policy")
 
     target_path = None
 
@@ -288,6 +290,9 @@ def run(test, params, env):
         if not os.path.exists(target_path):
             download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
+    if set_crypto_policy:
+        utils_conn.update_crypto_policy(set_crypto_policy)
+
     libvirt.set_vm_disk(vm, params)
 
     # Add pcie-to-pci-bridge when there is no one
@@ -318,3 +323,5 @@ def run(test, params, env):
 
         if guest_src_url and target_path:
             libvirt.delete_local_disk("file", path=target_path)
+        if set_crypto_policy:
+            utils_conn.update_crypto_policy()

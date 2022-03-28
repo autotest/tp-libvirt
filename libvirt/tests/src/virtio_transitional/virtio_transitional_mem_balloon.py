@@ -5,6 +5,7 @@ from avocado.utils import download
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_conn
 from virttest import utils_misc
 from virttest import libvirt_version
 
@@ -42,6 +43,7 @@ def run(test, params, env):
     virtio_model = params['virtio_model']
     os_variant = params.get("os_variant", "")
     params["disk_model"] = virtio_model
+    set_crypto_policy = params.get("set_crypto_policy")
 
     if not libvirt_version.version_compare(5, 0, 0):
         test.cancel("This libvirt version doesn't support "
@@ -54,6 +56,8 @@ def run(test, params, env):
         if not os.path.exists(target_path):
             download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
+    if set_crypto_policy:
+        utils_conn.update_crypto_policy(set_crypto_policy)
 
     try:
         # Update disk and interface to correct model
@@ -114,3 +118,5 @@ def run(test, params, env):
     finally:
         vm.destroy()
         backup_xml.sync()
+        if set_crypto_policy:
+            utils_conn.update_crypto_policy()
