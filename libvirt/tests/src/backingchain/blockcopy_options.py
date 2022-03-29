@@ -3,9 +3,9 @@ import os
 
 from avocado.utils import process
 
+from virttest import libvirt_version
 from virttest import utils_disk
 from virttest import virsh
-from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_test import libvirt
@@ -49,6 +49,9 @@ def run(test, params, env):
         virsh.attach_disk(vm.name, source=image_path, target=device,
                           extra=attach_disk_extra, debug=True)
         test_obj.new_dev = device
+        # clean copy file
+        if os.path.exists(tmp_copy_path):
+            process.run('rm -f %s' % tmp_copy_path)
 
     def test_blockcopy_extended_l2():
         """
@@ -60,10 +63,6 @@ def run(test, params, env):
                                    check_item='extended l2',
                                    expected_value='true')
         # Do blockcopy
-        tmp_copy_path = os.path.join(os.path.dirname(
-            libvirt_disk.get_first_disk_source(vm)), "%s_blockcopy.img" % vm_name)
-        if os.path.exists(tmp_copy_path):
-            process.run('rm -f %s' % tmp_copy_path)
         virsh.blockcopy(vm_name, device, tmp_copy_path, options=blockcopy_options,
                         ignore_status=False, debug=True)
         # Check domain exist blockcopy file and extended_l2 status
@@ -94,13 +93,73 @@ def run(test, params, env):
                           debug=True)
         process.run('rm -f %s' % test_obj.new_image_path)
 
+    def setup_blockcopy_synchronous_writes():
+        """
+        Start domain and clean exist copy file
+        """
+        if not vm.is_alive():
+            vm.start()
+        if os.path.exists(tmp_copy_path):
+            process.run('rm -f %s' % tmp_copy_path)
+
+    def test_blockcopy_synchronous_writes():
+        """
+        Test blockcopy with --synchronous-writes option.
+        """
+        ret = virsh.blockcopy(vm_name, device, tmp_copy_path,
+                              options=blockcopy_options,
+                              ignore_status=False, debug=True)
+        if not ret.stdout_text.count("Now in mirroring phase"):
+            test.fail("Not in mirroring phase")
+        test_obj.new_image_path = tmp_copy_path
+        # Check exist mirror tag after blockcopy.
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        disk_list = vmxml.get_disk_all()[device]
+        if not disk_list.find('mirror'):
+            test.fail('No mirror tag in current domain xml :%s' % vmxml)
+        else:
+            # Check file in mirror should be new copy file
+            mirror_file = disk_list.find('mirror').get('file')
+            if mirror_file != tmp_copy_path:
+                test.fail('Current mirror tag file:%s is not same as:%s' %
+                          (mirror_file, tmp_copy_path))
+            # Check file in mirror >source > file should be new copy file
+            mirror_source_file = disk_list.find('mirror').\
+                find('source').get('file')
+            if mirror_source_file != tmp_copy_path:
+                test.fail('Current source tag file:%s is not same as:%s' %
+                          (mirror_source_file, tmp_copy_path))
+
+        # Check domain write file
+        session = vm.wait_for_login()
+        utils_disk.dd_data_to_vm_disk(session, device)
+        session.close()
+        # Abort job and check disk source changed.
+        virsh.blockjob(vm_name, device, options=' --pivot',
+                       debug=True, ignore_status=False)
+        current_source = libvirt_disk.get_first_disk_source(vm)
+        if current_source != tmp_copy_path:
+            test.fail("Current source: %s is not same as original blockcopy"
+                      " path:%s" % (current_source, tmp_copy_path))
+        # Check domain write file after
+        session = vm.wait_for_login()
+        utils_disk.dd_data_to_vm_disk(session, device)
+        session.close()
+
+    def teardown_blockcopy_synchronous_writes():
+        """
+        Clean env
+        """
+        if os.path.exists(test_obj.new_image_path):
+            process.run('rm -f %s' % test_obj.new_image_path)
+
     libvirt_version.is_libvirt_feature_supported(params)
 
     # Process cartesian parameters
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     case_name = params.get('case_name', '')
-    device = params.get('new_disk')
+    device = params.get('target_disk')
     disk_extras = params.get('extras_options')
     blockcopy_options = params.get('blockcopy_option')
     attach_disk_extra = params.get("attach_disk_options")
@@ -111,6 +170,8 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
     test_obj.original_disk_source = libvirt_disk.get_first_disk_source(vm)
+    tmp_copy_path = os.path.join(os.path.dirname(
+        libvirt_disk.get_first_disk_source(vm)), "%s_blockcopy.img" % vm_name)
     # MAIN TEST CODE ###
     run_test = eval("test_%s" % case_name)
     setup_test = eval("setup_%s" % case_name)
