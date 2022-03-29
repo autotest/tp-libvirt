@@ -20,6 +20,12 @@ def run_cmd_in_guest(vm, cmd, test, timeout=60):
     status, output = session.cmd_status_output(cmd, timeout=timeout)
     logging.debug("The '%s' output: %s", cmd, output)
     if status:
+        # Add to debug kdump.service failed
+        err_msg = "Job for kdump.service failed because the control process exited with error code"
+        if err_msg in output:
+            debug_cmd = "journalctl -xeu kdump.service"
+            ret, debug_output = session.cmd_status_output(debug_cmd)
+            logging.debug("Failed to start kdump service: %s", debug_output)
         session.close()
         test.error("Can not run '%s' in guest: %s" % (cmd, output))
     else:
