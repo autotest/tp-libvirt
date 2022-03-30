@@ -33,14 +33,16 @@ def run_domcap_in_guest(virsh_dargs):
     Execute 'virsh domcapabilities' within the guest
 
     :param virsh_dargs: dict, parameters used
+    :return: CmdResult object, the execution result of the command
     """
     remote_session = None
     try:
         remote_session = virsh.VirshPersistent(**virsh_dargs)
-        remote_session.domcapabilities(ignore_status=False)
+        cmd_result = remote_session.domcapabilities(ignore_status=False)
     finally:
         if remote_session:
             remote_session.close_session()
+    return cmd_result
 
 
 def get_cmd_timestamp(cmd_timestamp):
@@ -76,6 +78,48 @@ def run(test, params, env):
     """
     Run the cpu tests with nested virt environment setup
     """
+    def test_change_vm_cpu():
+        """
+        Check domain capabilities after host CPU changes
+        """
+        vm_session = vm.wait_for_login()
+        cmd_timestamp = params.get('cmd_in_guest')
+        old_timestamp = get_timestamp_in_vm(virsh_dargs,
+                                            vm_session,
+                                            get_cmd_timestamp(cmd_timestamp),
+                                            test)
+        vm.destroy()
+        if not params.get('cpu_new_mode'):
+            test.error("'cpu_new_mode' parameter is missing")
+        libvirt_nested.update_vm_cpu(vmxml, new_mode)
+        vm.start()
+        logging.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
+        vm_session = vm.wait_for_login()
+        run_cmd_in_guest(vm_session, 'll /dev/kvm', test)
+        new_timestamp = get_timestamp_in_vm(virsh_dargs,
+                                            vm_session,
+                                            get_cmd_timestamp(cmd_timestamp),
+                                            test)
+        if old_timestamp == new_timestamp:
+            test.fail("The timestamp '{}' fails to be changed "
+                      "from '{}'".format(new_timestamp, old_timestamp))
+
+    def test_check_nested_capability():
+        """
+        Check whether the feature nested virt is enabled
+        """
+        vm.wait_for_login()
+        cpu_feature = vmxml.cpu.get_dict_type_feature()
+        if cpu_feature['vmx'] != 'require':
+            test.fail("The feature policy of 'vmx' should not be %s, but require." % cpu_feature['vmx'])
+
+        res = run_domcap_in_guest(virsh_dargs).stdout_text
+        logging.debug("Domain domcapabilities: %s", res)
+        matching_str = '<domain>kvm</domain>'
+        if matching_str not in res:
+            test.fail("The guest doesn't support kvm feature.")
+
+    # Variable assignment
     new_mode = params.get('cpu_new_mode')
     old_mode = params.get('cpu_old_mode')
     the_case = params.get('case')
@@ -107,29 +151,11 @@ def run(test, params, env):
         # Reboot the vm to make sure default libvirt daemons start automatically
         vm.destroy()
         vm.start()
-        vm_session = vm.wait_for_login()
 
-        if the_case == 'change_vm_cpu':
-            cmd_timestamp = params.get('cmd_in_guest')
-            old_timestamp = get_timestamp_in_vm(virsh_dargs,
-                                                vm_session,
-                                                get_cmd_timestamp(cmd_timestamp),
-                                                test)
-            vm.destroy()
-            if not params.get('cpu_new_mode'):
-                test.error("'cpu_new_mode' parameter is missing")
-            libvirt_nested.update_vm_cpu(vmxml, new_mode)
-            vm.start()
-            logging.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
-            vm_session = vm.wait_for_login()
-            run_cmd_in_guest(vm_session, 'll /dev/kvm', test)
-            new_timestamp = get_timestamp_in_vm(virsh_dargs,
-                                                vm_session,
-                                                get_cmd_timestamp(cmd_timestamp),
-                                                test)
-            if old_timestamp == new_timestamp:
-                test.fail("The timestamp '{}' fails to be changed "
-                          "from '{}'".format(new_timestamp, old_timestamp))
+        # Test steps of cases
+        run_test = eval('test_%s' % the_case)
+        run_test()
+
     finally:
         logging.info("Recover VM XML configuration")
         vmxml_backup.sync()
