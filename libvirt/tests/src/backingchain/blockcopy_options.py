@@ -8,6 +8,7 @@ from virttest import utils_disk
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 
 
@@ -35,19 +36,24 @@ def run(test, params, env):
         image_path = test_obj.tmp_dir + '/new_image'
 
         libvirt.create_local_disk("file", path=image_path, size='500M',
-                                  disk_format="qcow2", extra=disk_extras)
+                                  disk_format=disk_format, extra=disk_extras)
         check_obj.check_image_info(image_path, check_item='extended l2',
                                    expected_value='true')
         test_obj.new_image_path = image_path
-        # start domain and get old parts
-        if not vm.is_alive():
-            vm.start()
+        # start get old parts
         session = vm.wait_for_login()
         test_obj.old_parts = utils_disk.get_parts_list(session)
         session.close()
         # attach new disk
-        virsh.attach_disk(vm.name, source=image_path, target=device,
-                          extra=attach_disk_extra, debug=True)
+        if encryption_disk:
+            secret_disk_dict = eval(params.get("secret_disk_dict", '{}'))
+            test_obj.prepare_secret_disk(image_path, secret_disk_dict)
+            if not vm.is_alive():
+                vm.start()
+        else:
+            virsh.attach_disk(vm.name, source=image_path, target=device,
+                              extra=attach_disk_extra, debug=True,
+                              ignore_status=False)
         test_obj.new_dev = device
         # clean copy file
         if os.path.exists(tmp_copy_path):
@@ -87,6 +93,8 @@ def run(test, params, env):
         """
         Clean env.
         """
+        if encryption_disk:
+            libvirt_secret.clean_up_secrets()
         test_obj.backingchain_common_teardown()
         # detach disk
         virsh.detach_disk(vm_name, target=device, wait_for_event=True,
@@ -163,6 +171,8 @@ def run(test, params, env):
     disk_extras = params.get('extras_options')
     blockcopy_options = params.get('blockcopy_option')
     attach_disk_extra = params.get("attach_disk_options")
+    encryption_disk = params.get('enable_encrypt_disk', 'no') == "yes"
+    disk_format = params.get('disk_format', 'qcow2')
     # Create object
     test_obj = blockcommand_base.BlockCommand(test, vm, params)
     check_obj = check_functions.Checkfunction(test, vm, params)
