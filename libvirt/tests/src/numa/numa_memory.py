@@ -221,8 +221,9 @@ def run(test, params, env):
                         if nodes_size > len(node_list):
                             test.cancel("nodeset %s out of range" % numa_memory['nodeset'])
                         else:
-                            numa_memory['nodeset'] = node_list[:nodes_size]
-                            logging.debug("Update the numa memory nodeset to '%s'", node_list[:nodes_size])
+
+                            numa_memory['nodeset'] = ','.join(map(str,
+                                                                  node_list[:nodes_size]))
 
         if vcpu_cpuset:
             pre_cpuset = cpu.cpus_parser(vcpu_cpuset)
