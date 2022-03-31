@@ -228,7 +228,7 @@ def run(test, params, env):
 
             mig_result = migration_test.ret
         if int(mig_result.exit_status) == 0:
-            migration_test.ping_vm(vm, params, uri=dest_uri)
+            migration_test.post_migration_check([vm], params, uri=dest_uri)
 
         if check_str_local_log:
             libvirt.check_logfile(check_str_local_log, log_file)
