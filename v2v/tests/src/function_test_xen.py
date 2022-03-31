@@ -15,6 +15,7 @@ from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
 from virttest.utils_test import libvirt
+from virttest.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -30,6 +31,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         test.cancel('Missing command: virt-v2v')
+    libguestfs_backend = params_get(params, "libguestfs_backend", "libvirt")
     vm_name = params.get('main_vm')
     new_vm_name = params.get('new_vm_name')
     xen_host = params.get('xen_hostname')
@@ -203,7 +205,7 @@ def run(test, params, env):
         }
 
         bk_xml = None
-        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+        os.environ['LIBGUESTFS_BACKEND'] = libguestfs_backend
 
         # See man virt-v2v-input-xen(1)
         process.run(

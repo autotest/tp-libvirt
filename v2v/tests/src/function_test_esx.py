@@ -38,6 +38,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    libguestfs_backend = params_get(params, "libguestfs_backend", "libvirt")
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
     unprivileged_user = params_get(params, 'unprivileged_user')
@@ -730,7 +731,7 @@ def run(test, params, env):
             'params': params
         }
 
-        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+        os.environ['LIBGUESTFS_BACKEND'] = libguestfs_backend
         v2v_uri = utils_v2v.Uri('esx')
         remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
 
