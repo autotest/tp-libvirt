@@ -293,18 +293,18 @@ def run(test, params, env):
         """
         logging.info("------Checking swtpm cmdline and files------")
         # Check swtpm cmdline
-        swtpm_pid = utils_misc.get_pid("%s-swtpm.pid" % vm_name)
+        swtpm_pid = utils_misc.get_pid("swtpm socket.*%s" % vm_name)
         if not swtpm_pid:
             if not remove_dev:
-                test.fail('swtpm pid file missing.')
+                test.fail('swtpm socket process missing.')
             else:
                 return
         elif remove_dev:
-            test.fail('swtpm pid file still exists after remove vtpm and restart')
+            test.fail('swtpm socket process still exists after remove vtpm and restart')
         with open('/proc/%s/cmdline' % swtpm_pid) as cmdline_file:
             cmdline = cmdline_file.read()
             logging.debug("Swtpm cmd line info:\n %s", cmdline)
-        pattern_list = ["--daemon", "--ctrl", "--tpmstate", "--log", "--tpm2", "--pid"]
+        pattern_list = ["--ctrl", "--tpmstate", "--log", "--tpm2"]
         if prepare_secret:
             pattern_list.extend(["--key", "--migration-key"])
         for pattern in pattern_list:
