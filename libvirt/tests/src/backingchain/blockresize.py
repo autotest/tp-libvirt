@@ -23,6 +23,9 @@ def run(test, params, env):
         """
         Prepare raw disk and create snapshots.
         """
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login().close()
         # Create raw type image
         image_path = test_obj.tmp_dir + '/blockresize_test'
         libvirt.create_local_disk("file", path=image_path, size='500K',
