@@ -392,11 +392,11 @@ def run(test, params, env):
             if cmpnn_cntlr_num is not None:
                 for num in range(int(cmpnn_cntlr_num)):
                     name = (cmpnn_cntlr_model+str(num+1)).split('-')
-                    pattern = pattern + r"-device.%s-usb-%s.*" % (name[0], name[1])
+                    pattern = pattern + r"-device.*%s-usb-%s.*" % (name[0], name[1])
             elif model == "ehci":
-                pattern = r"-device.usb-ehci"
+                pattern = r"-device.*usb-ehci"
             elif model == "qemu-xhci":
-                pattern = r"-device.qemu-xhci"
+                pattern = r"-device.*qemu-xhci"
 
             logging.debug("pattern is %s", pattern)
 
