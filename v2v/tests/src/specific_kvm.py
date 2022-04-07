@@ -39,7 +39,6 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
-    libguestfs_backend = params_get(params, "libguestfs_backend", "libvirt")
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     hypervisor = params.get("hypervisor")
     vm_name = params.get('main_vm', 'EXAMPLE')
@@ -740,7 +739,7 @@ def run(test, params, env):
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
         # Set libguestfs environment variable
-        os.environ['LIBGUESTFS_BACKEND'] = libguestfs_backend
+        utils_v2v.set_libguestfs_backend(params)
 
         # Save origin graphic type for result checking if source is KVM
         if hypervisor == 'kvm':
