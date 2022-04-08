@@ -33,16 +33,18 @@ def update_xml(vm_name, online_nodes, params):
     vmxml.sync()
 
 
-def setup_host(online_nodes, pages_list, ori_page_set):
+def setup_host(required_node_num, online_nodes, pages_list, ori_page_set):
     """
     Setup host for test - update number of hugepages and check
 
+    :param required_node_num: int, numa node number at least on the host required by the test
     :param online_nodes: List of all online nodes with memory available
     :param pages_list: List of required number of pages for particular nodes
     :param ori_page_set: A dict used to save original node page
     """
     index = 0
-    if len(online_nodes) > 2:
+
+    if len(online_nodes) >= required_node_num:
         for pages in pages_list:
             ori_page_set[online_nodes[index]] = process.run(
                 'cat /sys/devices/system/node/node{}/hugepages/hugepages-2048kB/nr_hugepages'.
@@ -78,7 +80,8 @@ def run(test, params, env):
     numa_info = utils_misc.NumaInfo()
     online_nodes = numa_info.get_online_nodes_withmem()
     ori_page_set = {}
-    setup_host(online_nodes, pages_list, ori_page_set)
+    required_numa_node_num = int(params.get("numa_cells_with_memory_required", '2'))
+    setup_host(required_numa_node_num, online_nodes, pages_list, ori_page_set)
     try:
         if vm.is_alive():
             vm.destroy()
