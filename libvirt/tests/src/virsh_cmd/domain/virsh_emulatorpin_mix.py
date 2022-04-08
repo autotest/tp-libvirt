@@ -1,12 +1,17 @@
 import logging as log
+import os.path
+import json
 
 from avocado.utils import cpu
+from avocado.utils import process
+from avocado.utils import path as utils_path
 
 from virttest import virsh
+from virttest import libvirt_cgroup
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_misc
-
+from virttest.utils_test import libvirt
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -23,6 +28,7 @@ def prepare_vm(guest_xml, params):
     logging.debug("Begin to prepare vm xml")
     iothread_id = params.get("iothread_id")
     vm_name = params.get("main_vm")
+    iothreadids = params.get("iothreadids")
     vcpu_attrs = eval(params.get('vcpu_attrs', '{}'))
     if vcpu_attrs:
         guest_xml.setup_attrs(**vcpu_attrs)
@@ -31,9 +37,14 @@ def prepare_vm(guest_xml, params):
         guest_xml.del_cputune()
 
     cputune = vm_xml.VMCPUTuneXML()
+    ids_xml = vm_xml.VMIothreadidsXML()
     cputune_attrs = params.get('cputune_attrs')
     if cputune_attrs and cputune_attrs.count("%s"):
         cputune_attrs = cputune_attrs % params.get('cpulist', '0')
+    if iothreadids:
+        iothreadids = eval(iothreadids)
+        ids_xml.setup_attrs(**iothreadids)
+        guest_xml.iothreadids = ids_xml
     if cputune_attrs:
         cputune_attrs = eval(cputune_attrs)
         cputune.setup_attrs(**cputune_attrs)
@@ -175,6 +186,12 @@ def check_to_skip_case(params, test):
         if len(node_list) <= 1:
             test.cancel("This case requires at least 2 numa host nodes, "
                         "but found '%s' numa host node" % len(node_list))
+    use_taskset = "yes" == params.get("use_taskset", "no")
+    if use_taskset:
+        try:
+            utils_path.find_command('taskset')
+        except utils_path.CmdNotFoundError:
+            test.cancel("This case requires the 'taskset' command available")
 
 
 def test_change_vcpupin_emulatorpin_iothreadpin(test, guest_xml, cpu_max_index, vm, params):
@@ -283,6 +300,82 @@ def test_start_with_emulatorpin(test, guest_xml, cpu_max_index, vm, params):
                   "but found '%s'".format(cpulist, guest_xml.cputune.emulatorpin))
 
 
+def test_change_with_disabled_cpuset(test, guest_xml, cpu_max_index, vm, params):
+    """
+    Check whether the commands which does not require cgroup will work well
+    when disable them in configure file.
+
+    :param test: test object
+    :param guest_xml: vm xml
+    :param cpu_max_index: int, cpu maximum index on host
+    :param vm: vm object
+    :param params: test dict
+    :return: None
+    :raises: test.fail if emulatorpin or iothreadpin does not work correctly
+    """
+    prepare_vm(guest_xml, params)
+    vm.start()
+
+    # Check whether cpuset is disabled
+    cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
+    cg_path = cg_obj.get_cgroup_path("cpuset")
+    if cg_obj.is_cgroup_v2_enabled():
+        if os.path.exists(os.path.join(cg_path, 'vcpu0', 'cpuset.cpus')):
+            test.fail("There should be no cpuset related files in %s."
+                      % os.path.join(cg_path, 'vcpu0'))
+    else:
+        if 'machine.slice' in cg_path:
+            test.fail("There should be no subdir 'machine.slice' in cgroup path: %s."
+                      % cg_path)
+
+    # Change iothreadpin, then check the command works well
+    logging.info("Now change iothreadpin value to the guest")
+    iothreadpin_result = run_func(virsh.iothreadinfo, vm.name)
+    cpu_list = "%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
+    changed_id = params.get("changed_id")
+    virsh.iothreadpin(vm.name, changed_id, cpu_list, ignore_status=False, debug=True)
+    changed_iothreadpin = {changed_id: cpu_list}
+    check_iothreadpin(iothreadpin_result, changed_iothreadpin, vm.name, test)
+
+    # Change emulatorpin, then check the command works well
+    logging.info("Now change emulatorpin value to the guest")
+    emulatorpin_result = run_func(virsh.emulatorpin, vm.name, pattern=r"(\*): +(\S+)")
+    cpu_list = "%s" % (cpu_max_index - 1) if cpu_max_index > 1 else "0"
+    virsh.emulatorpin(vm.name, cpu_list, ignore_status=False, debug=True)
+    changed_emulatorpin = {'*': cpu_list}
+    check_emulatorpin(emulatorpin_result, changed_emulatorpin, vm.name, test)
+
+    # Check if current affinity mask is expected
+    cmd_option = params.get("cmd_option")
+    result = virsh.qemu_monitor_command(vm.name, cmd_option, "--pretty").stdout_text
+    iothread_pids = json.loads(result)
+    iothread1_pid = iothread_pids['return'][0]['thread-id']
+    iothread2_pid = iothread_pids['return'][1]['thread-id']
+    # In some environments qemu-monitor-command give the reverse order of iothread
+    if iothread_pids['return'][0]['id'] != 'iothread1':
+        iothread1_pid, iothread2_pid = iothread2_pid, iothread1_pid
+    res_iothread_1 = process.run("taskset -p %s" % iothread1_pid,
+                                 shell=True, verbose=True).stdout_text.split(":")[-1].strip()
+    res_iothread_2 = process.run("taskset -p %s" % iothread2_pid,
+                                 shell=True, verbose=True).stdout_text.split(":")[-1].strip()
+    # Calculate the expected affinity mask
+    aff_mask = str(pow(10, int(cpu_list)//4) * pow(2, int(cpu_list) % 4))
+    if res_iothread_1 != '1':
+        test.fail("Iothreadpin does not work well, "
+                  "this affinity mask should be 1 but not be changed to %s"
+                  % res_iothread_1)
+    if res_iothread_2 != aff_mask:
+        test.fail("Iothreadpin does not work well, "
+                  "this affinity mask should be changed to %s but now: %s"
+                  % (aff_mask, res_iothread_2))
+    res_emulatorpin = process.run("taskset -p `pidof qemu-kvm`",
+                                  shell=True, verbose=True).stdout_text.split(":")[-1].strip()
+    if res_emulatorpin != aff_mask:
+        test.fail("Emulatorpin does not work well, "
+                  "this affinity mask should be changed to %s but now: %s"
+                  % (aff_mask, res_emulatorpin))
+
+
 def run(test, params, env):
     """
     Test commands: virsh.vcpupin, virsh.iothreadpin, virsh.emulatorpin.
@@ -290,11 +383,14 @@ def run(test, params, env):
     check_to_skip_case(params, test)
 
     vm_name = params.get("main_vm")
+    qemu_conf_dict = eval(params.get("qemu_conf_dict", "{}"))
     vm = env.get_vm(vm_name)
 
     original_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_copy = original_vm_xml.copy()
 
+    if qemu_conf_dict:
+        qemu_conf = libvirt.customize_libvirt_config(qemu_conf_dict, config_type="qemu")
     host_cpus = cpu.online_cpus_count()
     cpu_max_index = int(host_cpus) - 1
     test_case = params.get("test_case", "")
@@ -308,3 +404,7 @@ def run(test, params, env):
         vm_xml_copy.sync()
         if vm.is_alive():
             vm.destroy()
+        if 'qemu_conf' in locals():
+            libvirt.customize_libvirt_config(None, is_recover=True,
+                                             config_type="qemu",
+                                             config_object=qemu_conf)
