@@ -78,6 +78,8 @@ def run(test, params, env):
     download_file_path = os.path.join(data_dir.get_data_dir(), "uefi_disk.qcow2")
     persistent_state = ("yes" == params.get("persistent_state", "no"))
     check_pcrbanks = ('yes' == params.get("check_pcrbanks", "no"))
+    remove_pcrbank = ('yes' == params.get("remove_pcrbank", "no"))
+    pcrbank_change = params.get("pcrbank_change")
     active_pcr_banks = params.get("active_pcr_banks")
     if active_pcr_banks:
         active_pcr_banks = active_pcr_banks.split(",")
@@ -553,6 +555,27 @@ def run(test, params, env):
             # emulator backend
             test.fail("Vtpm for each guest should not interfere with each other")
 
+    def save_modify_pcrbank(vm_name, active_pcr_banks, pcrbank_change):
+        """
+        Try to modify active_pcr_banks for managedsaved vm.
+        By making changes to xmlfile and managedsave-define with it
+
+        :param vm_name: current vm name
+        :param active_pcr_banks: current active_pcr_banks configured in managedsaved xml
+        :param pcrbank_change: new active_pcr_banks to replace with
+        """
+        xmlfile = os.path.join(data_dir.get_tmp_dir(), 'managedsave.xml')
+        virsh.managedsave_dumpxml(vm_name, to_file=xmlfile, ignore_status=False, debug=False)
+        with open(xmlfile) as file_xml:
+            old_pcrbank = '<%s/>' % active_pcr_banks[0]
+            new_pcrbank = '<%s/>' % pcrbank_change
+            updated_xml = file_xml.read().replace(old_pcrbank, new_pcrbank)
+            logging.debug("Updated xml for managedsave-define is:\n %s" % updated_xml)
+        with open(xmlfile, 'w') as file_xml:
+            file_xml.write(updated_xml)
+        ret = virsh.managedsave_define(vm_name, xmlfile, '', ignore_status=True, debug=True)
+        libvirt.check_exit_status(ret, status_error)
+
     try:
         tpm_real_v = None
         sec_uuids = []
@@ -668,6 +691,14 @@ def run(test, params, env):
                         elif not restart_libvirtd:
                             # remove_dev or do other vm operations during restart
                             vm_xml.remove_all_device_by_type('tpm')
+                            if remove_pcrbank:
+                                for pcrbank in active_pcr_banks:
+                                    backend_pcrbank.remove_pcrbank(pcrbank)
+                                backend.active_pcr_banks = backend_pcrbank
+                                tpm_dev.backend = backend
+                                vm_xml.add_device(tpm_dev, True)
+                                # Do not clear active_pcr_banks for later test_guest_tpm check,since in guest os
+                                # it should keep as last startup config if it's removed from guest xml.
                             if secret_uuid == "change" or encrypt_change:
                                 # Change secret uuid, or change encryption state:from plain to encrypted, or on the contrary
                                 if encrypt_change == 'plain':
@@ -685,7 +716,7 @@ def run(test, params, env):
                                 tpm_dev.backend = backend
                                 logging.debug("The new tpm dev xml to add for restart vm is:\n %s", tpm_dev)
                                 vm_xml.add_device(tpm_dev, True)
-                            if encrypt_change in ['encrpt', 'plain']:
+                            if encrypt_change in ['encrpt', 'plain'] or remove_pcrbank:
                                 # Avoid sync() undefine removing the state file
                                 vm_xml.define()
                             else:
@@ -703,6 +734,9 @@ def run(test, params, env):
                 elif vm_operate == 'managedsave':
                     virsh.managedsave(vm_name, **virsh_dargs)
                     time.sleep(5)
+                    if pcrbank_change:
+                        save_modify_pcrbank(vm_name, active_pcr_banks, pcrbank_change)
+                        return
                     if secret_value == 'change':
                         logging.info("Changing secret value...")
                         virsh.secret_set_value(encryption_uuid, "new sesame", encode=True, debug=True)
@@ -768,6 +802,8 @@ def run(test, params, env):
             output = session.cmd_output("rm -rf /root/linux-*")
             logging.debug("Command output:\n %s", output)
             session.close()
+        if pcrbank_change:
+            virsh.managedsave_remove(vm_name, debug=True)
         if vm_operate == "create":
             vm.define(vm_xml.xml)
         vm_xml_backup.sync(options="--nvram --managed-save")
