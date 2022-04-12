@@ -6,7 +6,7 @@ from virttest import utils_vdpa
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
 from virttest.utils_libvirt import libvirt_vmxml
-
+from provider.interface import check_points
 from provider.interface import interface_base
 from provider.interface import vdpa_base
 
@@ -27,6 +27,11 @@ def run(test, params, env):
         """
         logging.debug("Remove VM's interface devices.")
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
+        vm_attrs = eval(params.get('vm_attrs', '{}'))
+        if vm_attrs:
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            vmxml.setup_attrs(**vm_attrs)
+            vmxml.sync()
 
     def teardown_default():
         """
@@ -42,10 +47,14 @@ def run(test, params, env):
         test_env_obj = None
         if test_target == "simulator":
             test_env_obj = utils_vdpa.VDPASimulatorTest()
+            test_env_obj.setup()
         else:
+            vdpa_mgmt_tool_extra = params.get("vdpa_mgmt_tool_extra", "")
             pf_pci = utils_vdpa.get_vdpa_pci()
-            test_env_obj = utils_vdpa.VDPAOvsTest(pf_pci)
-        test_env_obj.setup()
+            test_env_obj = utils_vdpa.VDPAOvsTest(pf_pci, mgmt_tool_extra=vdpa_mgmt_tool_extra)
+            test_env_obj.setup()
+            params['mac_addr'] = test_env_obj.vdpa_mac.get(params.get("vdpa_dev", "vdpa0"))
+
         return test_env_obj
 
     def teardown_vdpa():
@@ -74,6 +83,7 @@ def run(test, params, env):
         for _i in range(eval(params.get('repeat_times', '1'))):
             interface_base.attach_iface_device(vm_name, dev_type, params)
             vdpa_base.check_vdpa_conn(vm_session, test_target, br_name)
+            check_points.check_vm_iface_queues(vm_session, params)
             interface_base.detach_iface_device(vm_name, dev_type)
 
     libvirt_version.is_libvirt_feature_supported(params)

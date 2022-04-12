@@ -62,6 +62,17 @@ def get_vm_iface_info(vm_session):
     return if_info
 
 
+def parse_iface_dict(params):
+    """
+    Parse iface_dict from params
+
+    :param params: Dictionary with the test parameters
+    :return: Value of iface_dict
+    """
+    mac_addr = params.get('mac_addr')
+    return eval(params.get('iface_dict', '{}'))
+
+
 def attach_iface_device(vm_name, dev_type, params):
     """
     Attach an interface to VM
@@ -70,9 +81,9 @@ def attach_iface_device(vm_name, dev_type, params):
     :param dev_type: Interface device type
     :param params: Dictionary with the test parameters
     """
-    iface_dict = eval(params.get('iface_dict', '{}'))
-    status_error = "yes" == params.get('status_error', 'no')
 
+    status_error = "yes" == params.get('status_error', 'no')
+    iface_dict = parse_iface_dict(params)
     iface = create_iface(dev_type, iface_dict)
     res = virsh.attach_device(vm_name, iface.xml, debug=True)
     libvirt.check_exit_status(res, status_error)

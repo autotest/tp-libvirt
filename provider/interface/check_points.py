@@ -1,6 +1,10 @@
 import logging as log
 from avocado.core import exceptions
 
+from virttest import utils_net
+from virttest.libvirt_xml import vm_xml
+
+from provider.interface import interface_base
 from provider.interface import vdpa_base
 
 
@@ -35,3 +39,38 @@ def check_network_accessibility(vm, **kwargs):
             config_vdpa = kwargs.get("config_vdpa", True)
         vdpa_base.check_vdpa_conn(
             vm_session, test_target, br_name, config_vdpa=config_vdpa)
+
+    driver_queues = kwargs.get("driver_queues")
+    if driver_queues:
+        check_vm_iface_queues(vm_session, kwargs)
+
+
+def check_vm_iface_queues(vm_session, params):
+    """
+    Check driver queues in VM's interface channel
+
+    :param vm_session: VM session
+    :param params: Dictionary with the test parameters
+    :raises: TestFail if check fails
+    """
+    driver_queues = params.get("driver_queues")
+    if not driver_queues:
+        logging.warning("No need to check driver queues.")
+        return
+    ifname = interface_base.get_vm_iface(vm_session)
+    maximums_channel, current_channel = utils_net.get_channel_info(
+        vm_session, ifname)
+    max_combined = maximums_channel.get("Combined", "1")
+    current_combined = current_channel.get("Combined", "1")
+
+    if max_combined != driver_queues:
+        raise exceptions.TestFail("Incorrect combined number in maximums "
+                                  "status! It should be %s, but got %s."
+                                  % (driver_queues, max_combined))
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
+    vmxml_cpu = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name).vcpu
+    current_exp = min(vmxml_cpu, int(driver_queues))
+    if int(current_combined) != current_exp:
+        raise exceptions.TestFail("Incorrect combined number in current status!"
+                                  "It should be %d but got %s."
+                                  % (current_exp, current_combined))

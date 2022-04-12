@@ -33,6 +33,11 @@ def run(test, params, env):
         """
         logging.debug("Remove VM's interface devices.")
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
+        vm_attrs = eval(params.get('vm_attrs', '{}'))
+        if vm_attrs:
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            vmxml.setup_attrs(**vm_attrs)
+            vmxml.sync()
 
     def teardown_default():
         """
@@ -48,10 +53,14 @@ def run(test, params, env):
         test_env_obj = None
         if test_target == "simulator":
             test_env_obj = utils_vdpa.VDPASimulatorTest()
+            test_env_obj.setup()
         else:
+            vdpa_mgmt_tool_extra = params.get("vdpa_mgmt_tool_extra", "")
             pf_pci = utils_vdpa.get_vdpa_pci()
-            test_env_obj = utils_vdpa.VDPAOvsTest(pf_pci)
-        test_env_obj.setup()
+            test_env_obj = utils_vdpa.VDPAOvsTest(pf_pci, mgmt_tool_extra=vdpa_mgmt_tool_extra)
+            test_env_obj.setup()
+            params['mac_addr'] = test_env_obj.vdpa_mac.get(params.get("vdpa_dev", "vdpa0"))
+
         return test_env_obj
 
     def teardown_vdpa():
@@ -75,7 +84,7 @@ def run(test, params, env):
         """
         # Setup Iface device
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        iface_dict = eval(params.get('iface_dict', '{}'))
+        iface_dict = interface_base.parse_iface_dict(params)
         iface_dev = interface_base.create_iface(dev_type, iface_dict)
         libvirt.add_vm_device(vmxml, iface_dev)
 
