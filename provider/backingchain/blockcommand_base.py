@@ -3,7 +3,7 @@ import os
 
 from avocado.utils import process
 
-from virttest import virsh
+from virttest import virsh, utils_disk
 from virttest import data_dir
 from virttest.utils_libvirt import libvirt_secret
 from virttest.libvirt_xml.devices.disk import Disk
@@ -25,7 +25,7 @@ class BlockCommand(object):
         self.test = test
         self.vm = vm
         self.params = params
-        self.new_dev = ''
+        self.new_dev = "vda"
         self.src_path = ''
         self.snap_path_list = []
         self.snap_name_list = []
@@ -33,6 +33,7 @@ class BlockCommand(object):
         self.new_image_path = ''
         self.old_parts = []
         self.original_disk_source = ''
+        self.dd_file_list = []
 
     def prepare_iscsi(self):
         """
@@ -55,22 +56,35 @@ class BlockCommand(object):
         self.new_dev = new_dev
         self.src_path = device_name
 
-    def update_disk(self):
+    def update_disk(self, disk_type, disk_dict):
         """
         Update vm disk with specific params
 
+        :param disk_type: disk type
+        :param disk_dict: dict to update disk
         """
-        # Get disk type
-        disk_type = self.params.get('disk_type')
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
 
-        # Check disk type
-        if disk_type == 'block':
+        if disk_type == 'file':
+            return
+        elif disk_type == 'block':
             if not self.vm.is_alive():
                 self.vm.start()
-            self.prepare_iscsi()
+            device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
+            disk_dict.update({'source': {'attrs': {'dev': device_name}}})
 
-        # Update vm disk
-        libvirt.set_vm_disk(self.vm, self.params)
+        elif disk_type == 'volume':
+            pass
+        elif disk_type == 'NFS':
+            pass
+        elif disk_type == 'rbd_with_auth':
+            pass
+
+        new_disk = Disk()
+        new_disk.setup_attrs(**disk_dict)
+        vmxml.devices = new_disk
+        vmxml.xmltreefile.write()
+        vmxml.sync()
 
     def prepare_snapshot(self, snap_num=3, option='--disk-only'):
         """
@@ -90,6 +104,11 @@ class BlockCommand(object):
                                      debug=True)
             self.snap_path_list.append(self.tmp_dir + 'snap%d' % i)
             self.snap_name_list.append('snap%d' % i)
+
+            session = self.vm.wait_for_login()
+            utils_disk.dd_data_to_vm_disk(session, '/mnt/s%s.img' % i)
+            session.close()
+            self.dd_file_list.append('/mnt/s%s.img' % i)
 
     def backingchain_common_teardown(self):
         """

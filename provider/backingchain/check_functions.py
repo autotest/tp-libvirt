@@ -5,6 +5,8 @@ from avocado.utils import process
 
 from virttest import libvirt_storage
 from virttest import utils_misc
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_disk
 
 LOG = logging.getLogger('avocado.' + __name__)
 
@@ -22,6 +24,35 @@ class Checkfunction(object):
         self.test = test
         self.vm = vm
         self.params = params
+        self.original_disk_source = ''
+
+    def check_backingchain_from_vmxml(self, target_dev, expected_chain):
+        """
+        Check vmxml backingchain and u
+
+        :param target_dev: dev of target disk
+        :param expected_chain: expected backingchain
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
+        LOG.debug("Current vmxml is:%s", vmxml)
+        disks = vmxml.devices.by_device_tag('disk')
+        original_disk_source = libvirt_disk.get_first_disk_source(self.vm)
+
+        disk_xml = None
+        for disk in disks:
+            if disk.target['dev'] == target_dev:
+                disk_xml = disk
+                break
+        backing_list = disk_xml.get_all_backingstore()
+
+        source_list = [elem.source.file or elem.source.dev or elem.source.name
+                       for elem in backing_list[:-1]]
+        source_list.insert(0, original_disk_source)
+        LOG.debug("Actual backingchain is :%s", source_list)
+
+        if source_list != expected_chain:
+            self.test.fail('Expect source file to be %s, '
+                           'but got %s' % (expected_chain, source_list))
 
     def check_block_operation_result(self, vmxml, blockcommand,
                                      target_dev, bc_chain):
