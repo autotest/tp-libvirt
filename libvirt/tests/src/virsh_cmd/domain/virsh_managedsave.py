@@ -404,6 +404,7 @@ def run(test, params, env):
 
         # Wait for vm in stable state
         if params.get("start_vm") == "yes":
+            utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
             if vm.state() == "shut off":
                 vm.start()
                 vm.wait_for_login()
