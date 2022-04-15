@@ -5,27 +5,27 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
-from virttest.utils_libvirt import libvirt_secret
-from virttest.libvirt_xml.devices.disk import Disk
-from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.disk import Disk
+from virttest.utils_libvirt import libvirt_secret
 
 LOG = logging.getLogger('avocado.' + __name__)
 
 
 class BlockCommand(object):
     """
-        Prepare data for blockcommand test
+    Prepare data for blockcommand test
 
-        :param test: Test object
-        :param vm: A libvirt_vm.VM class instance.
-        :param params: Dict with the test parameters.
+    :param test: Test object
+    :param vm: A libvirt_vm.VM class instance.
+    :param params: Dict with the test parameters.
     """
     def __init__(self, test, vm, params):
         self.test = test
         self.vm = vm
         self.params = params
-        self.new_dev = ''
+        self.new_dev = self.params.get('target_disk', 'vda')
         self.src_path = ''
         self.snap_path_list = []
         self.snap_name_list = []
@@ -90,6 +90,20 @@ class BlockCommand(object):
                                      debug=True)
             self.snap_path_list.append(self.tmp_dir + 'snap%d' % i)
             self.snap_name_list.append('snap%d' % i)
+
+    def convert_expected_chain(self, expected_chain_index):
+        """
+        Convert expected chain from "4>1>base" to "[/*snap4, /*snap1, /base.image]"
+
+        :param expected_chain_index: expected chain , such as "4>1>base"
+        :return expected chain with list
+        """
+        expected_chain = []
+        for i in expected_chain_index.split('>'):
+            expected_chain.append(self.new_image_path) if i == "base"\
+                else expected_chain.append(self.snap_path_list[int(i) - 1])
+        LOG.debug("Expected chain is : %s", expected_chain)
+        return expected_chain
 
     def backingchain_common_teardown(self):
         """
