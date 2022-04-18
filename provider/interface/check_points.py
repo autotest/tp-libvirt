@@ -74,3 +74,21 @@ def check_vm_iface_queues(vm_session, params):
         raise exceptions.TestFail("Incorrect combined number in current status!"
                                   "It should be %d but got %s."
                                   % (current_exp, current_combined))
+
+
+def comp_interface_xml(vmxml, iface_dict, status_error=False):
+    """
+    Compare interface xml
+
+    :param vmxml: VM xml
+    :param iface_dict: Interface parameters dict
+    :param status_error: True if expects mismatch, otherwise False
+    :raise: TestFail if comparison fails
+    """
+    iface = vmxml.get_devices('interface')[0]
+    cur_iface = iface.fetch_attrs()
+    for key, val in iface_dict.items():
+        if key != 'alias' and (cur_iface.get(key) == val) == status_error:
+            raise exceptions.TestFail('Interface xml compare fails! The value '
+                                      'of %s should be %s, but got %s.'
+                                      % (key, cur_iface.get(key), val))
