@@ -72,7 +72,16 @@ def create_vhostuser_disk(params):
         device_target, device_bus,
         device_format, disk_src_dict, None)
     vhostuser_disk.snapshot = "no"
+    device_model = params.get("model")
+    if device_model:
+        vhostuser_disk.model = device_model
     driver_dict = {"name": "qemu", "type": device_format, "queues": int(queues)}
+    packed = params.get('packed')
+    ats = params.get('ats')
+    if packed:
+        driver_dict.update({'packed': packed})
+    if ats:
+        driver_dict.update({'ats': ats})
     vhostuser_disk.driver = driver_dict
     return vhostuser_disk
 
