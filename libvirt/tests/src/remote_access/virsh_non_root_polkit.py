@@ -20,7 +20,7 @@ def local_access(params, test):
     :param params: dict of test parameters
     :param test: Avocado-VT test instance
     """
-    uri = params.get("uri")
+    virsh_uri = params.get("virsh_uri")
     auth_user = params.get("auth_user", "root")
     auth_pwd = params.get("auth_pwd")
     virsh_cmd = params.get("virsh_cmd", "list")
@@ -33,7 +33,7 @@ def local_access(params, test):
     patterns_extra_dict = params.get("patterns_extra_dict", None)
     log_level = params.get("log_level", "LIBVIRT_DEBUG=3")
     status_error = params.get("status_error", "yes")
-    ret, output = connect_libvirtd(uri, read_only, virsh_cmd, auth_user,
+    ret, output = connect_libvirtd(virsh_uri, read_only, virsh_cmd, auth_user,
                                    auth_pwd, vm_name, status_error, extra_env,
                                    log_level, su_user, virsh_patterns,
                                    patterns_extra_dict)
@@ -53,14 +53,14 @@ def ssh_access(params, test):
     non_root_name = params.get("su_user")
     non_root_pass = params.get("su_user_pass", "toor")
     auth_pwd = params.get("auth_pwd")
-    uri = params.get("uri")
+    virsh_uri = params.get("virsh_uri")
     ssh_params = params.get("ssh_params", "")
     message = params.get("message", "")
     session = remote.remote_login("ssh", "localhost", "22", non_root_name,
                                   non_root_pass, r"[\#\$]\s*$",
                                   extra_cmdline=ssh_params)
     try:
-        command = ("virsh -c {}".format(uri))
+        command = ("virsh -c {}".format(virsh_uri))
         session.sendline(command)
         match, output = session.read_until_output_matches([r".*[Pp]assword.*", ],
                                                           timeout=10.0,
