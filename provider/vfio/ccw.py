@@ -83,7 +83,8 @@ def make_dasd_part(path, session):
     cmd = "fdasd -a %s" % path
     err, out = cmd_status_output(cmd, shell=True, session=session)
     if err:
-        raise TestError("Couldn't create partition. %s" % out)
+        raise TestError("Couldn't create partition. Status code '%s'. %s."
+                        % (err, out))
     return True
 
 
