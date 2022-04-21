@@ -132,6 +132,8 @@ def run(test, params, env):
     src_libvirtd = None
     src_NM_service = None
     dest_NM_service = None
+    old_dst_hostname = None
+    old_source_hostname = None
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
