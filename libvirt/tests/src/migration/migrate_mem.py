@@ -62,6 +62,26 @@ def setup_test_mem_device(vm, params, test):
     libvirt.set_vm_disk(vm, params)
 
 
+def setup_test_large_mem_vm(vm, params, test):
+    """
+    Setup steps for large memory test
+
+    :param vm:  VM object
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    test.log.debug("Setup for testing large memory vm")
+    guest_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+
+    memory_value = int(params.get("memory_value"))
+    memory_unit = params.get("memory_unit")
+    guest_xml.set_memory(memory_value)
+    guest_xml.set_memory_unit(memory_unit)
+    guest_xml.sync()
+    # Change the disk of the vm
+    libvirt.set_vm_disk(vm, params)
+
+
 def create_file_within_nvdimm_disk(vm_session, test_str):
     """
     Create a test file in the nvdimm file disk
@@ -128,6 +148,19 @@ def setup_test_mem_nvdimm(vm, params, test):
     vm_session = vm.wait_for_serial_login(timeout=240)
     create_file_within_nvdimm_disk(vm_session, params.get("test_file_content"))
     vm_session.close()
+
+
+def verify_test_default(vm, params, test):
+    """
+    Verify steps by default
+
+    :param vm:  VM object
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    check_str_local_log = params.get("check_str_local_log")
+    if check_str_local_log:
+        libvirt.check_logfile(check_str_local_log, params.get("libvirtd_debug_file"))
 
 
 def verify_test_mem_balloon(vm, params, test):
@@ -360,7 +393,6 @@ def run_migration(vm, params, test):
     virsh_options = params.get("virsh_options", "")
     options = params.get("virsh_migrate_options", "--live --verbose")
     func_params_exists = "yes" == params.get("func_params_exists", "yes")
-    check_str_local_log = params.get("check_str_local_log", "")
 
     func_name = None
     mig_result = None
@@ -400,13 +432,8 @@ def run_migration(vm, params, test):
                                 func=func_name, **extra_args)
 
     mig_result = migration_test.ret
-    migration_test.check_result(mig_result, params)
-
     if int(mig_result.exit_status) == 0:
-        migration_test.ping_vm(vm, params, uri=dest_uri)
-
-    if check_str_local_log:
-        libvirt.check_logfile(check_str_local_log, params.get("libvirtd_debug_file"))
+        migration_test.post_migration_check([vm], params, uri=dest_uri)
 
     if src_libvirt_file:
         src_libvirt_file.restore()
@@ -420,8 +447,8 @@ def run(test, params, env):
     # Get setup function
     setup_test = eval('setup_test_%s' % case)
     # Verify checkpoints
-    verify_test = eval('verify_test_%s' % case)
-
+    verify_test = eval('verify_test_%s' % case) \
+        if 'verify_test_%s' % case in globals() else verify_test_default
     # Verify checkpoints after migration back
     verify_test_back = eval('verify_test_back_%s' % case) \
         if 'verify_test_back_%s' % case in globals() else verify_test_back_default
