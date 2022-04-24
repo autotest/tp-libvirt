@@ -8,6 +8,11 @@ from virttest import utils_net
 from virttest import utils_package
 from virttest import utils_sriov
 from virttest import utils_test
+from virttest import virsh
+from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_libvirt import libvirt_network
+
+from provider.interface import interface_base
 
 
 def setup_vf(pf_pci, params):
@@ -94,3 +99,133 @@ def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5):
     if s:
         raise exceptions.TestFail("Failed to ping %s! status: %s, "
                                   "output: %s." % (ping_dest, s, o))
+
+
+class SRIOVTest(object):
+    """
+    Wrapper class for sriov testing
+    """
+    def __init__(self, vm, test, params):
+        self.vm = vm
+        self.test = test
+        self.params = params
+        self.pf_pci = utils_sriov.get_pf_pci()
+        if not self.pf_pci:
+            test.cancel("NO available pf found.")
+        self.pf_pci_path = utils_misc.get_pci_path(self.pf_pci)
+
+        utils_sriov.set_vf(self.pf_pci_path, 0)
+        setup_vf(self.pf_pci, self.params)
+        self.pf_info = utils_sriov.get_pf_info_by_pci(self.pf_pci)
+        self.vf_pci = utils_sriov.get_vf_pci_id(self.pf_pci)
+        self.pf_pci_addr = utils_sriov.pci_to_addr(self.pf_pci)
+        self.vf_pci_addr = utils_sriov.pci_to_addr(self.vf_pci)
+        self.pf_name = self.pf_info.get('iface')
+        self.vf_name = utils_sriov.get_iface_name(self.vf_pci)
+        self.pf_dev_name = utils_sriov.get_device_name(self.pf_pci)
+        self.vf_dev_name = utils_sriov.get_device_name(self.vf_pci)
+
+    def __del__(self):
+        recover_vf(self.pf_pci, self.params, 0)
+
+    def parse_iface_dict(self):
+        """
+        Parse iface_dict from params
+
+        :return: The updated iface_dict
+        """
+        mac_addr = utils_net.generate_mac_address_simple()
+        pf_pci_addr = self.pf_pci_addr
+        vf_pci_addr = self.vf_pci_addr
+        pf_name = self.pf_name
+        vf_name = self.vf_name
+        if self.params.get('iface_dict'):
+            iface_dict = eval(self.params.get('iface_dict', '{}'))
+        else:
+            del pf_pci_addr['type']
+            del vf_pci_addr['type']
+            iface_dict = eval(self.params.get('hostdev_dict', '{}'))
+
+        self.test.log.debug("iface_dict: %s.", iface_dict)
+        return iface_dict
+
+    def parse_network_dict(self):
+        """
+        Parse network dict from params
+
+        :return: The updated network dict
+        """
+        vf_pci_addr = self.vf_pci_addr
+        pf_name = self.pf_name
+        net_forward_pf = str({'dev': pf_name})
+        vf_list_attrs = str([vf_pci_addr])
+        net_dict = eval(self.params.get('network_dict', '{}'))
+        self.test.log.debug("network_dict: %s.", net_dict)
+        return net_dict
+
+    def get_dev_name(self):
+        """
+        Get device name
+
+        :return: Device name, eg. pci_0000_05_00_1
+        """
+        dev_source = self.params.get("dev_source", "")
+        dev_name = ""
+        if dev_source.startswith("vf_"):
+            dev_name = utils_sriov.get_device_name(self.vf_pci)
+        elif dev_source.startswith("pf_"):
+            dev_name = utils_sriov.get_device_name(self.pf_pci)
+        elif dev_source == "network":
+            dev_name = utils_sriov.get_device_name(self.pf_pci)
+        else:
+            self.test.log.warning("Unkown device source.")
+        return dev_name
+
+    def create_iface_dev(self, dev_type, iface_dict):
+        """
+        Create an interface device
+
+        :param dev_type: Device type, hostdev device or interface
+        :param iface_dict: Interface dict to create
+        :return: Hostdev device or interface device object
+        """
+        if dev_type == "hostdev_device":
+            iface_dev = interface_base.create_hostdev(iface_dict)
+        else:
+            iface_dev = interface_base.create_iface(dev_type, iface_dict)
+        return iface_dev
+
+    def setup_default(self, dev_name, managed_disabled, network_dict=None):
+        """
+        Default setup
+
+        :param dev_name: Device name, eg. pci_0000_05_00_1
+        :param managed_disabled: Whether to enable managed
+        :param network_dict: Network dict
+        """
+        self.test.log.info("TEST_SETUP: Clear up the existing VM "
+                           "interface(s) before testing.")
+        libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'interface')
+        if network_dict:
+            self.test.log.info("TEST_SETUP: Create new network.")
+            libvirt_network.create_or_del_network(network_dict)
+
+        if managed_disabled:
+            virsh.nodedev_detach(dev_name, debug=True, ignore_errors=False)
+
+    def teardown_default(self, orig_config_xml, managed_disabled, dev_name,
+                         network_dict=None):
+        """
+        Default cleanup
+
+        :param orig_config_xml: Original VM xml to recover
+        :param managed_disabled: Whether to enable managed
+        :param dev_name: Device name
+        :param network_dict: Network dict
+        """
+        self.test.log.info("TEST_TEARDOWN: Recover test enviroment.")
+        orig_config_xml.sync()
+        if managed_disabled:
+            virsh.nodedev_reattach(dev_name, debug=True, ignore_errors=False)
+        if network_dict:
+            libvirt_network.create_or_del_network(network_dict, True)
