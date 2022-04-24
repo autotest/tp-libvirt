@@ -3,6 +3,7 @@ import logging as log
 import random
 
 from avocado.utils import cpu
+from avocado.utils import process
 
 from virttest import libvirt_cgroup
 from virttest import utils_libvirtd, virsh
@@ -11,7 +12,7 @@ from virttest.cpu import cpus_parser
 from virttest.staging import utils_cgroup
 from virttest.virt_vm import VMStartError
 from virttest.utils_test import libvirt
-
+from virttest import cpu as cpuutils
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -159,7 +160,6 @@ def set_emulatorpin_parameter(params, test):
 
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
-
     result = virsh.emulatorpin(vm_name, cpulist, options, debug=True)
     status = result.exit_status
 
@@ -211,6 +211,24 @@ def add_emulatorpin_xml(params, cpulist, test):
                   "vm xml is:%s\n", vm_xml.VMXML.new_from_dumpxml(vm_name))
 
 
+def check_allowed_list(test, check_list):
+    """
+    Check the cpus_allowed_list for emulator's thread
+
+    :param test: the test object
+    :param check_list: the expected cpu allowed list
+    :raises: test.fail if get unexpected emulatorpin value
+    :return: None
+    """
+    pid = process.run('pidof qemu-kvm', shell=True).stdout_text.strip()
+    res = cpuutils.cpu_allowed_list_by_task(pid, pid)
+    if res == check_list:
+        logging.info("Get expected emulatorpin value.")
+    else:
+        test.fail("Get unexpected emulatorpin value"
+                  "%s and the value should be %s. " % (res, check_list))
+
+
 def run(test, params, env):
     """
     Test emulatorpin tuning
@@ -232,19 +250,33 @@ def run(test, params, env):
     status_error = params.get("status_error", "no")
     change_parameters = params.get("change_parameters", "no")
     err_msg = params.get("err_msg", "")
+    vcpu_attrs = eval(params.get('vcpu_attrs', '{}'))
+    check_cpus_allowed_list = "yes" == params.get("check_cpus_allowed_list", "")
 
-    host_cpus = cpu.online_cpus_count()
-    if all_cpuset and int(host_cpus) % 8 != 0:
+    host_cpus_num = cpu.online_count()
+    if all_cpuset and int(host_cpus_num) % 8 != 0:
         test.cancel("Host cpu number is expected to be multiple of 8, "
-                    "but found %s" % host_cpus)
+                    "but found %s" % host_cpus_num)
     # Backup original vm
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
 
-    emulatorpin_placement = params.get("emulatorpin_placement", "")
-    if emulatorpin_placement:
+    test_dicts = dict(params)
+    test_dicts['vm'] = vm
+    test_dicts['host_cpus_num'] = host_cpus_num
+    logging.debug("online cpu: %s", host_cpus_num)
+    host_online_cpus = cpu.online_list()
+
+    cpu_max = host_online_cpus[host_cpus_num - 1]
+
+    cpu_list = None
+
+    if vcpu_attrs:
         vm.destroy()
-        vmxml.placement = emulatorpin_placement
+        if 'cpuset' in vcpu_attrs:
+            if vcpu_attrs['cpuset'] == "x,y":
+                vcpu_attrs['cpuset'] = "0,%s" % (cpu_max - 1)
+        vmxml.setup_attrs(**vcpu_attrs)
         vmxml.sync()
         try:
             vm.start()
@@ -253,14 +285,9 @@ def run(test, params, env):
             vmxml_backup.sync()
             logging.debug("Used VM XML:\n %s", vmxml)
             test.fail("VM Fails to start: %s" % detail)
-
-    test_dicts = dict(params)
-    test_dicts['vm'] = vm
-    test_dicts['host_cpus'] = host_cpus
-    logging.debug("online cpu: %s", host_cpus)
-    cpu_max = int(host_cpus) - 1
-
-    cpu_list = None
+        if check_cpus_allowed_list:
+            check_list = vcpu_attrs['cpuset']
+            check_allowed_list(test, check_list)
 
     # Assemble cpu list for positive test
     if status_error == "no":
@@ -320,6 +347,8 @@ def run(test, params, env):
                     test_dicts['emulatorpin_cpulist'] = cpulist
                     test_dicts['cpu_list'] = cpus_parser(cpulist)
                     set_emulatorpin_parameter(test_dicts, test)
+            if check_cpus_allowed_list:
+                check_allowed_list(test, cpulist)
         if status_error == "yes":
             if change_parameters == "no":
                 get_emulatorpin_parameter(test_dicts, test)
