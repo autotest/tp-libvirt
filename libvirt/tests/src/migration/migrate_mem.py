@@ -160,7 +160,9 @@ def verify_test_default(vm, params, test):
     """
     check_str_local_log = params.get("check_str_local_log")
     if check_str_local_log:
-        libvirt.check_logfile(check_str_local_log, params.get("libvirtd_debug_file"))
+        libvirt.check_logfile(check_str_local_log,
+                              params.get("libvirtd_debug_file"),
+                              eval(params.get('str_in_log', 'True')))
 
 
 def verify_test_mem_balloon(vm, params, test):
@@ -213,6 +215,7 @@ def verify_test_mem_device(vm, params, test):
     :param params: dict, test parameters
     :param test: test object
     """
+    verify_test_default(vm, params, test)
     remote_ip = params.get("remote_ip")
     remote_user = params.get("remote_user")
     remote_pwd = params.get("remote_pwd")
