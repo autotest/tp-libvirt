@@ -12,6 +12,7 @@ aexpect
 afeter
 aggregater
 agregators
+alignsize
 amd
 analyse
 Analyse
@@ -730,6 +731,7 @@ pkgs
 pki
 pkipath
 plaintext
+pmem
 pmsuspend
 pmsuspended
 polkit
