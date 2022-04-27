@@ -985,7 +985,7 @@ def run(test, params, env):
                 test_params.main_vm.destroy(gracefully=True)
             libvirt_pcicontr.reset_pci_num(vm_name, 24)
             logging.debug(
-                    "Guest XMl with adding many controllers: %s",
+                    "Guest XML with many controllers added: %s",
                     test_params.main_vm.get_xml())
             if previous_state_running:
                 test_params.main_vm.start()
