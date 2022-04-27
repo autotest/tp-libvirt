@@ -90,8 +90,8 @@ def run(test, params, env):
             actual_value = libvirt_pool.pool_autostart(pool_name)
         if actual_value != expect_value:
             if not expect_error:
-                if checkpoint == 'State' and pool_type in ("dir", "scsi"):
-                    debug_msg = "Dir pool should be always active when libvirtd restart. "
+                if checkpoint == 'State' and pool_type in ("dir", "scsi", "disk"):
+                    debug_msg = "Dir/scsi/disk pool should be active when libvirtd restart. "
                     debug_msg += "See https://bugzilla.redhat.com/show_bug.cgi?id=1238610"
                     logging.debug(debug_msg)
                 else:

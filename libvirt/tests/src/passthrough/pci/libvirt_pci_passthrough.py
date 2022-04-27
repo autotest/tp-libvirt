@@ -1,5 +1,5 @@
 import logging as log
-import netaddr
+import ipaddress
 import time
 
 from virttest import virsh, virt_vm
@@ -186,7 +186,7 @@ def run(test, params, env):
                     logging.debug("Adapter passthroughed to guest successfully")
                 else:
                     test.fail("Passthrough adapter not found in guest.")
-                net_ip = netaddr.IPAddress(net_ip)
+                net_ip = ipaddress.ip_address(net_ip)
                 nic_list_after = vm.get_pci_devices()
                 nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
                 for val in range(len(nic_list)):

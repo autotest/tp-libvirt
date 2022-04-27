@@ -4,6 +4,7 @@ import logging as log
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.watchdog import Watchdog
 from virttest.utils_test import libvirt
 from virttest.utils_disk import get_scsi_info
 
@@ -41,6 +42,9 @@ def run(test, params, env):
     # channel params
     channel_type = params.get("detach_channel_type")
     channel_target = eval(params.get("detach_channel_target", "{}"))
+    # watchdog params
+    watchdog_type = params.get("detach_watchdog_type")
+    watchdog_dict = eval(params.get('watchdog_dict', '{}'))
 
     device_alias = "ua-" + str(uuid.uuid4())
 
@@ -73,6 +77,7 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
     device_xml = None
+    attach_device = True
 
     if not vm.is_alive():
         vm.start()
@@ -112,6 +117,26 @@ def run(test, params, env):
         channel_params.update(channel_target)
         device_xml = libvirt.create_channel_xml(channel_params, device_alias)
 
+    if watchdog_type:
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vmxml.remove_all_device_by_type('watchdog')
+
+        device_xml_file = Watchdog()
+        device_xml_file.update({"alias": {"name": device_alias}})
+        device_xml_file.setup_attrs(**watchdog_dict)
+        vmxml.devices = vmxml.devices.append(device_xml_file)
+        vmxml.xmltreefile.write()
+        vmxml.sync()
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        logging.debug('The vmxml after attached watchdog is:%s', vmxml)
+
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login().close()
+
+        attach_device = False
+
     try:
         dump_option = ""
         wait_event = True
@@ -120,9 +145,11 @@ def run(test, params, env):
             wait_event = False
 
         # Attach xml to domain
-        logging.info("Attach xml is %s" % process.run("cat %s" % device_xml.xml).stdout_text)
-        virsh.attach_device(vm_name, device_xml.xml, flagstr=detach_options,
-                            debug=True, ignore_status=False)
+        if attach_device:
+            logging.info("Attach xml is %s" % process.run("cat %s" % device_xml.xml).stdout_text)
+            virsh.attach_device(vm_name, device_xml.xml, flagstr=detach_options,
+                                debug=True, ignore_status=False)
+
         domxml_at = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
         if detach_check_xml not in domxml_at:
             test.error("Can not find %s in domxml after attach" % detach_check_xml)

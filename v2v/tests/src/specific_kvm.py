@@ -460,12 +460,12 @@ def run(test, params, env):
         Corrupt rpm db
         """
         session = kwargs['session']
-        # If __db.* exist, remove them, then touch _db.001 to corrupt db.
-        if not session.cmd_status('ls /var/lib/rpm/__db.001'):
-            session.cmd('rm -f /var/lib/rpm/__db.*')
+        session.cmd('rm -f /var/lib/rpm/__db.*')
         session.cmd('touch /var/lib/rpm/__db.001')
-        if not session.cmd_status('yum update'):
-            test.error('Corrupt rpmdb failed')
+        output = session.cmd_output('yum update --assumeno')
+        LOG.debug(output)
+        if 'rpmdb open failed' not in output:
+            test.error('Prepare corrupt rpmdb failed')
 
     @vm_shell
     def grub_serial_terminal(**kwargs):

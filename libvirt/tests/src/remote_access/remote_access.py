@@ -181,6 +181,10 @@ def run(test, params, env):
     """
 
     test_dict = dict(params)
+    socket_access_controls_cfg_file = test_dict.get("socket_access_controls_cfg_file", "no")
+    if socket_access_controls_cfg_file == "yes":
+        if libvirt_version.version_compare(6, 0, 0):
+            test.cancel("This libvirt version doesn't support socket access controls by cfg file.")
     pattern = test_dict.get("filter_pattern", "")
     if ('@LIBVIRT' in pattern and
             distro.detect().name == 'rhel' and
@@ -193,6 +197,16 @@ def run(test, params, env):
     status_error = test_dict.get("status_error", "no")
     allowed_dn_str = params.get("tls_allowed_dn_list")
     if allowed_dn_str:
+        # According to bug 2018488, some cases status changed
+        change_status = test_dict.get("change_status_in_new_version", "no")
+        if (change_status == "yes" and
+                distro.detect().name == "rhel" and
+                int(distro.detect().version) > 8):
+            if status_error == "yes":
+                status_error = "no"
+            else:
+                status_error = "yes"
+            test_dict['status_error'] = status_error
         allowed_dn_list = []
         if not libvirt_version.version_compare(1, 0, 0):
             # Reverse the order in the dn list to workaround the
