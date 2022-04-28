@@ -181,6 +181,10 @@ def run(test, params, env):
     """
 
     test_dict = dict(params)
+    socket_access_controls_cfg_file = test_dict.get("socket_access_controls_cfg_file", "no")
+    if socket_access_controls_cfg_file == "yes":
+        if libvirt_version.version_compare(6, 0, 0):
+            test.cancel("This libvirt version doesn't support socket access controls by cfg file.")
     pattern = test_dict.get("filter_pattern", "")
     if ('@LIBVIRT' in pattern and
             distro.detect().name == 'rhel' and
