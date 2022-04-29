@@ -29,13 +29,16 @@ def run(test, params, env):
         :param suffix: str, suffix of the CPU accounting.(stat/usage/usage_percpu)
         :return: list, the list of CPU accounting info
         """
-        vm = env.get_vm(vm_ref)
-        cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
-        cg_path = cg_obj.get_cgroup_path("cpuacct")
+        # On cgroup v2 use cpu.stat as a substitute
+        if cg_obj.is_cgroup_v2_enabled():
+            cg_path = cg_obj.get_cgroup_path("cpu")
+            para = ('cpu.%s' % suffix)
+        else:
+            cg_path = cg_obj.get_cgroup_path("cpuacct")
+            para = ('cpuacct.%s' % suffix)
         # We only need the info in file which "emulator" is not in path
         if os.path.basename(cg_path) == "emulator":
             cg_path = os.path.dirname(cg_path)
-        para = ('cpuacct.%s' % suffix)
         usage_file = os.path.join(cg_path, para)
         with open(usage_file, 'r') as f:
             cpuacct_info = f.read().strip().split()
@@ -46,12 +49,19 @@ def run(test, params, env):
         user_time = float(total_list[4])
         system_time = float(total_list[7])
 
-        # check libvirt user and system time between pre and next cgroup time
-        # unit conversion (Unit: second)
-        pre_user_time = int(cpuacct_res_pre[1])/100
-        pre_sys_time = int(cpuacct_res_pre[3])/100
-        next_user_time = int(cpuacct_res_next[1])/100
-        next_sys_time = int(cpuacct_res_next[3])/100
+        # Check libvirt user and system time between pre and next cgroup time
+        # Unit conversion (Unit: second)
+        # Default time unit is microseconds on cgroup v2 while 1/100 second on v1
+        if cg_obj.is_cgroup_v2_enabled():
+            pre_user_time = float(cpuacct_res_pre[3])/1000000
+            pre_sys_time = float(cpuacct_res_pre[5])/1000000
+            next_user_time = float(cpuacct_res_next[3])/1000000
+            next_sys_time = float(cpuacct_res_next[5])/1000000
+        else:
+            pre_user_time = float(cpuacct_res_pre[1])/100
+            pre_sys_time = float(cpuacct_res_pre[3])/100
+            next_user_time = float(cpuacct_res_next[1])/100
+            next_sys_time = float(cpuacct_res_next[3])/100
 
         # check user_time
         if next_user_time >= user_time >= pre_user_time:
@@ -85,6 +95,8 @@ def run(test, params, env):
     if vm_ref == "name":
         vm_ref = vm_name
 
+    vm = env.get_vm(vm_ref)
+    cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
     # get host cpus num
     cpus = cpu.online_cpus_count()
     logging.debug("host online cpu num is %s", cpus)
