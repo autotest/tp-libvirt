@@ -6,8 +6,8 @@ import signal                                        # pylint: disable=W0611
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
+from virttest import utils_conn
 
-from virttest.utils_conn import TLSConnection
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.migration import MigrationTest
 from virttest.libvirt_xml import vm_xml
@@ -103,39 +103,46 @@ def do_migration(vm, mig_test, src_uri, dest_uri, options, virsh_options,
                               **extra_args)
 
 
-def setup_conn_obj(conn_type, params, test):
+def setup_conn_obj(conn_type, conn_obj_list, params, test):
     """
     Setup connection object, like TLS
 
-    :param conn_type: str, 'tls' for now
+    :param conn_type: str, connection type
+    :param conn_obj_list, connection object list
     :param params: dict, used to setup the connection
     :param test: test object
-    :return: TLSConnection, the connection object
     """
-    logging.debug("Begin to create new {} connection".format(conn_type.upper()))
+    test.log.debug("Begin to create new {} connection".format(conn_type.upper()))
     conn_obj = None
     if conn_type.upper() == 'TLS':
-        conn_obj = TLSConnection(params)
-        conn_obj.auto_recover = True
-        conn_obj.conn_setup()
+        conn_obj = utils_conn.TLSConnection(params)
+    elif conn_type.upper() == 'TCP':
+        conn_obj = utils_conn.TCPConnection(params)
+    elif conn_type.upper() == 'UNIX_PROXY':
+        conn_obj = utils_conn.UNIXSocketConnection(params)
+    elif conn_type.upper() == 'RDMA':
+        test.cancel("TODO: rdma")
     else:
-        test.error("Invalid parameter, only support 'tls'")
-    return conn_obj
+        test.error("Invalid parameter, only support tls/tcp/unix_socket/rdma")
+    conn_obj_list.append(conn_obj)
+    conn_obj.auto_recover = True
+    conn_obj.conn_setup()
 
 
-def cleanup_conn_obj(obj_list, test):
+def cleanup_conn_obj(conn_obj_list, test):
     """
-    Clean up TLS/SSH/TCP/UNIX connection objects
+    Clean up TLS/SSH/TCP/UNIX/RDMA connection objects
 
-    :param obj_list: list, object list
+    :param conn_obj_list: list, connection object list
     :param test: test object
     """
-    if obj_list is None:
-        test.error("No connection object needs to be cleaned up")
-    for one_conn in obj_list:
+    if conn_obj_list is None:
+        test.log.info("No connection object needs to be cleaned up")
+    for one_conn in conn_obj_list:
         if one_conn:
-            logging.debug("Clean up one connection object")
-            del one_conn
+            test.log.debug("Clean up one connection object")
+            one_conn.__del__()
+            one_conn.auto_recover = False
 
 
 def monitor_event(params):
