@@ -127,6 +127,20 @@ def run(test, params, env):
         if not utils_package.package_install(["swtpm", "swtpm-tools"]):
             test.error("Failed to install swtpm swtpm-tools on host")
 
+    def compare_swtpm_version(major, minor):
+        """
+        Get swtpm pkg version and check whether > major.minor
+
+        :param major: swtpm major version number
+        :param minor: swtpm minor version number
+        :return: boolean value compared to major.minor
+        """
+        cmd = 'rpm -q swtpm'
+        v_swtpm = process.run(cmd).stdout_text.strip().split('-')
+        v_major = int(v_swtpm[1].split('.')[0])
+        v_minor = int(v_swtpm[1].split('.')[1])
+        return False if (v_major == major and v_minor < minor) else True
+
     def replace_os_disk(vm_xml, vm_name, nvram):
         """
         Replace os(nvram) and disk(uefi) for x86 vtpm test
@@ -169,6 +183,11 @@ def run(test, params, env):
     vm_xml_backup = vm_xml.copy()
     os_xml = getattr(vm_xml, "os")
     host_arch = platform.machine()
+
+    # Only check_pcrbanks for new version
+    if not libvirt_version.version_compare(7, 10, 0) or not compare_swtpm_version(0, 7):
+        check_pcrbanks = False
+
     if backend_type == "emulator" and host_arch == 'x86_64':
         if not utils_package.package_install("OVMF"):
             test.error("Failed to install OVMF or edk2-ovmf pkgs on host")
