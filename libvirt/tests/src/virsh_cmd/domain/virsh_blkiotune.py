@@ -207,6 +207,14 @@ def set_blkio_parameter(test, params, cgstop):
                           " blkio.weight and blkio.weight_device"
                           " value from cgroup blkio controller")
 
+    # Start Vm if needed
+    validate_vm_not_start = "yes" == params.get("validate_vm_not_start", "no")
+    if validate_vm_not_start:
+        result = virsh.start(vm_name, debug=True)
+        vm_not_start_error_msg = params.get("vm_not_start_error_msg")
+        if vm_not_start_error_msg not in result.stderr_text:
+            test.fail("can not find error message: %s" % vm_not_start_error_msg)
+
 
 def prepare_scheduler(params, test, vm):
     """
