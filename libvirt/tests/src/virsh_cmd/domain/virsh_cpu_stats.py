@@ -29,6 +29,8 @@ def run(test, params, env):
         :param suffix: str, suffix of the CPU accounting.(stat/usage/usage_percpu)
         :return: list, the list of CPU accounting info
         """
+        if 'cg_obj' not in locals():
+            return
         # On cgroup v2 use cpu.stat as a substitute
         if cg_obj.is_cgroup_v2_enabled():
             cg_path = cg_obj.get_cgroup_path("cpu")
@@ -96,7 +98,8 @@ def run(test, params, env):
         vm_ref = vm_name
 
     vm = env.get_vm(vm_ref)
-    cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
+    if vm and vm.get_pid():
+        cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
     # get host cpus num
     cpus = cpu.online_cpus_count()
     logging.debug("host online cpu num is %s", cpus)
