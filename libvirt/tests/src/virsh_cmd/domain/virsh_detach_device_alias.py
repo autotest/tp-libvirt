@@ -44,7 +44,7 @@ def run(test, params, env):
     channel_target = eval(params.get("detach_channel_target", "{}"))
     # watchdog params
     watchdog_type = params.get("detach_watchdog_type")
-    watchdog_dict = eval(params.get('watchdog_dict', {}))
+    watchdog_dict = eval(params.get('watchdog_dict', '{}'))
 
     device_alias = "ua-" + str(uuid.uuid4())
 
