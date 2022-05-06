@@ -71,6 +71,7 @@ def run(test, params, env):
 
     if progress:
         options += " --verbose"
+    virsh.domstate(vm_name, ignore_status=True, debug=True)
     result = virsh.save(vm_ref, savefile, options, ignore_status=True,
                         unprivileged_user=unprivileged_user,
                         uri=uri, debug=True, readonly=readonly)
@@ -83,6 +84,7 @@ def run(test, params, env):
 
     if savefile:
         virsh.restore(savefile, debug=True)
+    virsh.domstate(vm_name, ignore_status=True, debug=True)
 
     # check status_error
     try:
