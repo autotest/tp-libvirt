@@ -134,8 +134,8 @@ def run(test, params, env):
         numa_cells_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'NUMA cell(s)', 3)
         cmd = 'cat /proc/cpuinfo |grep "physical id"|sort |uniq|wc -l'
-        logging.debug("cpu_sockets_nodeinfo=%d", cpu_sockets_nodeinfo)
-        logging.debug("numa_cells_nodeinfo=%d", numa_cells_nodeinfo)
+        logging.debug("cpu_sockets_nodeinfo=%s", cpu_sockets_nodeinfo)
+        logging.debug("numa_cells_nodeinfo=%s", numa_cells_nodeinfo)
 
         cmd_ret = process.run(cmd, ignore_status=True, shell=True)
         if int(cmd_ret.stdout_text.strip()) != int(numa_cells_nodeinfo) * int(cpu_sockets_nodeinfo):
@@ -190,14 +190,24 @@ def run(test, params, env):
     def test_disable_enable_cpu():
         """
         Test disable a host cpu and check nodeinfo result
+
+        :return: test.fail if CPU(s) number is not expected
         """
+        ret_before_disable = virsh.nodeinfo(ignore_status=True, debug=True)
+        cpus_nodeinfo_before = _check_nodeinfo(ret_before_disable.stdout_text.strip(),
+                                               "CPU(s)", 2)
+
         online_list = cputils.online_list()
         # Choose the last online host cpu to offline
         cputils.offline(online_list[-1])
 
-        cmd_result = virsh.nodeinfo(ignore_status=True)
-        output_check(cmd_result.stdout_text.strip())
-
+        ret_after_disable = virsh.nodeinfo(ignore_status=True, debug=True)
+        cpus_nodeinfo_after = _check_nodeinfo(ret_after_disable.stdout_text.strip(),
+                                              "CPU(s)", 2)
+        if int(cpus_nodeinfo_before) != int(cpus_nodeinfo_after) + 1:
+            test.fail("CPU(s) should be '%d' after 1 cpu is disabled, "
+                      "but found '%s'" % (int(cpus_nodeinfo_before) - 1,
+                                          cpus_nodeinfo_after))
         # Make the last host cpu online again
         cputils.online(online_list[-1])
 
