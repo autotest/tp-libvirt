@@ -257,6 +257,7 @@ def run(test, params, env):
                                                                   remote_params=server_params)
             # backup /etc/hosts
             backup_hosts = "cp -f /etc/hosts /etc/hosts.bak"
+            process.run(backup_hosts, shell=True)
             remote_old.run_remote_cmd(backup_hosts, params, ignore_status=False)
             if not utils_net.map_hostname_ipaddress(src_hosts_dict):
                 test.error("Failed to set /etc/hosts on source host.")
@@ -398,6 +399,7 @@ def run(test, params, env):
         # Restore /etc/hosts
         if set_migration_host:
             restore_hosts = "mv -f /etc/hosts.bak /etc/hosts"
+            process.run(restore_hosts, shell=True)
             remote_old.run_remote_cmd(restore_hosts, params, ignore_status=False)
         # Restore local or both sides conf and restart libvirtd
         recover_config_file(local_both_conf_obj, params)
