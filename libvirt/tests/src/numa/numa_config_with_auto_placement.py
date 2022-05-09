@@ -1,10 +1,10 @@
 import logging as log
 import re
 
-from avocado.core.exceptions import TestFail, TestError
+from avocado.core.exceptions import TestFail
 from avocado.utils import process
-from avocado.utils import software_manager
 
+from virttest import libvirt_cgroup
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -177,7 +177,7 @@ def check_iothreadinfo(vm_name, cpu_range, config=''):
                        'iothreadinfo command.'.format(cpu_range))
 
 
-def check_cgget_output(test, cgget_message):
+def check_cgget_output(test, expected_value):
     """
     Get the cgget output and check it for required value
 
@@ -197,23 +197,16 @@ def check_cgget_output(test, cgget_message):
     if not slice_line:
         test.error("'machine-qemu' is not found in 'systemd-cgls cpuset' output")
     slice_line = slice_line.replace('\\', '\\\\')[2:]
+
     for item in ['emulator', 'vcpu0']:
-        result = process.run('cgget -g cpuset /machine.slice/{}/libvirt/{}'.
-                             format(slice_line, item), shell=True,
-                             ignore_status=False)
-        if cgget_message not in result.stdout_text:
-            test.fail('{} not found in cgget output'.format(cgget_message))
+        if libvirt_cgroup.CgroupTest('').is_cgroup_v2_enabled():
+            cmd = 'cat /sys/fs/cgroup/machine.slice/{}/libvirt/{}/cpuset.mems'.format(slice_line, item)
+        else:
+            cmd = 'cat /sys/fs/cgroup/cpuset/machine.slice/{}/libvirt/{}/cpuset.mems'.format(slice_line, item)
 
-
-def check_if_package_is_installed(pkg):
-    sm = software_manager.SoftwareManager()
-    ret = sm.check_installed(pkg)
-    if not ret:
-        TestError('Package {} is not installed on host, cannot continue.'.
-                  format(pkg))
-    else:
-        logging.debug('The required package {} is available on host.'.
-                      format(pkg))
+        result = process.run(cmd, shell=True, ignore_status=False, verbose=True)
+        if int(expected_value) != int(result.stdout_text):
+            test.fail('{} is not found in the cpuset.mems file'.format(expected_value))
 
 
 def run(test, params, env):
@@ -238,8 +231,7 @@ def run(test, params, env):
         if not bind_test:
             vmxml.placement = vcpu_placement
             vmxml.iothreads = int(iothreads)
-        else:
-            check_if_package_is_installed('libcgroup-tools')
+
         logging.debug("vm xml is %s", vmxml)
         vmxml.sync()
         vm.start()
@@ -265,8 +257,7 @@ def run(test, params, env):
                 test.fail("The used nodeset is not the same after the libvirtd "
                           "restart.{} is not as expected: {}".
                           format(nodeset_after, nodeset))
-            cgget_message = 'cpuset.mems: {}'.format(nodeset)
-            check_cgget_output(test, cgget_message)
+            check_cgget_output(test, nodeset)
 
     except Exception as e:
         test.fail('Unexpected failure during the test: {}'.format(e))
