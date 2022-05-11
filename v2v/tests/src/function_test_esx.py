@@ -844,7 +844,8 @@ def run(test, params, env):
             cmd = 'losetup %s %s' % (free_loop_dev, diskimage)
             process.run(cmd, shell=True)
             # Create a soft link to the loop device
-            blk_dev_link = '%s/mydisk1' % os_directory.name
+            disk_name = v2v_params['new_name'] + '-sda' if params.get('target') == 'local' else 'mydisk1'
+            blk_dev_link = '%s/%s' % (os_directory.name, disk_name)
             cmd = 'ln -s %s %s' % (free_loop_dev, blk_dev_link)
             process.run(cmd, shell=True)
 
