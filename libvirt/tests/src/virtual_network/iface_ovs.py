@@ -87,6 +87,7 @@ def run(test, params, env):
                             "native-%s" % mode_info[1])
 
     start_error = "yes" == params.get("start_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
 
     # network specific attributes.
     net_name = params.get("net_name", "default")
@@ -99,10 +100,14 @@ def run(test, params, env):
     iface_outbound = params.get("iface_bandwidth_outbound")
     test_qos = "yes" == params.get("test_qos", "no")
     hotplug = "yes" == params.get("hotplug", "no")
+    detach = "yes" == params.get("detach", "no")
+    attach_type = params.get("attach_type", "device")
+    detach_type = params.get("detach_type")
     iface_type = params.get("iface_type", "bridge")
     iface_model = params.get("iface_model", "virtio")
     iface_virtualport = params.get("iface_virtualport")
     live_add_qos = "yes" == params.get("live_add_qos", 'no')
+    check_point = params.get("check_point", "")
 
     libvirt_version.is_libvirt_feature_supported(params)
     # Destroy the guest first
@@ -133,6 +138,8 @@ def run(test, params, env):
                 if "bridge" in source:
                     if not utils_net.ovs_br_exists(source["bridge"]):
                         utils_net.add_ovs_bridge(source["bridge"])
+                    if "port" in source:
+                        utils_net.add_to_bridge(source["port"], source["bridge"])
             iface_dict = {'type': iface_type, 'model': iface_model,
                           'source': iface_source,
                           'virtualport_type': iface_virtualport,
@@ -154,8 +161,19 @@ def run(test, params, env):
             if start_error:
                 test.fail("VM started unexpectedly")
             if hotplug:
-                virsh.attach_device(vm_name, iface_attach_xml, debug=True,
-                                    ignore_status=False)
+                if attach_type == "interface":
+                    options = "--type %s --source %s --model %s" % (iface_type, source["bridge"], iface_model)
+                    attach_interface_result = virsh.attach_interface(vm_name, options,
+                                                                     ignore_status=True, debug=True)
+                    libvirt.check_result(attach_interface_result, expected_fails=check_point)
+                else:
+                    virsh.attach_device(vm_name, iface_attach_xml, debug=True,
+                                        ignore_status=False)
+                    iface_xml = vm_xml.VMXML.new_from_dumpxml(vm.name).devices.by_device_tag("interface")[0]
+                    source_bridge = libvirt.get_interface_details(vm_name)[0]['source']
+                    if source_bridge != source["bridge"]:
+                        test.fail("Attach-device failed, the source bridge shoule be: %s, and now is: %s"
+                                  % (source["bridge"], source_bridge))
             iface_name = libvirt.get_ifname_host(vm_name, iface_mac)
             if test_ovs_port:
                 check_ovs_port(iface_name, bridge_name)
@@ -174,6 +192,15 @@ def run(test, params, env):
                 res2 = utils_net.check_filter_rules(tap_name, ast.literal_eval(iface_outbound))
                 if not res1 or not res2:
                     test.fail("Qos test fail!")
+            if detach:
+                if detach_type == "interface":
+                    options = "--type %s --mac %s" % (iface_type, iface_mac)
+                    virsh.detach_interface(vm_name, options,
+                                           ignore_status=False, debug=True)
+                else:
+                    detach_xml = iface_xml.xml
+                    virsh.detach_device(vm_name, detach_xml,
+                                        ignore_status=False, debug=True)
 
         except virt_vm.VMStartError as details:
             logging.info(str(details))
