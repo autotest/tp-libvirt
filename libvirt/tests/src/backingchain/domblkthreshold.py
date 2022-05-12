@@ -22,6 +22,9 @@ def run(test, params, env):
         """
         Prepare backingchain
         """
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login().close()
         test_obj.prepare_snapshot(snap_num=1)
 
     def test_domblkthreshold_inactivate_layer():
@@ -44,7 +47,7 @@ def run(test, params, env):
         session.close()
 
         # Check blockcommit will trigger threshold event
-        event = r"event \'block-threshold\' for domain %s: dev: %s\[%s\].*%s.*" \
+        event = r"\'block-threshold\' for domain .*%s.*: dev: %s\[%s\].*%s.*" \
                 % (vm_name, primary_target, bs_index, domblk_threshold)
         LOG.debug('Checking event pattern is :%s ', event)
 
@@ -53,7 +56,8 @@ def run(test, params, env):
                           ignore_status=False, debug=True)
         event_output = virsh.EventTracker.finish_get_event(event_session)
         if not re.search(event, event_output):
-            test.fail('Not find: %s from event output:%s' % (event, event_output))
+            test.fail('Not find: %s from event output:%s' % (event,
+                                                             event_output))
 
     def teardown_domblkthreshold_inactivate_layer():
         """
