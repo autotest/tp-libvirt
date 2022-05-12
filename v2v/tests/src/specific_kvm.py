@@ -40,6 +40,7 @@ def run(test, params, env):
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
+    version_required = params.get("version_required")
     hypervisor = params.get("hypervisor")
     vm_name = params.get('main_vm', 'EXAMPLE')
     target = params.get('target')
@@ -95,6 +96,10 @@ def run(test, params, env):
     # nfs mount source
     vddk_libdir_src = params.get('vddk_libdir_src')
     vddk_thumbprint = params.get('vddk_thumbprint')
+
+    if version_required and not utils_v2v.multiple_versions_compare(
+            version_required):
+        test.cancel("Testing requires version: %s" % version_required)
 
     # Prepare step for different hypervisor
     if enable_legacy_policy:
