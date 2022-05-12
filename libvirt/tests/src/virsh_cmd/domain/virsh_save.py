@@ -1,11 +1,13 @@
 import os
 import re
+import shutil
 import logging as log
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import libvirt_version
+from virttest.libvirt_xml.vm_xml import VMXML
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -50,6 +52,26 @@ def run(test, params, env):
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
 
+    def create_alter_xml(vm_name):
+        """
+        Prepare an alternative xml with changed image for --xml test.
+
+        :param vm_name: current vm name
+        :return: xmlfile to use for --xml option
+        """
+        xmlfile = os.path.join(data_dir.get_tmp_dir(), '%s.xml' % vm_name)
+        virsh.dumpxml(vm_name, extra="--migratable", to_file=xmlfile, ignore_status=False)
+        vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
+        disk = vmxml.get_devices('disk')[0]
+        img_path = disk.source.attrs['file']
+        new_img_path = os.path.join(data_dir.get_tmp_dir(), 'test.img')
+        shutil.copyfile(img_path, new_img_path)
+        with open(xmlfile) as file_xml:
+            updated_xml = file_xml.read().replace(img_path, new_img_path)
+        with open(xmlfile, 'w') as file_xml:
+            file_xml.write(updated_xml)
+        return xmlfile
+
     domid = vm.get_id()
     domuuid = vm.get_uuid()
 
@@ -71,6 +93,10 @@ def run(test, params, env):
 
     if progress:
         options += " --verbose"
+
+    if options == "--xml":
+        options += ' %s' % create_alter_xml(vm_name)
+
     virsh.domstate(vm_name, ignore_status=True, debug=True)
     result = virsh.save(vm_ref, savefile, options, ignore_status=True,
                         unprivileged_user=unprivileged_user,
@@ -83,6 +109,9 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_start()
 
     if savefile:
+        if "--xml" in options:
+            xml_after_save = virsh.save_image_dumpxml(savefile).stdout_text
+            savefile += ' %s' % options
         virsh.restore(savefile, debug=True)
     virsh.domstate(vm_name, ignore_status=True, debug=True)
 
@@ -105,6 +134,9 @@ def run(test, params, env):
                           "correct command")
             if progress and not err_msg.count("Save:"):
                 test.fail("No progress information outputted!")
+            if "--xml" in options and 'test.img' not in xml_after_save:
+                test.fail('Not found "test.img" in vm xml after save --xml.'
+                          'Modification to xml did not take effect.')
             if options.count("running"):
                 if vm.is_dead() or vm.is_paused():
                     test.fail("Guest state should be"
