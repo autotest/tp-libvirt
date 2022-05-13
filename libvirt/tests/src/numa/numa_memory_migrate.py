@@ -2,6 +2,7 @@ import logging as log
 import re
 
 from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import libvirt_xml
@@ -82,10 +83,10 @@ def run(test, params, env):
 
         # get left used node beside current using
         if numa_memory.get('placement') == 'auto':
-            log_file = params.get("libvirtd_debug_file")
-            check_res = utils_test.libvirt.check_logfile('Nodeset returned from numad:', log_file)
+            cmd = "grep -E 'Nodeset returned from numad:' %s" % params.get("libvirtd_debug_file")
+            cmdRes = process.run(cmd, shell=True, ignore_status=False)
             # Sample: Nodeset returned from numad: 0-1
-            match_obj = re.search(r'Nodeset returned from numad:\s(.*)', check_res.stdout_text)
+            match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
             numad_ret = match_obj.group(1)
             logging.debug("Nodeset returned from numad: %s", numad_ret)
             used_node = cpu.cpus_parser(numad_ret)
