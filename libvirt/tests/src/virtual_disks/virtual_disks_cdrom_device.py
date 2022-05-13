@@ -8,6 +8,7 @@ from avocado.utils import process
 
 from virttest import virt_vm, utils_misc
 from virttest import virsh
+from virttest import utils_split_daemons
 
 from virttest.libvirt_xml import vm_xml, xcepts
 
@@ -114,12 +115,16 @@ def create_iso_cdrom_disk(params, create_iso=True):
     :param params: dict wrapped with parameter
     :param create_iso: one boolean value(default True)indicating whether create iso files
     """
+    source_files_list = []
     source_file_path = params.get("virt_disk_device_source")
+    source_files_list.append(source_file_path)
     source_file_path_second = params.get("virt_disk_device_source_second")
+    if source_file_path_second:
+        source_files_list.append(source_file_path_second)
 
     # Create iso files
     if source_file_path and create_iso:
-        for iso_path in [source_file_path, source_file_path_second]:
+        for iso_path in source_files_list:
             iso_file = "/var/lib/libvirt/images/old_%s.img" % random.choices(string.ascii_uppercase)[0]
             process.run("dd if=/dev/urandom of=%s bs=1M count=10" % iso_file, shell=True)
             process.run("mkisofs -o %s %s" % (iso_path, iso_file), shell=True)
@@ -318,6 +323,48 @@ def check_change_startuppolicy_cdrom_backend(vm, params, origin_device_xml, test
     check_source_in_cdrom_device(vm, origin_first_iso_path, test)
 
 
+def check_libvirtd_not_crash_on_domstats(vm, old_pid_of_libvirtd, test):
+    """
+    Check libvirtd/virtqemud not crash before and after domstats
+
+    :param vm: one object representing VM
+    :param old_pid_of_libvirtd: previous libvirtd/virtqemud process id
+    :param test: test assert object
+    """
+    # Execute check domain domstats
+    virsh.domstats(vm.name, ignore_status=False, debug=True)
+    virsh.domstats(vm.name, ignore_status=False, readonly=True, debug=True)
+
+    # Check libvirtd/virtqemud not changed
+    cmd = "pidof virtqemud" if utils_split_daemons.is_modular_daemon() else "pidof libvirtd"
+    new_pid_of_libvirtd = process.run(cmd, shell=True).stdout_text.strip()
+    if new_pid_of_libvirtd != old_pid_of_libvirtd:
+        test.fail("libvirtd/virtqemud crashed due to processing")
+
+
+def create_block_lun_source_disk(params):
+    """
+    Create one block lun source disk
+
+    :param params: dict wrapped with params
+    :return: return one lun source disk
+    """
+    source_file_path = params.get("virt_disk_device_source")
+    if source_file_path:
+        libvirt.create_local_disk("file", source_file_path, 1, 'raw')
+
+    # Find a free loop device
+    free_loop_dev = process.run("losetup --find", shell=True).stdout_text.strip()
+    # Setup a loop device
+    cmd = 'losetup %s %s' % (free_loop_dev, source_file_path)
+    process.run(cmd, shell=True)
+
+    params.update({"virt_disk_device_source": free_loop_dev})
+    block_lun_source_disk = create_iso_cdrom_disk(params, create_iso=False)
+
+    return block_lun_source_disk
+
+
 def run(test, params, env):
     """
     Test attach cdrom device with option.
@@ -369,6 +416,16 @@ def run(test, params, env):
         elif backend_device == "open_tray_cdrom_backend":
             device_obj = create_open_tray_cdrom_disk(params)
             virsh.attach_device(vm_name, device_obj, flagstr="--config", debug=True)
+        elif backend_device == "libvirtd_not_crash_on_domstats":
+            cmd = "pidof virtqemud" if utils_split_daemons.is_modular_daemon() else "pidof libvirtd"
+            old_pid_of_libvirtd = process.run(cmd, shell=True).stdout_text.strip()
+            device_obj = create_iso_cdrom_disk(params)
+            virsh.attach_device(vm_name, device_obj.xml, flagstr="--config", debug=True)
+            device_target = params.get("target_dev")
+            virsh.change_media(vm_name, device_target, " --eject --config",
+                               ignore_status=False, debug=True)
+        if backend_device == "block_lun_source":
+            device_obj = create_block_lun_source_disk(params)
         if not hotplug:
             # Sync VM xml.
             vmxml.add_device(device_obj)
@@ -414,6 +471,8 @@ def run(test, params, env):
             check_open_tray_cdrom(vm, params, test)
         elif backend_device == "change_startuppolicy_cdrom_backend":
             check_change_startuppolicy_cdrom_backend(vm, params, device_obj, test)
+        elif backend_device == "libvirtd_not_crash_on_domstats":
+            check_libvirtd_not_crash_on_domstats(vm, old_pid_of_libvirtd, test)
     finally:
         # Recover VM.
         if vm.is_alive():
@@ -430,3 +489,5 @@ def run(test, params, env):
                 linux_modules.unload_module("scsi_debug")
                 return True
             utils_misc.wait_for(_unload, timeout=20, ignore_errors=True)
+        if backend_device == "block_lun_source":
+            process.run("losetup -D", shell=True)
