@@ -402,7 +402,8 @@ def run(test, params, env):
                                         test.fail("When setting stdio_handler as logd, the command"
                                                   "to write log should be virtlogd!")
                             ret = virsh.detach_device_alias(vm.name, alias, ignore_status=True,
-                                                            debug=True, wait_for_event=True)
+                                                            debug=True, wait_for_event=True,
+                                                            event_timeout=10)
                         else:
                             ret = virsh.detach_device(vm.name, fs_dev.xml, ignore_status=True,
                                                       debug=True, wait_for_event=True)
