@@ -97,7 +97,7 @@ def run(test, params, env):
 
         # Need to wait for a while to get login prompt
         if not utils_misc.wait_for(
-                lambda: check_pty_log_file(log_file, boot_prompt), 3):
+                lambda: check_pty_log_file(log_file, boot_prompt), 6):
             test.fail("Failed to find the vm login prompt from %s" % log_file)
 
     except Exception as e:
