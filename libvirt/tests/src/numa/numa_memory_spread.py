@@ -87,8 +87,6 @@ def prepare_host_for_test(params, test):
     memory_to_eat = int(nodeset_size + 0.1 * nodeset_nb_size)
     nodeset_string = '{},{}'.format(online_nodes[0], neighbour)
     process.run("swapoff -a", shell=True)
-    if not utils_package.package_install('libcgroup-tools'):
-        test.fail("Failed to install package libcgroup-tools on host.")
 
     return numa_memory, oversize, undersize, memory_to_eat, neighbour, nodeset_string
 
