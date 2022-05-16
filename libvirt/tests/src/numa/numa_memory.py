@@ -126,9 +126,10 @@ def verify_numa_for_auto_replacement(test, params, vmxml, node_list, qemu_cpu, v
     numa_memory = vmxml.numa_memory
     numad_cmd_opt = "-w %s:%s" % (vmxml.vcpu, vmxml.max_mem // 1024)
     utils_test.libvirt.check_logfile('.*numad\s*%s' % numad_cmd_opt, log_file)
-    check_res = utils_test.libvirt.check_logfile('Nodeset returned from numad:', log_file)
+    cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
+    cmdRes = process.run(cmd, shell=True, ignore_status=False)
     # Sample: Nodeset returned from numad: 0-1
-    match_obj = re.search(r'Nodeset returned from numad:\s(.*)', check_res.stdout_text)
+    match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
     numad_ret = match_obj.group(1)
     logging.debug("Nodeset returned from numad: %s", numad_ret)
 
