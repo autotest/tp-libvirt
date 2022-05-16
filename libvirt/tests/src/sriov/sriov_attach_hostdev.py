@@ -88,14 +88,22 @@ def run(test, params, env):
         """
         start_vm = "yes" == params.get("start_vm")
         options = '' if vm.is_alive() else '--config'
+        status_error = "yes" == params.get("status_error", "no")
+        error_msg = params.get("error_msg")
 
         host_dev = create_dev(params, hostdev_dict)
         test.log.debug("Hostdev XML: %s.", host_dev)
         test.log.info("TEST_STEP1: Attach hostdev interface.")
-        virsh.attach_device(vm_name, host_dev.xml, flagstr=options,
-                            debug=True, ignore_status=False)
+        result = virsh.attach_device(vm_name, host_dev.xml, flagstr=options,
+                                     debug=True)
+        libvirt.check_exit_status(result, status_error)
+        if error_msg:
+            libvirt.check_result(result, error_msg)
+        if status_error:
+            return
         if not start_vm:
             vm.start()
+            vm.wait_for_serial_login(timeout=240).close()
 
         test.log.info("TEST_STEP2: Check VM XML.")
         device_type = "interface" if params.get('hostdev_iface_dict') else 'hostdev'
@@ -107,8 +115,13 @@ def run(test, params, env):
         """
         hostdev_dict = get_hostdev_dict(vf_pci, params)
         exec_test(vm, hostdev_dict, params)
+        if params.get("status_error") == "yes":
+            return
         test.log.info("Check if the VM is not using VF.")
         libvirt_vfio.check_vfio_pci(vf_pci)
+
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(timeout=240)
         p_iface = utils_net.get_remote_host_net_ifs(vm_session)[0]
         if p_iface:
