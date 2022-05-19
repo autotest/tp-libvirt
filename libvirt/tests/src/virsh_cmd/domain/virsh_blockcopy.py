@@ -667,7 +667,7 @@ def run(test, params, env):
         if not status_error:
             if status == 0:
                 ret = utils_misc.wait_for(
-                    lambda: check_xml(vm_name, target, dest_path, options), 5)
+                    lambda: check_xml(vm_name, target, dest_path, options), 20)
                 if not ret:
                     raise exceptions.TestFail("Domain xml not expected after"
                                               " blockcopy")
