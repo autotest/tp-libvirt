@@ -1,7 +1,6 @@
 import os
 import re
 import logging as log
-import platform
 import time
 
 from avocado.utils import cpu as cpu_util
@@ -299,10 +298,6 @@ def run(test, params, env):
 
         vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num,
                            topology_correction=topology_correction)
-        # Do not apply S3/S4 on power
-        cpu_arch = platform.machine()
-        if cpu_arch in ('x86_64', 'i386', 'i686'):
-            vmxml.set_pm_suspend(vm_name, "yes", "yes")
         vm.start()
         vm_uptime_init = vm.uptime()
         if with_stress:
