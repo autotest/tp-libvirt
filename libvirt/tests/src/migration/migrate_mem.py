@@ -160,9 +160,11 @@ def verify_test_default(vm, params, test):
     """
     check_str_local_log = params.get("check_str_local_log")
     if check_str_local_log:
-        libvirt.check_logfile(check_str_local_log,
-                              params.get("libvirtd_debug_file"),
-                              eval(params.get('str_in_log', 'True')))
+        if not libvirt.check_logfile(check_str_local_log,
+                                     params.get("libvirtd_debug_file"),
+                                     eval(params.get('str_in_log', 'True')),
+                                     ignore_status=True):
+            test.fail("Found message in local log: %s", check_str_local_log)
 
 
 def verify_test_mem_balloon(vm, params, test):
