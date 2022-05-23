@@ -7,6 +7,7 @@ from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
+from virttest.libvirt_xml.devices import hostdev
 from virttest.utils_libvirt import libvirt_misc
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
@@ -30,6 +31,20 @@ def create_iface(iface_type, iface_dict):
 
     logging.debug("Interface XML: %s", iface)
     return iface
+
+
+def create_hostdev(hostdev_dict):
+    """
+    Create hostdev device
+
+    :param hostdev_dict: Dict, attrs of hostdev
+    :return: hostdev device object
+    """
+    hostdev_dev = hostdev.Hostdev()
+    hostdev_dev.setup_attrs(**hostdev_dict)
+
+    logging.debug("Hostdev XML: %s", hostdev_dev)
+    return hostdev_dev
 
 
 def get_vm_iface(vm_session):
@@ -84,10 +99,15 @@ def attach_iface_device(vm_name, dev_type, params):
 
     status_error = "yes" == params.get('status_error', 'no')
     iface_dict = parse_iface_dict(params)
-    iface = create_iface(dev_type, iface_dict)
+    if dev_type == 'hostdev_device':
+        iface_dict = eval(params.get('hostdev_dict', '{}'))
+        iface = create_hostdev(iface_dict)
+    else:
+        iface = create_iface(dev_type, iface_dict)
     res = virsh.attach_device(vm_name, iface.xml, debug=True)
     libvirt.check_exit_status(res, status_error)
-    libvirt_vmxml.check_guest_xml(vm_name, dev_type)
+    device_type = "hostdev" if dev_type == 'hostdev_device' else dev_type
+    libvirt_vmxml.check_guest_xml(vm_name, device_type)
     # FIXME: Sleep for 20 secs to make iface work properly
     time.sleep(20)
 

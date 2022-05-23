@@ -5,6 +5,7 @@ from avocado.utils import process
 
 from virttest import libvirt_version
 from virttest import utils_misc
+from virttest import utils_sriov
 from virttest import utils_vdpa
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -13,6 +14,7 @@ from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 from provider.interface import interface_base
+from provider.sriov import sriov_base
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
@@ -82,6 +84,8 @@ def run(test, params, env):
         test_env_obj = None
         if dev_type == 'vdpa':
             test_env_obj = setup_vdpa()
+        elif dev_type in ['hostdev', 'hostdev_device']:
+            setup_hostdev()
 
         logging.debug("Update VM's settings.")
         vm_attrs = eval(params.get('vm_attrs', '{}'))
@@ -100,6 +104,8 @@ def run(test, params, env):
         """
         if dev_type == 'vdpa':
             teardown_vdpa()
+        elif dev_type in ['hostdev', 'hostdev_device']:
+            teardown_hostdev()
 
     def setup_vdpa():
         """
@@ -121,6 +127,28 @@ def run(test, params, env):
         if test_obj:
             test_obj.cleanup()
 
+    def setup_hostdev():
+        """
+        Setup test environment for hostdev
+        """
+        pf_pci = utils_sriov.get_pf_pci()
+        sriov_base.setup_vf(pf_pci, params)
+        vf_pci = utils_misc.wait_for(lambda: utils_sriov.get_vf_pci_id(pf_pci),
+                                     30, 5)
+        pci_to_addr = utils_sriov.pci_to_addr(vf_pci)
+        if params.get('iface_dict'):
+            params.update({'iface_dict': params.get('iface_dict') % pci_to_addr})
+        elif params.get('hostdev_dict'):
+            del pci_to_addr['type']
+            params.update(
+                {'hostdev_dict': params.get('hostdev_dict') % pci_to_addr})
+
+    def teardown_hostdev():
+        """
+        Cleanup VF setting for hostdev test
+        """
+        sriov_base.recover_vf(utils_sriov.get_pf_pci(), params, 0)
+
     def setup_at_memory_to_vm_with_iface(dev_type):
         """
         Prepare a vm with max memory, numa, and an interface
@@ -129,8 +157,13 @@ def run(test, params, env):
         """
         test_env_obj = setup_test(dev_type)
         # Add interface device
+        hostdev_dict = eval(params.get('hostdev_dict', '{}'))
         iface_dict = eval(params.get('iface_dict', '{}'))
-        iface_dev = interface_base.create_iface(dev_type, iface_dict)
+
+        if hostdev_dict:
+            iface_dev = interface_base.create_hostdev(hostdev_dict)
+        else:
+            iface_dev = interface_base.create_iface(dev_type, iface_dict)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         libvirt.add_vm_device(vmxml, iface_dev)
         logging.debug("VM xml afater updating ifaces: %s.",
