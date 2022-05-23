@@ -231,14 +231,18 @@ def run(test, params, env):
             logging.debug(virsh.dumpxml(vm_name).stdout_text)
             newxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
-            for attr in cmp_list:
-                logging.debug('Comparing %s of 2 xmls: \n%s\n%s',
-                              attr, getattr(vmxml, attr),
-                              getattr(newxml, attr))
-                if getattr(vmxml, attr) == getattr(newxml, attr):
-                    logging.debug('Result: Equal.')
+            for tag in cmp_list:
+                old_xml = getattr(vmxml, tag)
+                new_xml = getattr(newxml, tag)
+                new_xml_attrs = new_xml.fetch_attrs()
+                old_attrs = eval(params.get('%s_attrs' % tag))
+
+                logging.debug('Comparing attributes of %s of 2 xmls: \n%s\n%s\n%s\n%s',
+                              tag, old_xml, old_attrs, new_xml, new_xml_attrs)
+                if all([new_xml_attrs.get(k) == old_attrs[k] for k in old_attrs]):
+                    logging.debug('Result: Target xml settings are equal.')
                 else:
-                    test.fail('Xml comparison of %s failed.', attr)
+                    test.fail('Xml comparison of %s failed.' % tag)
 
     def run_test_dimm(case):
         """
