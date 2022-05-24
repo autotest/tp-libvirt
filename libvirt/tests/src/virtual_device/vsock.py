@@ -269,7 +269,7 @@ def run(test, params, env):
             if detach_device_alias:
                 result = virsh.detach_device_alias(
                     vm.name, vsock_dev.alias['name'], ignore_status=False,
-                    debug=True, wait_for_event=True)
+                    debug=True, wait_for_event=True, event_timeout=20)
             else:
                 result = virsh.detach_device(vm_name, vsock_dev.xml, debug=True)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
