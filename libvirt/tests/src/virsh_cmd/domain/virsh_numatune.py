@@ -7,10 +7,11 @@ from virttest import libvirt_xml
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
+
 from virttest.cpu import cpus_parser
 from virttest.libvirt_xml.xcepts import LibvirtXMLAccessorError
 from virttest.staging import utils_cgroup
-
+from virttest.utils_libvirt import libvirt_numa
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -193,9 +194,12 @@ def dynamic_node_replacement(params, numa_info, test_obj):
     :param test_obj: test object - for cancel case
     """
     node_list = numa_info.get_online_nodes_withmem()
+    numa_nodeset_format = params.get('numa_nodeset')
     dynamic_nodeset = params.get('dynamic_nodeset', 'no') == 'yes'
     if dynamic_nodeset and 'numa_nodeset' in params:
-        params['numa_nodeset'] = ','.join([str(elem) for elem in node_list])
+        params['numa_nodeset'] = libvirt_numa.parse_numa_nodeset_to_str(numa_nodeset_format,
+                                                                        node_list)
+
         logging.debug('The parameter "numa_nodeset" from config file is going to be replaced by: {} '
                       'available on this system'.format(params['numa_nodeset']))
 
