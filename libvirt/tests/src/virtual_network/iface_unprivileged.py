@@ -124,6 +124,11 @@ def run(test, params, env):
         upu_vmxml = vm_xml.VMXML()
         upu_vmxml.xml = virsh.dumpxml(upu_vm_name, **upu_args).stdout_text
 
+        # Remove nvram tag of os to avoid permission issue
+        os_xml = upu_vmxml.os
+        os_xml.del_nvram()
+        upu_vmxml.os = os_xml
+
         if case == 'precreated':
             if device_type == 'tap':
                 # Create bridge
@@ -196,6 +201,7 @@ def run(test, params, env):
             shutil.copyfile(upu_vmxml.xml, new_xml_path)
             upu_vmxml.xml = new_xml_path
             virsh.define(new_xml_path, **upu_args)
+            logging.debug(virsh.dumpxml(upu_vm_name, **upu_args).stdout_text)
 
             # Switch to unprivileged user and modify vm's interface
             # Start vm as unprivileged user and test network
