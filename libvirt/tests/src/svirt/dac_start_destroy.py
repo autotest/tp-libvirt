@@ -359,6 +359,7 @@ def run(test, params, env):
                               "error: %s" % e)
     finally:
         # clean up
+        vm.destroy(gracefully=False)
         for path, label in list(backup_labels_of_disks.items()):
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
