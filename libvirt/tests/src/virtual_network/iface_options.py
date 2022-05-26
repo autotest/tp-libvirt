@@ -158,6 +158,11 @@ def run(test, params, env):
                          " removing from domain xml if present...")
             vmxml.del_seclabel([('model', 'dac')])
 
+            # Remove nvram to avoid permission issue
+            os_xml = vmxml.os
+            os_xml.del_nvram()
+            vmxml.os = os_xml
+
             # Set vm memory to 2G if it's larger than 2G
             if vmxml.memory > 2097152:
                 vmxml.memory = vmxml.current_mem = 2097152
@@ -609,7 +614,8 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
-    unprivileged_user = params.get("unprivileged_user")
+    unprivileged_user = params.get("unprivileged_user", "autotest"
+                                   ) + utils_misc.generate_random_string(3)
 
     # Interface specific attributes.
     iface_type = params.get("iface_type", "network")
