@@ -674,6 +674,11 @@ def run(test, params, env):
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    # Remove loader/nvram element if exist which may affect newly added same elements
+    for item in ["loader", "nvram"]:
+        if item in str(vmxml):
+            vmxml.xmltreefile.remove_by_xpath("/os/%s" % item, remove_all=True)
+            vmxml.sync()
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ''
