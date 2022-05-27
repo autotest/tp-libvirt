@@ -1729,11 +1729,13 @@ def run(test, params, env):
             ioeventfd = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                    "driver", "ioeventfd")
             if ioeventfd:
-                cmd += " | grep ioeventfd=%s" % ioeventfd
+                cmd += " | grep -E .*ioeventfd.*%s\|%s" % (ioeventfd, 'true' if
+                                                           ioeventfd == 'on' else 'false')
             event_idx = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                    "driver", "event_idx")
             if event_idx:
-                cmd += " | grep event_idx=%s" % event_idx
+                cmd += " | grep -E .*event_idx.*%s\|%s" % (event_idx, 'true' if
+                                                           event_idx == 'on' else 'false')
 
             discard = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                  "driver", "discard")
@@ -1798,7 +1800,7 @@ def run(test, params, env):
             if num_queues != "":
                 cmd += " | grep -E 'num_queues\W+%s'" % num_queues
             if ioeventfd:
-                cmd += " | grep ioeventfd=%s" % ioeventfd
+                cmd += " | grep -E .*ioeventfd.*%s\|%s" % (ioeventfd, 'true' if ioeventfd == 'on' else 'false')
             if cmd_per_lun:
                 cmd += " | grep -E 'cmd_per_lun\W+%s'" % cmd_per_lun
             if max_sectors:
@@ -1814,7 +1816,7 @@ def run(test, params, env):
                 driver = "virtio-net-pci"
                 if 's390x' in arch:
                     driver = "virtio-net-ccw"
-                cmd += " | grep %s,event_idx=%s" % (driver, iface_event_idx)
+                cmd += " | grep -E %s,.*event_idx.*%s\|%s" % (driver, iface_event_idx, 'true' if iface_event_idx == 'on' else 'false')
 
             if process.system(cmd, ignore_status=True, shell=True):
                 test.fail("Check disk driver option failed with %s" % cmd)
