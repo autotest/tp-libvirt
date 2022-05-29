@@ -24,6 +24,7 @@ LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 RETRY_TIMES = 10
 # Temporary workaround <Fix in future with a better solution>
+# Deprecated struct, Don't use it.
 FEATURE_SUPPORT = {
     'genid': 'virt-v2v-1.40.1-1.el7',
     'libosinfo': 'virt-v2v-1.40.2-2.el7',
@@ -33,6 +34,7 @@ FEATURE_SUPPORT = {
     'virtio_model': 'virt-v2v-1.45.97-4'}
 # bz#1961107
 V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
+V2V_VSOCK_SUPPORT_LINUX_VER = "[virt-v2v-2.0.2-1,)"
 
 
 def compare_version(compare_version, real_version=None, cmd=None):
@@ -103,7 +105,7 @@ class VMChecker(object):
             self.boottype = int(params.get("boottype", 1))
 
         self.os_type = params.get('os_type')
-        self.os_version = params.get('os_version', 'OS_VERSION_V2V_EXAMPLE')
+        self.os_version = params.get('os_version')
         self.original_vmxml = params.get('original_vmxml')
         self.vmx_nfs_src = params.get('vmx_nfs_src')
         self.virsh_session = params.get('virsh_session')
@@ -526,6 +528,7 @@ class VMChecker(object):
             'Virtio filesystem': ['1009', '1049'],
             'Virtio GPU': ['1050'],
             'Virtio input': ['1052'],
+            'Virtio socket': ['1053'],
             'Inter-VM shared memory': ['1110'],
             # https://pci-ids.ucw.cz/read/PC/1234/1111
             'vga': ['1111'],
@@ -627,8 +630,28 @@ class VMChecker(object):
                 FEATURE_SUPPORT['virtio_model']):
             root = ET.fromstring(self.vmxml)
             err_msg = "Checking model='virtio-transitional' not existing failed"
-            if root.findall(".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
+            if root.findall(
+                    ".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
                 self.log_err(err_msg)
+
+        if self.is_vsock_supported(self.os_version):
+            self.check_xml('./devices/vsock')
+
+    def check_xml(self, xpath, existence=True):
+        """
+        Checking XML info by XPath
+        :param xpath: the XPath of the destination device or attribute.
+        :param existence: By default, it checks the existence of the XPath,
+            if False, it checks the non-existence of the XPath.
+        """
+        root = ET.fromstring(self.vmxml)
+        LOG.info("Checking %s configuration in VM XML", xpath)
+        if existence and not root.findall(xpath):
+            err_msg = "Not found %s" % xpath
+            self.log_err(err_msg)
+        if not existence and root.findall(xpath):
+            err_msg = "Found %s unexpectedly" % xpath
+            self.log_err(err_msg)
 
     def check_linux_vm(self):
         """
@@ -673,6 +696,8 @@ class VMChecker(object):
         # https://wiki.qemu.org/Features/VirtIORNG
         if compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
             virtio_devs.append("Virtio RNG")
+        if self.is_vsock_supported(self.os_version):
+            virtio_devs.append("Virtio socket")
         LOG.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
             if not re.search(dev, pci_devs, re.IGNORECASE):
@@ -911,6 +936,21 @@ class VMChecker(object):
             if re.search(r'genid', self.vmxml):
                 self.log_err('Unexpected genid in xml')
 
+    def is_vsock_supported(self, os_version):
+        """
+        :param os_version: the guest's os version. e.g. rhel8.6, win10.
+        """
+        vsock_skiplist = ['rhel6.10', 'opensuse42.\d+', 'rhel5.11']
+        if not os_version:
+            return False
+        for i in vsock_skiplist:
+            if re.match(i, os_version):
+                return False
+        if self.target == 'libvirt' and utils_v2v.multiple_versions_compare(
+                V2V_VSOCK_SUPPORT_LINUX_VER):
+            return True
+        return False
+
 
 def check_local_output(params):
     """
@@ -1007,7 +1047,9 @@ def check_json_output(params):
 
         if utils_v2v.multiple_versions_compare(
                 V2V_ADAPTE_SPICE_REMOVAL_VER) and vm['guestcaps']['video'] != 'vga':
-            LOG.error('Verify video failed: actual value is %s' % vm['guestcaps']['video'])
+            LOG.error(
+                'Verify video failed: actual value is %s' %
+                vm['guestcaps']['video'])
             result = False
 
     return result
