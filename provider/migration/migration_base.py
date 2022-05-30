@@ -237,7 +237,7 @@ def execute_statistics_command(params):
     :param params: dict, used to setup the connection
     """
     vm_name = params.get("migrate_main_vm")
-    disk_type = params.get("disk_type")
+    disk_type = params.get("loop_disk_type")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     disks = vmxml.get_disk_all_by_expr('type==%s' % disk_type, 'device==disk')
