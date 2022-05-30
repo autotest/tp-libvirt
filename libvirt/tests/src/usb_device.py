@@ -199,15 +199,15 @@ def run(test, params, env):
             for model in usb_model.split(','):
                 device = (model if model == "qemu-xhci" else
                           ('-').join([model.split('-')[0], "usb", model.split('-')[1]]))
-                pattern = ("masterbus={}".format(device_alias['ich9-ehci1'])
-                           if "ich9-uhci" in model else "id={}".format(device_alias[model]))
-                pattern = "-device {},".format(device) + pattern
+                pattern = ("masterbus.*{}".format(device_alias['ich9-ehci1'])
+                           if "ich9-uhci" in model else "id.*{}".format(device_alias[model]))
+                pattern = "-device.*{}.*".format(device) + pattern
                 logging.debug("usb controller model {}, pattern {}".format(model, pattern))
                 if not re.search(pattern, output):
                     test.fail("the check of controller alias fails")
         if redirdev_alias:
             for alias in device_alias.values():
-                pattern = "-device usb-redir,chardev=char{0},id={0}".format(alias)
+                pattern = "-device.*usb-redir.*chardev.*char{0}.*id.*{0}".format(alias)
                 if not re.search(pattern, output):
                     test.fail("the check of controller alias fails")
 
