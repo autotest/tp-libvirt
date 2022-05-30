@@ -309,8 +309,9 @@ def run(test, params, env):
             clean_up_vm_log_file(vm_name, guest_log_file)
 
             # Check if virtlogd socket is running.
-            cmd = ("systemctl status virtlogd.socket|grep 'Active: active'")
-            configure(cmd, errorMsg="virtlogd.socket is not running")
+            if stdio_handler != "file":
+                cmd = ("systemctl status virtlogd.socket|grep 'Active: active'")
+                configure(cmd, errorMsg="virtlogd.socket is not running")
 
             # Configure spice
             if with_spice:
@@ -339,21 +340,23 @@ def run(test, params, env):
             check_vm_log_file_permission_and_owner(vm_name, guest_log_file)
             utils_package.package_install(['lsof'])
             # Check VM log file is opened by virtlogd.
-            cmd = ("lsof -w %s|grep 'virtlogd'" % guest_log_file)
-            errorMessage = "VM log file: %s is not opened by:virtlogd." % guest_log_file
+            open_cmd = 'qemu-kvm' if stdio_handler == "file" else 'virtlogd'
+            cmd = ("lsof -w %s|grep %s" % (guest_log_file, open_cmd))
+            errorMessage = "VM log file: %s is not opened by:%s." % (guest_log_file, open_cmd)
             configure(cmd, guest_log_file, errorMessage)
 
             # Check VM started log is written into log file correctly.
             if not with_console_log:
                 check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="char device redirected to /dev/pts")
 
-            # Get pipe node opened by virtlogd for VM log file.
-            pipe_node_field = "$9"
-            # On latest release,No.8 field in lsof returning is pipe node number.
-            if libvirt_version.version_compare(4, 3, 0):
-                pipe_node_field = "$8"
-            cmd = ("lsof +c0 -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
-            pipe_node = configure(cmd)
+            if stdio_handler != "file":
+                # Get pipe node opened by virtlogd for VM log file.
+                pipe_node_field = "$9"
+                # On latest release,No.8 field in lsof returning is pipe node number.
+                if libvirt_version.version_compare(4, 3, 0):
+                    pipe_node_field = "$8"
+                cmd = ("lsof +c0 -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
+                pipe_node = configure(cmd)
 
             if restart_libvirtd or stop_libvirtd:
                 cmd2 = "lsof %s | grep virtlogd | awk '{print $2}'" % guest_log_file
@@ -379,11 +382,12 @@ def run(test, params, env):
             if with_spice or with_console_log:
                 reload_and_check_virtlogd()
 
-            # Check if qemu use pipe node provided by virtlogd.
-            cmd = ("lsof +c0 -w |grep pipe|grep %s|grep %s" % (emulator[0:15], pipe_node))
-            errorMessage = ("Can not find matched pipe node: %s "
-                            "from pipe list used by %s." % (emulator, pipe_node))
-            configure(cmd, errorMsg=errorMessage)
+            if stdio_handler != "file":
+                # Check if qemu use pipe node provided by virtlogd.
+                cmd = ("lsof +c0 -w |grep pipe|grep %s|grep %s" % (emulator[0:15], pipe_node))
+                errorMessage = ("Can not find matched pipe node: %s "
+                                "from pipe list used by %s." % (emulator, pipe_node))
+                configure(cmd, errorMsg=errorMessage)
 
             # Shutdown VM.
             if not vm.shutdown():
@@ -401,8 +405,9 @@ def run(test, params, env):
             else:
                 check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="shutting down")
 
-            # Check pipe is closed gracefully after VM shutdown.
-            check_pipe_closed(pipe_node)
+            if stdio_handler != "file":
+                # Check pipe is closed gracefully after VM shutdown.
+                check_pipe_closed(pipe_node)
 
             # Start VM again.
             try:
