@@ -555,8 +555,8 @@ def run(test, params, env):
                     back_path = utl.setup_or_cleanup_iscsi(is_setup=True,
                                                            is_login=True,
                                                            image_size="1G",
-                                                           emulated_image=back_n)
-                    emulated_iscsi.append(back_n)
+                                                           emulated_image=back_n+str(count))
+                    emulated_iscsi.append(back_n+str(count))
                     cmd = "qemu-img create -f qcow2 %s 1G" % back_path
                     process.run(cmd, shell=True)
                     new_attrs.update({'dev': back_path})
@@ -570,6 +570,11 @@ def run(test, params, env):
             new_disks.append(disk_xml)
 
             snap_xml.set_disks(new_disks)
+
+            # Make sure snap xml not exist backingstore tag
+            snap_xml.xmltreefile.remove_by_xpath('/disks/disk/backingStore',
+                                                 remove_all=True)
+            snap_xml.xmltreefile.write()
             snapshot_xml_path = snap_xml.xml
             logging.debug("The snapshot xml is: %s" % snap_xml.xmltreefile)
 
