@@ -8,6 +8,7 @@ from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.memory import Memory
+from virttest.staging import utils_memory
 from virttest.utils_test import libvirt
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
@@ -50,6 +51,28 @@ def run(test, params, env):
         libvirt.check_exit_status(cmd_result, status_error)
         if error_msg:
             libvirt.check_result(cmd_result, error_msg)
+
+    def setup_test_memorybacking(case):
+        """
+        Setup steps of memory backing tests
+
+        :param case: test case
+        """
+        if case == 'prealloc_thread':
+            page_size = utils_memory.get_huge_page_size()
+            vm_mem_size = vmxml.memory
+            page_num = vm_mem_size // page_size
+            utils_memory.set_num_huge_pages(page_num)
+
+            # Setup memoryBacking of vmxml from attrs
+            mem_backing = vm_xml.VMMemBackingXML()
+            mem_backing_attrs = eval(params.get('mem_backing_attrs', '{}'))
+            mem_backing.setup_attrs(**mem_backing_attrs)
+            logging.debug('memoryBacking xml is: %s', mem_backing)
+            vmxml.mb = mem_backing
+
+            vmxml.sync()
+            logging.debug(virsh.dumpxml(vm_name).stdout_text)
 
     def run_test_memorybacking(case):
         """
@@ -101,6 +124,11 @@ def run(test, params, env):
                                  shell=True, verbose=True).stdout_text
             if not re.search(expect_msg, output):
                 test.fail('Not found expected content "%s" in output.' % expect_msg)
+
+        if case == 'prealloc_thread':
+            virsh.start(vm_name, ignore_status=False)
+            vm.wait_for_login().close()
+            libvirt.check_qemu_cmd_line(qemu_check)
 
     def run_test_edit_mem(case):
         """
@@ -378,6 +406,9 @@ def run(test, params, env):
         # HotUnplug the dimm device
         virsh.detach_device(vm_name, dimm_devices[1].xml, **VIRSH_ARGS)
         check_dominfo_and_ausearch(dominfo_check_3, ausearch_check_3)
+
+    # Version check for current test
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Variable assignment
     group = params.get('group', 'default')
