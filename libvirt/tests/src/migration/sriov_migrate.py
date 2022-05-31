@@ -268,6 +268,7 @@ def run(test, params, env):
     cmd_during_mig = params.get("cmd_during_mig")
     net_failover_test = "yes" == params.get("net_failover_test", "no")
     cancel_migration = "yes" == params.get("cancel_migration", "no")
+    conn_dur_migration = "yes" == params.get("conn_dur_migration", "no")
     try:
         vf_no = int(params.get("vf_no", "4"))
     except ValueError as e:
@@ -484,9 +485,12 @@ def run(test, params, env):
                 cmd_result = vm_after_mig.cmd_output(cmd)
 
                 if re.findall('Destination Host Unreachable', cmd_result, re.M):
-                    test.fail("The network does not work well during "
-                              "the migration period. ping output: %s"
-                              % cmd_result)
+                    err_msg = ("The network does not work well during the "
+                               "migration period. Ping output: %s" % cmd_result)
+                    if conn_dur_migration:
+                        test.fail(err_msg)
+                    else:
+                        logging.warning(err_msg)
 
             # Execute migration from remote
             if migr_vm_back:
