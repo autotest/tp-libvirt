@@ -614,8 +614,7 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
-    unprivileged_user = params.get("unprivileged_user", "autotest"
-                                   ) + utils_misc.generate_random_string(3)
+    unprivileged_user = params.get("unprivileged_user")
 
     # Interface specific attributes.
     iface_type = params.get("iface_type", "network")
