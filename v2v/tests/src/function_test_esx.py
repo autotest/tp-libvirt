@@ -5,6 +5,7 @@ import uuid
 import shutil
 import time
 import tempfile
+import xml.etree.ElementTree as ET
 
 from virttest import data_dir
 from virttest import utils_misc
@@ -668,6 +669,11 @@ def run(test, params, env):
                     error_list[:] = []
                 else:
                     LOG.error('Virtio drivers not meet expectation')
+            if 'genid_xml' in checkpoint:
+                LOG.info("Checking genid tag in VM XML")
+                root = ET.fromstring(vmchecker.vmxml)
+                if not root.findall("genid"):
+                    test.fail("Checking genid tag in VM XML failed")
 
         utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
