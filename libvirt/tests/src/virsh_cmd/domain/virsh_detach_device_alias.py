@@ -1,9 +1,12 @@
+import os
 import uuid
 import logging as log
 
+from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.watchdog import Watchdog
 from virttest.utils_test import libvirt
 from virttest.utils_disk import get_scsi_info
@@ -42,6 +45,9 @@ def run(test, params, env):
     # channel params
     channel_type = params.get("detach_channel_type")
     channel_target = eval(params.get("detach_channel_target", "{}"))
+    # virtual disk params
+    virtual_disk_type = params.get("detach_virtual_disk_type")
+    virtual_disk_dict = eval(params.get("virtual_disk_dict", "{}"))
     # watchdog params
     watchdog_type = params.get("detach_watchdog_type")
     watchdog_dict = eval(params.get('watchdog_dict', '{}'))
@@ -116,6 +122,22 @@ def run(test, params, env):
         channel_params = {'channel_type_name': channel_type}
         channel_params.update(channel_target)
         device_xml = libvirt.create_channel_xml(channel_params, device_alias)
+    if virtual_disk_type:
+        image_path = data_dir.get_data_dir() + '/new_image'
+        libvirt.create_local_disk("file", path=image_path, disk_format="qcow2")
+
+        virtual_disk_dict.update({"alias": {"name": device_alias},
+                                  "source": {'attrs': {'file': image_path}}})
+
+        new_disk = Disk()
+        new_disk.setup_attrs(**virtual_disk_dict)
+        libvirt.add_vm_device(vmxml, new_disk)
+
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login().close()
+
+        attach_device = False
 
     if watchdog_type:
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -169,3 +191,5 @@ def run(test, params, env):
         backup_xml.sync()
         if hostdev_type == "scsi":
             libvirt.delete_scsi_disk()
+        if virtual_disk_type and os.path.exists(image_path):
+            os.remove(image_path)
