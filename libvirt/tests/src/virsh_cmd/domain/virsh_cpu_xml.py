@@ -3,6 +3,7 @@ import os
 import tempfile
 
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import virsh               # pylint: disable=W0611
 
 from virttest.utils_test import libvirt
@@ -22,7 +23,7 @@ def run(test, params, env):
         cpu xml within capabilities xml from two different hosts
         cpu xml within domain dumpxml from two different hosts
     """
-
+    libvirt_version.is_libvirt_feature_supported(params)
     file_path = params.get('file_path')
     file_xml_declaration = params.get('file_xml_declaration')
     virsh_function = eval(params.get('virsh_function'))
