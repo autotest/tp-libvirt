@@ -5,6 +5,7 @@ import signal                                        # pylint: disable=W0611
 
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
+from virttest import utils_libvirtd                  # pylint: disable=W0611
 
 from virttest.utils_conn import TLSConnection
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
