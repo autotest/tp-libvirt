@@ -941,7 +941,7 @@ class VMChecker(object):
         :param os_version: the guest's os version. e.g. rhel8.6, win10.
         """
         vsock_skiplist = ['rhel6.10', 'opensuse42.\d+', 'rhel5.11']
-        if not os_version:
+        if not os_version or self.os_type != 'linux':
             return False
         for i in vsock_skiplist:
             if re.match(i, os_version):
