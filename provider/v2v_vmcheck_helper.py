@@ -105,7 +105,7 @@ class VMChecker(object):
             self.boottype = int(params.get("boottype", 1))
 
         self.os_type = params.get('os_type')
-        self.os_version = params.get('os_version')
+        self.os_version = params.get('os_version', '')
         self.original_vmxml = params.get('original_vmxml')
         self.vmx_nfs_src = params.get('vmx_nfs_src')
         self.virsh_session = params.get('virsh_session')
