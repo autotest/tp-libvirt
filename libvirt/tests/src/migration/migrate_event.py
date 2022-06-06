@@ -1,3 +1,5 @@
+import aexpect
+
 import logging as log
 
 from virttest import libvirt_vm
@@ -84,6 +86,7 @@ def run(test, params, env):
         func_returns = dict(migration_test.func_ret)
         migration_test.func_ret.clear()
         logging.debug("Migration returns function results:%s", func_returns)
+        aexpect.kill_tail_threads()
 
         # Check event output
         migration_base.check_event_output(params, test, virsh_session, remote_virsh_session)
