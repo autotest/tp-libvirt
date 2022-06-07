@@ -38,3 +38,8 @@ jobs:
       - run: echo "This job's status is ${{ job.status }}."
       - name: Run spellchecker
         run: pylint --errors-only --disable=all --enable=spelling --spelling-dict=en_US --spelling-private-dict-file=spell.ignore *
+
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: 16f120f9-6cce-4c4a-af0a-6642691e5373
