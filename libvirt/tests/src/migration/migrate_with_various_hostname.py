@@ -116,7 +116,6 @@ def run(test, params, env):
                          "--live --p2p --persistent --verbose")
     virsh_options = params.get("virsh_options", "")
     migrate_again = "yes" == params.get("migrate_again", "no")
-    src_state = params.get("virsh_migrate_src_state", "shut off")
     set_src_and_dst_hostname = "yes" == params.get("set_src_and_dst_hostname", "no")
     src_hostname = params.get("src_hostname")
     dst_hostname = params.get("dst_hostname")
@@ -218,9 +217,7 @@ def run(test, params, env):
                                         extra, None,
                                         extra_args)
         if int(migration_test.ret.exit_status) == 0:
-            migration_test.post_migration_check([vm], params, uri=dest_uri)
-        if not libvirt.check_vm_state(vm_name, state=src_state, uri=bk_uri):
-            test.fail("Can't get the expected vm state '%s'" % src_state)
+            migration_test.post_migration_check([vm], params, dest_uri=dest_uri, src_uri=bk_uri)
     finally:
         logging.info("Recover test environment")
         vm.connect_uri = bk_uri

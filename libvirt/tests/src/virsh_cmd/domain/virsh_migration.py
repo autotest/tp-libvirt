@@ -162,7 +162,7 @@ def run(test, params, env):
             if migrate_setup.RET_MIGRATION:
                 uptime = migrate_setup.post_migration_check(vm_list, params,
                                                             uptime,
-                                                            uri=dest_uri)
+                                                            dest_uri=dest_uri)
                 if migrate_back:
                     migrate_setup.migrate_pre_setup(src_uri, params)
                     logging.debug("Migrating back to source from %s to %s "

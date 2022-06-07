@@ -73,7 +73,7 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
             test.fail(info)
 
         uptime = migrate_setup.post_migration_check(vms, params, uptime,
-                                                    uri=desturi)
+                                                    dest_uri=desturi)
         if migrate_back and "cross" not in migration_type:
             migrate_setup.migrate_pre_setup(srcuri, params)
             logging.debug("Migrating back to source from %s to %s for %s time",

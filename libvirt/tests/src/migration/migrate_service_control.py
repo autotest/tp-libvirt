@@ -171,7 +171,7 @@ def run(test, params, env):
                                         extra, action_during_mig,
                                         extra_args)
         if int(migration_test.ret.exit_status) == 0:
-            migration_test.post_migration_check([vm], params, uri=dest_uri)
+            migration_test.post_migration_check([vm], params, dest_uri=dest_uri)
     finally:
         logging.info("Recover test environment")
         vm.connect_uri = bk_uri
