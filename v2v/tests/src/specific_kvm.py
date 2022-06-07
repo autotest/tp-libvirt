@@ -4,6 +4,7 @@ import logging
 import string
 
 import aexpect
+import xml.etree.ElementTree as ET
 
 from avocado.utils import service
 from avocado.utils import process
@@ -749,10 +750,14 @@ def run(test, params, env):
         # Save origin graphic type for result checking if source is KVM
         if hypervisor == 'kvm':
             ori_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            ori_vm_xml_root = ET.parse(ori_vm_xml.xml).getroot()
             params['ori_graphic'] = ori_vm_xml.xmltreefile.find(
                 'devices').find('graphics').get('type')
             params['vm_machine'] = ori_vm_xml.xmltreefile.find(
                 './os/type').get('machine')
+            element_loader = ori_vm_xml_root.find('./os/loader[@type="pflash"]')
+            if element_loader is not None:
+                params['boottype'] = 2 if element_loader.get('secure') == 'no' else 3
 
         backup_xml = None
         # Only kvm guest's xml needs to be backup currently
