@@ -42,7 +42,7 @@ def run(test, params, env):
         if 'vlan' in iface_dict:
             check_points.check_vlan(sriov_test_obj.pf_name, iface_dict)
         else:
-            sriov_base.check_vm_network_accessed(vm_session)
+            check_points.check_vm_network_accessed(vm_session)
 
         if network_dict:
             libvirt_network.check_network_connection(
@@ -92,9 +92,12 @@ def run(test, params, env):
     orig_config_xml = vmxml.copy()
 
     try:
-        sriov_test_obj.setup_default(dev_name, managed_disabled, network_dict)
+        sriov_test_obj.setup_default(dev_name=dev_name,
+                                     managed_disabled=managed_disabled,
+                                     network_dict=network_dict)
         run_test()
 
     finally:
         sriov_test_obj.teardown_default(
-            orig_config_xml, managed_disabled, dev_name, network_dict)
+            orig_config_xml, managed_disabled=managed_disabled,
+            dev_name=dev_name, network_dict=network_dict)
