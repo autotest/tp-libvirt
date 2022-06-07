@@ -2539,7 +2539,6 @@ def run(test, params, env):
                 guest_config.sub(pattern2repl)
 
                 logging.debug("Modify remote guest xml's machine type")
-                machine_type = "pc"
                 arch = platform.machine()
                 if arch.count("ppc64"):
                     machine_type = "pseries"
