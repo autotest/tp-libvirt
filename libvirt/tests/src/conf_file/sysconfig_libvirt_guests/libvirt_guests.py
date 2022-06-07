@@ -132,6 +132,10 @@ def run(test, params, env):
                       shut_complete_first_line)
 
         para_shut = int(parallel_shutdown)
+        logging.debug('shut_start_line_nums: %s', shut_start_line_nums)
+        if len(shut_start_line_nums) <= para_shut:
+            test.error('Did not get expected output. What we have is: %s' %
+                       shut_start_line_nums)
         if shut_start_line_nums[para_shut-1] > shut_complete_first_line:
             test.fail("Since parallel_shutdown is setting to non_zero, "
                       "%s guests should be shutdown concurrently."
