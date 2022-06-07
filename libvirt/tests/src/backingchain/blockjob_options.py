@@ -33,7 +33,7 @@ def run(test, params, env):
             process.run('rm -rf %s' % tmp_copy_path)
 
         cmd = "blockcopy %s %s %s --wait --verbose --transient-job " \
-              "--bandwidth 1000 " % (vm_name, dev, tmp_copy_path)
+              "--bandwidth %s " % (vm_name, dev, tmp_copy_path, bandwidth)
         virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC,
                                            auto_close=True)
         virsh_session.sendline(cmd)
@@ -114,8 +114,16 @@ def run(test, params, env):
             test.fail('After blockjob with --async, the blockcopy not '
                       'aborted immediately, spent %s seconds.' % res)
 
-        ret = virsh.blockjob(vm_name, dev, "--info", debug=True)
-        if "No current block job" not in ret.stdout_text.strip():
+        def _check_blockjob_info():
+            """
+            Check whether blockjob is successfully aborted.
+
+            :return: True if blockjob is aborted, False if not
+            """
+            ret = virsh.blockjob(vm_name, dev, "--info", debug=True)
+            return "No current block job" in ret.stdout_text.strip()
+
+        if not utils_misc.wait_for(_check_blockjob_info, 2, step=0.1):
             test.fail('After executing blockjob with --async,'
                       ' blockjob still working')
 
@@ -130,6 +138,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     case_name = params.get('case_name', 'blockjob')
     test_option = params.get('option_value', '')
+    bandwidth = params.get('bandwidth', '1000')
     dev = params.get('disk')
     # Create object
     test_obj = blockcommand_base.BlockCommand(test, vm, params)
