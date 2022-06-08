@@ -7,9 +7,12 @@ from virttest import utils_misc
 from virttest import utils_net
 from virttest import utils_package
 from virttest import utils_sriov
-from virttest import utils_test
 from virttest import virsh
+
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_libvirt import libvirt_virtio
 from virttest.utils_libvirt import libvirt_network
 
 from provider.interface import interface_base
@@ -84,23 +87,6 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
     return re.sub('\d+$', '1', output.strip().splitlines()[-1])
 
 
-def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5):
-    """
-    Test VM's network accessibility
-
-    :param vm_session: The session object to the guest
-    :param ping_count: The count value of ping command
-    :param ping_timeout: The timeout of ping command
-    :raise: test.fail when ping fails.
-    """
-    ping_dest = get_ping_dest(vm_session)
-    s, o = utils_test.ping(
-        ping_dest, count=ping_count, timeout=ping_timeout, session=vm_session)
-    if s:
-        raise exceptions.TestFail("Failed to ping %s! status: %s, "
-                                  "output: %s." % (ping_dest, s, o))
-
-
 class SRIOVTest(object):
     """
     Wrapper class for sriov testing
@@ -142,8 +128,10 @@ class SRIOVTest(object):
         if self.params.get('iface_dict'):
             iface_dict = eval(self.params.get('iface_dict', '{}'))
         else:
-            del pf_pci_addr['type']
-            del vf_pci_addr['type']
+            if pf_pci_addr.get('type'):
+                del pf_pci_addr['type']
+            if vf_pci_addr.get('type'):
+                del vf_pci_addr['type']
             iface_dict = eval(self.params.get('hostdev_dict', '{}'))
 
         self.test.log.debug("iface_dict: %s.", iface_dict)
@@ -157,11 +145,30 @@ class SRIOVTest(object):
         """
         vf_pci_addr = self.vf_pci_addr
         pf_name = self.pf_name
+        vf_name = self.vf_name
         net_forward_pf = str({'dev': pf_name})
         vf_list_attrs = str([vf_pci_addr])
         net_dict = eval(self.params.get('network_dict', '{}'))
         self.test.log.debug("network_dict: %s.", net_dict)
         return net_dict
+
+    def parse_iommu_test_params(self):
+        """
+        Parse iommu test dict from params
+
+        :return: The updated test dict
+        """
+        test_scenario = self.params.get("test_scenario", "")
+        dev_type = self.params.get("dev_type", "hostdev_interface")
+        mac_addr = self.parse_iface_dict().get('mac_address', '')
+        iommu_dict = eval(self.params.get('iommu_dict', '{}'))
+        br_dict = eval(self.params.get('br_dict',
+                                       "{'source': {'bridge': 'br0'}}"))
+
+        iommu_params = {"iommu_dict": iommu_dict,
+                        "test_scenario": test_scenario,
+                        "br_dict": br_dict, "dev_type": dev_type}
+        return iommu_params
 
     def get_dev_name(self):
         """
@@ -195,14 +202,15 @@ class SRIOVTest(object):
             iface_dev = interface_base.create_iface(dev_type, iface_dict)
         return iface_dev
 
-    def setup_default(self, dev_name, managed_disabled, network_dict=None):
+    def setup_default(self, **dargs):
         """
         Default setup
 
-        :param dev_name: Device name, eg. pci_0000_05_00_1
-        :param managed_disabled: Whether to enable managed
-        :param network_dict: Network dict
+        :param dargs: test keywords
         """
+        dev_name = dargs.get('dev_name')
+        managed_disabled = dargs.get('managed_disabled', False)
+        network_dict = dargs.get("network_dict", {})
         self.test.log.info("TEST_SETUP: Clear up the existing VM "
                            "interface(s) before testing.")
         libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'interface')
@@ -213,19 +221,63 @@ class SRIOVTest(object):
         if managed_disabled:
             virsh.nodedev_detach(dev_name, debug=True, ignore_errors=False)
 
-    def teardown_default(self, orig_config_xml, managed_disabled, dev_name,
-                         network_dict=None):
+    def teardown_default(self, orig_config_xml, **dargs):
         """
         Default cleanup
 
         :param orig_config_xml: Original VM xml to recover
-        :param managed_disabled: Whether to enable managed
-        :param dev_name: Device name
-        :param network_dict: Network dict
+        :param dargs: test keywords
         """
-        self.test.log.info("TEST_TEARDOWN: Recover test enviroment.")
+        dev_name = dargs.get('dev_name')
+        managed_disabled = dargs.get('managed_disabled', False)
+        network_dict = dargs.get("network_dict", {})
+        self.test.log.info("TEST_TEARDOWN: Recover test environment.")
+        if self.vm.is_alive():
+            self.vm.destroy(gracefully=False)
         orig_config_xml.sync()
         if managed_disabled:
             virsh.nodedev_reattach(dev_name, debug=True, ignore_errors=False)
         if network_dict:
             libvirt_network.create_or_del_network(network_dict, True)
+
+    def setup_iommu_test(self, **dargs):
+        """
+        iommu test environment setup
+
+        :param dargs: Other test keywords
+        """
+        iommu_dict = dargs.get('iommu_dict', {})
+        test_scenario = dargs.get('test_scenario', '')
+        br_dict = dargs.get('br_dict', "{'source': {'bridge': 'br0'}}")
+        brg_dict = {'pf_name': self.pf_name,
+                    'bridge_name': br_dict['source']['bridge']}
+        dev_type = dargs.get("dev_type", "interface")
+
+        self.setup_default(**dargs)
+        if iommu_dict:
+            self.test.log.info("TEST_SETUP: Add iommu device.")
+            libvirt_virtio.add_iommu_dev(self.vm, iommu_dict)
+
+        if test_scenario == "failover":
+            self.test.log.info("TEST_SETUP: Create host bridge.")
+            utils_sriov.add_or_del_connection(brg_dict)
+            self.test.log.info("TEST_SETUP: Add bridge interface.")
+            br_dev = self.create_iface_dev(dev_type, br_dict)
+            libvirt.add_vm_device(
+                vm_xml.VMXML.new_from_dumpxml(self.vm.name), br_dev)
+
+    def teardown_iommu_test(self, orig_config_xml, **dargs):
+        """
+        Cleanup iommu test environment
+
+        :param orig_config_xml: Original VM xml to recover
+        :param dargs: Other test keywords
+        """
+        test_scenario = dargs.get('test_scenario', '')
+        br_dict = dargs.get('br_dict', "{'source': {'bridge': 'br0'}}")
+        brg_dict = {'pf_name': self.pf_name,
+                    'bridge_name': br_dict['source']['bridge']}
+        self.teardown_default(orig_config_xml, **dargs)
+        if test_scenario == 'failover':
+            self.test.log.info("TEST_SETUP: Remove host bridge.")
+            utils_sriov.add_or_del_connection(brg_dict, is_del=True)

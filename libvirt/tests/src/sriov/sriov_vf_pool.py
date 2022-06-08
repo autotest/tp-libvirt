@@ -1,5 +1,6 @@
 import logging as log
 
+from provider.sriov import check_points
 from provider.sriov import sriov_base
 
 from virttest import utils_libvirtd
@@ -83,7 +84,7 @@ def run(test, params, env):
             virsh.attach_device(vm_name, iface.xml, debug=True,
                                 ignore_status=False)
         libvirt_vmxml.check_guest_xml(vm.name, params["net_name"])
-        sriov_base.check_vm_network_accessed(vm_session)
+        check_points.check_vm_network_accessed(vm_session)
 
     def test_connection():
         """
