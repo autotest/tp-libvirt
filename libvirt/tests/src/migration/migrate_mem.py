@@ -436,7 +436,7 @@ def run_migration(vm, params, test):
 
     mig_result = migration_test.ret
     if int(mig_result.exit_status) == 0:
-        migration_test.post_migration_check([vm], params, uri=dest_uri)
+        migration_test.post_migration_check([vm], params, dest_uri=dest_uri)
 
     if src_libvirt_file:
         src_libvirt_file.restore()
