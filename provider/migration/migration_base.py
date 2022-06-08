@@ -118,12 +118,14 @@ def setup_conn_obj(conn_type, params, test):
         conn_obj = utils_conn.TLSConnection(params)
     elif conn_type.upper() == 'TCP':
         conn_obj = utils_conn.TCPConnection(params)
+    elif conn_type.upper() == 'SSH':
+        conn_obj = utils_conn.SSHConnection(params)
     elif conn_type.upper() == 'UNIX_PROXY':
         conn_obj = utils_conn.UNIXSocketConnection(params)
     elif conn_type.upper() == 'RDMA':
         test.cancel("TODO: rdma")
     else:
-        test.error("Invalid parameter, only support tls/tcp/unix_socket/rdma")
+        test.error("Invalid parameter, only support tls/tcp/ssh/unix_socket/rdma")
     conn_obj.auto_recover = True
     conn_obj.conn_setup()
     return conn_obj
