@@ -145,7 +145,7 @@ def chk_output_shutoff(output, expect_out, options, test):
 
 def reset_env(vm_name, xml_file):
     virsh.destroy(vm_name)
-    virsh.undefine(vm_name)
+    virsh.undefine(vm_name, options='--nvram')
     virsh.define(xml_file)
     if os.path.exists(xml_file):
         os.remove(xml_file)

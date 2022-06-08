@@ -513,7 +513,7 @@ def run(test, params, env):
             transient_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
-            virsh.undefine(vm_name, debug=True, ignore_status=False)
+            virsh.undefine(vm_name, options='--nvram', debug=True, ignore_status=False)
             virsh.create(transient_vmxml.xml, ignore_status=False, debug=True)
             expected_top_image = vm.get_blk_devices()[device_target].get('source')
             options = params.get("blockcopy_options")

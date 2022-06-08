@@ -77,7 +77,7 @@ def reset_env(vm_name, xml_file):
     :xml_file: domain xml file
     """
     virsh.destroy(vm_name)
-    virsh.undefine(vm_name)
+    virsh.undefine(vm_name, options='--nvram')
     virsh.define(xml_file)
     if os.path.exists(xml_file):
         os.remove(xml_file)

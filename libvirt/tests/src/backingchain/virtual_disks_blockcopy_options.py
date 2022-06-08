@@ -235,7 +235,7 @@ def run(test, params, env):
         try:
             # Create a transient VM
             transient_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            virsh.undefine(vm_name, debug=True, ignore_status=False)
+            virsh.undefine(vm_name, options='--nvram', debug=True, ignore_status=False)
             virsh.create(transient_vmxml.xml, ignore_status=False, debug=True)
             vm.wait_for_login().close()
             debug_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)

@@ -67,7 +67,7 @@ def run(test, params, env):
         xml_file = new_xml.xmltreefile.name
 
         # undefine the original vm
-        virsh.undefine(vm_name)
+        virsh.undefine(vm_name, options='--nvram')
         return xml_file
 
     # Run test
@@ -101,7 +101,7 @@ def run(test, params, env):
         finally:
             # for positive test, undefine the defined vm firstly
             if not ret.exit_status:
-                virsh.undefine(vm_name)
+                virsh.undefine(vm_name, options='--nvram')
             # restore the original vm
             ret = virsh.define(xml_backup_file)
             if ret.duration > 3:

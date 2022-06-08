@@ -303,7 +303,7 @@ def run(test, params, env):
         # Cleanup created vm anyway
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        virsh.undefine(new_vm_name)
+        virsh.undefine(new_vm_name, options='--nvram')
 
         # Cleanup iscsi device for block if it is necessary
         if source_type == "block":

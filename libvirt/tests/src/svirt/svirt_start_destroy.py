@@ -271,7 +271,7 @@ def run(test, params, env):
             os.chown(path, int(label_list[0]), int(label_list[1]))
         backup_xml.sync()
         if xattr_check:
-            virsh.undefine(guest_name, ignore_status=True)
+            virsh.undefine(guest_name, options='--nvram', ignore_status=True)
         utils_selinux.set_status(backup_sestatus)
         if (security_driver or security_default_confined or
                 security_require_confined):

@@ -300,7 +300,7 @@ def run(test, params, env):
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        virsh.undefine(vm_name[0])
+        virsh.undefine(vm_name[0], options='--nvram')
         virsh.define(vm_xml_file)
         os.remove(vm_xml_file)
         if os.path.exists(save_file):
