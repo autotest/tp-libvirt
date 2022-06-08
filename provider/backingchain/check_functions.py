@@ -5,23 +5,63 @@ from avocado.utils import process
 
 from virttest import libvirt_storage
 from virttest import utils_misc
+from virttest.libvirt_xml import vm_xml
 
 LOG = logging.getLogger('avocado.' + __name__)
 
 
 class Checkfunction(object):
     """
-        Prepare data for blockcommand test
+    Prepare data for blockcommand test
 
-        :param test: Test object
-        :param vm:  A libvirt_vm.VM class instance.
-        :param params: Dict with the test parameters.
+    :param test: Test object
+    :param vm:  A libvirt_vm.VM class instance.
+    :param params: Dict with the test parameters.
     """
 
     def __init__(self, test, vm, params):
         self.test = test
         self.vm = vm
         self.params = params
+        self.original_disk_source = ''
+
+    def check_backingchain_from_vmxml(self, disk_type, target_dev, expected_chain):
+        """
+        Compare vmxml backingchain and expected chain
+
+        :param disk_type: disk type
+        :param target_dev: dev of target disk
+        :param expected_chain: expected backingchain
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
+        LOG.debug("Current vmxml is:\n%s", vmxml)
+
+        source_list = []
+        disks = vmxml.devices.by_device_tag('disk')
+        for disk in disks:
+            if disk.target['dev'] == target_dev:
+                active_level_path = \
+                    disk.xmltreefile.find('source').get('file') \
+                    or disk.xmltreefile.find('source').get('dev') \
+                    or disk.xmltreefile.find('source').get('volume') \
+                    or disk.xmltreefile.find('source').get('name')
+
+                backing_list = disk.get_backingstore_list()
+                if disk_type != 'rbd_with_auth':
+                    backing_list.pop()
+                source_list = [elem.find('source').get('file') or
+                               elem.find('source').get('name') or
+                               elem.find('source').get('dev') or
+                               elem.find('source').get('volume')
+                               for elem in backing_list]
+                source_list.insert(0, active_level_path)
+                break
+
+        if source_list != expected_chain:
+            self.test.fail('Expect source file to be %s, '
+                           'but got %s' % (expected_chain, source_list))
+        else:
+            LOG.debug('Get correct backingchin after blockcommit')
 
     def check_block_operation_result(self, vmxml, blockcommand,
                                      target_dev, bc_chain):
@@ -158,3 +198,23 @@ class Checkfunction(object):
             self.test.fail('qemu-img info output of backing chain '
                            'is not correct: %s' % img_info)
         return exist
+
+    def check_hash_list(self, item_list, hash_list, session=None):
+        """
+        Check the file list current hash value same as the hash value list
+
+        :param item_list: file or dev need to check
+        :param hash_list: hash value list
+        :param session: The session object to the host
+        """
+
+        for index, item in enumerate(item_list):
+            if session:
+                ret, current_hash = session.cmd_status_output("sha256sum %s" % item)
+            else:
+                current_hash = process.run("sha256sum %s" % item).stdout_text.strip().split()[0]
+
+            if current_hash != hash_list[index]:
+                self.test.fail("File:%s hash :%s is different from hash before "
+                               "blockcommit:%s" % (item, current_hash,
+                                                   item_list[index]))
