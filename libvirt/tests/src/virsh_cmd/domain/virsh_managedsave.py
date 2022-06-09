@@ -110,12 +110,12 @@ def run(test, params, env):
         if not os.path.exists(managed_save_file):
             test.fail("Can't find managed save image")
         #undefine domain with no options.
-        if not virsh.undefine(vm_name, options=None,
+        if not virsh.undefine(vm_name, options='--nvram',
                               ignore_status=True).exit_status:
             test.fail("Guest shouldn't be undefined"
                       "while domain managed save image exists")
         #undefine domain with managed-save option.
-        if virsh.undefine(vm_name, options="--managed-save",
+        if virsh.undefine(vm_name, options="--managed-save --nvram",
                           ignore_status=True).exit_status:
             test.fail("Guest can't be undefine with "
                       "managed-save option")

@@ -204,7 +204,7 @@ def run(test, params, env):
         check_state('shut off')
 
         # Undefine
-        result = virsh.undefine(vm_name, **virsh_args)
+        result = virsh.undefine(vm_name, options='--nvram', **virsh_args)
         utlv.check_exit_status(result)
         if not virsh.domain_exists(vm_name, **virsh_args):
             logging.info("Undefine LXC domain successfully")

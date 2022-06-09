@@ -63,7 +63,7 @@ def run(test, params, env):
     if wipe_data:
         option += " --wipe-storage"
     nvram_o = None
-    if platform.machine() == 'aarch64':
+    if platform.machine() in ['aarch64', 'x86_64']:
         nvram_o = " --nvram"
         option += nvram_o
 

@@ -251,7 +251,7 @@ def cleanup_vm(vm_name=None):
     """
     try:
         if vm_name is not None:
-            virsh.undefine(vm_name)
+            virsh.undefine(vm_name, options='--nvram')
     except process.CmdError:
         pass
 

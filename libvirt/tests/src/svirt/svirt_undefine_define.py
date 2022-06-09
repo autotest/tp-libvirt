@@ -58,7 +58,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         virsh.dumpxml(vm.name, to_file=xml_file)
-        cmd_result = virsh.undefine(vm.name)
+        cmd_result = virsh.undefine(vm.name, options='--nvram')
         if cmd_result.exit_status:
             test.fail("Failed to undefine vm."
                       "Detail: %s" % cmd_result)

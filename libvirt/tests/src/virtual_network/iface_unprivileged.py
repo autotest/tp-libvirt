@@ -220,7 +220,7 @@ def run(test, params, env):
     finally:
         if 'upu_virsh' in locals():
             virsh.destroy(upu_vm_name, unprivileged_user=up_user)
-            virsh.undefine(upu_vm_name, unprivileged_user=up_user)
+            virsh.undefine(upu_vm_name, options='--nvram', unprivileged_user=up_user)
         if case == 'precreated':
             try:
                 if device_type == 'tap':

@@ -34,7 +34,7 @@ def run(test, params, env):
         vmxml.numa_memory = numa_memory
         logging.debug("vm xml is %s", vmxml)
         vmxml.sync()
-        result = virsh.undefine(vm_name, debug=True, ignore_status=True)
+        result = virsh.undefine(vm_name, options='--nvram', debug=True, ignore_status=True)
         if result.exit_status:
             test.fail("Undefine vm failed, check %s" % bug_url)
     finally:

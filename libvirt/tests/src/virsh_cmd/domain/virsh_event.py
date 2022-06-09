@@ -217,7 +217,7 @@ def run(test, params, env):
                             dom.pause()
 
                 if event == "undefine":
-                    virsh.undefine(dom.name, **virsh_dargs)
+                    virsh.undefine(dom.name, options='--nvram', **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Undefined Removed")
                 elif event == "create":

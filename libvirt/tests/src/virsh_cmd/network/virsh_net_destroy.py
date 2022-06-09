@@ -117,7 +117,7 @@ def run(test, params, env):
             else:
                 logging.debug("undefine the vm, then create the vm...")
                 vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                virsh.undefine(vm_name)
+                virsh.undefine(vm_name, options='--nvram')
                 ret = virsh.create(vmxml.xml)
                 logging.debug(ret.stdout)
             # check the create or start cmd status
