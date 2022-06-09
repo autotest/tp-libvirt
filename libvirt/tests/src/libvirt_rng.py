@@ -179,7 +179,7 @@ def run(test, params, env):
         if backend_protocol:
             backend.backend_protocol = backend_protocol
         rng_xml.backend = backend
-        if detach_alias:
+        if detach_alias or urandom:
             rng_xml.alias = dict(name=rng_alias)
         if with_packed:
             rng_xml.driver = dict(packed=driver_packed)
@@ -492,6 +492,7 @@ def run(test, params, env):
     wait_timeout = int(params.get("wait_timeout", 60))
     with_packed = "yes" == params.get("with_packed", "no")
     driver_packed = params.get("driver_packed", "on")
+    urandom = "yes" == params.get("urandom", "no")
 
     if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(6, 2, 0):
         test.cancel("Builtin backend is not supported on this libvirt version")
@@ -585,6 +586,13 @@ def run(test, params, env):
 
             rng_xml = modify_rng_xml(params, not test_snapshot, attach_rng)
 
+            if urandom:
+                device_alias = "ua-" + str(uuid.uuid4())
+                params.update({"rng_alias": device_alias})
+                rng_xml = modify_rng_xml(params, False, True)
+                vmxml.add_device(rng_xml)
+                vmxml.sync()
+
         try:
             # Add tcp random server
             if random_source and params.get("backend_type") == "tcp" and not test_guest_dump:
@@ -635,6 +643,9 @@ def run(test, params, env):
                 check_guest_dump(session, True)
             if test_snapshot:
                 check_snapshot(bgjob)
+
+            if urandom:
+                check_rng_xml(rng_xml, True)
 
             if detach_alias:
                 result = virsh.detach_device_alias(vm_name, device_alias,
