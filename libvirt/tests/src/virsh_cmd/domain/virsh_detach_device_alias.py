@@ -10,6 +10,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.watchdog import Watchdog
 from virttest.utils_test import libvirt
 from virttest.utils_disk import get_scsi_info
+from virttest.utils_libvirt import libvirt_vmxml
 
 from avocado.utils import process
 
@@ -51,6 +52,9 @@ def run(test, params, env):
     # watchdog params
     watchdog_type = params.get("detach_watchdog_type")
     watchdog_dict = eval(params.get('watchdog_dict', '{}'))
+    # interface params
+    interface_type = params.get("detach_interface_type")
+    interface_dict = eval(params.get('interface_dict', '{}'))
 
     device_alias = "ua-" + str(uuid.uuid4())
 
@@ -156,6 +160,22 @@ def run(test, params, env):
         if not vm.is_alive():
             vm.start()
         vm.wait_for_login().close()
+
+        attach_device = False
+
+    if interface_type:
+        mac = libvirt.get_interface_details(vm_name)[0]['mac']
+        vmxml.remove_all_device_by_type('interface')
+        vmxml.sync()
+
+        interface_dict.update({"alias": {"name": device_alias},
+                               "mac_address": mac})
+        libvirt_vmxml.get_or_create_vm_device_if_absent(
+            vmxml=vmxml, dev_type='interface', dev_dict=interface_dict)
+
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login(timeout=240).close()
 
         attach_device = False
 
