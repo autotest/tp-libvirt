@@ -176,7 +176,8 @@ def run(test, params, env):
                                (iface_type, iface_source['network'],
                                 iface_model, mac, attach_option))
                     ret = virsh.attach_interface(vm_name, options,
-                                                 ignore_status=True)
+                                                 ignore_status=True,
+                                                 debug=True)
                 if ret.exit_status:
                     if any([msg in ret.stderr for msg in err_msgs]):
                         logging.debug("No more pci slots, can't attach more devices")
