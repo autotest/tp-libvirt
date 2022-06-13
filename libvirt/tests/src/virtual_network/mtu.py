@@ -19,6 +19,7 @@ from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.utils_test import libvirt
 
 DEFAULT_NET = 'default'
+VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -256,8 +257,8 @@ def run(test, params, env):
                         bridge_name, net_type,
                         bridge_name=br
                     )
-                    virsh.net_create(test_net, debug=True)
-                    virsh.net_dumpxml(bridge_name, debug=True)
+                    virsh.net_create(test_net, **VIRSH_ARGS)
+                    virsh.net_dumpxml(bridge_name, **VIRSH_ARGS)
                 if mtu_type == 'interface':
                     iface_type = net_type
                     bridge_name = br
@@ -287,18 +288,18 @@ def run(test, params, env):
                     iface = create_iface('network', source_net='default',
                                          mtu=mtu_size, model_net=model)
                     params['mac'] = iface.mac_address
-                    virsh.attach_device(vm_name, iface.xml, debug=True)
+                    virsh.attach_device(vm_name, iface.xml, **VIRSH_ARGS)
                     virsh.dumpxml(vm_name, debug=True)
                     dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                     if params['mac'] not in str(dom_xml):
                         test.fail('Failed to attach interface with mtu')
                 save_path = os.path.join(data_dir.get_tmp_dir(), vm_name + '.save')
                 time.sleep(wait_for_up)
-                virsh.save(vm_name, save_path, debug=True)
-                virsh.restore(save_path, debug=True)
+                virsh.save(vm_name, save_path, **VIRSH_ARGS)
+                virsh.restore(save_path, **VIRSH_ARGS)
             if check == 'managedsave':
-                virsh.managedsave(vm_name, debug=True)
-                virsh.start(vm_name, debug=True)
+                virsh.managedsave(vm_name, **VIRSH_ARGS)
+                virsh.start(vm_name, **VIRSH_ARGS)
 
             # Check in both host and vm
             check_mtu(mtu_size, check_qemu)
@@ -307,7 +308,7 @@ def run(test, params, env):
                 vm_login(timeout=timeout).close()
 
             if check == 'hotplug_save':
-                virsh.detach_interface(vm_name, 'network %s' % params['mac'], debug=True)
+                virsh.detach_interface(vm_name, 'network %s' % params['mac'], **VIRSH_ARGS)
                 time.sleep(5)
                 dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 if params['mac'] in str(dom_xml):
@@ -351,7 +352,7 @@ def run(test, params, env):
                     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
                     if with_net:
                         test_net = create_network_xml(macv_name, 'macvtap', base_if)
-                        virsh.net_create(test_net, debug=True)
+                        virsh.net_create(test_net, **VIRSH_ARGS)
                         iface = create_iface('network', source_net=macv_name, mtu=mtu_size, model_net=model)
                         if hotplug:
                             result = virsh.attach_device(vm_name, iface.xml, debug=True)
