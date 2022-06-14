@@ -29,7 +29,7 @@ def run(test, params, env):
         if uri_port:
             migration_test.migrate_pre_setup(dest_uri, params, cleanup=False, ports=uri_port)
 
-        migration_base.setup_conn_obj('tcp', conn_obj_list, params, test)
+        conn_obj_list.append(migration_base.setup_conn_obj('tcp', params, test))
         base_steps.setup_default(vm, params, test)
 
     def cleanup_tcp(migration_test, vm, dest_uri, src_uri, orig_config_xml, test):

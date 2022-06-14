@@ -103,14 +103,14 @@ def do_migration(vm, mig_test, src_uri, dest_uri, options, virsh_options,
                               **extra_args)
 
 
-def setup_conn_obj(conn_type, conn_obj_list, params, test):
+def setup_conn_obj(conn_type, params, test):
     """
     Setup connection object, like TLS
 
     :param conn_type: str, connection type
-    :param conn_obj_list, connection object list
     :param params: dict, used to setup the connection
     :param test: test object
+    :return: the connection object
     """
     test.log.debug("Begin to create new {} connection".format(conn_type.upper()))
     conn_obj = None
@@ -124,9 +124,9 @@ def setup_conn_obj(conn_type, conn_obj_list, params, test):
         test.cancel("TODO: rdma")
     else:
         test.error("Invalid parameter, only support tls/tcp/unix_socket/rdma")
-    conn_obj_list.append(conn_obj)
     conn_obj.auto_recover = True
     conn_obj.conn_setup()
+    return conn_obj
 
 
 def cleanup_conn_obj(conn_obj_list, test):
