@@ -396,7 +396,7 @@ def run(test, params, env):
                 vm.destroy(gracefully=False)
             # Wait for VM to be in shut off state
             utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
-            vm.undefine()
+            virsh.undefine(vm_name, '--nvram', debug=True, ignore_status=False)
             if virsh.create(vmxml_for_test.xml, ignore_status=True,
                             debug=True).exit_status:
                 vmxml_backup.define()
