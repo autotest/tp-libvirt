@@ -341,7 +341,7 @@ def run(test, params, env):
         for dom in vms[1:]:
             if dom.is_alive():
                 dom.destroy(gracefully=False)
-            virsh.remove_domain(dom.name, "--remove-all-storage")
+            virsh.remove_domain(dom.name, "--remove-all-storage --nvram")
 
         if libvirt_guests_file_create:
             os.remove(libvirt_guests_file)
