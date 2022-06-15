@@ -363,8 +363,6 @@ def run(test, params, env):
         elif domain_operation == "start_with_packed":
             expect_xml_line = "packed=\"%s\"" % driver_packed
             libvirt.check_dumpxml(vm, expect_xml_line)
-            expect_qemu_line = "packed=%s" % driver_packed
-            libvirt.check_qemu_cmd_line(expect_qemu_line)
         elif domain_operation == "":
             logging.debug("No domain operation provided, so skip it")
         else:
