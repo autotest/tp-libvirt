@@ -193,7 +193,7 @@ def run(test, params, env):
             raise exceptions.TestSkipError("Can't pause the domain")
     elif pre_vm_state == "transient":
         logging.info("Creating %s..." % vm_name)
-        vm.undefine()
+        virsh.undefine(vm_name, '--nvram', ignore_status=False)
         if virsh.create(backup_xml.xml, **virsh_dargs).exit_status:
             backup_xml.define()
             raise exceptions.TestSkipError("Can't create the domain")
