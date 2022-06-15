@@ -243,7 +243,7 @@ def run(test, params, env):
             time.sleep(5)
         elif pre_vm_state == "transient":
             logging.info("Creating %s..." % vm_name)
-            vm.undefine()
+            virsh.undefine(vm_name, '--nvram', ignore_status=False)
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
                 test.cancel("Can't create the domain")
