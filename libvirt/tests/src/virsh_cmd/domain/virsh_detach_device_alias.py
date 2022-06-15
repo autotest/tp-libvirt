@@ -164,13 +164,8 @@ def run(test, params, env):
         attach_device = False
 
     if interface_type:
-        mac = libvirt.get_interface_details(vm_name)[0]['mac']
-        vmxml.remove_all_device_by_type('interface')
-        vmxml.sync()
-
-        interface_dict.update({"alias": {"name": device_alias},
-                               "mac_address": mac})
-        libvirt_vmxml.get_or_create_vm_device_if_absent(
+        interface_dict.update({"alias": {"name": device_alias}})
+        libvirt_vmxml.modify_vm_device(
             vmxml=vmxml, dev_type='interface', dev_dict=interface_dict)
 
         if not vm.is_alive():
