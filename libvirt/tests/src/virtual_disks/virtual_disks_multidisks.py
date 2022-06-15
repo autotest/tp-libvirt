@@ -1854,15 +1854,10 @@ def run(test, params, env):
                 dev_devno = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                        "address", "devno").replace("0x", "")
                 dev_id_prefix = "fe.0."
-                device_option = "scsi=off"
 
-                cmd += (" | grep virtio-blk-ccw,%s,devno=%s%s"
-                        % (device_option, dev_id_prefix, dev_devno))
+                cmd += (" | grep virtio-blk-ccw,devno=%s%s"
+                        % (dev_id_prefix, dev_devno))
 
-                if device_bus[0] == 'scsi':
-                    dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
-                                                        "alias", "name")
-                    cmd += " | grep -E 'drive\W+id\W+%s'" % dev_id
             else:
                 dev_bus = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                          "address", "bus"), 16)
