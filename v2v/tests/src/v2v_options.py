@@ -468,7 +468,7 @@ def run(test, params, env):
                 expected_uri = re.findall(r"-oc\s(\S+)", cmd)[0]
                 check_connection(output, expected_uri)
             if output_mode == "rhev":
-                if not utils_v2v.import_vm_to_ovirt(params, address_cache):
+                if not utils_v2v.import_vm_to_ovirt(params, address_cache, 1800):
                     test.fail("Import VM failed")
                 else:
                     vmchecker = VMChecker(test, params, env)
