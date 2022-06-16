@@ -2804,7 +2804,7 @@ def run(test, params, env):
         logging.info("Recovery test environment")
 
         logging.debug("Removing vm on remote if it exists.")
-        virsh.remove_domain(vm.name, uri=uri)
+        virsh.remove_domain(vm.name, options='--nvram', uri=uri)
         if src_libvirt_file:
             src_libvirt_file.restore()
         if remote_libvirt_file:
