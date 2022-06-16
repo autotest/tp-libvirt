@@ -152,7 +152,7 @@ def run(test, params, env):
                 new_vm.destroy(gracefully=False)
             if pre_vm_state == "with_snapshot":
                 libvirt.clean_up_snapshots(new_name)
-            new_vm.undefine()
+            new_vm.undefine(options='--nvram')
 
         # Recover domain state
         if pre_vm_state != "shutoff":
