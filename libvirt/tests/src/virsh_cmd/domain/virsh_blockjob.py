@@ -97,7 +97,7 @@ def run(test, params, env):
     # Prepare transient/persistent vm
     original_xml = vm.backup_xml()
     if not persistent_vm and vm.is_persistent():
-        vm.undefine()
+        virsh.undefine(vm_name, '--nvram', ignore_status=False)
     elif persistent_vm and not vm.is_persistent():
         vm.define(original_xml)
 
