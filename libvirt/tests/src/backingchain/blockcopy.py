@@ -37,7 +37,7 @@ def run(test, params, env):
         if case:
             if case == 'reuse_external':
                 # Create a transient vm for test
-                vm.undefine()
+                virsh.undefine(vm_name, '--nvram', ignore_status=False)
                 virsh.create(vmxml.xml)
 
                 all_disks = vmxml.get_disk_source(vm_name)
