@@ -903,7 +903,7 @@ def run(test, params, env):
             vmxml_for_test = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
-            vm.undefine()
+            vm.undefine(options='--nvram')
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
                 test.fail("Can't create the domain")
