@@ -470,7 +470,7 @@ def run(test, params, env):
                 elif expect_fail:
                     test.fail("Expect fail but guest tpm still works")
                 if active_pcr_banks or check_pcrbanks:
-                    output3 = session.cmd_output("tpm2_pcrread")
+                    output3 = session.cmd_output("tpm2_pcrread").replace(' ', '')
                     logging.debug("Command output:\n %s", output3)
                     actual_pcrbanks = []
                     if output3.find('sha256') != 6:
