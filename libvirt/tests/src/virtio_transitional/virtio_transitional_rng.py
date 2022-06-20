@@ -13,6 +13,7 @@ from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
+from src.virtio_transitional import virtio_transitional_base
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -153,11 +154,12 @@ def run(test, params, env):
                 .get_controllers('pci', 'pcie-to-pci-bridge')[0]
         pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
 
-        # Update nic and vm disks
+        # Update nic/nvram and vm disks
         if (params["os_variant"] == 'rhel6' or
                 'rhel6' in params.get("shortname")):
             iface_params = {'model': 'virtio-transitional'}
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
+            virtio_transitional_base.remove_rhel6_nvram(vm_name)
         libvirt.set_vm_disk(vm, params)
         # vmxml will not be updated since set_vm_disk
         # sync with another dumped xml inside the function

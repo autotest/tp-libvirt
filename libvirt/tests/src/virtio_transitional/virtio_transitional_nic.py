@@ -18,6 +18,8 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
 
+from src.virtio_transitional import virtio_transitional_base
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -290,6 +292,9 @@ def run(test, params, env):
         if not os.path.exists(target_path):
             download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
+    if (params["os_variant"] == 'rhel6' or
+            'rhel6' in params.get("shortname")):
+        virtio_transitional_base.remove_rhel6_nvram(vm_name)
     if set_crypto_policy:
         utils_conn.update_crypto_policy(set_crypto_policy)
 

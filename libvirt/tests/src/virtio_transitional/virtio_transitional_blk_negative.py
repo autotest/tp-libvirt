@@ -12,6 +12,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 
+from src.virtio_transitional import virtio_transitional_base
+
 
 def run(test, params, env):
     """
@@ -39,6 +41,7 @@ def run(test, params, env):
                 'rhel6' in params.get("shortname")):
             iface_params = {'model': 'virtio-transitional'}
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
+            virtio_transitional_base.remove_rhel6_nvram(vm_name)
         try:
             libvirt.set_vm_disk(vm, params)
         except xcepts.LibvirtXMLError:

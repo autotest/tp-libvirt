@@ -106,3 +106,18 @@ def get_free_root_port(vm_name):
             libvirt.add_controller(vm_name, cntl_add)
             return "%0#4x" % int(index)
     return None
+
+
+def remove_rhel6_nvram(vm_name):
+    """
+    Remove nvram setting for rhel6 guest
+
+    :param vm_name: VM name
+    """
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    os_xml = vmxml.os
+    os_xml.del_nvram()
+    os_xml.del_loader()
+    vmxml.os = os_xml
+    vmxml.xmltreefile.write()
+    vmxml.sync("--nvram")

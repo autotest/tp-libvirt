@@ -86,6 +86,8 @@ def run(test, params, env):
             # rhel6 guest to make it works for login
             iface_params = {'model': 'virtio-transitional'}
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
+            # Remove nvram for rhel6 guest
+            virtio_transitional_base.remove_rhel6_nvram(vm_name)
         libvirt.set_vm_disk(vm, params)
         if hotplug:
             file_arg = vsock_xml.xml
