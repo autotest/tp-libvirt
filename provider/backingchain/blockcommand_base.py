@@ -31,6 +31,7 @@ class BlockCommand(object):
         self.snap_name_list = []
         self.tmp_dir = data_dir.get_data_dir()
         self.new_image_path = ''
+        self.copy_image = ''
         self.old_parts = []
         self.original_disk_source = ''
 
@@ -72,23 +73,30 @@ class BlockCommand(object):
         # Update vm disk
         libvirt.set_vm_disk(self.vm, self.params)
 
-    def prepare_snapshot(self, snap_num=3, option='--disk-only'):
+    def prepare_snapshot(self, start_num=0, snap_num=3,
+                         snap_path="", option='--disk-only', extra=''):
         """
         Prepare domain snapshot
 
+        :params start_num: snap path start index
         :params snap_num: snapshot number, default value is 3
+        :params snap_path: path of snap
         :params option: option to create snapshot, default value is '--disk-only'
+        :params extra: extra option to create snap
         """
         # Create backing chain
-        for i in range(snap_num):
-            snap_option = "%s %s --diskspec %s,file=%s" % \
-                          ('snap%d' % i, option, self.new_dev,
-                           self.tmp_dir + 'snap%d' % i)
+        for i in range(start_num, snap_num):
+            if not snap_path:
+                path = self.tmp_dir + '%d' % i
+            else:
+                path = snap_path
+            snap_option = "%s %s --diskspec %s,file=%s%s" % \
+                          ('snap%d' % i, option, self.new_dev, path, extra)
 
             virsh.snapshot_create_as(self.vm.name, snap_option,
                                      ignore_status=False,
                                      debug=True)
-            self.snap_path_list.append(self.tmp_dir + 'snap%d' % i)
+            self.snap_path_list.append(path)
             self.snap_name_list.append('snap%d' % i)
 
     def convert_expected_chain(self, expected_chain_index):
@@ -109,7 +117,6 @@ class BlockCommand(object):
         """
         Clean all new created snap
         """
-        LOG.info('Start cleaning up.')
         for ss in self.snap_name_list:
             virsh.snapshot_delete(self.vm.name, '%s --metadata' % ss, debug=True)
         for sp in self.snap_path_list:
