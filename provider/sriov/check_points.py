@@ -1,13 +1,17 @@
+import aexpect
 import logging
 import re
 
 from avocado.core import exceptions
 from avocado.utils import process
 
+from virttest import utils_misc
 from virttest import utils_net
+from virttest import utils_test
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
+from provider.sriov import sriov_base
 
 LOG = logging.getLogger('avocado.' + __name__)
 
@@ -115,3 +119,63 @@ def check_vlan(dev_name, iface_dict, status_error=False):
         if act_value != exp_value:
             raise exceptions.TestFail("Incorrect vlan setting! Expected: %s, "
                                       "Actual: %s." % (exp_value, act_value))
+
+
+def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
+                              tcpdump_iface=None, tcpdump_status_error=False):
+    """
+    Test VM's network accessibility
+
+    :param vm_session: The session object to the guest
+    :param ping_count: The count value of ping command
+    :param ping_timeout: The timeout of ping command
+    :param tcpdump_iface: The interface to check
+    :param tcpdump_status_error: Whether the tcpdump's output should include
+        the string "ICMP echo request"
+    :raise: test.fail when ping fails.
+    """
+    ping_dest = sriov_base.get_ping_dest(vm_session)
+    if tcpdump_iface:
+        cmd = "tcpdump  -i %s icmp" % tcpdump_iface
+        tcpdump_session = aexpect.ShellSession('bash')
+        tcpdump_session.sendline(cmd)
+    s, o = utils_test.ping(
+        ping_dest, count=ping_count, timeout=ping_timeout, session=vm_session)
+    if s:
+        raise exceptions.TestFail("Failed to ping %s! status: %s, "
+                                  "output: %s." % (ping_dest, s, o))
+    if tcpdump_iface:
+        output = tcpdump_session.get_stripped_output()
+        LOG.debug("tcpdump's output: %s.", output)
+        pat_str = "ICMP echo request"
+        if re.search(pat_str, output):
+            if tcpdump_status_error:
+                exceptions.TestFail("Get incorrect tcpdump output: {}, it "
+                                    "should not include '{}'."
+                                    .format(output, pat_str))
+        else:
+            if not tcpdump_status_error:
+                exceptions.TestFail("Get incorrect tcpdump output: {}, it "
+                                    "should include '{}'."
+                                    .format(output, pat_str))
+
+
+def check_vm_iface_num(session, exp_num, timeout=10, first=0.0):
+    """
+    Check the number of interfaces
+
+    :param session: The session to the guest
+    :param exp_num: The expected number
+    :param timeout: Timeout in seconds
+    :param first: Time to sleep before first attempt
+    :raise: test.fail when ifaces' number is incorrect.
+    """
+    p_iface = utils_misc.wait_for(
+            lambda: utils_net.get_remote_host_net_ifs(session)[0],
+            timeout, first=first)
+    LOG.debug("Ifaces in VM: %s", p_iface)
+    if p_iface is None:
+        p_iface = []
+    if len(p_iface) != exp_num:
+        exceptions.TestFail("%d interface(s) should be found on the vm."
+                            % exp_num)
