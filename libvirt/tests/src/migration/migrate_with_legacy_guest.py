@@ -136,6 +136,14 @@ def run(test, params, env):
                 libvirt.modify_vm_iface(vm_name, "update_iface", iface_dict)
             if not check_disk:
                 params["disk_model"] = "virtio-transitional"
+        if 'rhel6' in params.get("shortname"):
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            os_xml = vmxml.os
+            os_xml.del_nvram()
+            os_xml.del_loader()
+            vmxml.os = os_xml
+            vmxml.xmltreefile.write()
+            vmxml.sync("--nvram")
         if set_crypto_policy:
             utils_conn.update_crypto_policy(set_crypto_policy)
 
