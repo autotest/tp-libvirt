@@ -13,6 +13,8 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml.devices.channel import Channel
 from virttest.libvirt_xml.devices.console import Console
 
+from src.virtio_transitional import virtio_transitional_base
+
 
 def run(test, params, env):
     """
@@ -113,6 +115,7 @@ def run(test, params, env):
         iface_params = {'model': 'virtio-transitional'}
         libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
         libvirt.set_vm_disk(vm, params)
+        virtio_transitional_base.remove_rhel6_nvram(vm_name)
         # vmxml will not be updated since set_vm_disk
         # sync with another dumped xml inside the function
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)

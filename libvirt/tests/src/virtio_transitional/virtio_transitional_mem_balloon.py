@@ -12,6 +12,7 @@ from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
+from src.virtio_transitional import virtio_transitional_base
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -65,6 +66,8 @@ def run(test, params, env):
                 'rhel6' in params.get("shortname")):
             iface_params = {'model': 'virtio-transitional'}
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
+            # Remove nvram setting for rhel6 guest
+            virtio_transitional_base.remove_rhel6_nvram(vm_name)
         libvirt.set_vm_disk(vm, params)
         # The local variable "vmxml" will not be updated since set_vm_disk
         # sync with another dumped xml inside the function
