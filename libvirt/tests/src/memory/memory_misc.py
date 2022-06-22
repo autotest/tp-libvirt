@@ -1,4 +1,3 @@
-import logging as log
 import re
 
 from avocado.utils import process
@@ -14,9 +13,19 @@ from virttest.utils_test import libvirt
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
 
-# Using as lower capital is not the best way to do, but this is just a
-# workaround to avoid changing the entire file.
-logging = log.getLogger('avocado.' + __name__)
+def set_vmxml(vmxml, params):
+    """
+    Setup vmxml for test
+
+    :param vmxml: xml instance of vm
+    :param params: params of test
+    """
+    vm_attrs = {k.replace('vmxml_', ''): int(v) if v.isdigit() else v
+                for k, v in params.items() if k.startswith('vmxml_')}
+    cpu_attrs = eval(params.get('cpu_attrs', '{}'))
+    vm_attrs.update({'cpu': cpu_attrs})
+    vmxml.setup_attrs(**vm_attrs)
+    vmxml.sync()
 
 
 def run(test, params, env):
@@ -30,7 +39,7 @@ def run(test, params, env):
 
         :param case: test case
         """
-        logging.info('No specific setup step for %s', case)
+        test.log.info('No specific setup step for %s', case)
 
     def cleanup_test_default(case):
         """
@@ -38,7 +47,7 @@ def run(test, params, env):
 
         :param case: test case
         """
-        logging.info('No specific cleanup step for %s', case)
+        test.log.info('No specific cleanup step for %s', case)
 
     def check_result(cmd_result, status_error, error_msg=None):
         """
@@ -68,11 +77,11 @@ def run(test, params, env):
             mem_backing = vm_xml.VMMemBackingXML()
             mem_backing_attrs = eval(params.get('mem_backing_attrs', '{}'))
             mem_backing.setup_attrs(**mem_backing_attrs)
-            logging.debug('memoryBacking xml is: %s', mem_backing)
+            test.log.debug('memoryBacking xml is: %s', mem_backing)
             vmxml.mb = mem_backing
 
             vmxml.sync()
-            logging.debug(virsh.dumpxml(vm_name).stdout_text)
+            test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
     def run_test_memorybacking(case):
         """
@@ -83,7 +92,7 @@ def run(test, params, env):
         if case == 'no_numa':
             # Verify <access mode='shared'/> is ignored
             # if no NUMA nodes are configured
-            if libvirt_version.version_compare(7, 0, 0) or\
+            if libvirt_version.version_compare(7, 0, 0) or \
                     not libvirt_version.version_compare(5, 0, 0):
                 test.cancel('This case is not supported by current libvirt.')
             access_mode = params.get('access_mode')
@@ -94,7 +103,7 @@ def run(test, params, env):
             hugepages = vm_xml.VMHugepagesXML()
             mem_backing.hugepages = hugepages
             vmxml.mb = mem_backing
-            logging.debug('membacking xml is: %s', mem_backing)
+            test.log.debug('membacking xml is: %s', mem_backing)
 
             vmxml.xmltreefile.write()
 
@@ -148,7 +157,7 @@ def run(test, params, env):
                 vmxml.sync()
                 new_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
                 cur_mem = new_vmxml.current_mem
-                logging.debug('Currrent memory after define is %d', cur_mem)
+                test.log.debug('Currrent memory after define is %d', cur_mem)
                 if int(cur_mem) == 0:
                     test.fail('Current memory should not be 0.')
             if scenario == 'set_with_numa':
@@ -164,8 +173,8 @@ def run(test, params, env):
                 vmxml.current_mem = 0
                 vmxml.sync()
                 new_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                logging.debug(new_vmxml.current_mem)
-                logging.debug(new_vmxml.memory)
+                test.log.debug(new_vmxml.current_mem)
+                test.log.debug(new_vmxml.memory)
 
     def run_test_dommemstat(case):
         """
@@ -179,7 +188,7 @@ def run(test, params, env):
             balloon_dict = {k: v for k, v in params.items()
                             if k.startswith('membal_')}
             libvirt.update_memballoon_xml(vmxml, balloon_dict)
-            logging.debug(virsh.dumpxml(vm_name).stdout_text)
+            test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
             vm.start()
             session = vm.wait_for_login()
@@ -198,18 +207,18 @@ def run(test, params, env):
 
             # from kernel commit: Buffers + Cached + SwapCached = disk_caches
             tmp_sum = meminfo['Buffers'] + meminfo['Cached'] + meminfo['SwapCached']
-            logging.info('Buffers %d + Cached %d + SwapCached %d = %d kb',
-                         meminfo['Buffers'],
-                         meminfo['Cached'],
-                         meminfo['SwapCached'],
-                         tmp_sum
-                         )
+            test.log.info('Buffers %d + Cached %d + SwapCached %d = %d kb',
+                          meminfo['Buffers'],
+                          meminfo['Cached'],
+                          meminfo['SwapCached'],
+                          tmp_sum
+                          )
 
             # Compare and make sure error is within allowable range
-            logging.info('disk_caches is %s', dommemstat['disk_caches'])
+            test.log.info('disk_caches is %s', dommemstat['disk_caches'])
             allow_error = int(params.get('allow_error', 15))
             actual_error = (tmp_sum - int(dommemstat['disk_caches'])) / tmp_sum * 100
-            logging.debug('Actual error: %.2f%%', actual_error)
+            test.log.debug('Actual error: %.2f%%', actual_error)
             if actual_error > allow_error:
                 test.fail('Buffers + Cached + SwapCached (%d) '
                           'should be close to disk_caches (%s). '
@@ -244,7 +253,7 @@ def run(test, params, env):
 
             # Finish setting up vmxml
             vmxml.sync()
-            logging.debug(virsh.dumpxml(vm_name).stdout_text)
+            test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
     def run_test_xml_check(case):
         """
@@ -256,7 +265,7 @@ def run(test, params, env):
             # Make sure previous xml settings exist after vm started
             cmp_list = ['os', 'sysinfo', 'idmap']
             virsh.start(vm_name, ignore_status=False)
-            logging.debug(virsh.dumpxml(vm_name).stdout_text)
+            test.log.debug(virsh.dumpxml(vm_name).stdout_text)
             newxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
             for tag in cmp_list:
@@ -265,10 +274,10 @@ def run(test, params, env):
                 new_xml_attrs = new_xml.fetch_attrs()
                 old_attrs = eval(params.get('%s_attrs' % tag))
 
-                logging.debug('Comparing attributes of %s of 2 xmls: \n%s\n%s\n%s\n%s',
-                              tag, old_xml, old_attrs, new_xml, new_xml_attrs)
+                test.log.debug('Comparing attributes of %s of 2 xmls: \n%s\n%s\n%s\n%s',
+                               tag, old_xml, old_attrs, new_xml, new_xml_attrs)
                 if all([new_xml_attrs.get(k) == old_attrs[k] for k in old_attrs]):
-                    logging.debug('Result: Target xml settings are equal.')
+                    test.log.debug('Result: Target xml settings are equal.')
                 else:
                     test.fail('Xml comparison of %s failed.' % tag)
 
@@ -287,11 +296,11 @@ def run(test, params, env):
         for attrs in dimm_devices_attrs:
             dimm_device = Memory()
             dimm_device.setup_attrs(**attrs)
-            logging.debug(dimm_device)
+            test.log.debug(dimm_device)
             vmxml.add_device(dimm_device)
 
         vmxml.sync()
-        logging.debug(virsh.dumpxml(vm_name).stdout_text)
+        test.log.debug(virsh.dumpxml(vm_name).stdout_text)
         vm.start()
         # Check qemu cmd line for amount of dimm device
         dimm_device_num = len(dimm_devices_attrs)
@@ -328,12 +337,7 @@ def run(test, params, env):
 
         :param case: test case
         """
-        vm_attrs = {k.replace('vmxml_', ''): int(v) if v.isdigit() else v
-                    for k, v in params.items() if k.startswith('vmxml_')}
-        cpu_attrs = eval(params.get('cpu_attrs', '{}'))
-        vm_attrs.update({'cpu': cpu_attrs})
-        vmxml.setup_attrs(**vm_attrs)
-        vmxml.sync()
+        set_vmxml(vmxml, params)
 
     def run_test_audit_size(case):
         """
@@ -365,8 +369,8 @@ def run(test, params, env):
         # Start vm and wait for vm to bootup
         vm.start()
         vm.wait_for_login().close()
-        logging.debug('Vmxml after started:\n%s',
-                      virsh.dumpxml(vm_name).stdout_text)
+        test.log.debug('Vmxml after started:\n%s',
+                       virsh.dumpxml(vm_name).stdout_text)
 
         # Check dominfo before hotplug mem device
         dominfo = virsh.dominfo(vm_name, **VIRSH_ARGS)
@@ -410,6 +414,39 @@ def run(test, params, env):
         # HotUnplug the dimm device
         virsh.detach_device(vm_name, dimm_devices[1].xml, **VIRSH_ARGS)
         check_dominfo_and_ausearch(dominfo_check_3, ausearch_check_3)
+
+    def setup_test_managedsave(case):
+        """
+        Setup steps for test
+
+        :param case: test case
+        """
+        set_vmxml(vmxml, params)
+
+    def run_test_managedsave(case):
+        """
+        Test steps for:memory should not change after managedsave/restore
+
+        :param case: test case
+        """
+        test.log.debug(virsh.dominfo(vm_name).stdout_text)
+        vm.start()
+        vm.wait_for_login().close()
+
+        virsh.managedsave(vm_name, **VIRSH_ARGS)
+        virsh.start(vm_name, **VIRSH_ARGS)
+        test.log.debug(virsh.dumpxml(vm_name).stdout_text)
+
+        # Current memory size should not change after managedsave and restore
+        new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        new_current_mem = new_vmxml.current_mem
+        set_current_mem = int(params.get('vmxml_current_mem'))
+        test.log.debug('Set current mem: %d\nCurrent mem after managedsave: %d',
+                       set_current_mem, new_current_mem)
+
+        if new_current_mem != set_current_mem:
+            test.fail('Size of current memory %d changed to %d after '
+                      'managedsave' % (set_current_mem, new_current_mem))
 
     # Version check for current test
     libvirt_version.is_libvirt_feature_supported(params)
