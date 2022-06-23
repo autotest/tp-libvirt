@@ -47,7 +47,7 @@ def run(test, params, env):
         vm.undefine()
         status = virt_install(vm_name, location, extra_args)
 
-        if status != expected_status:
+        if str(status) != str(expected_status):
             test.fail("The installation didn't exit as expected."
                       " Expected: %s, actual: %s" % (expected_status, status))
 
