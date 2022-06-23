@@ -1,11 +1,14 @@
+import aexpect
+import os
 import logging as log
 
 from avocado.core import exceptions
 from avocado.utils import process
 
+from virttest import data_dir
 from virttest import remote
 from virttest import utils_misc
-from virttest.utils_test.libvirt import connect_libvirtd
+from virttest.utils_test import libvirt
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -33,10 +36,10 @@ def local_access(params, test):
     patterns_extra_dict = params.get("patterns_extra_dict", None)
     log_level = params.get("log_level", "LIBVIRT_DEBUG=3")
     status_error = params.get("status_error", "yes")
-    ret, output = connect_libvirtd(virsh_uri, read_only, virsh_cmd, auth_user,
-                                   auth_pwd, vm_name, status_error, extra_env,
-                                   log_level, su_user, virsh_patterns,
-                                   patterns_extra_dict)
+    ret, output = libvirt.connect_libvirtd(virsh_uri, read_only, virsh_cmd, auth_user,
+                                           auth_pwd, vm_name, status_error, extra_env,
+                                           log_level, su_user, virsh_patterns,
+                                           patterns_extra_dict)
     if message not in output:
         test.fail("Expected message: {} not found in the output".format(message))
     else:
@@ -120,19 +123,36 @@ def create_non_root_user(params, test):
         test.error("Unexpected error: {}".format(e))
 
 
+def get_tailed_log_file():
+    """
+    Tail output appended data as the file /var/log/messages grows
+
+    :returns: the appended data tailed from /var/log/messages
+    """
+    tailed_log_file = os.path.join(data_dir.get_tmp_dir(), 'tail_log')
+    tailed_messages = aexpect.Tail(command='tail -f /var/log/messages',
+                                   output_func=utils_misc.log_line,
+                                   output_params=(tailed_log_file))
+    return tailed_log_file
+
+
 def run(test, params, env):
     """
     Test virsh polkit for non-root user
     """
     ssh_connection = params.get("ssh_connection", "no") == "yes"
     non_root_name = params.get("su_user")
+    status_error = "yes" == params.get("status_error", "no")
 
     create_non_root_user(params, test)
+    tailed_log_file = get_tailed_log_file()
     try:
         if ssh_connection:
             ssh_access(params, test)
         else:
             local_access(params, test)
+        if not status_error:
+            libvirt.check_logfile('error :', tailed_log_file, str_in_log=False)
     except (exceptions.TestFail, exceptions.TestCancel):
         raise
     except Exception as e:
