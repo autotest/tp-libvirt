@@ -223,6 +223,8 @@ def run(test, params, env):
     listen_addr = test_dict.get("listen_addr", "0.0.0.0")
     ssh_port = test_dict.get("ssh_port", "")
     tcp_port = test_dict.get("tcp_port", "")
+    tcp_min_ssf = test_dict.get("tcp_min_ssf")
+    default_tcp_min_ssf = test_dict.get("default_tcp_min_ssf", '112')
     server_ip = test_dict.get("server_ip")
     server_user = test_dict.get("server_user")
     server_pwd = test_dict.get("server_pwd")
@@ -268,6 +270,8 @@ def run(test, params, env):
     auth_unix_rw = test_dict.get("auth_unix_rw")
     kinit_pwd = test_dict.get("kinit_pwd")
     test_alias = test_dict.get("test_alias")
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     config_list = []
     port = ""
@@ -424,6 +428,14 @@ def run(test, params, env):
                 objs_list.append(tcp_obj)
             # setup test environment
             tcp_obj.conn_setup()
+            if tcp_min_ssf and int(tcp_min_ssf) < int(default_tcp_min_ssf):
+                server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                       server_user, server_pwd,
+                                                       r"[\#\$]\s*$")
+                libvirtd = Libvirtd(session=server_session)
+                if libvirtd.is_running():
+                    test.fail("virtproxyd/libvirtd should fail to restart if tcp_min_ssf "
+                              "is less than %s" % default_tcp_min_ssf)
 
         # create a directory if needs
         if mkdir_cmd:
