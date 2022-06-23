@@ -1123,7 +1123,7 @@ def run(test, params, env):
             xml_file.seek(0)
             xml_file.truncate()
             xml_file.write(minimal_xml_content)
-        vm.undefine()
+        virsh.undefine(vm_name, '--nvram', ignore_status=False)
         if virsh.define(minimal_vm_xml_file).exit_status:
             test.cancel("can't create the domain")
 
@@ -1148,7 +1148,7 @@ def run(test, params, env):
             special_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             special_vm_xml_file = special_vm_xml.xml
             special_vm_xml_file_rename = "%s.dump" % special_vm_xml_file
-            vm.undefine()
+            virsh.undefine(vm_name, '--nvram', ignore_status=False)
             os.rename(special_vm_xml_file, special_vm_xml_file_rename)
 
             # Validate xml file.

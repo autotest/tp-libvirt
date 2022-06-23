@@ -1017,7 +1017,7 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         if additional_guest:
             virsh.remove_domain(guest_name,
-                                "--remove-all-storage",
+                                "--remove-all-storage --nvram",
                                 ignore_stauts=True)
         # Remove the snapshot.
         if create_snapshot:
