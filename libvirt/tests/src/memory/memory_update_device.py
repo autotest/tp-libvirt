@@ -74,6 +74,8 @@ def run(test, params, env):
 
         virsh.attach_device(vm_name, mem_device.xml, flagstr='--config',
                             debug=True, ignore_status=False)
+        test.log.debug("vmxml is {}".format(vm_xml.VMXML.
+                                            new_from_dumpxml(vm_name)))
 
     def run_test_virtio_mem():
         """
@@ -101,6 +103,9 @@ def run(test, params, env):
         expr_requested_size = int(float(utils_misc.normalize_data_size(
             params.get("requested_size", '80Mib'), order_magnitude='K')))
         for check_item in ['requested_size', 'current_size']:
+            test.log.debug("Expected size is {}, Actual size is {}".
+                           format(expr_requested_size,
+                                  getattr(mem_dev.target, check_item)))
             if getattr(mem_dev.target, check_item) != expr_requested_size:
                 test.fail("Incorrect %s! It should be %s, but got %s."
                           % (check_item, expr_requested_size,
