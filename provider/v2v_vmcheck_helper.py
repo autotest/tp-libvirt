@@ -1053,3 +1053,32 @@ def check_json_output(params):
             result = False
 
     return result
+
+
+def check_qemu_output(params):
+    """
+    Check -o qemu result
+
+    Only do basic checking, '-o libvirt' already does
+    the whole checking process.
+    """
+    LOG.info('checking -o qemu output')
+
+    os_directory = params.get('os_directory')
+    vm_name = params.get('main_vm')
+
+    result = True
+    # Check sh file
+    sh_file = os.path.join(os_directory, '%s.sh' % vm_name)
+    if not os.path.exists(sh_file):
+        LOG.error('Not found %s' % sh_file)
+        result = False
+    else:
+        LOG.info("Stating the guest by %s" % sh_file)
+        cmd = 'timeout -s 9 30s %s' % sh_file
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        output = cmd_result.stdout_text.strip() + cmd_result.stderr_text.strip()
+        if 'server running' not in output or 'warning' in output:
+            result = False
+
+    return result

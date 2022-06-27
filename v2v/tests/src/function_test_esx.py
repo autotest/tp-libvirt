@@ -24,6 +24,7 @@ from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, S
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
+from provider.v2v_vmcheck_helper import check_qemu_output
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -582,7 +583,9 @@ def run(test, params, env):
                 test.fail('check json output failed')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
-            if output_mode in ['null', 'json', 'local']:
+            if output_mode == 'qemu' and not check_qemu_output(params):
+                test.fail('check qemu output failed')
+            if output_mode in ['null', 'json', 'local', 'qemu']:
                 return
 
             # vmchecker must be put before skip_vm_check in order to clean up
