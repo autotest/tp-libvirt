@@ -114,7 +114,7 @@ class MigrationBase(object):
         if int(self.migration_test.ret.exit_status) == 0:
             self.migration_test.post_migration_check([self.vm], self.params,
                                                      dest_uri=dest_uri, src_uri=self.src_uri)
-        self.check_local_or_remote_log()
+        self.check_local_and_remote_log()
 
     def cleanup_default(self):
         """
@@ -138,7 +138,7 @@ class MigrationBase(object):
         """
         transport_type = self.params.get("transport_type")
         extra = self.params.get("virsh_migrate_extra")
-        uri_port = self.params.get("uri_port")
+        migrate_desturi_port = self.params.get("migrate_desturi_port")
 
         if transport_type:
             self.conn_list.append(migration_base.setup_conn_obj(transport_type, self.params, self.test))
@@ -146,8 +146,8 @@ class MigrationBase(object):
         if '--tls' in extra:
             self.conn_list.append(migration_base.setup_conn_obj('tls', self.params, self.test))
 
-        if uri_port:
-            self.remote_add_or_remove_port(uri_port)
+        if migrate_desturi_port:
+            self.remote_add_or_remove_port(migrate_desturi_port)
         self.setup_default()
 
     def cleanup_connection(self):
@@ -155,12 +155,12 @@ class MigrationBase(object):
         cleanup connection
 
         """
-        uri_port = self.params.get("uri_port")
+        migrate_desturi_port = self.params.get("migrate_desturi_port")
 
         self.cleanup_default()
         migration_base.cleanup_conn_obj(self.conn_list, self.test)
-        if uri_port:
-            self.remote_add_or_remove_port(uri_port, add=False)
+        if migrate_desturi_port:
+            self.remote_add_or_remove_port(migrate_desturi_port, add=False)
 
     def set_remote_log(self):
         """
@@ -205,11 +205,11 @@ class MigrationBase(object):
                                   cmd_parms=self.params,
                                   runner_on_target=runner_on_target)
 
-    def remote_add_or_remove_port(self, uri_port, add=True):
+    def remote_add_or_remove_port(self, port, add=True):
         """
         Add or remove port on remote host
 
-        :param uri_port: test object
+        :param port: port
         :param add: True for add port, False for remove port
         """
         server_ip = self.params.get("server_ip")
@@ -220,7 +220,7 @@ class MigrationBase(object):
                                                r"[\#\$]\s*$")
         firewall_cmd = utils_iptables.Firewall_cmd(remote_session)
         if add:
-            firewall_cmd.add_port(uri_port, 'tcp', permanent=True)
+            firewall_cmd.add_port(port, 'tcp', permanent=True)
         else:
-            firewall_cmd.remove_port(uri_port, 'tcp', permanent=True)
+            firewall_cmd.remove_port(port, 'tcp', permanent=True)
         remote_session.close()
