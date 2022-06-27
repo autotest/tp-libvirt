@@ -105,7 +105,7 @@ def run(test, params, env):
             portgroup.name = portgroup_name
             portgroup.bandwidth_inbound = bandwidth_inbound
             portgroup.bandwidth_outbound = bandwidth_outbound
-            network_xml.portgroup = portgroup
+            network_xml.portgroups = [portgroup]
             network_xml.sync()
             # Using the portgroup in VM.
             devices = vm_xml.devices

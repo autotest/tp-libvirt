@@ -759,8 +759,7 @@ TIMEOUT 3"""
                     if net_no_bridge:
                         netxml.del_bridge()
                     if net_no_ip:
-                        netxml.del_ip()
-                        netxml.del_ip()
+                        netxml.del_ips()
                     if net_no_mac:
                         netxml.del_mac()
                 except xcepts.LibvirtXMLNotFoundError:

@@ -86,7 +86,7 @@ def run(test, params, env):
             range_4 = network_xml.RangeXML()
             range_4.attrs = {'start': '192.168.100.2', 'end': '192.168.100.254'}
             ipxml.dhcp_ranges = range_4
-            test_xml.ip = ipxml
+            test_xml.ips = [ipxml]
             test_xml.define()
             virsh.net_start("def")
             # start default, should fail
