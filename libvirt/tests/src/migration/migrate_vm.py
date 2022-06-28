@@ -2550,7 +2550,7 @@ def run(test, params, env):
 
                 # undefine remote guest
                 logging.debug("Undefine remote guest")
-                remote_virsh_session.undefine(target_vm_name)
+                remote_virsh_session.undefine(target_vm_name, options="--nvram")
 
                 # redefine remote guest using updated XML
                 logging.debug("Redefine remote guest")
