@@ -75,6 +75,7 @@ def run(test, params, env):
     loader = params.get("loader", "")
     nvram = params.get("nvram", "")
     uefi_disk_url = params.get("uefi_disk_url", "")
+    tpm_testsuite_url = params.get("tpm_testsuite_url", "")
     download_file_path = os.path.join(data_dir.get_data_dir(), "uefi_disk.qcow2")
     persistent_state = ("yes" == params.get("persistent_state", "no"))
     check_pcrbanks = ('yes' == params.get("check_pcrbanks", "no"))
@@ -495,32 +496,29 @@ def run(test, params, env):
         :param session: Guest session to be tested
         """
         logging.info("------Checking kernel test suite for guest tpm------")
-        boot_info = session.cmd('uname -r').strip().split('.')
-        kernel_version = '.'.join(boot_info[:2])
-        # Download test suite per current guest kernel version
-        parent_path = "https://cdn.kernel.org/pub/linux/kernel"
-        if float(kernel_version) < 5.3:
-            major_version = "5"
-            file_version = "5.3"
-        else:
-            major_version = boot_info[0]
-            file_version = kernel_version
-        src_url = "%s/v%s.x/linux-%s.tar.xz" % (parent_path, major_version, file_version)
-        download_cmd = "wget %s -O %s" % (src_url, "/root/linux.tar.xz")
+        # Download test suite
+        if tpm_testsuite_url.count("EXAMPLE"):
+            test.error("Please provide the URL %s" % tpm_testsuite_url)
+        download_cmd = "wget %s -O %s" % (tpm_testsuite_url, "/root/linux.tar.xz")
         output = session.cmd_output(download_cmd, timeout=480)
         logging.debug("Command output: %s", output)
         # Install necessary pkgs to build test suite
-        if not utils_package.package_install(["tar", "make", "gcc", "rsync", "python2"], session, 360):
+        if not utils_package.package_install(["tar", "make", "gcc", "rsync"], session, 360):
             test.fail("Failed to install specified pkgs in guest OS.")
         # Unzip the downloaded test suite
         status, output = session.cmd_status_output("tar xvJf /root/linux.tar.xz -C /root")
         if status:
             test.fail("Uzip failed: %s" % output)
-        # Specify using python2 to run the test suite per supporting
-        test_path = "/root/linux-%s/tools/testing/selftests" % file_version
-        sed_cmd = "sed -i 's/python -m unittest/python2 -m unittest/g' %s/tpm2/test_*.sh" % test_path
-        output = session.cmd_output(sed_cmd)
-        logging.debug("Command output: %s", output)
+        file_name = session.cmd_output("ls /root/|grep linux-").strip()
+        # Specify using python to run the test suite per product version
+        test_path = "/root/%s/tools/testing/selftests" % file_name
+        if tpm_testsuite_url.count("el8"):
+            if utils_package.package_install("python2", session, 360):
+                sed_cmd = "sed -i 's/python -m unittest/python2 -m unittest/g' %s/tpm2/test_*.sh" % test_path
+                output = session.cmd_output(sed_cmd)
+                logging.debug("Command output: %s", output)
+            elif not utils_package.package_install("python3", session, 360):
+                test.fail("Failed to install python pkg in guest OS.")
         # Build and and run the .sh files of test suite
         status, output = session.cmd_status_output("make -C %s TARGETS=tpm2 run_tests" % test_path, timeout=360)
         logging.debug("Command output: %s", output)
