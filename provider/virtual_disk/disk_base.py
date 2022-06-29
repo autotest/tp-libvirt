@@ -52,8 +52,11 @@ class DiskBase(object):
         if disk_type == 'file':
             if not new_image_path:
                 new_image_path = data_dir.get_data_dir() + '/test.img'
+                size = kwargs.get("size", "50M")
+                if kwargs.get("size"):
+                    kwargs.pop("size")
                 libvirt.create_local_disk("file", path=new_image_path,
-                                          size='50M', disk_format="qcow2", **kwargs)
+                                          size=size, disk_format="qcow2", **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
         elif disk_type == 'block':
@@ -172,7 +175,10 @@ class DiskBase(object):
         """
         device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
         lv_utils.vg_create(vg_name, device_name)
-        path = libvirt.create_local_disk("lvm", size="10M", vgname=vg_name,
+        size = kwargs.get("size", "50M")
+        if kwargs.get("size"):
+            kwargs.pop("size")
+        path = libvirt.create_local_disk("lvm", size=size, vgname=vg_name,
                                          lvname=lv_name, **kwargs)
 
         return path

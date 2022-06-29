@@ -31,6 +31,7 @@ class BlockCommand(object):
         self.snap_name_list = []
         self.tmp_dir = data_dir.get_data_dir()
         self.new_image_path = ''
+        self.copy_image = ''
         self.old_parts = []
         self.original_disk_source = ''
 
@@ -116,7 +117,6 @@ class BlockCommand(object):
         """
         Clean all new created snap
         """
-        LOG.info('Start cleaning up.')
         for ss in self.snap_name_list:
             virsh.snapshot_delete(self.vm.name, '%s --metadata' % ss, debug=True)
         for sp in self.snap_path_list:
