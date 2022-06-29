@@ -1121,11 +1121,11 @@ def run(test, params, env):
             # Restore vhost_net driver
             process.system("modprobe vhost_net", shell=True)
         if unprivileged_user:
-            virsh.remove_domain(vm_name, **virsh_dargs)
+            virsh.remove_domain(vm_name, "--nvram", **virsh_dargs)
             process.run('rm -f %s' % dst_disk, shell=True)
         if additional_vm:
             virsh.remove_domain(additional_vm.name,
-                                "--remove-all-storage")
+                                "--remove-all-storage --nvram")
             # Kill all omping server process on host
             process.system("pidof omping && killall omping",
                            ignore_status=True, shell=True)
