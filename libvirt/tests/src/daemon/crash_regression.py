@@ -173,7 +173,7 @@ def run_invalid_mac_net(params, libvirtd, vm):
     net_xml.forward = {'mode': 'nat'}
     net_xml.mac = "00:00:00:00:00:00"
     ip_xml = IPXML(address='192.168.123.1')
-    net_xml.ip = ip_xml
+    net_xml.ips = [ip_xml]
     virsh.create(net_xml.xml)
     virsh.net_destroy(net_xml.name)
 

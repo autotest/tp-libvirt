@@ -58,7 +58,7 @@ def set_ip_section(testnet_xml, addr, ipv6=False, **dargs):
         ran = network_xml.RangeXML()
         ran.attrs = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
         ipxml.dhcp_ranges = ran
-    testnet_xml.set_ip(ipxml)
+    testnet_xml.add_ip(ipxml)
 
 
 def run(test, params, env):
@@ -209,8 +209,8 @@ def run(test, params, env):
             range_4 = network_xml.RangeXML()
             range_4.attrs = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
             ipxml_v4.dhcp_ranges = range_4
-            testnet_xml.del_ip()
-            testnet_xml.set_ip(ipxml_v4)
+            testnet_xml.del_ips()
+            testnet_xml.add_ip(ipxml_v4)
             if test_port:
                 nat_port = {"start": nat_port_start, "end": nat_port_end}
                 testnet_xml.nat_port = nat_port

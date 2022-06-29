@@ -82,7 +82,7 @@ def run(test, params, env):
             new_host.attrs = host
             new_host.lease_attrs = host_lease
             ipxml.hosts = [new_host]
-        netxml.set_ip(ipxml)
+        netxml.add_ip(ipxml)
         netxml.create()
 
     def get_net_dhcp_leases(output):
