@@ -45,26 +45,38 @@ def xml_recover(vmxml):
         return False
 
 
-def check_snap_in_image(vm_name, snap_name):
+def check_snap_in_image(vm_name, snap_name, backing_file=False):
     """
     check the snapshot info in image
 
-    :params: vm_name: VM name
-    :params: snap_name: Snapshot name
+    :params vm_name: VM name
+    :params snap_name: Snapshot name
+    :params backing_file: boolean if backing file info should be checked
     """
 
     domxml = virsh.dumpxml(vm_name).stdout.strip()
     xtf_dom = xml_utils.XMLTreeFile(domxml)
     # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
     qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
-
-    cmd = "qemu-img info " + xtf_dom.find("devices/disk/source").get("file")
+    snap_file_path = xtf_dom.find("devices/disk/source").get("file")
+    cmd = "qemu-img info " + snap_file_path
     if qemu_img_locking_feature_support:
-        cmd = "qemu-img info -U " + xtf_dom.find("devices/disk/source").get("file")
+        cmd = "qemu-img info -U " + snap_file_path
+    if backing_file:
+        cmd = cmd + ' --backing-chain'
     img_info = process.getoutput(cmd).strip()
+    file_suffix = xtf_dom.find("devices/disk/driver").get("type")
 
-    if re.search(snap_name, img_info):
-        logging.info("Find snapshot info in image")
+    # If with --backing-chain option, we need to verify the backing file path
+    search_str = snap_name
+    if backing_file:
+        search_str = os.path.join(os.path.dirname(snap_file_path),
+                                  os.path.basename(snap_file_path).replace(snap_name,
+                                                                           file_suffix))
+        search_str = "backing file:\s*%s" % search_str
+
+    if re.search(search_str, img_info):
+        logging.info("Find snapshot or backing file info in image with '%s'", search_str)
         return True
     else:
         return False
@@ -154,6 +166,12 @@ def check_snapslist(test, vm_name, options, option_dict, output,
 
                 if ret is False:
                     test.fail("No snap info in image")
+            if (options.find("--disk-only") >= 0 and
+                    options.find("--memspec") < 0):
+                ret = check_snap_in_image(vm_name, get_sname, backing_file=True)
+
+                if ret is False:
+                    test.fail("No snap backing chain file info in image")
 
         else:
             logging.info("Find snapshot %s in snapshot list."
