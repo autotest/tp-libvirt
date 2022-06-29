@@ -1233,7 +1233,7 @@ TIMEOUT 3"""
         if vm.is_alive():
             vm.destroy(gracefully=False)
         for vms in vms_list:
-            virsh.remove_domain(vms.name, "--remove-all-storage")
+            virsh.remove_domain(vms.name, "--remove-all-storage --nvram")
         logging.info("Restoring network...")
         if net_name == "default":
             netxml_backup.sync()
