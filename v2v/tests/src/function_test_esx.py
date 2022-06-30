@@ -820,6 +820,13 @@ def run(test, params, env):
                         qa_url, os.path.join(
                             qemu_guest_agent_dir, rpm_name))
 
+        if 'vddk_error' in checkpoint:
+            fqdn_record = params_get(params, 'fqdn_record')
+            with open('/etc/hosts', 'r+') as fd:
+                if fqdn_record not in fd.read():
+                    LOG.debug('Write %s to /etc/hosts', fqdn_record)
+                    fd.write(fqdn_record)
+
         if 'virtio_iso_blk' in checkpoint:
             if not os.path.exists(virtio_win_path):
                 test.fail('%s does not exist' % virtio_win_path)
