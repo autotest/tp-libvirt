@@ -247,6 +247,7 @@ def run(test, params, env):
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
                 test.cancel("Can't create the domain")
+            vm.wait_for_login().close()
 
         # Libvirt will ignore --source when action is eject
         attach = True
