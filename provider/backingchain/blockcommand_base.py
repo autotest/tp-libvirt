@@ -34,6 +34,7 @@ class BlockCommand(object):
         self.copy_image = ''
         self.old_parts = []
         self.original_disk_source = ''
+        self.backing_file = ''
 
     def prepare_iscsi(self):
         """
@@ -108,9 +109,14 @@ class BlockCommand(object):
         """
         expected_chain = []
         for i in expected_chain_index.split('>'):
-            expected_chain.append(self.new_image_path) if i == "base"\
-                else expected_chain.append(self.snap_path_list[int(i) - 1])
+            if i == "base":
+                expected_chain.append(self.new_image_path)
+            elif i == 'backing_file':
+                expected_chain.append(self.backing_file)
+            else:
+                expected_chain.append(self.snap_path_list[int(i) - 1])
         LOG.debug("Expected chain is : %s", expected_chain)
+
         return expected_chain
 
     def backingchain_common_teardown(self):
