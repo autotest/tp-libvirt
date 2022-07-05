@@ -2,8 +2,8 @@ import os
 import aexpect
 
 from virttest import migration
-from virttest import remote
 from virttest import libvirt_remote
+from virttest import remote
 from virttest import utils_iptables
 
 from virttest.utils_test import libvirt
@@ -98,6 +98,49 @@ class MigrationBase(object):
         migration_base.do_migration(self.vm, self.migration_test, None, dest_uri,
                                     options, virsh_options, extra,
                                     action_during_mig, extra_args)
+
+    def run_migration_again(self):
+        """
+        Execute migration from source host to target host again
+
+        """
+        virsh_options = self.params.get("virsh_options", "")
+        options = self.params.get("virsh_migrate_options", "--live --verbose")
+        dest_uri = self.params.get("virsh_migrate_desturi")
+        vm_name = self.params.get("migrate_main_vm")
+        action_during_mig = self.params.get("action_during_mig")
+        migrate_speed_again = self.params.get("migrate_speed_again")
+        status_error = "yes" == self.params.get("status_error", "no")
+        err_msg_again = self.params.get("err_msg_again")
+        extra = self.params.get("virsh_migrate_extra")
+        extra_args = self.migration_test.update_virsh_migrate_extra_args(self.params)
+        postcopy_options = self.params.get("postcopy_options")
+        if postcopy_options:
+            extra = "%s %s" % (extra, postcopy_options)
+
+        if not self.vm.is_alive():
+            self.vm.connect_uri = self.src_uri
+            self.vm.start()
+        self.vm.wait_for_login().close()
+        action_during_mig = migration_base.parse_funcs(self.params.get('action_during_mig_again'),
+                                                       self.test, self.params)
+        extra_args['status_error'] = self.params.get("migrate_again_status_error", "no")
+
+        if err_msg_again:
+            extra_args['err_msg'] = err_msg_again
+        if self.params.get("virsh_migrate_extra_mig_again"):
+            extra = self.params.get("virsh_migrate_extra_mig_again")
+
+        mode = 'both' if postcopy_options else 'precopy'
+        if migrate_speed_again:
+            self.migration_test.control_migrate_speed(vm_name,
+                                                      int(migrate_speed_again),
+                                                      mode)
+
+        migration_base.do_migration(self.vm, self.migration_test, None, dest_uri,
+                                    options, virsh_options,
+                                    extra, action_during_mig,
+                                    extra_args)
 
     def verify_default(self):
         """
