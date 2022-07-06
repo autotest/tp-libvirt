@@ -158,28 +158,6 @@ def check_result(result, option, status_error, test):
             test.fail("Online cpu is not expected")
 
 
-def turn_off_on_cpu(cpu, off, test):
-    """
-    Turn off/on cpu
-    :param cpu: CPU name like 'cpu3'
-    :param off: Turn off or turn on the cpu.
-                True means off, False means on
-    :param test: The test object
-    :return: Success or raise exception
-    """
-
-    if off:
-        logging.debug("Turn off %s", cpu)
-        cmd = "echo 0 > %s/%s/online" % (SYSFS_SYSTEM_PATH, cpu)
-    else:
-        logging.debug("Turn on %s", cpu)
-        cmd = "echo 1 > %s/%s/online" % (SYSFS_SYSTEM_PATH, cpu)
-
-    ret = process.run(cmd, shell=True, ignore_status=True)
-    if ret.exit_status:
-        test.fail("Failed to set cpu: %s" % ret.stderr_text)
-
-
 def run(test, params, env):
     """
     Test the command virsh nodecpumap
