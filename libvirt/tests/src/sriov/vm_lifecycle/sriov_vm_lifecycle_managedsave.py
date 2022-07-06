@@ -45,12 +45,9 @@ def run(test, params, env):
 
     iface_dict = sriov_test_obj.parse_iface_dict()
 
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    orig_config_xml = vmxml.copy()
-
     try:
         sriov_test_obj.setup_default()
         run_test()
 
     finally:
-        sriov_test_obj.teardown_default(orig_config_xml)
+        sriov_test_obj.teardown_default()

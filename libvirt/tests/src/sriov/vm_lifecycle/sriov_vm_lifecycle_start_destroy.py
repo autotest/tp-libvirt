@@ -88,9 +88,6 @@ def run(test, params, env):
         (network_dict and network_dict.get('managed') != "yes")
     device_type = "hostdev" if dev_type == "hostdev_device" else "interface"
 
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    orig_config_xml = vmxml.copy()
-
     try:
         sriov_test_obj.setup_default(dev_name=dev_name,
                                      managed_disabled=managed_disabled,
@@ -99,5 +96,5 @@ def run(test, params, env):
 
     finally:
         sriov_test_obj.teardown_default(
-            orig_config_xml, managed_disabled=managed_disabled,
+            managed_disabled=managed_disabled,
             dev_name=dev_name, network_dict=network_dict)

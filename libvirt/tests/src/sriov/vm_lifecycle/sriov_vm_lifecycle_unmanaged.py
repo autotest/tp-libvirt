@@ -2,7 +2,6 @@ from provider.sriov import sriov_base
 
 from virttest import virsh
 
-from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vfio
 from virttest.utils_test import libvirt
 
@@ -49,12 +48,9 @@ def run(test, params, env):
         dev_pci = sriov_test_obj.vf_pci
     test_dict = {"network_dict": network_dict}
 
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    orig_config_xml = vmxml.copy()
-
     try:
         sriov_test_obj.setup_default(**test_dict)
         run_test()
 
     finally:
-        sriov_test_obj.teardown_default(orig_config_xml, **test_dict)
+        sriov_test_obj.teardown_default(**test_dict)

@@ -1,8 +1,9 @@
 import re
 
 from avocado.core import exceptions
-from avocado.utils import process
 
+from virttest import libvirt_version
+from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_net
 from virttest import utils_package
@@ -18,11 +19,12 @@ from virttest.utils_libvirt import libvirt_network
 from provider.interface import interface_base
 
 
-def setup_vf(pf_pci, params):
+def setup_vf(pf_pci, params, session=None):
     """
     Enable vf setting
 
     :param pf_pci: The pci of PF
+    :param session: The session object to the host
     :return: The original vf value
     """
     default_vf = 0
@@ -30,19 +32,19 @@ def setup_vf(pf_pci, params):
         vf_no = int(params.get("vf_no", "4"))
     except ValueError as e:
         raise exceptions.TestError(e)
-    pf_pci_path = utils_misc.get_pci_path(pf_pci)
+    pf_pci_path = utils_misc.get_pci_path(pf_pci, session=session)
     cmd = "cat %s/sriov_numvfs" % (pf_pci_path)
-    default_vf = process.run(cmd, shell=True, verbose=True).stdout_text
-    if not utils_sriov.set_vf(pf_pci_path, vf_no):
+    default_vf = utils_misc.cmd_status_output(cmd, shell=True, verbose=True)[1]
+    if not utils_sriov.set_vf(pf_pci_path, vf_no, session=session):
         raise exceptions.TestError("Failed to set vf.")
-    if not utils_misc.wait_for(lambda: process.run(
-       cmd, shell=True, verbose=True).stdout_text.strip() == str(vf_no),
+    if not utils_misc.wait_for(lambda: utils_misc.cmd_status_output(
+       cmd, shell=True, verbose=True, session=session)[1].strip() == str(vf_no),
        30, 5):
         raise exceptions.TestError("VF's number should set to %d." % vf_no)
     return default_vf
 
 
-def recover_vf(pf_pci, params, default_vf=0, timeout=60):
+def recover_vf(pf_pci, params, default_vf=0, timeout=60, session=None):
     """
     Recover vf setting
 
@@ -50,11 +52,13 @@ def recover_vf(pf_pci, params, default_vf=0, timeout=60):
     :param params: the parameters dict
     :param default_vf: The value to be set
     :param timeout: Timeout in seconds
+    :param session: The session object to the host
     """
-    pf_pci_path = utils_misc.get_pci_path(pf_pci)
+    pf_pci_path = utils_misc.get_pci_path(pf_pci, session=session)
     vf_no = int(params.get("vf_no", "4"))
     if default_vf != vf_no:
-        utils_sriov.set_vf(pf_pci_path, default_vf, timeout=timeout)
+        utils_sriov.set_vf(pf_pci_path, default_vf, session=session,
+                           timeout=timeout)
 
 
 def get_ping_dest(vm_session, mac_addr="", restart_network=False):
@@ -91,28 +95,50 @@ class SRIOVTest(object):
     """
     Wrapper class for sriov testing
     """
-    def __init__(self, vm, test, params):
+    def __init__(self, vm, test, params, session=None):
         self.vm = vm
         self.test = test
         self.params = params
-        self.pf_pci = utils_sriov.get_pf_pci()
+        self.session = session
+        self.remote_virsh_dargs = None
+        if self.session:
+            self.server_ip = self.params.get("server_ip")
+            self.server_user = self.params.get("server_user", "root")
+            self.server_pwd = self.params.get("server_pwd")
+            self.remote_virsh_dargs = {'remote_ip': self.server_ip,
+                                       'remote_user': self.server_user,
+                                       'remote_pwd': self.server_pwd,
+                                       'unprivileged_user': None,
+                                       'ssh_remote_auth': True}
+        libvirt_version.is_libvirt_feature_supported(self.params)
+        self.pf_pci = utils_sriov.get_pf_pci(session=self.session)
         if not self.pf_pci:
             test.cancel("NO available pf found.")
-        self.pf_pci_path = utils_misc.get_pci_path(self.pf_pci)
+        self.pf_pci_path = utils_misc.get_pci_path(self.pf_pci,
+                                                   session=self.session)
 
-        utils_sriov.set_vf(self.pf_pci_path, 0)
-        setup_vf(self.pf_pci, self.params)
-        self.pf_info = utils_sriov.get_pf_info_by_pci(self.pf_pci)
-        self.vf_pci = utils_sriov.get_vf_pci_id(self.pf_pci)
+        utils_sriov.set_vf(self.pf_pci_path, 0, session=self.session)
+        setup_vf(self.pf_pci, self.params, session=self.session)
+        self.pf_info = utils_sriov.get_pf_info_by_pci(
+            self.pf_pci, session=self.session)
+        self.vf_pci = utils_sriov.get_vf_pci_id(
+            self.pf_pci, session=self.session)
         self.pf_pci_addr = utils_sriov.pci_to_addr(self.pf_pci)
         self.vf_pci_addr = utils_sriov.pci_to_addr(self.vf_pci)
         self.pf_name = self.pf_info.get('iface')
-        self.vf_name = utils_sriov.get_iface_name(self.vf_pci)
+        self.vf_name = utils_sriov.get_iface_name(
+            self.vf_pci, session=self.session)
         self.pf_dev_name = utils_sriov.get_device_name(self.pf_pci)
         self.vf_dev_name = utils_sriov.get_device_name(self.vf_pci)
+        self.default_vf_mac = utils_sriov.get_vf_mac(
+            self.pf_name, session=self.session)
+        self.vf_mac = ""
+
+        new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
+        self.orig_config_xml = new_xml.copy()
 
     def __del__(self):
-        recover_vf(self.pf_pci, self.params, 0)
+        recover_vf(self.pf_pci, self.params, 0, session=self.session)
 
     def parse_iface_dict(self):
         """
@@ -221,11 +247,10 @@ class SRIOVTest(object):
         if managed_disabled:
             virsh.nodedev_detach(dev_name, debug=True, ignore_errors=False)
 
-    def teardown_default(self, orig_config_xml, **dargs):
+    def teardown_default(self, **dargs):
         """
         Default cleanup
 
-        :param orig_config_xml: Original VM xml to recover
         :param dargs: test keywords
         """
         dev_name = dargs.get('dev_name')
@@ -234,11 +259,85 @@ class SRIOVTest(object):
         self.test.log.info("TEST_TEARDOWN: Recover test environment.")
         if self.vm.is_alive():
             self.vm.destroy(gracefully=False)
-        orig_config_xml.sync()
+        try:
+            self.orig_config_xml.sync()
+        except:
+            # FIXME: Workaround for 'save'/'managedsave' hanging issue
+            utils_libvirtd.Libvirtd().restart()
+            self.orig_config_xml.sync()
         if managed_disabled:
             virsh.nodedev_reattach(dev_name, debug=True, ignore_errors=False)
         if network_dict:
             libvirt_network.create_or_del_network(network_dict, True)
+
+    def setup_failover_test(self, **dargs):
+        """
+        Setup for failover test
+
+        :param dargs: test keywords
+        """
+        br_network_dict = eval(self.params.get("br_network_dict", '{}'))
+        br_name = self.params.get("br_name", "br0")
+        network_dict = self.parse_network_dict()
+        iface_dict = self.parse_iface_dict()
+        mac_addr = iface_dict.get('mac_address', '')
+        br_dict = eval(self.params.get("br_dict", '{}'))
+
+        if self.params.get("set_vf_mac", False):
+            if not br_dict.get('mac_address'):
+                br_dict['mac_address'] = utils_net.generate_mac_address_simple()
+            self.vf_mac = br_dict['mac_address']
+            self.test.log.debug("Set vf's mac to %s.", self.vf_mac)
+            utils_sriov.set_vf_mac(self.pf_name, self.vf_mac,
+                                   session=self.session)
+
+        self.test.log.info("TEST_SETUP: Create host bridge.")
+        utils_sriov.add_connection(self.pf_name, br_name, self.session)
+
+        if network_dict:
+            self.test.log.info("TEST_SETUP: Create network for %s",
+                               network_dict)
+            libvirt_network.create_or_del_network(
+                network_dict, remote_args=self.remote_virsh_dargs)
+        if br_network_dict:
+            self.test.log.info("TEST_SETUP: Create network for %s",
+                               br_network_dict)
+            libvirt_network.create_or_del_network(
+                br_network_dict, remote_args=self.remote_virsh_dargs)
+        if not self.session:
+            libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'interface')
+            libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'hostdev')
+
+            self.test.log.info("TEST_SETUP: Add bridge interface.")
+            br_dev = self.create_iface_dev("interface", br_dict)
+            libvirt.add_vm_device(
+                vm_xml.VMXML.new_from_dumpxml(self.vm.name), br_dev)
+
+    def teardown_failover_test(self, **dargs):
+        """
+        Teardown for failover test
+
+        :param dargs: test keywords
+        """
+        br_name = self.params.get("br_name", "br0")
+
+        if self.params.get("set_vf_mac", False):
+            self.test.log.debug("Recover vf's mac to %s.", self.default_vf_mac)
+            utils_sriov.set_vf_mac(self.pf_name, self.default_vf_mac, session=self.session)
+        if not self.session:
+            self.teardown_default(**dargs)
+        self.test.log.info("TEST_TEARDOWN: Remove host bridge.")
+        utils_sriov.del_connection(self.pf_name, br_name, self.session)
+
+        network_dict = self.parse_network_dict()
+        br_network_dict = eval(self.params.get("br_network_dict", '{}'))
+
+        if network_dict:
+            libvirt_network.create_or_del_network(
+                network_dict, True, remote_args=self.remote_virsh_dargs)
+        if br_network_dict:
+            libvirt_network.create_or_del_network(
+                br_network_dict, True, remote_args=self.remote_virsh_dargs)
 
     def setup_iommu_test(self, **dargs):
         """
@@ -266,18 +365,17 @@ class SRIOVTest(object):
             libvirt.add_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name), br_dev)
 
-    def teardown_iommu_test(self, orig_config_xml, **dargs):
+    def teardown_iommu_test(self, **dargs):
         """
         Cleanup iommu test environment
 
-        :param orig_config_xml: Original VM xml to recover
         :param dargs: Other test keywords
         """
         test_scenario = dargs.get('test_scenario', '')
         br_dict = dargs.get('br_dict', "{'source': {'bridge': 'br0'}}")
         brg_dict = {'pf_name': self.pf_name,
                     'bridge_name': br_dict['source']['bridge']}
-        self.teardown_default(orig_config_xml, **dargs)
+        self.teardown_default(**dargs)
         if test_scenario == 'failover':
-            self.test.log.info("TEST_SETUP: Remove host bridge.")
+            self.test.log.info("TEST_TEARDOWN: Remove host bridge.")
             utils_sriov.add_or_del_connection(brg_dict, is_del=True)

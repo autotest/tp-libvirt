@@ -1,5 +1,5 @@
-from provider.sriov import sriov_base
 from provider.sriov import check_points
+from provider.sriov import sriov_base
 
 from virttest import virsh
 
@@ -9,42 +9,41 @@ from virttest.utils_test import libvirt
 
 def run(test, params, env):
     """
-    Test the hostdev interface works well with the vIOMMU enabled.
+    Attach/detach the hostdev interface with failover setting
     """
     def run_test():
         """
-        Start vm with IOMMU device and hostdev interface/device, hotunplug and
-        hotplug
+        Check the network connectivity after attaching/detaching the hostdev
+        interface/device.
 
-        1. Start vm with iommu enabled, and guest kernel cmd line with iommu
-        enabled
-        2. Test network connectivity. for failover, also check the interface
-        quantity on the vm.
-        3. Hotunplug the hostdev interface/device, check the device is
-        removed from the live xml, and the interface on the vm
-        4. Hotplug back the hostdev interface/device, check the network
-        connectivity again
+        1. Start vm with failover setting interfaces
+        2. Check VM's interface quantity and network connectivity
+        3. Hot-unplug the hostdev interface/device by detach-device
+        4. After hot-unplug the hostdev interface, ensure the bridge interface
+            will be active, so check on vm for 1) interface quantity; 2)network
+            connectivity
+        5. Hot plug the hostdev interface/device back by attach-device
+        6. Check on vm for 1) interface quantity; 2)network connectivity
         """
+
         test.log.info("TEST_STEP1: Attach a hostdev interface/device to VM")
         iface_dev = sriov_test_obj.create_iface_dev(dev_type, iface_dict)
         libvirt.add_vm_device(vm_xml.VMXML.new_from_dumpxml(vm_name), iface_dev)
 
-        test.log.info("TEST_STEP2: Start the VM with iommu enabled")
+        test.log.info("TEST_STEP2: Start the VM")
         vm.start()
         vm.cleanup_serial_console()
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(timeout=240)
 
-        test.log.info("TEST_STEP3: Check network accessibility")
-        br_name = None
-        if test_scenario == 'failover':
-            br_name = br_dict['source'].get('bridge')
+        test.log.info("TEST_STEP3: Check interface quantity and network"
+                      "accessibility.")
         check_points.check_vm_network_accessed(vm_session,
                                                tcpdump_iface=br_name,
                                                tcpdump_status_error=True)
         check_points.check_vm_iface_num(vm_session, expr_iface_no)
 
-        test.log.info("TEST_STEP4: Hotunplug a hostdev interface/device")
+        test.log.info("TEST_STEP4: Hot-unplug a hostdev interface/device")
         iface_cur = libvirt.get_vm_device(
             vm_xml.VMXML.new_from_dumpxml(vm_name), device_type, index=-1)[0]
         virsh.detach_device(vm_name, iface_cur.xml, wait_for_event=True,
@@ -52,7 +51,7 @@ def run(test, params, env):
         check_points.check_vm_iface_num(vm_session, expr_iface_no-1)
 
         test.log.info("TEST_STEP5: Hotplug back the hostdev interface/device, "
-                      "check the network connectivity.")
+                      "check interface quantity and the network connectivity.")
         virsh.attach_device(vm_name, iface_cur.xml, debug=True,
                             ignore_status=False)
 
@@ -63,31 +62,21 @@ def run(test, params, env):
                                                tcpdump_status_error=True)
 
     dev_type = params.get("dev_type", "")
-    test_scenario = params.get("test_scenario", "")
-
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     sriov_test_obj = sriov_base.SRIOVTest(vm, test, params)
-    if dev_type == "hostdev_device":
-        dev_name = sriov_test_obj.pf_dev_name
-    else:
-        dev_name = sriov_test_obj.vf_dev_name
     iface_dict = sriov_test_obj.parse_iface_dict()
-    network_dict = sriov_test_obj.parse_network_dict()
-
     device_type = "hostdev" if dev_type == "hostdev_device" else "interface"
-    managed_disabled = iface_dict.get('managed') != "yes" or \
-        (network_dict and network_dict.get('managed') != "yes")
     test_dict = sriov_test_obj.parse_iommu_test_params()
-    test_dict.update({"network_dict": network_dict,
-                      "managed_disabled": managed_disabled,
-                      "dev_name": dev_name})
+
     br_dict = test_dict.get('br_dict', {'source': {'bridge': 'br0'}})
-    expr_iface_no = int(params.get("expr_iface_no", '1'))
+    br_name = br_dict['source'].get('bridge')
+
+    expr_iface_no = int(params.get("expr_iface_no", '3'))
 
     try:
-        sriov_test_obj.setup_iommu_test(**test_dict)
+        sriov_test_obj.setup_failover_test(**test_dict)
         run_test()
 
     finally:
-        sriov_test_obj.teardown_iommu_test(**test_dict)
+        sriov_test_obj.teardown_failover_test(**test_dict)
