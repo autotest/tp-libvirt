@@ -20,12 +20,26 @@ def set_vmxml(vmxml, params):
     :param vmxml: xml instance of vm
     :param params: params of test
     """
-    vm_attrs = {k.replace('vmxml_', ''): int(v) if v.isdigit() else v
-                for k, v in params.items() if k.startswith('vmxml_')}
+    vm_attrs = eval(params.get('vm_attrs', '{}'))
+    if not vm_attrs:
+        vm_attrs = {k.replace('vmxml_', ''): int(v) if v.isdigit() else v
+                    for k, v in params.items() if k.startswith('vmxml_')}
     cpu_attrs = eval(params.get('cpu_attrs', '{}'))
     vm_attrs.update({'cpu': cpu_attrs})
     vmxml.setup_attrs(**vm_attrs)
     vmxml.sync()
+
+
+def set_hugepage(vm_mem_size):
+    """
+    Set number of hugepages according to hugepage size and vm memory size
+
+    :param vm_mem_size: vm's memory size
+    """
+    page_size = utils_memory.get_huge_page_size()
+
+    page_num = vm_mem_size // page_size
+    utils_memory.set_num_huge_pages(page_num)
 
 
 def run(test, params, env):
@@ -68,10 +82,8 @@ def run(test, params, env):
         :param case: test case
         """
         if case == 'prealloc_thread':
-            page_size = utils_memory.get_huge_page_size()
             vm_mem_size = vmxml.memory
-            page_num = vm_mem_size // page_size
-            utils_memory.set_num_huge_pages(page_num)
+            set_hugepage(vm_mem_size)
 
             # Setup memoryBacking of vmxml from attrs
             mem_backing = vm_xml.VMMemBackingXML()
@@ -81,6 +93,20 @@ def run(test, params, env):
             vmxml.mb = mem_backing
 
             vmxml.sync()
+            test.log.debug(virsh.dumpxml(vm_name).stdout_text)
+
+        if case == 'no_mem_backing':
+            vm_mem_size = vmxml.memory
+            set_hugepage(vm_mem_size)
+
+            mem_device = Memory()
+            mem_device_attrs = eval(params.get('mem_device_attrs'))
+            mem_device.setup_attrs(**mem_device_attrs)
+
+            vmxml.del_mb()
+            vmxml.add_device(mem_device)
+            set_vmxml(vmxml, params)
+
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
     def run_test_memorybacking(case):
@@ -138,6 +164,38 @@ def run(test, params, env):
             virsh.start(vm_name, ignore_status=False)
             vm.wait_for_login().close()
             libvirt.check_qemu_cmd_line(qemu_check)
+
+        if case == 'no_mem_backing':
+            perm_before = process.run('ls /dev/hugepages/libvirt/qemu/ -ldZ',
+                                      shell=True).stdout_text
+            if 'root root' not in perm_before:
+                test.fail('Permission should be "root root"')
+            virsh.start(vm_name, **VIRSH_ARGS)
+
+            perm_after = process.run('ls /dev/hugepages/libvirt/qemu/ -lZ',
+                                     shell=True).stdout_text
+            if 'qemu qemu' not in perm_after:
+                test.fail('Permission should be "qemu qemu"')
+
+            mem_device_attrs = eval(params.get('mem_device_attrs'))
+            new_mem_device = Memory()
+            new_mem_device.setup_attrs(**mem_device_attrs)
+
+            mem_devices = vmxml.get_devices('memory')
+            virsh.attach_device(vm_name, new_mem_device.xml, **VIRSH_ARGS)
+
+            new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            mem_devices_after_attach = new_vmxml.get_devices('memory')
+            test.log.debug(virsh.dumpxml(vm_name).stdout_text)
+
+            test.log.info('Memory devices before attach(%d): %s\n'
+                          'Memory devices after attatch(%d): %s',
+                          len(mem_devices_after_attach),
+                          mem_devices_after_attach,
+                          len(mem_devices),
+                          mem_devices)
+            if len(mem_devices_after_attach) != len(mem_devices) + 1:
+                test.fail('Attach memory device failed.')
 
     def run_test_edit_mem(case):
         """
