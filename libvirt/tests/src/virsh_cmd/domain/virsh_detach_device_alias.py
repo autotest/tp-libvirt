@@ -55,6 +55,9 @@ def run(test, params, env):
     # interface params
     interface_type = params.get("detach_interface_type")
     interface_dict = eval(params.get('interface_dict', '{}'))
+    # rng params
+    rng_type = params.get("detach_rng_type")
+    rng_dict = eval(params.get('rng_dict', '{}'))
 
     device_alias = "ua-" + str(uuid.uuid4())
 
@@ -167,6 +170,17 @@ def run(test, params, env):
         interface_dict.update({"alias": {"name": device_alias}})
         libvirt_vmxml.modify_vm_device(
             vmxml=vmxml, dev_type='interface', dev_dict=interface_dict)
+
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login(timeout=240).close()
+
+        attach_device = False
+
+    if rng_type:
+        rng_dict.update({"alias": {"name": device_alias}})
+        libvirt_vmxml.modify_vm_device(vmxml=vmxml,
+                                       dev_type='rng', dev_dict=rng_dict)
 
         if not vm.is_alive():
             vm.start()
