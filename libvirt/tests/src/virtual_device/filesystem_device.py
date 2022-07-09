@@ -53,6 +53,8 @@ def run(test, params, env):
             expected_results += ",posix_lock"
         else:
             expected_results += ",no_posix_lock"
+        if thread_pool_size:
+            expected_results += " --thread-pool-size=%s" % thread_pool_size
         logging.debug(expected_results)
         return expected_results
 
@@ -192,6 +194,7 @@ def run(test, params, env):
     flock = params.get("flock", "on")
     xattr = params.get("xattr", "on")
     path = params.get("virtiofsd_path", "/usr/libexec/virtiofsd")
+    thread_pool_size = params.get("thread_pool_size")
     queue_size = int(params.get("queue_size", "512"))
     driver_type = params.get("driver_type", "virtiofs")
     guest_num = int(params.get("guest_num", "1"))
@@ -248,8 +251,10 @@ def run(test, params, env):
             source = {'socket': source_socket}
             target = {'dir': target_dir}
             if launched_mode == "auto":
-                binary_keys = ['path', 'cache_mode', 'xattr', 'lock_posix', 'flock']
-                binary_values = [path, cache_mode, xattr, lock_posix, flock]
+                binary_keys = ['path', 'cache_mode', 'xattr', 'lock_posix',
+                               'flock', 'thread_pool_size']
+                binary_values = [path, cache_mode, xattr, lock_posix,
+                                 flock, thread_pool_size]
                 binary_dict = dict(zip(binary_keys, binary_values))
                 source = {'dir': source_dir}
                 accessmode = "passthrough"
