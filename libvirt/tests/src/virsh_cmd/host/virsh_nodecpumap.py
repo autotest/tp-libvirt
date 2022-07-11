@@ -5,6 +5,7 @@ import random
 from avocado.utils import process
 from avocado.utils import cpu
 from virttest import virsh
+from virttest import libvirt_cgroup
 
 SYSFS_SYSTEM_PATH = "/sys/devices/system/cpu"
 
@@ -195,15 +196,32 @@ def run(test, params, env):
     online_cpus = cpu.cpu_online_list()
     test_cpu = random.choice(online_cpus)
 
-    if cpu_off_on_test:
-        # Turn off CPU
-        cpu.offline(test_cpu)
+    try:
+        if cpu_off_on_test:
+            # CPU offline will change default cpuset and this change will not
+            # be reverted after re-online that cpu on v1 cgroup.
+            # Need to revert cpuset manually on v1 cgroup.
+            if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
+                logging.debug("Need to keep original value in cpuset file under "
+                              "cgroup v1 environment for later recovery")
+                default_cpuset = libvirt_cgroup.CgroupTest(None).get_cpuset_cpus()
+            # Turn off CPU
+            cpu.offline(test_cpu)
 
-    result = virsh.nodecpumap(option, ignore_status=True, debug=True)
-    check_result(result, option, status_error, test)
-
-    if cpu_off_on_test:
-        # Turn on CPU and check again
-        cpu.online(test_cpu)
         result = virsh.nodecpumap(option, ignore_status=True, debug=True)
         check_result(result, option, status_error, test)
+
+        if cpu_off_on_test:
+            # Turn on CPU and check again
+            cpu.online(test_cpu)
+            result = virsh.nodecpumap(option, ignore_status=True, debug=True)
+            check_result(result, option, status_error, test)
+    finally:
+        if cpu_off_on_test:
+            if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
+                logging.debug("Reset cpuset file under cgroup v1 environment")
+                try:
+                    libvirt_cgroup.CgroupTest(None)\
+                        .set_cpuset_cpus(default_cpuset)
+                except Exception as e:
+                    test.error("Revert cpuset failed: {}".format(str(e)))
