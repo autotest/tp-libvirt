@@ -66,12 +66,9 @@ def run(test, params, env):
     network_dict = sriov_test_obj.parse_network_dict()
     device_type = params.get("device_type", "interface")
 
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    orig_config_xml = vmxml.copy()
-
     try:
         sriov_test_obj.setup_default(network_dict=network_dict)
         run_test()
 
     finally:
-        sriov_test_obj.teardown_default(orig_config_xml, network_dict=network_dict)
+        sriov_test_obj.teardown_default(network_dict=network_dict)

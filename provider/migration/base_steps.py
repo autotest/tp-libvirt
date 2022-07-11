@@ -3,7 +3,9 @@ import aexpect
 
 from virttest import migration
 from virttest import libvirt_remote
+from virttest import libvirt_vm
 from virttest import remote
+from virttest import utils_conn
 from virttest import utils_iptables
 
 from virttest.utils_test import libvirt
@@ -34,6 +36,8 @@ class MigrationBase(object):
         self.vm = vm
         self.params = params
         self.src_uri = vm.connect_uri
+        self.src_full_uri = libvirt_vm.complete_uri(
+                        self.params.get("migrate_source_host"))
         self.conn_list = []
         self.remote_libvirtd_log = None
 
@@ -74,14 +78,16 @@ class MigrationBase(object):
         action_during_mig = self.params.get("action_during_mig")
         migrate_speed = self.params.get("migrate_speed")
         stress_package = self.params.get("stress_package")
+        check_vm_conn_before_migration = "yes" == self.params.get("check_vm_conn_before_migration", "no")
         extra = self.params.get("virsh_migrate_extra")
         extra_args = self.migration_test.update_virsh_migrate_extra_args(self.params)
         postcopy_options = self.params.get("postcopy_options")
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
 
-        # Check local guest network connection before migration
-        self.migration_test.ping_vm(self.vm, self.params)
+        if check_vm_conn_before_migration:
+            # Check local guest network connection before migration
+            self.migration_test.ping_vm(self.vm, self.params)
         self.test.log.debug("Guest xml after starting:\n%s",
                             vm_xml.VMXML.new_from_dumpxml(vm_name))
 
@@ -142,6 +148,49 @@ class MigrationBase(object):
                                     extra, action_during_mig,
                                     extra_args)
 
+    def run_migration_back(self):
+        """
+        Execute migration from target host to source host
+        """
+        virsh_options = self.params.get("virsh_options", "")
+        extra = self.params.get("virsh_migrate_extra")
+        options = self.params.get("virsh_migrate_options", "--live --verbose")
+        dest_uri = self.params.get("virsh_migrate_desturi")
+        self.vm.connect_uri = dest_uri
+        server_ip = self.params.get("server_ip")
+        server_user = self.params.get("server_user", "root")
+        server_pwd = self.params.get("server_pwd")
+
+        client_ip = self.params.get("client_ip")
+        client_pwd = self.params.get("client_pwd")
+        runner_on_target = remote.RemoteRunner(host=server_ip,
+                                               username=server_user,
+                                               password=server_pwd)
+        ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
+                                                  server_pwd=client_pwd,
+                                                  client_ip=server_ip,
+                                                  client_pwd=server_pwd)
+        try:
+            ssh_connection.conn_check()
+        except utils_conn.ConnectionError:
+            ssh_connection.conn_setup()
+            ssh_connection.conn_check()
+
+        self.test.log.debug(self.params.get("migrate_source_host"))
+
+        # Pre migration setup for remote machine
+        self.migration_test.migrate_pre_setup(self.src_full_uri, self.params)
+
+        cmd = "virsh migrate %s %s %s %s" % (self.vm.name, options,
+                                             self.src_full_uri,
+                                             extra)
+        self.test.log.info("Start migration: %s", cmd)
+        cmd_result = remote.run_remote_cmd(cmd, self.params, runner_on_target)
+        if cmd_result.exit_status:
+            self.test.fail("Failed to run '%s' on remote: %s"
+                           % (cmd, cmd_result))
+        self.vm.connect_uri = self.src_uri
+
     def verify_default(self):
         """
         Verify steps by default
@@ -164,6 +213,8 @@ class MigrationBase(object):
         Cleanup steps by default
 
         """
+        self.vm.connect_uri = self.src_uri
+
         dest_uri = self.params.get("virsh_migrate_desturi")
         set_remote_libvirtd_log = "yes" == self.params.get("set_remote_libvirtd_log", "no")
 

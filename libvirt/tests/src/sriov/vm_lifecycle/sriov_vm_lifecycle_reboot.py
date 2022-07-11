@@ -75,12 +75,10 @@ def run(test, params, env):
         else sriov_test_obj.setup_default
     test_teardown = sriov_test_obj.teardown_iommu_test if test_dict.get('iommu_dict')\
         else sriov_test_obj.teardown_default
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    orig_config_xml = vmxml.copy()
 
     try:
         test_setup(**test_dict)
         run_test()
 
     finally:
-        test_teardown(orig_config_xml, **test_dict)
+        test_teardown(**test_dict)
