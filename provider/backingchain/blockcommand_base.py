@@ -119,6 +119,27 @@ class BlockCommand(object):
 
         return expected_chain
 
+    def get_hash_value(self, session=None, check_item=''):
+        """
+        Get the hash value
+
+        :param session: virsh session
+        :param check_item: a file or device
+        :return hash value
+        """
+        if session is None:
+            session = self.vm.wait_for_login()
+
+        status, _ = session.cmd_status_output("which sha256sum")
+        if status:
+            self.test.error("Not find sha256sum command on guest.")
+
+        ret, expected_hash = session.cmd_status_output("sha256sum %s" % check_item)
+        if ret:
+            self.test.error("Get sha256sum value failed")
+
+        return expected_hash
+
     def backingchain_common_teardown(self):
         """
         Clean all new created snap
