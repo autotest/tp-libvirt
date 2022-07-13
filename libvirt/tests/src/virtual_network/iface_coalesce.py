@@ -253,7 +253,7 @@ def run(test, params, env):
         iface.model = iface_model
         iface.coalesce = {'max': coalesce_value}
         if network_type == "ovsbridge" and iface_type == "bridge":
-            iface.virtualport_type = "openvswitch"
+            iface.setup_attrs(virtualport={'type': "openvswitch"})
 
         if not hotplug_iface:
             vmxml.devices = xml_devices
