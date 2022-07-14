@@ -182,7 +182,6 @@ def run(test, params, env):
     domuuid = vm.get_uuid()
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
-    os_xml = getattr(vm_xml, "os")
     host_arch = platform.machine()
 
     # Only check_pcrbanks for new version
@@ -192,7 +191,7 @@ def run(test, params, env):
     if backend_type == "emulator" and host_arch == 'x86_64':
         if not utils_package.package_install("OVMF"):
             test.error("Failed to install OVMF or edk2-ovmf pkgs on host")
-        if os_xml.xmltreefile.find('nvram') is None:
+        if ("os firmware='efi'" and 'nvram') not in str(vm_xml):
             replace_os_disk(vm_xml, vm_name, nvram)
             vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     if vm.is_alive():
@@ -599,6 +598,7 @@ def run(test, params, env):
         new_name = ""
         virsh_dargs = {"debug": True, "ignore_status": False}
         vm_xml.remove_all_device_by_type('tpm')
+        vm_xml.sync()
         tpm_dev = Tpm()
         if tpm_model:
             tpm_dev.tpm_model = tpm_model
