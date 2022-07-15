@@ -57,7 +57,7 @@ def run(test, params, env):
             if status_destroy != 0:
                 test.error("Network destroyed failed!")
 
-        virsh_dargs = {'ignore_status': True}
+        virsh_dargs = {'ignore_status': True, 'debug': True}
         if params.get('setup_libvirt_polkit') == 'yes':
             virsh_dargs['unprivileged_user'] = unprivileged_user
             virsh_dargs['uri'] = uri
