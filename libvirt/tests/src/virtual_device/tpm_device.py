@@ -191,7 +191,8 @@ def run(test, params, env):
     if backend_type == "emulator" and host_arch == 'x86_64':
         if not utils_package.package_install("OVMF"):
             test.error("Failed to install OVMF or edk2-ovmf pkgs on host")
-        if ("os firmware='efi'" and 'nvram') not in str(vm_xml):
+        os_attrs = vm_xml.os.fetch_attrs()
+        if not any([os_attrs.get('os_firmware') == "efi", os_attrs.get('nvram')]):
             replace_os_disk(vm_xml, vm_name, nvram)
             vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     if vm.is_alive():
