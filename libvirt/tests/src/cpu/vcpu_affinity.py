@@ -8,6 +8,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 from virttest import utils_libvirtd
+from virttest import libvirt_cgroup
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -130,6 +131,14 @@ def run(test, params, env):
             if x not in online_cpus and cpuutil.online(x):
                 test.fail("fail to online cpu{}".format(x))
 
+        # CPU offline will change default cpuset and this change will not
+        # be reverted after re-online that cpu on v1 cgroup.
+        # Need to revert cpuset manually on v1 cgroup.
+        if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
+            logging.debug("Need to keep original value in cpuset file under "
+                          "cgroup v1 environment for later recovery")
+            default_cpuset = libvirt_cgroup.CgroupTest(None).get_cpuset_cpus()
+
         # use vcpu cpuset or/and cputune cpuset to define xml
         del vmxml.cputune
         del vmxml.vcpus
@@ -223,6 +232,15 @@ def run(test, params, env):
 
     finally:
         vmxml_backup.sync()
+
+        # recover v1 cgroup cpuset
+        if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
+            logging.debug("Reset cpuset file under cgroup v1 environment")
+            try:
+                libvirt_cgroup.CgroupTest(None)\
+                    .set_cpuset_cpus(default_cpuset)
+            except Exception as e:
+                test.error("Revert cpuset failed: {}".format(str(e)))
 
         # recovery the host cpu env
         for x in range(1, hostcpu_num):

@@ -6,6 +6,7 @@ import platform
 from avocado.utils import cpu as cputils
 from avocado.utils import process
 
+from virttest import libvirt_cgroup
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -223,6 +224,14 @@ def run(test, params, env):
     # Test vcpu disable if needed
     if disable_enable_vcpu:
         test_disable_enable_cpu()
+        # CPU offline will change default cpuset and this change will not
+        # be reverted after re-online that cpu on v1 cgroup.
+        # Need to revert cpuset manually on v1 cgroup.
+        if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
+            logging.debug("Need to keep original value in cpuset file under "
+                          "cgroup v1 environment for later recovery")
+            default_cpuset = libvirt_cgroup.CgroupTest(None).get_cpuset_cpus()
+
     cmd_result = virsh.nodeinfo(ignore_status=True, extra=option)
     logging.info("Output:\n%s", cmd_result.stdout.strip())
     logging.info("Status: %d", cmd_result.exit_status)
@@ -233,6 +242,16 @@ def run(test, params, env):
     # Recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
+
+    # Recover v1 cgroup cpuset
+    if disable_enable_vcpu:
+        if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
+            logging.debug("Reset cpuset file under cgroup v1 environment")
+            try:
+                libvirt_cgroup.CgroupTest(None)\
+                    .set_cpuset_cpus(default_cpuset)
+            except Exception as e:
+                test.error("Revert cpuset failed: {}".format(str(e)))
 
     # Check status_error
     status_error = params.get("status_error")
