@@ -10,7 +10,6 @@ from virttest.utils_libvirt import libvirt_vmxml
 from provider.virtio_rng import check_points as virtio_provider
 
 logging = log.getLogger('avocado.' + __name__)
-locs = locals()
 
 
 def check_attached_rng_device(vm_name, rng_device_dict):
@@ -43,8 +42,7 @@ def check_detached_rng_device(vm_name, test):
 
 def handle_connection_mode_fail(rng_port):
     """
-    Starts a separate process feeding data to /dev/urandom and restarts vm.
-    The following code is just a first idea, untested
+    Starts a separate process feeding data rng device in vm and restarts vm.
 
     :param rng_port: Port where we should listen for connections from VM
     """
