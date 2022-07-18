@@ -196,8 +196,13 @@ class DiskBase(object):
         mon_host = params.get("mon_host")
         new_image_path = params.get("image_path")
         auth_username = params.get("auth_user")
+        client_name = params.get("client_name")
 
         ceph.create_config_file(mon_host)
+        params.update(
+            {'keyfile': ceph.create_keyring_file(client_name, auth_key)})
+        LOG.debug('Create key file :%s' % params.get('keyfile'))
+
         libvirt_secret.clean_up_secrets()
         sec_uuid = libvirt_secret.create_secret(sec_dict=sec_dict)
         virsh.secret_set_value(sec_uuid, auth_key, debug=True)

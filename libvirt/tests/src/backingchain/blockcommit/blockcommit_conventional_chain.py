@@ -1,5 +1,7 @@
 import logging
 
+from avocado.utils import process
+
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
@@ -85,7 +87,8 @@ def run(test, params, env):
 
         bkxml.sync()
         disk_obj.cleanup_disk_preparation(disk_type)
-
+        if disk_type == "rbd_with_auth":
+            process.run("rm -f %s" % params.get('keyfile'))
     # Process cartesian parameters
     vm_name = params.get("main_vm")
     target_disk = params.get('target_disk')
