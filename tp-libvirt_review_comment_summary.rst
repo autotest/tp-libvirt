@@ -120,6 +120,10 @@ Coding
 
  - instead of hardcoding libvirt version switches in the test scripts, it's preferable to add the version that's minimally supported in the test configuration file, e.g. called `func_supported_since_libvirt_ver = (7, 0, 0)` in the cfg and use in the script as `libvirt_version.is_libvirt_feature_supported(params)`.
 
+- complexity handling
+
+  - focus on the problem to be solved now, not speculated one that might need to be solved in the future; the future problem should be solved once it arrives and you can see its actual shape and requirements in the physical universe
+
 ======================================================================
 Enhancement (best practice):
 ======================================================================
