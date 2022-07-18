@@ -1,5 +1,7 @@
 import logging as log
 
+from avocado.utils import process
+
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -9,6 +11,7 @@ from provider.virtio_rng import check_points as virtio_provider
 
 logging = log.getLogger('avocado.' + __name__)
 locs = locals()
+
 
 def check_attached_rng_device(vm_name, rng_device_dict):
     """
@@ -42,12 +45,25 @@ def handle_connection_mode_fail(rng_port):
     """
     Starts a separate process feeding data to /dev/urandom and restarts vm.
     The following code is just a first idea, untested
+
+    :param rng_port: Port where we should listen for connections from VM
     """
+    cmd = "/sbin/rngd -f -r /dev/urandom -o /dev/random"
+    result = process.run(cmd, shell=True)
+    if result.exit_status != 0:
+        process.run("systemctl stop rngd.service")
     bgjob = utils_misc.AsyncJob(f"cat /dev/urandom | nc -l localhost -p {rng_port}")
     return bgjob
 
 
 def create_attach_check_rng_device(vm_name, rng_device_dict):
+    """
+    Creates, attaches, and checks rng device.
+
+    :param vm_name: Name of the VM where the device should be attached.
+    :param rng_device_dict: Rng device dictionary from which the device should
+    be created
+    """
     rng_dev = libvirt_vmxml.create_vm_device_by_type(
         "rng", rng_device_dict)
     virsh.attach_device(vm_name, rng_dev.xml, flagstr="--config", debug=True)
@@ -56,6 +72,15 @@ def create_attach_check_rng_device(vm_name, rng_device_dict):
 
 
 def do_common_check_after_vm_start(vm_name, rng_dev, rng_device_dict, test, vm):
+    """
+    Contains most common steps we do after we start the VM.
+
+    :param vm_name: Name of VM we're working with
+    :param rng_dev: Random number generator device object
+    :param rng_device_dict: A device dict that was used to create rng device in previous step
+    :param test: Test object from avocado
+    :param vm: VM object from avocado
+    """
     check_attached_rng_device(vm_name, rng_device_dict)
     ssh_session = vm.wait_for_login()
     virtio_provider.check_guest_dump(ssh_session)
@@ -116,10 +141,6 @@ def cleanup_basic(vmxml_backup, vm):
     vmxml_backup.sync()
 
 
-def execute_coldplug_unplug_random_backend(test, params, vm):
-    execute_basic(test, params, vm)
-
-
 def execute_coldplug_unplug_egd_backend_connect_mode(test, params, vm):
     """
     Runs check according to
@@ -141,7 +162,6 @@ def execute_coldplug_unplug_egd_backend_connect_mode(test, params, vm):
     except:
         feed_process = handle_connection_mode_fail(params.get("rng_port"))
         vm.start()
-        pass
     do_common_check_after_vm_start(vm_name, rng_dev, rng_device_dict, test, vm)
 
     if feed_process:
@@ -183,11 +203,11 @@ def run(test, params, env):
     test_case = params.get("test_case", "")
     module_fields = dir(__import__(__name__))
     setup_test = (eval(f"setup_{test_case}") if f"setup_{test_case}"
-    in module_fields else setup_basic)
+                  in module_fields else setup_basic)
     execute_test = (eval(f"execute_{test_case}") if f"execute_{test_case}"
-    in module_fields else execute_basic)
+                    in module_fields else execute_basic)
     cleanup_test = (eval(f"cleanup_{test_case}") if f"cleanup_{test_case}"
-    in locals() else cleanup_basic)
+                    in module_fields else cleanup_basic)
 
     try:
         setup_test(vm)
