@@ -204,7 +204,7 @@ def run(test, params, env):
             if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
                 logging.debug("Need to keep original value in cpuset file under "
                               "cgroup v1 environment for later recovery")
-                default_cpuset = libvirt_cgroup.CgroupTest(None).get_cpuset_cpus()
+                default_cpuset = libvirt_cgroup.CgroupTest(None).get_cpuset_cpus(params.get('main_vm'))
             # Turn off CPU
             cpu.offline(test_cpu)
 
@@ -222,6 +222,6 @@ def run(test, params, env):
                 logging.debug("Reset cpuset file under cgroup v1 environment")
                 try:
                     libvirt_cgroup.CgroupTest(None)\
-                        .set_cpuset_cpus(default_cpuset)
+                        .set_cpuset_cpus(default_cpuset, params.get('main_vm'))
                 except Exception as e:
                     test.error("Revert cpuset failed: {}".format(str(e)))
