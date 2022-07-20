@@ -6,15 +6,15 @@ import platform
 from avocado.utils import cpu as cputils
 from avocado.utils import process
 
+from virttest import cpu
 from virttest import libvirt_cgroup
-from virttest import virsh
+from virttest import libvirt_version
 from virttest import utils_libvirtd
 from virttest import utils_misc
-from virttest import cpu
+from virttest import virsh
+
 from virttest.libvirt_xml import capability_xml
 from virttest.staging import utils_memory
-
-from virttest import libvirt_version
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -134,21 +134,18 @@ def run(test, params, env):
 
         numa_cells_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'NUMA cell(s)', 3)
-        cmd = 'cat /proc/cpuinfo |grep "physical id"|sort |uniq|wc -l'
         logging.debug("cpu_sockets_nodeinfo=%s", cpu_sockets_nodeinfo)
         logging.debug("numa_cells_nodeinfo=%s", numa_cells_nodeinfo)
 
-        cmd_ret = process.run(cmd, ignore_status=True, shell=True)
-        if int(cmd_ret.stdout_text.strip()) != int(numa_cells_nodeinfo) * int(cpu_sockets_nodeinfo):
-            test.fail("Command {} output {} isn't equal to "
-                      "NUMA cell(s) {} * CPU sockets {}".format(cmd,
-                                                                cmd_ret.stdout_text.strip(),
-                                                                numa_cells_nodeinfo,
-                                                                cpu_sockets_nodeinfo))
+        lscpu_info_dict = cpu.get_cpu_info()
+        numa_cells_os = lscpu_info_dict.get('NUMA node(s)')
+        if numa_cells_nodeinfo != numa_cells_os:
+            test.fail("Virsh nodeinfo output '%s' didn't match "
+                      "NUMA node(s) of host OS '%s'" % (numa_cells_nodeinfo,
+                                                        numa_cells_os))
+        cpus_os = lscpu_info_dict.get("CPU(s)")
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
             # for spec NUMA arch, the output of nodeinfo is in a spec format
-            cpus_os = cpu.get_cpu_info().get("CPU(s)")
-
             if (re.match(cores_per_socket_nodeinfo, cpus_os) and
                     re.match(numa_cells_nodeinfo, "1")):
                 spec_numa = True
@@ -162,6 +159,17 @@ def run(test, params, env):
         # Check Thread(s) per core
         threads_per_core_nodeinfo = _check_nodeinfo(nodeinfo_output,
                                                     'Thread(s) per core', 4)
+
+        multiplied_node_value = int(cores_per_socket_nodeinfo) * int(numa_cells_nodeinfo) * int(cpu_sockets_nodeinfo) * int(threads_per_core_nodeinfo)
+        logging.debug("The multiplied node value for CPU socket(s)*"
+                      "Core(s) per socket*Thread(s) per core*"
+                      "NUMA cell(s) in nodeinfo is '%d'", multiplied_node_value)
+        if int(cpus_os) != multiplied_node_value:
+            test.fail("CPU socket(s) * Core(s) per socket * "
+                      "Thread(s) per core * NUMA cell(s) in nodeinfo "
+                      "is expected to be equal to CPU(s) in lscpu '%s', "
+                      "but found '%d'" % (cpus_os, multiplied_node_value))
+
         if not spec_numa:
             if threads_per_core_nodeinfo != cpu_topology['threads']:
                 test.fail("Virsh nodeinfo output didn't match"
@@ -194,23 +202,39 @@ def run(test, params, env):
 
         :return: test.fail if CPU(s) number is not expected
         """
-        ret_before_disable = virsh.nodeinfo(ignore_status=True, debug=True)
-        cpus_nodeinfo_before = _check_nodeinfo(ret_before_disable.stdout_text.strip(),
-                                               "CPU(s)", 2)
+        def _get_nodeinfo():
+            the_nodeinfo = virsh.nodeinfo(ignore_status=True, debug=True)
+            return _check_nodeinfo(the_nodeinfo.stdout_text.strip(), "CPU(s)", 2)
 
+        is_cgroupv2 = libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled()
+        if not is_cgroupv2:
+            logging.debug("Need to keep original value in cpuset file under "
+                          "cgroup v1 environment for later recovery")
+            default_cpuset = libvirt_cgroup.CgroupTest(None).get_cpuset_cpus(params.get("main_vm"))
+
+        cpus_nodeinfo_before = _get_nodeinfo()
+        logging.debug("Now a host cpu is turned to be offline")
         online_list = cputils.online_list()
         # Choose the last online host cpu to offline
         cputils.offline(online_list[-1])
 
-        ret_after_disable = virsh.nodeinfo(ignore_status=True, debug=True)
-        cpus_nodeinfo_after = _check_nodeinfo(ret_after_disable.stdout_text.strip(),
-                                              "CPU(s)", 2)
+        cpus_nodeinfo_after = _get_nodeinfo()
         if int(cpus_nodeinfo_before) != int(cpus_nodeinfo_after) + 1:
-            test.fail("CPU(s) should be '%d' after 1 cpu is disabled, "
+            test.fail("CPU(s) should be '%d' after 1 cpu is offline, "
                       "but found '%s'" % (int(cpus_nodeinfo_before) - 1,
                                           cpus_nodeinfo_after))
+        logging.debug("Now a host cpu is turned to be online")
         # Make the last host cpu online again
         cputils.online(online_list[-1])
+        if not is_cgroupv2:
+            logging.debug("Reset cpuset file under cgroup v1 environment")
+            libvirt_cgroup.CgroupTest(None).set_cpuset_cpus(default_cpuset)
+
+        cpus_nodeinfo_after = _get_nodeinfo()
+        if int(cpus_nodeinfo_before) != int(cpus_nodeinfo_after):
+            test.fail("CPU(s) should be '%d' after 1 cpu is online, "
+                      "but found '%s'" % (int(cpus_nodeinfo_before),
+                                          cpus_nodeinfo_after))
 
     # Prepare libvirtd service
 
@@ -224,13 +248,7 @@ def run(test, params, env):
     # Test vcpu disable if needed
     if disable_enable_vcpu:
         test_disable_enable_cpu()
-        # CPU offline will change default cpuset and this change will not
-        # be reverted after re-online that cpu on v1 cgroup.
-        # Need to revert cpuset manually on v1 cgroup.
-        if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
-            logging.debug("Need to keep original value in cpuset file under "
-                          "cgroup v1 environment for later recovery")
-            default_cpuset = libvirt_cgroup.CgroupTest(None).get_cpuset_cpus()
+        return
 
     cmd_result = virsh.nodeinfo(ignore_status=True, extra=option)
     logging.info("Output:\n%s", cmd_result.stdout.strip())
@@ -242,16 +260,6 @@ def run(test, params, env):
     # Recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
-
-    # Recover v1 cgroup cpuset
-    if disable_enable_vcpu:
-        if not libvirt_cgroup.CgroupTest(None).is_cgroup_v2_enabled():
-            logging.debug("Reset cpuset file under cgroup v1 environment")
-            try:
-                libvirt_cgroup.CgroupTest(None)\
-                    .set_cpuset_cpus(default_cpuset)
-            except Exception as e:
-                test.error("Revert cpuset failed: {}".format(str(e)))
 
     # Check status_error
     status_error = params.get("status_error")
