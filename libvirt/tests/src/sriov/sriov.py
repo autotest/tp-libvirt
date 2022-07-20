@@ -201,13 +201,10 @@ def run(test, params, env):
         vf_addr_list = []
         netxml = network_xml.NetworkXML()
         if vf_pool_source == "vf_list":
-            for vf in vf_list:
-                attrs = create_address_dict(vf)
-                new_vf = netxml.new_vf_address(**{'attrs': attrs})
-                vf_addr_list.append(new_vf)
+            vf_attrs = [{'attrs': create_address_dict(vf)} for vf in vf_list]
             netxml.driver = {'name': 'vfio'}
             netxml.forward = {"mode": "hostdev", "managed": managed}
-            netxml.vf_list = vf_addr_list
+            netxml.setup_attrs(**{'vf_list': vf_attrs})
         else:
             netxml.pf = {"dev": pf_name}
             netxml.forward = {"mode": "hostdev", "managed": managed}
