@@ -29,7 +29,11 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
 
-        schid, chpids = ccw.get_device_info()
+        try:
+            schid, chpids = ccw.get_device_info()
+        except Exception as ex:
+            test.cancel("Failed to get device information: %s" % str(ex))
+
         uuid = str(uuid4())
 
         ccw.set_override(schid)
