@@ -656,8 +656,7 @@ def run(test, params, env):
 
         if with_active_commit:
             # inactive commit follow active commit will fail with bug 1135339
-            cmd = "virsh blockcommit %s %s --active --pivot" % (vm_name,
-                                                                blk_target)
+            cmd = "virsh blockcommit %s %s --active" % (vm_name, blk_target)
             cmd_session = aexpect.ShellSession(cmd)
 
         if backing_file_relative_path:
