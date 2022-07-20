@@ -228,7 +228,7 @@ def run(test, params, env):
         cputils.online(online_list[-1])
         if not is_cgroupv2:
             logging.debug("Reset cpuset file under cgroup v1 environment")
-            libvirt_cgroup.CgroupTest(None).set_cpuset_cpus(default_cpuset)
+            libvirt_cgroup.CgroupTest(None).set_cpuset_cpus(default_cpuset, params.get("main_vm"))
 
         cpus_nodeinfo_after = _get_nodeinfo()
         if int(cpus_nodeinfo_before) != int(cpus_nodeinfo_after):
