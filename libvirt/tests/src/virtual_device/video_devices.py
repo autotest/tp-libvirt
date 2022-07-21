@@ -112,6 +112,8 @@ def run(test, params, env):
         if is_primary or is_primary is None:
             if model_type == "vga":
                 pattern = r"-device.*VGA"
+            elif model_type == "bochs":
+                pattern = r"-device.*bochs-display"
             else:
                 pattern = r"-device.*%s-vga" % model_type
             if guest_arch == 's390x':
@@ -183,6 +185,9 @@ def run(test, params, env):
         if mem_type == "vram" and model_type == "vga":
             cmd_mem_size = str(int(mem_size)//1024)
             pattern = r"-device.*VGA.*vgamem_mb\W{1,2}%s" % cmd_mem_size
+        if mem_type == "vram" and model_type == "bochs":
+            cmd_mem_size = str(int(mem_size)*1024)
+            pattern = r"-device.*bochs.*vgamem\W{1,2}%s" % cmd_mem_size
         if mem_type == "vgamem":
             cmd_mem_size = str(int(mem_size)//1024)
             pattern = r"-device.*qxl-vga.*vgamem_mb\W{1,2}%s" % cmd_mem_size
