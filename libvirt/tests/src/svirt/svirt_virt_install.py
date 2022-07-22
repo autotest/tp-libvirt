@@ -70,6 +70,7 @@ def run(test, params, env):
             cmd += ",relabel=%s" % sec_relabel
 
         cmd += " --noautoconsole --graphics vnc --video %s" % video_model
+        cmd += " --osinfo detect=on,require=off"
         process.run(cmd, timeout=600, ignore_status=True)
 
         def _vm_alive():
