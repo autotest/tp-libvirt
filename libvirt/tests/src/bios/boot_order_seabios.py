@@ -31,6 +31,7 @@ def set_domain_disk(vm, vmxml, blk_source, params):
     use_bootable_dev = params.get("use_bootable_dev", "no") == "yes"
     use_unbootable_dev = "yes" == params.get("use_unbootable_dev", "no")
     use_unbootable_dev_first = "yes" == params.get("use_unbootable_dev_first", "no")
+    boot_order_bootable_first = "yes" == params.get("boot_order_bootable_first")
 
     global unbootable_source
 
@@ -43,6 +44,7 @@ def set_domain_disk(vm, vmxml, blk_source, params):
     #Remove all disk and reacquire the vmxml
     libvirt_vmxml.remove_vm_devices_by_type(vm, device_type='disk')
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+    vmxml.remove_all_boots()
 
     if use_unbootable_dev:
         device_path = os.path.dirname(blk_source)
@@ -51,6 +53,9 @@ def set_domain_disk(vm, vmxml, blk_source, params):
                                   'driver': {'name': driver_name, 'type': driver_type},
                                   'target': {'dev': unbootable_target_dev, 'bus': target_bus},
                                   'device': disk_device}
+        if not boot_order_bootable_first:
+            unbootable_disk_params["boot"] = 1
+
         libvirt.create_local_disk(disk_type, unbootable_source, image_size, disk_format)
         libvirt_vmxml.modify_vm_device(vmxml=vmxml, dev_type='disk',
                                        dev_dict=unbootable_disk_params, index=0)
@@ -61,6 +66,11 @@ def set_domain_disk(vm, vmxml, blk_source, params):
                                 'driver': {'name': driver_name, 'type': driver_type},
                                 'target': {'dev': target_dev, 'bus': target_bus},
                                 'device': disk_device}
+        if boot_order_bootable_first:
+            bootable_disk_params["boot"] = 1
+        else:
+            bootable_disk_params["boot"] = 2
+
         libvirt_vmxml.modify_vm_device(vmxml=vmxml, dev_type='disk',
                                        dev_dict=bootable_disk_params, index=1)
 
@@ -92,23 +102,22 @@ def run(test, params, env):
     try:
         blk_source = vm.get_first_disk_devices()['source']
         set_domain_disk(vm, vmxml, blk_source, params)
-        vmxml.remove_all_boots()
         if not vm.is_alive():
             vm.start()
         if not status_error:
             try:
                 vm.cleanup_serial_console()
                 vm.create_serial_console()
-                vm.wait_for_serial_login()
+                vm.wait_for_serial_login(timeout=60)
             except Exception as e:
-                test.fail("Test fail: %s", str(e))
+                test.fail(f"Test fail: {str(e)}")
             else:
                 test.log.debug("Succeed to boot %s", vm_name)
         else:
             try:
                 vm.cleanup_serial_console()
                 vm.create_serial_console()
-                vm.wait_for_serial_login()
+                vm.wait_for_serial_login(timeout=60)
             except LoginTimeoutError as expected_e:
                 test.log.debug("Got expected error message: %s", str(expected_e))
             except Exception as e:
