@@ -223,6 +223,7 @@ def run(test, params, env):
             vmxml.sync()
 
         vm.start()
+        vm.wait_for_login().close()
         logging.debug(virsh.dumpxml(vm_name))
 
         # Create backing chain
