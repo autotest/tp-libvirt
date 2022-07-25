@@ -104,15 +104,20 @@ def run(test, params, env):
         request but don't wait for job end
 
         1) Execute async option after blockcopy operation.
-        2) Check run time less than 2 seconds.
+        2) Check BLOCK_JOB_CANCELLED event in qemu-monitor-event.
         3) Check blockjob --info get no block job.
         """
+        virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC,
+                                           auto_close=True)
+        virsh_session.sendline(event_cmd % vm_name)
+        virsh.blockjob(vm_name, dev, options=test_option, debug=True,
+                       ignore_status=False)
 
-        res = virsh.blockjob(vm_name, dev, options=test_option,
-                             debug=True, ignore_status=False).duration
-        if res > 2:
-            test.fail('After blockjob with --async, the blockcopy not '
-                      'aborted immediately, spent %s seconds.' % res)
+        if not utils_misc.wait_for(
+                lambda: expected_event in virsh_session.get_stripped_output(),
+                10, step=0.01):
+            test.fail('Not find %s in event output:%s' % (
+                expected_event, virsh_session.get_stripped_output()))
 
         def _check_blockjob_info():
             """
@@ -131,7 +136,8 @@ def run(test, params, env):
         """
         After blockcopy, clean file
         """
-        teardown_blockjob_raw()
+        # Clean copy file
+        process.run('rm -rf %s' % tmp_copy_path)
 
     # Process cartesian parameters
     vm_name = params.get("main_vm")
@@ -140,6 +146,8 @@ def run(test, params, env):
     test_option = params.get('option_value', '')
     bandwidth = params.get('bandwidth', '1000')
     dev = params.get('disk')
+    event_cmd = params.get("event_cmd")
+    expected_event = params.get('expected_event')
     # Create object
     test_obj = blockcommand_base.BlockCommand(test, vm, params)
     check_obj = check_functions.Checkfunction(test, vm, params)
