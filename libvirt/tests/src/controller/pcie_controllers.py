@@ -17,6 +17,19 @@ from virttest.utils_libvirt import libvirt_pcicontr
 logging = log.getLogger('avocado.' + __name__)
 
 
+def handle_dynamic_hotplug_counts(params, vm_xml):
+    hotplug_option = params.get("hotplug_option")
+    hotplug_counts = params.get("hotplug_counts")
+    if hotplug_counts == 'dynamic':
+        free_root_ports = libvirt_pcicontr.get_free_root_ports(vm_xml)
+        if hotplug_option == 'off':
+            hotplug_counts = len(free_root_ports)
+        else:
+            hotplug_counts = len(free_root_ports) + 1
+
+    return hotplug_counts
+
+
 def run(test, params, env):
     """
     Test the PCIe controllers' options
@@ -209,7 +222,6 @@ def run(test, params, env):
     status_error = params.get("status_error", "no") == 'yes'
     restart_daemon = params.get("restart_daemon", "no") == 'yes'
     save_restore = params.get("save_restore", "no") == 'yes'
-    hotplug_counts = params.get("hotplug_counts")
     addr_twice = params.get("addr_twice", 'no') == 'yes'
     contr_index = None
 
@@ -248,6 +260,7 @@ def run(test, params, env):
             attach_extra = attach_extra % ("%02x" % int(contr_index))
         if err_msg and err_msg.count('%'):
             err_msg = err_msg % contr_index
+        hotplug_counts = handle_dynamic_hotplug_counts(params, vm_xml)
         if not save_restore:
             disk_max = int(hotplug_counts) if hotplug_counts else 1
             for disk_inx in range(0, disk_max):
