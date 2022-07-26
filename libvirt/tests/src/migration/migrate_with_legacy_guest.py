@@ -139,6 +139,8 @@ def run(test, params, env):
         if 'rhel6' in params.get("shortname"):
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             os_xml = vmxml.os
+            if os_xml.fetch_attrs().get('os_firmware') == 'efi':
+                os_xml.del_os_firmware()
             os_xml.del_nvram()
             os_xml.del_loader()
             vmxml.os = os_xml
