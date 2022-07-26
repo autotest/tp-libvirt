@@ -968,7 +968,7 @@ def run(test, params, env):
         if check_qemu:
             if qemu_patterns:
                 if auto_index:
-                    index_str = "%x" % int(auto_indexes_dict['pcie-root-port'][0])
+                    index_str = "%d" % int(auto_indexes_dict['pcie-root-port'][0])
                     qemu_patterns = qemu_patterns % index_str
                     logging.debug("qemu_patterns=%s", qemu_patterns)
                 if qemu_patterns.count('multifunction=on'):
