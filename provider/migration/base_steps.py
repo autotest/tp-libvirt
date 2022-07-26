@@ -237,6 +237,8 @@ class MigrationBase(object):
         if transport_type:
             self.conn_list.append(migration_base.setup_conn_obj(transport_type, self.params, self.test))
 
+        if self.params.get("virsh_migrate_extra_mig_again"):
+            extra += self.params.get("virsh_migrate_extra_mig_again")
         if '--tls' in extra:
             self.conn_list.append(migration_base.setup_conn_obj('tls', self.params, self.test))
 
