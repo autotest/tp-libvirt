@@ -246,7 +246,7 @@ def run(test, params, env):
         contr_index = ret_indexes[0]
         if attach_extra and attach_extra.count('--address '):
             attach_extra = attach_extra % ("%02x" % int(contr_index))
-        if err_msg and err_msg.count('%s'):
+        if err_msg and err_msg.count('%'):
             err_msg = err_msg % contr_index
         if not save_restore:
             disk_max = int(hotplug_counts) if hotplug_counts else 1
