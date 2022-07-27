@@ -152,7 +152,7 @@ def run(test, params, env):
             logging.debug('address: %s', new_iface_kwargs['address'])
             iface = create_iface(iface_model, iface_source, **new_iface_kwargs)
             mac = iface.mac_address
-
+            logging.debug('Before attaching %s\n', virsh.dumpxml(vm_name))
             result = virsh.attach_device(vm_name, iface.xml, debug=True)
             libvirt.check_exit_status(result)
 
@@ -164,7 +164,7 @@ def run(test, params, env):
             iface_list = [
                 iface for iface in xml_after_attach.get_devices('interface')
                 if iface.mac_address == mac and
-                int(iface.address['attrs']['bus'], 16) == int(pci_br_index, 16)
+                int(iface.address['attrs']['bus'], 16) == int(pci_br_index)
             ]
 
             logging.debug('iface list after attach: %s', iface_list)
