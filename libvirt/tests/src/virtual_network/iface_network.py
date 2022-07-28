@@ -1061,6 +1061,8 @@ TIMEOUT 3"""
                 start_clone_vm = virsh.start(vm_clone, debug=True)
                 libvirt.check_exit_status(start_clone_vm)
             else:
+                if vm.is_dead():
+                    vm.start()
                 if serial_login:
                     session = vm.wait_for_serial_login(username=username,
                                                        password=password)
