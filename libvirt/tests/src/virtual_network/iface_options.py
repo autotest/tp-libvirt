@@ -826,11 +826,7 @@ def run(test, params, env):
             if huge_page:
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 membacking = vm_xml.VMMemBackingXML()
-                hugepages = vm_xml.VMHugepagesXML()
-                pagexml = hugepages.PageXML()
-                pagexml.update(huge_page)
-                hugepages.pages = [pagexml]
-                membacking.hugepages = hugepages
+                membacking.setup_attrs(hugepages={'pages': [huge_page]})
                 vmxml.mb = membacking
 
                 vmxml.vcpu = int(vcpu_num)

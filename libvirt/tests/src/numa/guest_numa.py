@@ -360,14 +360,7 @@ def run(test, params, env):
         # hugepages setting
         if page_list:
             membacking = libvirt_xml.vm_xml.VMMemBackingXML()
-            hugepages = libvirt_xml.vm_xml.VMHugepagesXML()
-            pagexml_list = []
-            for i in range(len(page_list)):
-                pagexml = hugepages.PageXML()
-                pagexml.update(page_list[i])
-                pagexml_list.append(pagexml)
-            hugepages.pages = pagexml_list
-            membacking.hugepages = hugepages
+            membacking.setup_attrs(hugepages={'pages': page_list})
             vmxml.mb = membacking
 
         logging.debug("vm xml is %s", vmxml)

@@ -151,14 +151,7 @@ def run(test, params, env):
         # hugepages setting
         if huge_pages:
             membacking = vm_xml.VMMemBackingXML()
-            hugepages = vm_xml.VMHugepagesXML()
-            pagexml_list = []
-            for i in range(len(huge_pages)):
-                pagexml = hugepages.PageXML()
-                pagexml.update(huge_pages[i])
-                pagexml_list.append(pagexml)
-            hugepages.pages = pagexml_list
-            membacking.hugepages = hugepages
+            membacking.setup_attrs(hugepages={'pages': huge_pages})
             vmxml.mb = membacking
             logging.debug(virsh.dumpxml(vm_name))
 
