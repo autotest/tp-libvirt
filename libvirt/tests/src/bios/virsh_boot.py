@@ -19,6 +19,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
+from virttest.utils_libvirt import libvirt_bios
 
 
 # Global test env cleanup variables
@@ -320,6 +321,7 @@ def apply_boot_options(vmxml, params, test):
     with_feature = params.get("with_feature", "no") == "yes"
 
     dict_os_attrs = {}
+
     # Set attributes of loader of VMOSXML
     if with_loader:
         logging.debug("Set os loader to test non-released os version without secure boot enabling")
@@ -674,12 +676,8 @@ def run(test, params, env):
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-    # Remove loader/nvram element if exist which may affect newly added same elements
-    for item in ["loader", "nvram"]:
-        if item in str(vmxml):
-            vmxml.xmltreefile.remove_by_xpath("/os/%s" % item, remove_all=True)
-            vmxml.sync()
 
+    vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ''
     keyring_file = ''
