@@ -228,6 +228,10 @@ def run(test, params, env):
 
             # Attach device with invalid slot to pcie-to-pci-bridge
             if case == 'attach_with_invalid_slot':
+                target_bus = cur_pci_br[0].index
+                target_bus = hex(int(target_bus))
+                iface_kwargs['address'] = iface_kwargs['address'] % target_bus
+                logging.debug('iface_kwargs is updated to: %s', iface_kwargs)
                 iface = create_iface(iface_model, iface_source, **iface_kwargs)
                 vmxml.add_device(iface)
                 result_to_check = virsh.define(vmxml.xml, debug=True)
