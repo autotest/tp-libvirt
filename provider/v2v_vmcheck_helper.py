@@ -634,7 +634,7 @@ class VMChecker(object):
                     ".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
                 self.log_err(err_msg)
 
-        if self.is_vsock_supported(self.os_version):
+        if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
             self.check_xml('./devices/vsock')
 
     def check_xml(self, xpath, existence=True):
@@ -696,7 +696,7 @@ class VMChecker(object):
         # https://wiki.qemu.org/Features/VirtIORNG
         if compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
             virtio_devs.append("Virtio RNG")
-        if self.is_vsock_supported(self.os_version):
+        if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
             virtio_devs.append("Virtio socket")
         LOG.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
@@ -935,6 +935,12 @@ class VMChecker(object):
         elif has_genid == 'no':
             if re.search(r'genid', self.vmxml):
                 self.log_err('Unexpected genid in xml')
+
+    def vsock_check_enabled(self):
+        """
+        Check if vsock should be checked for VM.
+        """
+        return self.params.get('enable_vsock_check', 'no') == 'yes'
 
     def is_vsock_supported(self, os_version):
         """
