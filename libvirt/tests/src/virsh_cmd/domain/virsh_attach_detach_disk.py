@@ -185,6 +185,7 @@ def run(test, params, env):
     create_img = "yes" == params.get("at_dt_disk_create_image", "yes")
     test_twice = "yes" == params.get("at_dt_disk_test_twice", "no")
     test_systemlink_twice = "yes" == params.get("at_dt_disk_twice_with_systemlink", "no")
+    test_twice_same_target_diff_address = "yes" == params.get("twice_same_target_diff_address", "no")
     test_type = "yes" == params.get("at_dt_disk_check_type", "no")
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
@@ -266,7 +267,8 @@ def run(test, params, env):
 
     if machine_type == 'q35':
         # Add more pci controllers to avoid error: No more available PCI slots
-        if test_twice and params.get("add_more_pci_controllers", "yes") == "yes":
+        if test_twice and params.get("add_more_pci_controllers", "yes") == "yes"\
+                or test_twice_same_target_diff_address:
             vm_dump_xml.remove_all_device_by_type('controller')
             machine_list = vm_dump_xml.os.machine.split("-")
             vm_dump_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
@@ -423,7 +425,12 @@ def run(test, params, env):
         result = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True)
         libvirt.check_exit_status(result)
+    if test_twice_same_target_diff_address:
+        virsh.detach_disk(vm_name, device_target, wait_for_event=True)
 
+        virsh.attach_disk(vm_ref, device_source, device_target,
+                          at_options_twice, debug=True, ignore_status=False)
+        device_target2 = device_target
     # Resume guest after command. On newer libvirt this is fixed as it has
     # been a bug. The change in xml file is done after the guest is resumed.
     if pre_vm_state == "paused":
