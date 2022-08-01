@@ -3,11 +3,14 @@ import types
 import re
 import signal                                        # pylint: disable=W0611
 
+from avocado.core import exceptions
+
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
 from virttest import utils_conn
 
+from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.migration import MigrationTest
 from virttest.libvirt_xml import vm_xml
@@ -262,3 +265,14 @@ def execute_statistics_command(params):
         virsh.domblkinfo(vm_name, disk_source, **debug_kargs)
         virsh.domstats(vm_name, **debug_kargs)
         virsh.dommemstat(vm_name, **debug_kargs)
+
+
+def check_qemu_mem_lock_hard_limit(params):
+    """
+    Check qemu process memlock hard limit
+
+    """
+    expect_hard_limit = params.get("expect_hard_limit")
+    output = libvirt_memory.get_qemu_process_memlock_hard_limit()
+    if int(output) != int(expect_hard_limit) * 1024:
+        raise exceptions.TestFail("'%s' is not matched expect hard limit '%s'" % (output, expect_hard_limit))
