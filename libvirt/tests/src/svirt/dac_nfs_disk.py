@@ -137,11 +137,14 @@ def run(test, params, env):
 
         # set qemu conf
         qemu_conf.user = qemu_user
-        qemu_conf.group = qemu_user
+        qemu_conf.group = qemu_group
         if dynamic_ownership:
             qemu_conf.dynamic_ownership = 1
         else:
             qemu_conf.dynamic_ownership = 0
+            if vmxml.devices.by_device_tag('tpm') is not None:
+                qemu_conf.swtpm_user = qemu_user
+                qemu_conf.swtpm_group = qemu_group
         logging.debug("the qemu.conf content is: %s", qemu_conf)
         libvirtd.restart()
 
