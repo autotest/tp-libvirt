@@ -86,8 +86,8 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
     status, output = utils_misc.cmd_status_output(cmd, shell=True,
                                                   session=vm_session)
     if status or not output:
-        raise exceptions.TestError("Failed to run cmd - {}, status - {}, "
-                                   "output - {}.".format(cmd, status, output))
+        raise exceptions.TestError("Unable to get VM ip address! status - {}, "
+                                   "output - {}.".format(status, output))
     return re.sub('\d+$', '1', output.strip().splitlines()[-1])
 
 
