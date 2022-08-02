@@ -81,7 +81,7 @@ def destroy_active_pool_on_remote(params):
         for pool in active_pools.stdout.strip().split("\n"):
             if pool is not '':
                 pool_dumpxml = pool_xml.PoolXML.new_from_dumpxml(pool, remote_session)
-                if(pool_dumpxml.target_path == params.get("pool_target")):
+                if (pool_dumpxml.target_path == params.get("pool_target")):
                     ret = remote_session.pool_destroy(pool)
     except Exception as e:
         logging.error("Exception when destroy active pool on target: %s", str(e))

@@ -155,7 +155,7 @@ def run(test, params, env):
             # remove package manager installed tool to avoid conflict
             if not utils_package.package_remove(stress_tool, session=remote_session):
                 logging.error("Existing %s is not removed")
-            if("stess-ng" in stress_tool and
+            if ("stess-ng" in stress_tool and
                'Ubuntu' in utils_misc.get_distro(session=remote_session)):
                 params['stress-ng_dependency_packages_list'] = ubuntu_dep
 
@@ -182,7 +182,7 @@ def run(test, params, env):
                     logging.error("Existing %s is not removed")
                 # configure stress in VM
                 if vms_stress:
-                    if("stress-ng" in stress_tool and
+                    if ("stress-ng" in stress_tool and
                        'Ubuntu' in utils_misc.get_distro(session=session)):
                         params['stress-ng_dependency_packages_list'] = ubuntu_dep
                     try:

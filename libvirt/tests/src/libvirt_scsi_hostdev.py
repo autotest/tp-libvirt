@@ -406,7 +406,7 @@ def run(test, params, env):
                         unpriv_sgio = True
                     else:
                         unpriv_sgio = False
-                    if not(check_unpriv_sgio(lsscsi_keyword, unpriv_sgio, test_shareable)):
+                    if not (check_unpriv_sgio(lsscsi_keyword, unpriv_sgio, test_shareable)):
                         test.fail("SCSI dev's unpriv_sgio value is inconsistent with "
                                   "hostdev xml's sgio value.")
 

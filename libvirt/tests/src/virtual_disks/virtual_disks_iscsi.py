@@ -355,7 +355,7 @@ def run(test, params, env):
             if (libvirt_version.version_compare(4, 3, 0) and
                     (auth_uuid or auth_usage) and
                     chap_passwd):
-                if(check_auth_plaintext(vm_name, chap_passwd)):
+                if (check_auth_plaintext(vm_name, chap_passwd)):
                     test.fail("Libvirt should not pass plaintext of chap "
                               "password to qemu-kvm.")
 
