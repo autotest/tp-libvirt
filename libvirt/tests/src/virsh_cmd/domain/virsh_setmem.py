@@ -427,11 +427,11 @@ def run(test, params, env):
             # Don't care about memory comparison on error test
             def verify_outside_result():
                 _, test_outside_mem = get_vm_mem()
-                return(cal_deviation(test_outside_mem, expected_outside_mem) <= delta_percentage)
+                return (cal_deviation(test_outside_mem, expected_outside_mem) <= delta_percentage)
 
             def verify_inside_result():
                 test_inside_mem, _ = get_vm_mem()
-                return(cal_deviation(test_inside_mem, expected_inside_mem) <= delta_percentage)
+                return (cal_deviation(test_inside_mem, expected_inside_mem) <= delta_percentage)
 
             msg = "test conditions not met: "
             error_flag = 0

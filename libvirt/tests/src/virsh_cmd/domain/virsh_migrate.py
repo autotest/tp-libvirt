@@ -387,7 +387,7 @@ def run(test, params, env):
             vcpu_list = guest_xml.vcpus.vcpu
             enabled_cpus_count = 0
             for each_vcpu in vcpu_list:
-                if(str(each_vcpu["enabled"]).strip().lower() == "yes"):
+                if (str(each_vcpu["enabled"]).strip().lower() == "yes"):
                     enabled_cpus_count += 1
             logging.debug("%s CPUs - %s", operation, cpu_count)
             logging.debug("CPUs present in guest xml- %s", enabled_cpus_count)
@@ -768,7 +768,7 @@ def run(test, params, env):
         # configure Maxmem in guest xml for memory hotplug to work
         try:
             vm_max_mem_rt = int(vmxml_backup.max_mem_rt)
-            if(vm_max_mem_rt <= vm_max_mem_rt_limit):
+            if (vm_max_mem_rt <= vm_max_mem_rt_limit):
                 vmxml_backup.max_mem_rt = (vm_max_mem_rt_limit +
                                            vm_max_mem)
                 vmxml_backup.max_mem_rt_slots = vm_max_dimm_slots
@@ -786,7 +786,7 @@ def run(test, params, env):
         logging.debug("Hotplug count = %d", mem_hotplug_count)
         logging.debug("Current mem = %d", vm_current_mem)
         logging.debug("VM maxmem = %d", vm_max_mem_rt)
-        if((vm_current_mem + vm_hotplug_mem) > vm_max_mem_rt):
+        if ((vm_current_mem + vm_hotplug_mem) > vm_max_mem_rt):
             test.cancel("Cannot hotplug memory more than max dimm slots "
                         "supported")
         if mem_hotplug_count > vm_max_dimm_slots:

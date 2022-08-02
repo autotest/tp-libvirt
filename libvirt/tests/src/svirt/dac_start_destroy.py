@@ -272,8 +272,8 @@ def run(test, params, env):
                                           "=%s" % disk_context +
                                           ", sec_label_trans=%s."
                                           % sec_label_trans)
-            elif(set_qemu_conf and not security_default_confined and not
-                 qemu_no_usr_grp):
+            elif (set_qemu_conf and not security_default_confined and not
+                  qemu_no_usr_grp):
                 if vm_context != qemu_conf_label_trans:
                     test.fail("Label of VM process is not expected"
                               " after starting.\nDetail: vm_context="

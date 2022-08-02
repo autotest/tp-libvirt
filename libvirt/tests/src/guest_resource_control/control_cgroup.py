@@ -283,7 +283,7 @@ def run(test, params, env):
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)
-                    if not(is_subset_dict(virsh_output_info, cgroup_info)
+                    if not (is_subset_dict(virsh_output_info, cgroup_info)
                             and is_subset_dict(virsh_input_info, virsh_output_info)):
                         test.fail("memtune checking failed.")
                 # Following are testing schedinfo
@@ -293,7 +293,7 @@ def run(test, params, env):
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)
-                    if not(is_subset_dict(cgroup_info, virsh_output_info)
+                    if not (is_subset_dict(cgroup_info, virsh_output_info)
                             and is_subset_dict(virsh_input_info, virsh_output_info)):
                         test.fail("schedinfo checking failed.")
             else:
