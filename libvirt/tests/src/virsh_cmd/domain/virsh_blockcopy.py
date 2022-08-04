@@ -505,6 +505,11 @@ def run(test, params, env):
 
         :param snapshot_numbers_take: snapshot numbers.
         """
+        if params.get("start_vm") == "yes":
+            if not vm.is_alive():
+                vm.start()
+            vm.wait_for_login().close()
+
         for count in range(0, snapshot_numbers_take):
             snap_xml = snapshot_xml.SnapshotXML()
             snapshot_name = "blockcopy_snap"
