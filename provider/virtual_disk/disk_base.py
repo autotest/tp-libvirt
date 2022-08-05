@@ -5,9 +5,11 @@ from avocado.utils import lv_utils, process
 from virttest import ceph
 from virttest import data_dir
 from virttest import virsh
+from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_secret
 
 LOG = logging.getLogger('avocado.' + __name__)
@@ -31,11 +33,48 @@ class DiskBase(object):
         self.params = params
         self.vg_name = 'vg0'
         self.lv_name = 'lv0'
-        self.pool_name = 'pool_name'
-        self.pool_type = 'dir'
-        self.pool_target = 'dir_pool'
-        self.emulated_image = 'dir_pool_img'
+        self.lv_num = 4
+        self.pool_name = params.get("pool_name", 'pool_name')
+        self.pool_type = params.get("pool_type", 'dir')
+        self.pool_target = params.get("pool_target", 'dir_pool')
+        self.emulated_image = params.get("emulated_image", 'dir_pool_img')
+        self.base_dir = params.get("base_dir", "/var/lib/libvirt/images")
         self.new_image_path = ''
+        self.path_list = ''
+
+    @staticmethod
+    def get_source_list(vmxml, disk_type, target_dev):
+        """
+        Get vmxml all source list with specific device, include backingstore
+        and source path
+
+        :param vmxml: vm xml
+        :param disk_type: disk type
+        :param target_dev: dev of target disk
+        :return source list, include backingstore and source path
+        """
+        source_list = []
+        disks = vmxml.devices.by_device_tag('disk')
+        for disk in disks:
+            if disk.target['dev'] == target_dev:
+                active_level_path = \
+                    disk.xmltreefile.find('source').get('file') \
+                    or disk.xmltreefile.find('source').get('dev') \
+                    or disk.xmltreefile.find('source').get('volume') \
+                    or disk.xmltreefile.find('source').get('name')
+
+                backing_list = disk.get_backingstore_list()
+                if disk_type != 'rbd_with_auth':
+                    backing_list.pop()
+                source_list = [elem.find('source').get('file') or
+                               elem.find('source').get('name') or
+                               elem.find('source').get('dev') or
+                               elem.find('source').get('volume')
+                               for elem in backing_list]
+                source_list.insert(0, active_level_path)
+                break
+
+        return source_list
 
     def add_vm_disk(self, disk_type, disk_dict, new_image_path='', **kwargs):
         """
@@ -82,14 +121,18 @@ class DiskBase(object):
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
         elif disk_type == 'rbd_with_auth':
-            mon_host, auth_username, new_image_path = \
-                self.create_rbd_disk_path(self.params)
-            disk_dict.update({'source': {
-                    'attrs': {'protocol': "rbd", "name": new_image_path},
-                    "hosts": [{"name": mon_host}],
-                    "auth": {"auth_user": auth_username,
-                             "secret_usage": "cephlibvirt",
-                             "secret_type": "ceph"}}})
+            no_secret = kwargs.get("no_secret")
+            if no_secret:
+                disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
+            else:
+                mon_host, auth_username, _ = \
+                    self.create_rbd_disk_path(self.params)
+                disk_dict.update({'source': {
+                        'attrs': {'protocol': "rbd", "name": new_image_path},
+                        "hosts": [{"name": mon_host}],
+                        "auth": {"auth_user": auth_username,
+                                 "secret_usage": "cephlibvirt",
+                                 "secret_type": "ceph"}}})
 
         disk_xml = self.set_disk_xml(disk_dict)
         libvirt.add_vm_device(vmxml, disk_xml)
@@ -221,3 +264,96 @@ class DiskBase(object):
         new_disk.setup_attrs(**disk_dict)
 
         return new_disk
+
+    def prepare_relative_path(self, disk_type, **kwargs):
+        """
+        Prepare relative path
+
+        :params disk_type: disk type
+        :return: dest image for new disk and backing list
+        """
+        dst_img, backing_list = '', []
+        if disk_type == "file":
+            libvirt.create_local_disk(
+                "file", path=self.base_dir + "/a/a", size="500M",
+                disk_format="qcow2", **kwargs)
+
+            dst_img, backing_list = libvirt_disk.make_relative_path_backing_files(
+                self.vm, pre_set_root_dir=self.base_dir, origin_image="../a/a",
+                back_chain_lenghth=3, **kwargs)
+
+        elif disk_type == "block":
+
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+
+            pool_dict = eval(self.params.get('pool_dict', '{}'))
+            source_dict = eval(self.params.get('source_dict', '{}'))
+            pool_name = self.create_pool_from_xml(pool_dict, source_dict)
+            source_path = []
+            for i in range(0, self.lv_num):
+                source = "/dev/%s/%s" % (pool_name, self.lv_name+str(i))
+                virsh.vol_create_as(self.lv_name+str(i), pool_name, "20M",
+                                    "10M", "", debug=True)
+                libvirt.create_local_disk("file", source, "10M", "qcow2")
+                source_path.append(source)
+
+            dst_img, backing_list = libvirt_disk.make_syslink_path_backing_files(
+                self.base_dir, volume_path_list=source_path, qemu_rebase=True)
+
+        elif disk_type == "rbd_with_auth":
+            origin_image = self._pre_rbd_origin_image()
+            dst_img, backing_list = libvirt_disk.\
+                make_relative_path_backing_files(self.vm,
+                                                 pre_set_root_dir=self.base_dir,
+                                                 origin_image=origin_image,
+                                                 back_chain_lenghth=2, **kwargs)
+
+        return dst_img, backing_list
+
+    def _pre_rbd_origin_image(self):
+        """
+        Create the first image for rbd type disk.
+        """
+        mon_host = self.params.get("mon_host")
+        new_image_path = self.params.get("image_path")
+        auth_key = self.params.get("auth_key")
+        client_name = self.params.get("client_name")
+        self.params.update(
+            {'keyfile': ceph.create_keyring_file(client_name, auth_key)})
+
+        process.run("mkdir %s" % (self.base_dir + "/c"))
+        origin_image = self.base_dir + '/c/c'
+        cmd = "qemu-img create -f qcow2 -F raw -o " \
+              "backing_file=rbd:%s:mon_host=%s %s" % (new_image_path,
+                                                      mon_host, origin_image)
+        process.run(cmd, ignore_status=False, shell=True)
+
+        return origin_image
+
+    @staticmethod
+    def create_pool_from_xml(pool_dict, source_dict):
+        """
+        Build pool from xml
+
+        :param pool_dict: pool dict,
+        :param source_dict: pool source dict
+        """
+        device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
+        source_dict['device_path'] = device_name
+        pool_name = pool_dict['name']
+
+        pool = pool_xml.PoolXML()
+        pool.setup_attrs(**pool_dict)
+
+        source_xml = pool_xml.SourceXML()
+        source_xml.device_path = device_name
+        source_xml.vg_name = "vg0"
+        source_xml.format_type = "lvm2"
+
+        pool.source = source_xml
+
+        virsh.pool_define(pool.xml, debug=True, ignore_status=False)
+        virsh.pool_build(pool_name, options='--overwrite', debug=True, ignore_status=False)
+        virsh.pool_start(pool_name, debug=True, ignore_status=False)
+
+        return pool_name

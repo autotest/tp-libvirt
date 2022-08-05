@@ -6,6 +6,7 @@ from avocado.utils import process
 from virttest import libvirt_storage
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from provider.virtual_disk.disk_base import DiskBase
 
 LOG = logging.getLogger('avocado.' + __name__)
 
@@ -35,28 +36,7 @@ class Checkfunction(object):
         """
         vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
         LOG.debug("Current vmxml is:\n%s", vmxml)
-
-        source_list = []
-        disks = vmxml.devices.by_device_tag('disk')
-        for disk in disks:
-            if disk.target['dev'] == target_dev:
-                active_level_path = \
-                    disk.xmltreefile.find('source').get('file') \
-                    or disk.xmltreefile.find('source').get('dev') \
-                    or disk.xmltreefile.find('source').get('volume') \
-                    or disk.xmltreefile.find('source').get('name')
-
-                backing_list = disk.get_backingstore_list()
-                if disk_type != 'rbd_with_auth':
-                    backing_list.pop()
-                source_list = [elem.find('source').get('file') or
-                               elem.find('source').get('name') or
-                               elem.find('source').get('dev') or
-                               elem.find('source').get('volume')
-                               for elem in backing_list
-                               if elem.find('source') is not None]
-                source_list.insert(0, active_level_path)
-                break
+        source_list = DiskBase.get_source_list(vmxml, disk_type, target_dev)
 
         if source_list != expected_chain:
             self.test.fail('Expect source file to be %s, '
