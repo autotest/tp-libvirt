@@ -4,6 +4,7 @@ from provider.migration import base_steps
 from provider.sriov import check_points
 from provider.sriov import sriov_base
 
+from virttest import virsh
 from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -60,6 +61,9 @@ def run(test, params, env):
             iface_dict = sriov_dest_obj.parse_iface_dict()
             hostdev_dev = sriov_dest_obj.create_iface_dev(dev_type, iface_dict)
             gen_hostdev_migratable(hostdev_dev)
+        remote_virsh = virsh.VirshPersistent(**sriov_dest_obj.remote_virsh_dargs)
+        remote_virsh.net_list('--all', debug=True)
+        remote_virsh.net_dumpxml('host_bridge', debug=True)
 
     def verify_network():
         """

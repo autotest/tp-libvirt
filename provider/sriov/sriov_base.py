@@ -1,4 +1,5 @@
 import re
+import time
 
 from avocado.core import exceptions
 
@@ -292,7 +293,15 @@ class SRIOVTest(object):
                                    session=self.session)
 
         self.test.log.info("TEST_SETUP: Create host bridge.")
-        utils_sriov.add_connection(self.pf_name, br_name, self.session)
+        def _add_conn():
+            utils_sriov.add_connection(self.pf_name, br_name, self.session)
+            time.sleep(10)
+            cmd = "ip link"
+            s, o = utils_misc.cmd_status_output(cmd, shell=True, verbose=True, session=self.session)
+            return br_name in o
+
+        if not utils_misc.wait_for(_add_conn, 240):
+            self.test.error("unable to create %s" % br_name)
 
         if network_dict:
             self.test.log.info("TEST_SETUP: Create network for %s",
@@ -312,6 +321,9 @@ class SRIOVTest(object):
             br_dev = self.create_iface_dev("interface", br_dict)
             libvirt.add_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name), br_dev)
+        cmd = "ip link"
+        s, o = utils_misc.cmd_status_output(cmd, shell=True, verbose=True, session=self.session)
+        self.test.log.debug(o)
 
     def teardown_failover_test(self, **dargs):
         """
