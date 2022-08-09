@@ -4,6 +4,7 @@ import time
 import threading
 
 from avocado.utils import process
+from avocado.utils import path as utils_path
 
 from virttest import virsh
 from virttest import utils_test
@@ -225,6 +226,9 @@ def run(test, params, env):
     host_hp_size = utils_memory.get_huge_page_size()
     backup_huge_pages_num = utils_memory.get_num_huge_pages()
     huge_pages_num = 0
+
+    if hotplug_unplug and not utils_path.find_command("lsof", default=False):
+        test.cancel("Lsof command is required to run test, but not installed")
 
     if len(vm_names) != guest_num:
         test.cancel("This test needs exactly %d vms." % guest_num)
