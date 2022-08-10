@@ -159,6 +159,7 @@ def virt_install_with_hostdev(vm_name, mdev_nodedev, target_address, disk_path):
            " --hostdev %s,%s"
            " --disk %s"
            " --vcpus 2 --memory 2048"
+           " --osinfo detect=on,require=off"
            " --nographics --noautoconsole" %
            (vm_name, mdev_nodedev, target_address, disk_path))
     err, out = cmd_status_output(cmd, shell=True, verbose=True)
