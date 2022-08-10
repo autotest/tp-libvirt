@@ -223,7 +223,8 @@ def run(test, params, env):
                     return None
 
             # Wait for a while so that we can get the volume info
-            vol_info = utils_misc.wait_for(get_vol, 10)
+            utils_misc.wait_for(lambda: get_vol() is not None, 10)
+            vol_info = get_vol()
             if vol_info:
                 vol_name, vol_path = vol_info
             else:
