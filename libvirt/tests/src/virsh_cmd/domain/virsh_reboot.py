@@ -149,11 +149,11 @@ def run(test, params, env):
                     status = -2
             # avoid the check if it is negative test
             if not status_error:
-                cmdoutput = ''
 
                 def _wait_for_reboot_up():
                     second_boot_time = boot_time()
                     is_rebooted = second_boot_time > first_boot_time
+                    global cmdoutput
                     cmdoutput = virsh.domstate(vm_ref, '--reason',
                                                ignore_status=True, debug=True)
                     domstate_status = cmdoutput.exit_status
