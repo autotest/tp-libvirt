@@ -44,17 +44,35 @@ def check_host(backend_dev):
                         " on host, command output: %s" % ret.stdout_text)
 
 
-def comp_rng_xml(vmxml, rng_dict, status_error=False):
+def remove_key(dictionary, key):
+    """
+    Helper function that goes recursively through a dictionary removing
+    the designated key.
+
+    :param dictionary: Dict to go through
+    :param key: The key to remove
+    """
+    for dict_key in dictionary:
+        if isinstance(dictionary[dict_key], dict):
+            remove_key(dictionary[dict_key], key)
+    dictionary.pop(key, None)
+
+
+def comp_rng_xml(vmxml, rng_dict, remove_keys=None, status_error=False):
     """
     Compare rng xml from VM xml to rng dictionary on all attributes.
 
     :params vmxml: Vmxml object from where the device should be taken
     :params rng_dict: Rng device dictionary to compare
+    :params remove_keys: Array of keys to remove from VM XML before comparison
     :params status_error: Set to True if you expect the test to fail
     :raises Exception: Exception in case the test fails
     """
     rng_device = vmxml.get_devices("rng")[0]
     rng_dev_attributes = rng_device.fetch_attrs()
+    if remove_keys:
+        for key in remove_keys:
+            remove_key(rng_dev_attributes, key)
     for key, val, in rng_dict.items():
         if rng_dev_attributes[key] != val and status_error is False:
             raise Exception("Device XML value: '%s' does not match"
