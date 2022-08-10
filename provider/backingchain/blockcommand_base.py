@@ -157,6 +157,24 @@ class BlockCommand(object):
                 if 'snap' in sf:
                     process.run('rm -f %s/%s' % (image_path, sf))
 
+    def backingchain_common_setup(self, create_snap=False, **kwargs):
+        """
+        Setup step for backingchain test
+
+        :param create_snap: create snap flag, will create if True.
+        :param **kwargs: Key words for setup,
+        """
+        if not self.vm.is_alive():
+            self.vm.start()
+        self.vm.wait_for_login().close()
+
+        if create_snap:
+            self.prepare_snapshot(**kwargs)
+
+        remove_file = kwargs.get("remove_file")
+        if remove_file:
+            self.clean_file(kwargs.get("file_path"))
+
     def prepare_secret_disk(self, image_path, secret_disk_dict=None):
         """
         Add secret disk for domain.
@@ -187,3 +205,12 @@ class BlockCommand(object):
         vmxml.devices = vmxml.devices.append(new_disk)
         vmxml.xmltreefile.write()
         vmxml.sync()
+
+    @staticmethod
+    def clean_file(file_path):
+        """
+        Clean file
+        :params file_path: the path of file to delete
+        """
+        if os.path.exists(file_path):
+            os.remove(file_path)
