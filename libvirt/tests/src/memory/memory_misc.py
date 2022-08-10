@@ -190,10 +190,10 @@ def run(test, params, env):
 
             test.log.info('Memory devices before attach(%d): %s\n'
                           'Memory devices after attatch(%d): %s',
-                          len(mem_devices_after_attach),
-                          mem_devices_after_attach,
                           len(mem_devices),
-                          mem_devices)
+                          mem_devices,
+                          len(mem_devices_after_attach),
+                          mem_devices_after_attach)
             if len(mem_devices_after_attach) != len(mem_devices) + 1:
                 test.fail('Attach memory device failed.')
 
