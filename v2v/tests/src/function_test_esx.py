@@ -40,6 +40,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    implementation_change_ver = params_get(params, 'implementation_change_ver')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
     unprivileged_user = params_get(params, 'unprivileged_user')
@@ -321,56 +322,20 @@ def run(test, params, env):
 
         :param vmcheck: VMCheck object for vm checking
         """
-        def get_pkgs(pkg_path):
+        def get_service_info():
             """
-            Get all qemu-guest-agent pkgs
+            Get qemu-guest-agent service info
             """
-            pkgs = []
-            for _, _, files in os.walk(pkg_path):
-                for file_name in files:
-                    pkgs.append(file_name)
-            return pkgs
-
-        def get_pkg_version_vm():
-            """
-            Get qemu-guest-agent version in VM
-            """
-            vendor = vmcheck.get_vm_os_vendor()
-            if vendor in ['Ubuntu', 'Debian']:
-                cmd = 'dpkg -l qemu-guest-agent'
-            else:
-                cmd = 'rpm -q qemu-guest-agent'
+            status_ptn = r'Active: active \((running|exited)\)|qemu-ga \(pid +[0-9]+\) is running'
+            cmd = 'service qemu-ga status;systemctl status qemu-guest-agent;systemctl status qemu-ga*'
             _, output = vmcheck.run_cmd(cmd)
+            if not re.search(status_ptn, output):
+                return False
+            return True
 
-            pkg_ver_ptn = [r'qemu-guest-agent +[0-9]+:(.*?dfsg.*?) +',
-                           r'qemu-guest-agent-(.*?)\.x86_64']
-
-            for ptn in pkg_ver_ptn:
-                if re.search(ptn, output):
-                    return re.search(ptn, output).group(1)
-            return ''
-
-        if os.path.isfile(os.getenv('VIRTIO_WIN')):
-            mount_point = utils_v2v.v2v_mount(
-                os.getenv('VIRTIO_WIN'),
-                'rhv_tools_setup_iso',
-                fstype='iso9660')
-            export_path = params['tmp_mount_point'] = mount_point
-        else:
-            export_path = os.getenv('VIRTIO_WIN')
-
-        qemu_guest_agent_dir = os.path.join(export_path, qa_path)
-        all_pkgs = get_pkgs(qemu_guest_agent_dir)
-        LOG.debug('The installing qemu-guest-agent is: %s' % all_pkgs)
-        vm_pkg_ver = get_pkg_version_vm()
-        LOG.debug('qemu-guest-agent version in vm: %s' % vm_pkg_ver)
-
-        # Check the service status of qemu-guest-agent in VM
-        status_ptn = r'Active: active \(running\)|qemu-ga \(pid +[0-9]+\) is running'
-        cmd = 'service qemu-ga status;systemctl status qemu-guest-agent;systemctl status qemu-ga*'
-        _, output = vmcheck.run_cmd(cmd)
-
-        if not re.search(status_ptn, output):
+        LOG.debug('Checking qmeu-guest-agent service in VM')
+        res = utils_misc.wait_for(get_service_info, 300, step=30)
+        if not res:
             log_fail('qemu-guest-agent service exception')
 
     def check_ubuntools(vmcheck):
@@ -619,7 +584,8 @@ def run(test, params, env):
                     if not utils_v2v.multiple_versions_compare(
                             V2V_UNSUPPORT_RHEV_APT_VER):
                         services.append('rhev-apt')
-                    if 'rhv-guest-tools' in os.getenv('VIRTIO_WIN'):
+                    virtio_win_env = os.getenv('VIRTIO_WIN')
+                    if virtio_win_env and 'rhv-guest-tools' in virtio_win_env:
                         services.append('spice-ga')
                     for ser in services:
                         check_windows_service(vmchecker.checker, ser)
@@ -802,10 +768,7 @@ def run(test, params, env):
 
         if 'ogac' in checkpoint:
             os.environ['VIRTIO_WIN'] = virtio_win_path
-            if not os.path.exists(os.getenv('VIRTIO_WIN')):
-                test.fail('%s does not exist' % os.getenv('VIRTIO_WIN'))
-
-            if os.path.isdir(os.getenv('VIRTIO_WIN')) and os_type == 'linux':
+            if os_type == 'linux' and not utils_v2v.multiple_versions_compare(implementation_change_ver) and os.path.isdir(os.getenv('VIRTIO_WIN')):
                 export_path = os.getenv('VIRTIO_WIN')
                 qemu_guest_agent_dir = os.path.join(export_path, qa_path)
                 if not os.path.exists(qemu_guest_agent_dir) and os.access(
@@ -1001,13 +964,6 @@ def run(test, params, env):
             utils_package.package_install(['virtio-win'])
         if 'virtio_win_iso_mount' in checkpoint:
             process.run('umount /opt', ignore_status=True)
-        if 'ogac' in checkpoint and params.get('tmp_mount_point'):
-            if os.path.exists(params.get('tmp_mount_point')):
-                utils_misc.umount(
-                    os.getenv('VIRTIO_WIN'),
-                    params['tmp_mount_point'],
-                    'iso9660')
-            os.environ.pop('VIRTIO_WIN')
         if 'block_dev' in checkpoint and hasattr(os_directory, 'name'):
             process.run('losetup -d %s' % free_loop_dev, shell=True)
             os_directory.cleanup()

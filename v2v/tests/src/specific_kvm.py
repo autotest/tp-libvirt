@@ -461,19 +461,6 @@ def run(test, params, env):
         return large_file
 
     @vm_shell
-    def corrupt_rpmdb(**kwargs):
-        """
-        Corrupt rpm db
-        """
-        session = kwargs['session']
-        session.cmd('rm -f /var/lib/rpm/__db.*')
-        session.cmd('touch /var/lib/rpm/__db.001')
-        output = session.cmd_output('yum update --assumeno')
-        LOG.debug(output)
-        if 'rpmdb open failed' not in output:
-            test.error('Prepare corrupt rpmdb failed')
-
-    @vm_shell
     def grub_serial_terminal(**kwargs):
         """
         Edit the serial and terminal lines of grub.conf
@@ -755,6 +742,15 @@ def run(test, params, env):
                 'devices').find('graphics').get('type')
             params['vm_machine'] = ori_vm_xml.xmltreefile.find(
                 './os/type').get('machine')
+            # Inactive xml only has firmware attribute. There is no way
+            # to determine whether it's secure or not.
+            uefi_firmware = ori_vm_xml_root.find('./os[@firmware="efi"]')
+            if uefi_firmware is not None:
+                # If convert to local kvm host, set it to 3 which is default in RHEL.
+                params['boottype'] = 3 if target == 'libvirt' else 2
+            # This detection is not conflict with above detection. In different libvirt
+            # and qemu versions, the configuration is different. There is no good way to
+            # check the boot type.
             element_loader = ori_vm_xml_root.find('./os/loader[@type="pflash"]')
             if element_loader is not None:
                 params['boottype'] = 2 if element_loader.get('secure') == 'no' else 3
@@ -804,8 +800,6 @@ def run(test, params, env):
             if checkpoint == 'host_no_space_setcache':
                 LOG.info('Set LIBGUESTFS_CACHEDIR=/home')
                 os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
-        if checkpoint == 'corrupt_rpmdb':
-            corrupt_rpmdb()
         if checkpoint.startswith('network'):
             change_network_model(checkpoint[8:])
         if checkpoint == 'multi_netcards':
