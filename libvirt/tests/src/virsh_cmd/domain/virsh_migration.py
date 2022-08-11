@@ -47,7 +47,7 @@ def cleanup_vm(vm_list, vmxml_dict, migration_obj, src_uri, dest_uri):
     for vm in vm_list:
         migration_obj.cleanup_dest_vm(vm, src_uri, dest_uri)
         if vm.exists() and vm.is_persistent():
-            vm.undefine()
+            vm.undefine(options='--nvram')
         if vm.is_alive():
             vm.destroy()
     for key in vmxml_dict.keys():
