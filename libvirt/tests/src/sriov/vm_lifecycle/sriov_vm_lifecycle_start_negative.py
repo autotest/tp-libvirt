@@ -4,6 +4,8 @@ from virttest import utils_net
 from virttest import virsh
 
 from virttest.utils_test import libvirt
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 
 
 def run(test, params, env):
@@ -21,19 +23,24 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP1: Attach a hostdev interface/device to VM")
         iface_dev = sriov_test_obj.create_iface_dev(dev_type, iface_dict)
-        result = virsh.attach_device(vm_name, iface_dev.xml, flagstr="--config",
-                                     debug=True)
-        libvirt.check_exit_status(result, define_err)
-        if define_err:
+        try:
+            libvirt.add_vm_device(vm_xml.VMXML.new_from_dumpxml(vm_name),
+                                  iface_dev)
+        except xcepts.LibvirtXMLError as details:
+            if define_err and err_msg:
+                if not str(details).count(err_msg):
+                    test.fail("Incorrect error message, it should be '{}', but "
+                              "got '{}'.".format(err_msg, details))
+            else:
+                test.fail(details)
+        else:
+            if define_err:
+                test.fail("Defining the VM should fail, but run successfully!")
+            test.log.info("TEST_STEP2: Start the VM")
+            result = virsh.start(vm.name, debug=True)
+            libvirt.check_exit_status(result, True)
             if err_msg:
                 libvirt.check_result(result, err_msg)
-            return
-
-        test.log.info("TEST_STEP2: Start the VM")
-        result = virsh.start(vm.name, debug=True)
-        libvirt.check_exit_status(result, True)
-        if err_msg:
-            libvirt.check_result(result, err_msg)
 
     dev_type = params.get("dev_type", "")
     test_scenario = params.get("test_scenario")
