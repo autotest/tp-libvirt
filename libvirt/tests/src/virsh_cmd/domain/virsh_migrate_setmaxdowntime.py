@@ -74,7 +74,7 @@ def cleanup_dest(vm, src_uri, dest_uri):
     vm.connect_uri = dest_uri
     if vm.exists():
         if vm.is_persistent():
-            vm.undefine()
+            vm.undefine(options='--nvram')
         if vm.is_alive():
             vm.destroy()
     # Set connect uri back to local uri

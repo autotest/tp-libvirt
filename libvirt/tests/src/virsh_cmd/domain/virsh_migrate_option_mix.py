@@ -42,7 +42,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         if vm.is_persistent():
-            vm.undefine()
+            vm.undefine(options='--nvram')
 
         # Restore vm connect_uri
         vm.connect_uri = uri_bak
@@ -222,7 +222,7 @@ def run(test, params, env):
             vm_xml_backup.define()
         elif src_vm_cfg == "transient" and vm.is_persistent():
             logging.debug("Make src vm transient")
-            vm.undefine()
+            vm.undefine(options='--nvram')
 
         # Prepare for postcopy migration: install and run stress in VM
         if postcopy and src_vm_status == "running":

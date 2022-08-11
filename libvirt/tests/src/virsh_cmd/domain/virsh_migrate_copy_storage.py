@@ -312,7 +312,7 @@ def run(test, params, env):
             src_libvirt_file.restore()
 
         if disks_count and vm.name == new_vm_name:
-            vm.undefine()
+            vm.undefine(options='--nvram')
         for disk in added_disks_list:
             if disk_type == 'file':
                 utlv.delete_local_disk(disk_type, disk)

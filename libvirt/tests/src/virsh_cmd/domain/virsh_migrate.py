@@ -87,7 +87,7 @@ def run(test, params, env):
                 vm.destroy(gracefully=False)
 
                 if vm.is_persistent():
-                    vm.undefine()
+                    vm.undefine(options='--nvram')
 
         except Exception as detail:
             logging.error("Cleaning up destination failed.\n%s", detail)
@@ -1356,7 +1356,7 @@ def run(test, params, env):
         # Simple sync cannot be used here, because the vm may not exists and
         # it cause the sync to fail during the internal backup.
         vm.destroy()
-        vm.undefine()
+        vm.undefine(options='--nvram')
         orig_config_xml.define()
 
         if src_libvirt_file:
