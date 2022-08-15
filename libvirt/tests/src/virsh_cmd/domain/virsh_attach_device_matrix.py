@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import logging as log
 from avocado.core import exceptions
@@ -230,6 +231,10 @@ def run(test, params, env):
                        'driver_type': "raw"}
         disk_xml = libvirt.create_disk_xml(disk_params)
 
+        # Copy disk xml for virsh.detach in the following code
+        new_xml_path = os.path.join(data_dir.get_tmp_dir(), "disk_copy.xml")
+        shutil.copyfile(disk_xml, new_xml_path)
+
         # Attach the disk.
         ret = virsh.attach_device(vm_ref, disk_xml,
                                   flagstr=at_options, debug=True)
@@ -250,8 +255,7 @@ def run(test, params, env):
         if pre_vm_state == "paused":
             if not vm.pause():
                 raise exceptions.TestFail("Can't pause the domain")
-        disk_xml = libvirt.create_disk_xml(disk_params)
-        ret = virsh.detach_device(vm_ref, disk_xml,
+        ret = virsh.detach_device(vm_ref, new_xml_path,
                                   flagstr=dt_options, debug=True)
         libvirt.check_exit_status(ret, dt_status_error)
 
