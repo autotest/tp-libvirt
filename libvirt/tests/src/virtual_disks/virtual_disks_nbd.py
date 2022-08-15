@@ -10,6 +10,7 @@ from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
+from virttest import utils_misc
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.utils_nbd import NbdExport
@@ -227,6 +228,8 @@ def run(test, params, env):
                         tls=tls_enabled, deleteExisted=deleteExisted,
                         private_key_encrypt_passphrase=private_key_encrypt_passphrase, secret_uuid=secret_uuid)
         nbd.start_nbd_server()
+        utils_misc.wait_for(
+            lambda: process.system('pgrep qemu-nbd', ignore_status=True, shell=True) == 0, 10)
         # Prepare disk source xml
         source_attrs_dict = {"protocol": "nbd", "tls": "%s" % tls_bit}
         if export_name:
