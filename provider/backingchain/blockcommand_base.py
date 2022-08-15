@@ -91,7 +91,7 @@ class BlockCommand(object):
                 path = self.tmp_dir + '%d' % i
             else:
                 path = snap_path
-            if os.path.exists(path):
+            if os.path.exists(path) and "reuse" not in option:
                 libvirt.delete_local_disk('file', path)
             snap_option = "%s %s --diskspec %s,file=%s%s" % \
                           ('snap%d' % i, option, self.new_dev, path, extra)
