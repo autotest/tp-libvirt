@@ -81,6 +81,7 @@ def run(test, params, env):
     check_pcrbanks = ('yes' == params.get("check_pcrbanks", "no"))
     remove_pcrbank = ('yes' == params.get("remove_pcrbank", "no"))
     pcrbank_change = params.get("pcrbank_change")
+    test_rsaencypt = ('yes' == params.get("test_rsaencypt", "no"))
     active_pcr_banks = params.get("active_pcr_banks")
     if active_pcr_banks:
         active_pcr_banks = active_pcr_banks.split(",")
@@ -533,6 +534,33 @@ def run(test, params, env):
                     test.fail("test suite check failed.")
         logging.info("------PASS on kernel test suite check------")
 
+    def test_rsaencypt_in_guest(session):
+        """
+        Test tpm RSA encryption in guest.
+
+        :param session: Guest session to be tested
+        """
+        if not utils_package.package_install(["tpm2-tools"], session, 360):
+            test.error("Failed to install tpm2-tools package in guest")
+        session.cmd_status_output("tpm2_createprimary -c primary.ctx")
+        session.cmd("tpm2_create -C primary.ctx -Grsa2048 -u key.pub -r key.priv")
+        session.cmd("tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx")
+        test_msg = 'my message'
+        session.cmd("echo %s > msg.dat" % test_msg)
+        for padding_scheme in ['oaep', 'rsaes', 'null']:
+            status, output = session.cmd_status_output("tpm2_rsaencrypt -c key.ctx -o msg.enc -s %s msg.dat" % padding_scheme)
+            if status:
+                test.fail("Rsaencrypt failed with %s padding scheme: %s" % (padding_scheme, output))
+            status, output = session.cmd_status_output("tpm2_rsadecrypt -c key.ctx -o msg.ptext -s %s msg.enc" % padding_scheme)
+            if status:
+                test.fail("Rsadecrypt failed with %s padding scheme: %s" % (padding_scheme, output))
+            output = session.cmd_output("cat msg.ptext").strip()
+            logging.debug(output)
+            if test_msg not in output:
+                test.fail("Data decrypted '%s' with %s padding scheme does not match original '%s'" % (output, padding_scheme, test_msg))
+            session.cmd("rm -f msg.enc msg.ptext")
+        session.cmd("rm -f primary.ctx key.pub key.priv key.ctx msg.dat")
+
     def persistent_test(vm, vm_xml):
         """
         Test for vtpm with persistent_state.
@@ -782,6 +810,8 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if test_suite:
                 run_test_suite_in_guest(session)
+            elif test_rsaencypt:
+                test_rsaencypt_in_guest(session)
             else:
                 test_guest_tpm(expect_version, session, expect_fail)
             session.close()
