@@ -283,7 +283,7 @@ def run(test, params, env):
         :raise avocado.core.exceptions.TestFail: if commandline doesn't match
         :return: None
         """
-        cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
+        cmd = ("ps -ef | grep %s | grep qemu-kvm | grep -v grep " % vm_name)
         ret = process.run(cmd, shell=True)
         logging.debug("Command line %s", ret.stdout_text)
         if test_vhost_net:
