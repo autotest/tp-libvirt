@@ -903,14 +903,7 @@ def run(test, params, env):
                                                    host_hp_size=host_hp_size,
                                                    pin=True)
                 vmxml_mem = vm_xml.VMMemBackingXML()
-                vmxml_hp = vm_xml.VMHugepagesXML()
-                pagexml_list = []
-                for page in range(len(HP_page_list)):
-                    pagexml = vmxml_hp.PageXML()
-                    pagexml.update(HP_page_list[page])
-                    pagexml_list.append(pagexml)
-                vmxml_hp.pages = pagexml_list
-                vmxml_mem.hugepages = vmxml_hp
+                vmxml_mem.setup_attrs(hugepages={'pages': HP_page_list})
                 vmxml.mb = vmxml_mem
             vmxml.sync()
 

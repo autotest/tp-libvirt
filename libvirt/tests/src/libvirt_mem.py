@@ -380,14 +380,7 @@ def run(test, params, env):
             membacking.source = ''
             membacking.source_type = 'file'
             if huge_pages:
-                hugepages = vm_xml.VMHugepagesXML()
-                pagexml_list = []
-                for i in range(len(huge_pages)):
-                    pagexml = hugepages.PageXML()
-                    pagexml.update(huge_pages[i])
-                    pagexml_list.append(pagexml)
-                hugepages.pages = pagexml_list
-                membacking.hugepages = hugepages
+                membacking.setup_attrs(hugepages={'pages': huge_pages})
             vmxml.mb = membacking
 
         logging.debug("vm xml: %s", vmxml)
