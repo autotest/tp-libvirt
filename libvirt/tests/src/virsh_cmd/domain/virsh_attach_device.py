@@ -19,7 +19,7 @@ from virttest import virt_vm, virsh, remote, utils_misc, data_dir
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_libvirt import libvirt_pcicontr
-
+from virttest.libvirt_xml.devices.controller import Controller
 
 # TODO: Move all these helper classes someplace else
 
@@ -932,9 +932,15 @@ def update_controllers_ppc(vm_name, vmxml):
     :return:
     """
     machine = platform.machine().lower()
+    device_bus = 'scsi'
     if 'ppc64le' in machine:
         # Remove old scsi controller, replace with virtio-scsi controller
-        vmxml.del_controller('scsi')
+        vmxml.del_controller(device_bus)
+        ppc_controller = Controller('controller')
+        ppc_controller.type = device_bus
+        ppc_controller.index = '0'
+        ppc_controller.model = 'virtio-scsi'
+        vmxml.add_device(ppc_controller)
         vmxml.sync()
         virsh.start(vm_name, debug=True, ignore_status=False)
 
