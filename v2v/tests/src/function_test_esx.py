@@ -756,6 +756,10 @@ def run(test, params, env):
         if 'root' in checkpoint and 'ask' in checkpoint:
             v2v_params['v2v_opts'] += ' --root ask'
             v2v_params['custom_inputs'] = params.get('choice', '2')
+            # The log check fixes in following version.
+            v2v_fix_ver = '[virt-v2v-2.0.7-1,)'
+            if not utils_v2v.multiple_versions_compare(v2v_fix_ver):
+                params['expect_msg'] = ''
         if 'root' in checkpoint and 'ask' not in checkpoint:
             root_option = params.get('root_option')
             v2v_params['v2v_opts'] += ' --root %s' % root_option

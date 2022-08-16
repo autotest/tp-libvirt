@@ -283,7 +283,7 @@ def run(test, params, env):
             params['img_path'] = data_dir.get_tmp_dir() + '/%s.img' % vm_name
             if checkpoint == 'xvda_disk':
                 v2v_params['input_mode'] = 'disk'
-                v2v_params['hypervisor'] = 'kvm'
+                params['hypervisor'] = v2v_params['hypervisor'] = 'kvm'
                 v2v_params.update({'input_file': params['img_path']})
             # Copy remote image to local with scp
             remote.scp_from_remote(xen_host, 22, xen_host_user,
