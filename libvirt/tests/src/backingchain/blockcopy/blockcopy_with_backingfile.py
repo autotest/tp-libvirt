@@ -28,9 +28,7 @@ def run(test, params, env):
         Prepare expected disk type, snapshots, blockcopy path.
         """
         test.log.info("TEST_SETUP: Start setup.")
-        test_obj.new_image_path = disk_obj.add_vm_disk(
-            disk_type, disk_dict, size="500M")
-
+        test_obj.new_image_path = disk_obj.add_vm_disk(disk_type, disk_dict)
         if not vm.is_alive():
             vm.start()
         vm.wait_for_login().close()
@@ -53,12 +51,7 @@ def run(test, params, env):
         Do blockcopy and abort job ,than check hash and vmxml chain
         """
         session = vm.wait_for_login()
-        status, _ = session.cmd_status_output("which sha256sum")
-        if status:
-            test.error("Not find sha256sum command on guest.")
-        ret, expected_hash = session.cmd_status_output("sha256sum %s" %
-                                                       "/dev/" + test_obj.new_dev)
-
+        expected_hash = test_obj.get_hash_value(session, "/dev/"+device)
         test.log.info("TEST_STEP3:Do blockcopy")
         virsh.blockcopy(vm_name, device, tmp_copy_path,
                         options=blockcopy_options, ignore_status=False,

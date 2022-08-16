@@ -96,13 +96,8 @@ def run(test, params, env):
             base_option = " "
 
         session = vm.wait_for_login()
-        status, _ = session.cmd_status_output("which sha256sum")
-        if status:
-            test.error("Not find sha256sum command on guest.")
-        ret, expected_hash = session.cmd_status_output("sha256sum %s" %
-                                                       "/dev/"+test_obj.new_dev)
-        if ret:
-            test.error("Get sha256sum value failed")
+        expected_hash = test_obj.get_hash_value(session,
+                                                "/dev/"+test_obj.new_dev)
 
         virsh.blockcommit(vm.name, target_disk,
                           commit_options+top_option+base_option,
