@@ -1050,7 +1050,7 @@ def generate_spice_graphic_xml(params, expected_result):
     if insecure_channels != 'not_set':
         for insecure_name in insecure_channels.strip().split(':'):
             channels.append({'name': insecure_name, 'mode': 'insecure'})
-    graphic.channel = channels
+    graphic.channels = channels
 
     if listen_type == 'network':
         net_type = params.get("spice_network_type", "vnet")
@@ -1059,13 +1059,13 @@ def generate_spice_graphic_xml(params, expected_result):
         else:
             address = params.get("listen_address", "not_set")
         listen = {'type': 'network', 'network': 'virt-test-%s' % net_type, 'address': address}
-        graphic.listens = [listen]
+        graphic.listen_attrs = listen
     elif listen_type == 'address':
         address = params.get("spice_listen_address", "127.0.0.1")
         if address in ['valid_ipv4', 'valid_ipv6']:
             address = str(expected_result['spice_ips'][0].addr)
         listen = {'type': 'address', 'address': address}
-        graphic.listens = [listen]
+        graphic.listen_attrs = listen
 
     if graphic_passwd and spice_passwd_place == "guest":
         graphic.passwd = graphic_passwd
@@ -1101,13 +1101,13 @@ def generate_vnc_graphic_xml(params, expected_result):
         else:
             address = params.get("listen_address", "not_set")
         listen = {'type': 'network', 'network': 'virt-test-%s' % net_type, 'address': address}
-        graphic.listens = [listen]
+        graphic.listen_attrs = listen
     elif listen_type == 'address':
         address = params.get("vnc_listen_address", "127.0.0.1")
         if address in ['valid_ipv4', 'valid_ipv6']:
             address = str(expected_result['vnc_ips'][0].addr)
         listen = {'type': 'address', 'address': address}
-        graphic.listens = [listen]
+        graphic.listen_attrs = listen
 
     if graphic_passwd and vnc_passwd_place == "guest":
         graphic.passwd = graphic_passwd

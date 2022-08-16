@@ -593,10 +593,13 @@ def run(test, params, env):
         graphic.autoport = graphics_autoport
     if graphics_listen:
         graphic.listen = graphics_listen
+    listen_attrs = {}
     if graphics_listen_type:
-        graphic.listen_type = graphics_listen_type
+        listen_attrs['type'] = graphics_listen_type
     if graphics_listen_addr:
-        graphic.listen_addr = graphics_listen_addr
+        listen_attrs['addr'] = graphics_listen_addr
+    if listen_attrs:
+        graphic.listen_attrs = listen_attrs
 
     vm_ref = params.get("vm_ref", vm.name)
     delay = int(params.get("virsh_migrate_delay", 10))
