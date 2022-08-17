@@ -1,5 +1,5 @@
-import logging as log
-
+from provider.interface import interface_base
+from provider.sriov import check_points
 from provider.sriov import sriov_base
 
 from virttest import utils_misc
@@ -10,11 +10,6 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_network
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
-
-
-# Using as lower capital is not the best way to do, but this is just a
-# workaround to avoid changing the entire file.
-logging = log.getLogger('avocado.' + __name__)
 
 
 def get_vm_iface_num(vm_name):
@@ -57,21 +52,9 @@ def get_pf_id_list(pf_info, driver):
 
 def run(test, params, env):
     """
-    Test interfaces attached from network
+    Test maximum hostdev interfaces on the vm
     """
-    def setup_default():
-        """
-        Default setup
-        """
-        pass
-
-    def teardown_default():
-        """
-        Default cleanup
-        """
-        pass
-
-    def setup_max_vfs():
+    def setup_test():
         """
         Setup for max_vfs case
 
@@ -89,11 +72,35 @@ def run(test, params, env):
             sriov_base.recover_vf(pf_pci, params)
             sriov_base.setup_vf(pf_pci, params)
 
-        net_info = get_net_dict(pf_info)
         for pf_dev, net_name in net_info.items():
+            test.log.info("TEST_SETUP: Create network %s.", net_name)
             create_network(net_name, pf_dev, params)
 
-    def teardown_max_vfs():
+        test.log.info("TEST_SETUP: Remove VM's interface devices.")
+        libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
+
+        test.log.info("TEST_SETUP: Cold plug 64 interfaces to VM.")
+        opts = "network %s --config" % list(net_info.values())[0]
+        for i in range(vf_no):
+            iface_dict = {
+                'address': {'type_name': 'pci',
+                            'attrs': {'bus': '%0#4x' % int(7 + i // 8),
+                                      'domain': '0x0000',
+                                      'function': '%0#1x' % int(i % 8),
+                                      'slot': '0x00',
+                                      'type': 'pci'}},
+                'source': {'network': list(net_info.values())[0]},
+                'type_name': 'network'}
+            if i % 8 == 0:
+                iface_dict['address']['attrs'].update({'multifunction': 'on'})
+            iface_dev = interface_base.create_iface("network", iface_dict)
+            virsh.attach_device(vm.name, iface_dev.xml, flagstr="--config", debug=True, ignore_status=False)
+        net_name_2 = list(net_info.values())[1]
+        opts = "network %s --config" % net_name_2
+        virsh.attach_interface(vm_name, opts, debug=True, ignore_status=False)
+        compare_vm_iface(test, get_vm_iface_num(vm_name), vf_no+1)
+
+    def teardown_test():
         """
         Teardown for max_vfs case
 
@@ -108,49 +115,38 @@ def run(test, params, env):
             libvirt_network.create_or_del_network(
                         {"net_name": net_info[pf_dev]}, True)
 
-    def test_max_vfs():
+    def run_test():
         """
-        Hotplug MAX VFs to guest
+        Verify vm can work well with maximum hostdev interfaces
 
         1. Start vm with 64 vfio interfaces
         2. Check networks
-        3. Try to hot plug the 65th hostdev interface
-        4. Destroy vm and cold plug 1 hostdev interface
+        3. Reboot the vm and check network function again
+        4. Suspend and resume, then check network function
+        5. Try to hot plug the 65th hostdev interface
         """
-        net_info = get_net_dict(pf_info)
-        vf_no = int(params.get("vf_no", "63"))
-
-        logging.debug("Remove VM's interface devices.")
-        libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
-        compare_vm_iface(test, get_vm_iface_num(vm_name), 0)
-
-        logging.info("Cold plug 64 interfaces to VM.")
-        opts = "network %s --config" % list(net_info.values())[0]
-        for i in range(vf_no):
-            virsh.attach_interface(vm_name, opts, debug=True, ignore_status=False)
-        net_name_2 = list(net_info.values())[1]
-        opts = "network %s --config" % net_name_2
-        virsh.attach_interface(vm_name, opts, debug=True, ignore_status=False)
-        compare_vm_iface(test, get_vm_iface_num(vm_name), vf_no+1)
-
-        logging.info("Start VM and check networks.")
+        test.log.info("TEST_STEP1: Start the VM and check networks.")
         vm.start()
         vm_session = vm.wait_for_serial_login(timeout=240)
         res = vm_session.cmd_status_output(
             'lspci |grep Ether')[1].strip().splitlines()
         compare_vm_iface(test, len(res), vf_no+1)
+        check_points.check_vm_network_accessed(vm_session)
 
-        logging.info("Hot Plug the 65th iface.")
+        test.log.info("TEST_STEP2: Reboot the VM and check networks.")
+        virsh.reboot(vm.name, debug=True, ignore_status=False)
+        vm_session = vm.wait_for_serial_login(timeout=240)
+        check_points.check_vm_network_accessed(vm_session)
+
+        test.log.info("TEST_STEP3: Suspend and resume the VM and check networks.")
+        virsh.suspend(vm.name, debug=True, ignore_status=False)
+        virsh.resume(vm.name, debug=True, ignore_status=False)
+        check_points.check_vm_network_accessed(vm_session)
+
+        test.log.info("TEST_STEP4: Hot Plug the 65th iface.")
+        net_name_2 = list(net_info.values())[1]
         opts_hotplug = "network %s" % net_name_2
         res = virsh.attach_interface(vm_name, opts_hotplug)
-        libvirt.check_exit_status(res, True)
-
-        logging.info("Destroy vm and cold plug the 65th hostdev interface.")
-        vm.destroy()
-        virsh.attach_interface(vm_name, opts, ignore_status=False)
-
-        compare_vm_iface(test, get_vm_iface_num(vm_name), vf_no+2)
-        res = virsh.start(vm_name, debug=True)
         libvirt.check_exit_status(res, True)
 
     def get_net_dict(pf_info):
@@ -177,18 +173,13 @@ def run(test, params, env):
             test.fail("The number of vm ifaces is incorrect! Expected: %d, "
                       "Actual: %d." % (expr_no, vm_iface_num))
         else:
-            logging.debug("The number of VM ifaces is %d.", vm_iface_num)
-
-    test_case = params.get("test_case", "")
-    run_test = eval("test_%s" % test_case)
-    setup_test = eval("setup_%s" % test_case) if "setup_%s" % test_case in \
-        locals() else setup_default
-    teardown_test = eval("teardown_%s" % test_case) if "teardown_%s" % \
-        test_case in locals() else teardown_default
+            test.log.debug("The number of VM ifaces is %d.", vm_iface_num)
 
     pf_info = utils_sriov.get_pf_info()
     pf_pci = utils_sriov.get_pf_pci()
     driver = utils_sriov.get_pf_info_by_pci(pf_pci).get('driver')
+    net_info = get_net_dict(pf_info)
+    vf_no = int(params.get("vf_no", "63"))
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
@@ -201,7 +192,7 @@ def run(test, params, env):
         run_test()
 
     finally:
-        logging.info("Recover test enviroment.")
+        test.log.info("TEST_TEARDOWN: Recover test enviroment.")
         if vm.is_alive():
             vm.destroy(gracefully=False)
         orig_config_xml.sync()
