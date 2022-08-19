@@ -104,11 +104,12 @@ def run(test, params, env):
         set_domain_disk(vm, vmxml, blk_source, params)
         if not vm.is_alive():
             vm.start()
+            test.log.debug(f"VM XML after start:\n{vm_xml.VMXML.new_from_dumpxml(vm_name)}")
         if not status_error:
             try:
                 vm.cleanup_serial_console()
                 vm.create_serial_console()
-                vm.wait_for_serial_login(timeout=60)
+                vm.wait_for_serial_login(timeout=15)
             except Exception as e:
                 test.fail(f"Test fail: {str(e)}")
             else:
@@ -117,7 +118,7 @@ def run(test, params, env):
             try:
                 vm.cleanup_serial_console()
                 vm.create_serial_console()
-                vm.wait_for_serial_login(timeout=60)
+                vm.wait_for_serial_login(timeout=15)
             except LoginTimeoutError as expected_e:
                 test.log.debug("Got expected error message: %s", str(expected_e))
             except Exception as e:
