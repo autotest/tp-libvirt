@@ -186,7 +186,7 @@ def run(test, params, env):
                 session = remote.remote_login("ssh", remote_ip, "22",
                                               remote_user, remote_pwd,
                                               remote_prompt)
-                cmd_undefine = "virsh -c %s undefine %s" % (uri, vm_name)
+                cmd_undefine = "virsh -c %s undefine %s --nvram" % (uri, vm_name)
                 status, output = session.cmd_status_output(cmd_undefine)
                 logging.info("Undefine output: %s", output)
             except (process.CmdError, remote.LoginError, aexpect.ShellError) as de:
