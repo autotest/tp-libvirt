@@ -1,12 +1,13 @@
 import logging as log
 
-from virttest import virsh
-from virttest import utils_package
-from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt as utlv
-from virttest.libvirt_xml import xcepts
-
 from virttest import libvirt_version
+from virttest import utils_package
+from virttest import virsh
+
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
+from virttest.utils_libvirt import libvirt_bios
+from virttest.utils_test import libvirt as utlv
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -70,15 +71,11 @@ def run(test, params, env):
     # Back VM XML
     v_xml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
     v_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-    # Remove loader/nvram element if exist which may affect newly added same elements
-    for item in ["loader", "nvram"]:
-        if item in str(v_xml):
-            v_xml.xmltreefile.remove_by_xpath("/os/%s" % item, remove_all=True)
-            v_xml.sync()
 
     try:
         # Specify boot loader for OVMF
         if boot_type == 'ovmf':
+            v_xml.os = libvirt_bios.remove_bootconfig_items_from_vmos(v_xml.os)
             os_xml = v_xml.os
             os_xml.loader_type = loader_type
             os_xml.loader = loader
