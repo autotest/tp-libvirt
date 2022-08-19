@@ -303,10 +303,13 @@ def qemu_spice_options(libvirt_vm):
     return spice_dict, plaintext_channels, tls_channels
 
 
-def qemu_vnc_options(libvirt_vm):
+def qemu_vnc_options(libvirt_vm, params):
     """
     Get VNC options from VM's qemu command line as dicts.
     """
+    if params.get("need_vnc_dict") == "no":
+        return None
+
     pid = libvirt_vm.get_pid()
     res = process.run("ps -p %s -o cmd h" % pid, shell=True)
     match = re.search(r'-vnc\s+(\S*)', res.stdout_text)
@@ -435,12 +438,14 @@ def get_expected_listen_ips(params, networks, expected_result):
         else:
             vnc_listen = params.get("vnc_listen", "not_set")
 
-        if vnc_listen == 'not_set':
+        if not vnc_listen or vnc_listen == 'not_set':
             expected_vnc_ips = [utils_net.IPAddress('127.0.0.1')]
         elif vnc_listen == 'valid_ipv4':
             expected_vnc_ips = [random_ip('ipv4')]
         elif vnc_listen == 'valid_ipv6':
             expected_vnc_ips = [get_global_ipv6()]
+        elif vnc_listen == 'hostname':
+            expected_vnc_ips = [process.run('hostname', shell=True, verbose=True).stdout_text.strip()]
         else:
             listen_ip = utils_net.IPAddress(vnc_listen)
             if listen_ip == utils_net.IPAddress('0.0.0.0'):
@@ -451,7 +456,7 @@ def get_expected_listen_ips(params, networks, expected_result):
             else:
                 expected_vnc_ips = [listen_ip]
     for ip in expected_vnc_ips:
-        logging.debug("Expected VNC IP: %s", ip)
+        logging.debug("Expected VNC IP or hostname: %s", ip)
 
     expected_result['vnc_ips'] = expected_vnc_ips
 
@@ -565,8 +570,9 @@ def get_expected_ports(params, expected_result):
         vnc_autoport = params.get("vnc_autoport", "yes")
         auto_unix_socket = params.get("vnc_auto_unix_socket", 'not_set')
         vnc_listen_type = params.get("vnc_listen_type", "not_set")
+        vnc_listen_address = params.get("vnc_listen_address")
 
-        if vnc_listen_type == 'none':
+        if vnc_listen_type == 'none' or vnc_listen_address == 'hostname':
             expected_vnc_port = 'not_set'
         elif vnc_listen_type == 'network':
             if vnc_autoport:
@@ -685,6 +691,7 @@ def get_fail_pattern(params, expected_result):
         vnc_prepare_cert = params.get("vnc_prepare_cert", "yes")
 
         expected_vnc_ips = expected_result['vnc_ips']
+        logging.debug("expected_vnc_ips=%s", expected_vnc_ips)
         vnc_tls = params.get("vnc_tls", "not_set")
         expected_vnc_port = expected_result['vnc_port']
 
@@ -708,7 +715,7 @@ def get_fail_pattern(params, expected_result):
 
         net_type = params.get('vnc_network_type')
         if net_type not in ['nat', 'route']:
-            if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
+            if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips if isinstance(ip, utils_net.IPAddress)]):
                 fail_patts.append(r'Cannot assign requested address')
 
     expected_result['fail_patts'] = fail_patts
@@ -821,6 +828,10 @@ def get_expected_vnc_options(params, networks, expected_result):
 
         if vnc_listen in ['valid_ipv4', 'valid_ipv6']:
             listen_address = str(expected_result['vnc_ips'][0].addr)
+        elif vnc_listen == 'hostname':
+            listen_address = process.run('hostname', shell=True, verbose=True).stdout_text.strip()
+        elif not vnc_listen:
+            listen_address = '127.0.0.1'
         else:
             listen_address = vnc_listen
 
@@ -953,15 +964,67 @@ def check_spice_result(spice_opts,
     check_addr_port(all_ips, expected_spice_ips, expected_spice_ports, test)
 
 
+def check_qemu_command_line(params):
+    """
+    Check qemu command line
+
+    :param params: dict for parameters
+    """
+    check_qemu_pattern = params.get('check_qemu_pattern')
+    if check_qemu_pattern:
+        logging.debug("Checking qemu command line with "
+                      "pattern:%s", check_qemu_pattern)
+        libvirt.check_qemu_cmd_line(check_qemu_pattern)
+
+
+def handle_auto_filled_items(given_graphic_attrs, params):
+    """
+    Update the expected attributes dict with those libvirt fills automatically
+
+    :param given_graphic_attrs: graphic object attributes dict
+    :param params: dict for test parameters
+    :return: dict, the updated graphic object attributes
+    """
+    vnc_listen_address = params.get("vnc_listen_address")
+    if vnc_listen_address == '':
+        given_graphic_attrs['listens'][0].update({'address': '127.0.0.1'})
+
+    return given_graphic_attrs
+
+
+def compare_guest_xml(vnc_graphic, vm_name, params, test):
+    """
+    Compare current guest xml to that constructed graphics
+    dev according to cfg file
+
+    :param vnc_graphic: the constructed graphics dev object
+    :param vm_name: the vm name
+    :param test: test object
+    :raises: test.fail if the attribute is not matched correctly
+    """
+    if params.get("check_dom_xml") != "yes":
+        return
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    graphic_dev = vmxml.get_devices('graphics')[0]
+    graphic_attributes = graphic_dev.fetch_attrs()
+    logging.debug("The attributes of graphics device in vm xml:\n%s", graphic_attributes)
+    given_graphic_attrs = vnc_graphic.fetch_attrs()
+    given_graphic_attrs = handle_auto_filled_items(given_graphic_attrs, params)
+    logging.debug("The attributes of graphics device expected:\n%s", given_graphic_attrs)
+
+    for key, value in given_graphic_attrs.items():
+        if value != graphic_attributes[key]:
+            test.fail("Configured device XML value: '%s' does not match "
+                      "the entry '%s' in VMXML" % (value, graphic_attributes[key]))
+
+
 def check_vnc_result(vnc_opts, expected_result, all_ips, test):
     """
     Check test results by comparison with expected results.
     """
-
     expected_vnc_ips = expected_result['vnc_ips']
-
-    compare_opts(vnc_opts, expected_result['vnc_options'], test)
-
+    if vnc_opts:
+        compare_opts(vnc_opts, expected_result['vnc_options'], test)
     expected_vnc_ports = [expected_result['vnc_port']]
     expected_vnc_ports = [p for p in expected_vnc_ports if p != 'not_set']
     check_addr_port(all_ips, expected_vnc_ips, expected_vnc_ports, test)
@@ -1106,7 +1169,14 @@ def generate_vnc_graphic_xml(params, expected_result):
         address = params.get("vnc_listen_address", "127.0.0.1")
         if address in ['valid_ipv4', 'valid_ipv6']:
             address = str(expected_result['vnc_ips'][0].addr)
-        listen = {'type': 'address', 'address': address}
+        elif address == 'hostname':
+            address = process.run('hostname', shell=True, verbose=True).stdout_text.strip()
+        listen = {'type': 'address'}
+        if address:
+            listen.update({'address': address})
+        graphic.listen_attrs = listen
+    elif listen_type == 'none':
+        listen = {'type': 'none'}
         graphic.listen_attrs = listen
 
     if graphic_passwd and vnc_passwd_place == "guest":
@@ -1528,8 +1598,11 @@ def run(test, params, env):
                                  rv_log_auth, opt_str, valid_time)
 
         if vnc_xml:
-            vnc_opts = qemu_vnc_options(vm)
+            compare_guest_xml(vnc_graphic, vm_name, params, test)
+            check_qemu_command_line(params)
+            vnc_opts = qemu_vnc_options(vm, params)
             check_vnc_result(vnc_opts, expected_result, all_ips, test)
+
             # Use remote-viewer to connect guest
             if remote_viewer_check:
                 rv_log_str = params.get("rv_log_str")
