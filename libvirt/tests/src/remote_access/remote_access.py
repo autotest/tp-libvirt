@@ -432,7 +432,7 @@ def run(test, params, env):
                 server_session = remote.wait_for_login('ssh', server_ip, '22',
                                                        server_user, server_pwd,
                                                        r"[\#\$]\s*$")
-                libvirtd = Libvirtd(session=server_session)
+                libvirtd = Libvirtd(session=server_session, service_name='virtproxy')
                 if libvirtd.is_running():
                     test.fail("virtproxyd/libvirtd should fail to restart if tcp_min_ssf "
                               "is less than %s" % default_tcp_min_ssf)
