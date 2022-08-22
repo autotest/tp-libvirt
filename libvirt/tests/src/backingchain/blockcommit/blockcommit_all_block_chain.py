@@ -59,11 +59,8 @@ def run(test, params, env):
         Do blockcommit and check backingchain result
         """
         session = vm.wait_for_login()
-        status, _ = session.cmd_status_output("which sha256sum")
-        if status:
-            test.error("Not find sha256sum command on guest.")
-        ret, expected_md5 = session.cmd_status_output("sha256sum %s" %
-                                                      "/dev/"+test_obj.new_dev)
+        expected_md5 = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
+
         options = ''
         for i in range(1, commit_times+1):
             if test_scenario == "shallow_active":
