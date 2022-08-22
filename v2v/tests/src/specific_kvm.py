@@ -71,8 +71,7 @@ def run(test, params, env):
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
-    backup_list = ['floppy', 'floppy_devmap', 'fstab_cdrom',
-                   'sata_disk', 'network_rtl8139', 'network_e1000',
+    backup_list = ['fstab_cdrom', 'sata_disk', 'network_rtl8139', 'network_e1000',
                    'spice', 'spice_encrypt', 'spice_qxl',
                    'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
                    'listen_none', 'listen_socket', 'only_net', 'only_br']
@@ -256,17 +255,8 @@ def run(test, params, env):
         if current_kernel.strip() != kernel_normal_list[-1].lstrip('kernel-'):
             log_fail('Check boot kernel failed')
 
-    def check_floppy_exist(vmcheck):
-        """
-        Check if floppy exists after conversion
-        """
-        blk = vmcheck.session.cmd('lsblk')
-        LOG.info(blk)
-        if not re.search('fd0', blk):
-            log_fail('Floppy not found')
-
     def attach_removable_media(type, source, dev):
-        bus = {'cdrom': 'ide', 'floppy': 'fdc', 'disk': 'virtio'}
+        bus = {'cdrom': 'ide', 'disk': 'virtio'}
         args = {'driver': 'qemu', 'subdriver': 'raw', 'sourcetype': 'file',
                 'type': type, 'targetbus': bus[type]}
         if type == 'cdrom':
@@ -347,21 +337,6 @@ def run(test, params, env):
         for mac in iflist:
             if iflist[mac].find('model').get('type') != 'virtio':
                 log_fail('Network not convert to virtio')
-
-    @vm_shell
-    def insert_floppy_devicemap(**kwargs):
-        """
-        Add an entry of floppy to device.map
-        """
-        session = kwargs['session']
-        line = '(fd0)     /dev/fd0'
-        devmap = '/boot/grub/device.map'
-        if session.cmd_status('ls %s' % devmap):
-            devmap = '/boot/grub2/device.map'
-        cmd_exist = 'grep \'(fd0)\' %s' % devmap
-        cmd_set = 'sed -i \'2i%s\' %s' % (line, devmap)
-        if session.cmd_status(cmd_exist):
-            session.cmd(cmd_set)
 
     def make_label(session):
         """
@@ -606,11 +581,6 @@ def run(test, params, env):
             if checkpoint == 'multi_kernel':
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
-            if checkpoint == 'floppy':
-                # Convert to rhv will remove all removable devices(floppy,
-                # cdrom)
-                if output_mode in ['local', 'libvirt']:
-                    check_floppy_exist(vmchecker.checker)
             if checkpoint == 'multi_disks':
                 check_disks(vmchecker.checker)
             if checkpoint == 'multi_netcards':
@@ -768,17 +738,6 @@ def run(test, params, env):
             params['ori_disks'] = disk_count
         if checkpoint == 'sata_disk':
             change_disk_bus('sata')
-        if checkpoint.startswith('floppy'):
-            if params['vm_machine'] and 'q35' in params['vm_machine'] and int(
-                    re.search(r'pc-q35-rhel(\d+)\.', params['vm_machine']).group(1)) >= 8:
-                test.cancel(
-                    'Device isa-fdc is not supported with machine type %s' %
-                    params['vm_machine'])
-            img_path = data_dir.get_tmp_dir() + '/floppy.img'
-            utlv.create_local_disk('floppy', img_path)
-            attach_removable_media('floppy', img_path, 'fda')
-            if checkpoint == 'floppy_devmap':
-                insert_floppy_devicemap()
         if checkpoint.startswith('fstab'):
             if checkpoint == 'fstab_cdrom':
                 img_path = data_dir.get_tmp_dir() + '/cdrom.iso'
