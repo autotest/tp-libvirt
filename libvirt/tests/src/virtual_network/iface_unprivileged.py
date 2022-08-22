@@ -197,6 +197,8 @@ def run(test, params, env):
             upu_vmxml.devices = all_devices
             logging.debug(upu_vmxml)
 
+            # Remove seclabel model="dac" since unprivileged user doesn't support this feature
+            upu_vmxml.del_seclabel([('model', 'dac'), ('relabel', 'yes')])
             # Define updated xml
             shutil.copyfile(upu_vmxml.xml, new_xml_path)
             upu_vmxml.xml = new_xml_path
