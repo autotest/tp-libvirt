@@ -219,3 +219,29 @@ class Checkfunction(object):
                 self.test.fail("File:%s hash :%s is different from hash before "
                                "blockcommit:%s" % (item, current_hash,
                                                    item_list[index]))
+
+    def check_mirror_exist(self, vm, device, image_path):
+        """
+        Check mirror tag exist and correct source file
+
+        :param vm: the vm object
+        :param device: device name
+        :param image_path: image path
+        """
+        # Check exist mirror tag.
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        disk_list = vmxml.get_disk_all()[device]
+        if not disk_list.find('mirror'):
+            self.test.fail('No mirror tag in current domain xml :%s' % vmxml)
+        else:
+            # Check file in mirror should be new path
+            mirror_file = disk_list.find('mirror').get('file')
+            if mirror_file != image_path:
+                self.test.fail('Current mirror tag file:%s is not same as:%s' %
+                               (mirror_file, image_path))
+            # Check file in mirror >source > file should be new path
+            mirror_source_file = disk_list.find('mirror'). \
+                find('source').get('file')
+            if mirror_source_file != image_path:
+                self.test.fail('Current source tag file:%s is not same as:%s' %
+                               (mirror_source_file, image_path))

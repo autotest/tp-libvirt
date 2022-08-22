@@ -115,6 +115,8 @@ class BlockCommand(object):
                 expected_chain.append(self.new_image_path)
             elif i == 'backing_file':
                 expected_chain.append(self.backing_file)
+            elif i == 'copy_file':
+                expected_chain.append(self.copy_image)
             else:
                 expected_chain.append(self.snap_path_list[int(i) - 1])
         LOG.debug("Expected chain is : %s", expected_chain)
