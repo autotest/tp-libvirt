@@ -25,14 +25,13 @@ def create_network(params):
     """
     Create VF pool
     """
-    net_dict = {"net_name": params.get("net_name"),
-                "net_forward": params.get("net_forward")}
+    net_dict = {"name": params.get("net_name"),
+                "forward": eval(params.get("net_forward"))}
     net_forward_pf = "yes" == params.get("net_forward_pf")
     if net_forward_pf:
-        net_dict.update(
-            {"net_forward_pf": '{"dev": "%s"}' % params.get("pf_name")})
+        net_dict.update({'pf': {'dev': params.get("pf_name")}})
     else:
-        net_dict.update({"forward_iface": params.get("vf_iface")})
+        net_dict.update({"forward_interface": [{"dev": params.get("vf_iface")}]})
     libvirt_network.create_or_del_network(net_dict)
 
 
@@ -167,4 +166,4 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         orig_config_xml.sync()
         libvirt_network.create_or_del_network(
-            {"net_name": params.get("net_name")}, True)
+            {"name": params.get("net_name")}, True)

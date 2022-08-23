@@ -19,7 +19,7 @@ def run(test, params, env):
         if test_scenario == "inactive_pf":
             utils_net.Interface(sriov_test_obj.pf_name).down()
         elif test_scenario == "inactive_network":
-            virsh.net_destroy(network_dict['net_name'], debug=True)
+            virsh.net_destroy(network_dict['name'], debug=True)
 
         test.log.info("TEST_STEP1: Attach a hostdev interface/device to VM")
         iface_dev = sriov_test_obj.create_iface_dev(dev_type, iface_dict)

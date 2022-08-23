@@ -46,7 +46,7 @@ def run(test, params, env):
 
         if network_dict:
             libvirt_network.check_network_connection(
-                network_dict.get("net_name"), 1)
+                network_dict.get("name"), 1)
 
         test.log.info("TEST_STEP5: Destroy VM")
         vm.destroy(gracefully=False)
@@ -55,7 +55,7 @@ def run(test, params, env):
                       "vlan")
         if network_dict:
             libvirt_network.check_network_connection(
-                network_dict.get("net_name"), 0)
+                network_dict.get("name"), 0)
 
         check_points.check_vlan(sriov_test_obj.pf_name, iface_dict, True)
 
