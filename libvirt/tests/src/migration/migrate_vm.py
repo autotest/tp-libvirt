@@ -2401,7 +2401,7 @@ def run(test, params, env):
                 else:
                     stderr = p.communicate()[1]
                     logging.debug(stderr)
-                    err_str = ".*error.*migration.*job: canceled by client"
+                    err_str = test_dict.get("err_msg")
                     if not re.search(err_str, stderr):
                         test.fail("Can't find error: %s." % err_str)
                     else:
