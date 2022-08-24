@@ -177,6 +177,7 @@ class SRIOVTest(object):
         """
         vf_pci_addr = self.vf_pci_addr
         vf_pci_addr2 = self.vf_pci_addr2
+        pf_pci_addr = self.pf_pci_addr
         pf_name = self.pf_name
         vf_name = self.vf_name
         net_forward_pf = str({'dev': pf_name})
