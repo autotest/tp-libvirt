@@ -5,6 +5,7 @@ import uuid
 import shutil
 import time
 import tempfile
+import ovirtsdk4
 import xml.etree.ElementTree as ET
 
 from virttest import data_dir
@@ -769,7 +770,10 @@ def run(test, params, env):
             LOG.info('Set http_proxy=%s, https_proxy=%s', http_proxy, https_proxy)
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
-
+        if 'ovirtsdk4_pkg' in checkpoint:
+            ovirt4_path = os.path.dirname(ovirtsdk4.__file__)
+            dst_ovirt4_path = ovirt4_path + '.bak'
+            os.rename(ovirt4_path, dst_ovirt4_path)
         if 'ogac' in checkpoint:
             os.environ['VIRTIO_WIN'] = virtio_win_path
             if os_type == 'linux' and not utils_v2v.multiple_versions_compare(implementation_change_ver) and os.path.isdir(os.getenv('VIRTIO_WIN')):
@@ -979,6 +983,8 @@ def run(test, params, env):
         if 'without_default_net' in checkpoint:
             if net_name:
                 start_net(net_name)
+        if 'ovirtsdk4_pkg' in checkpoint:
+            os.rename(dst_ovirt4_path, ovirt4_path)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'rhev' and v2v_sasl:
