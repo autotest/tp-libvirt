@@ -122,8 +122,7 @@ class Console(aexpect.ShellSession):
                 address + '.out',
                 os.O_RDONLY | os.O_CREAT | os.O_NONBLOCK)
         elif console_type == 'file':
-            self.read_fd = open(address,
-                                'r')
+            self.read_fd = open(address, 'r', errors='ignore')
 
     def _tcp_thread(self):
         """

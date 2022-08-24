@@ -24,7 +24,7 @@ def check_pty_log_file(file_path, boot_prompt):
     :return: True or False according the result of finding
     """
 
-    with open(file_path) as fp:
+    with open(file_path, errors='ignore') as fp:
         contents = fp.read()
     logging.debug("The contents of log file are : %s" % contents)
     ret = contents.find(boot_prompt)
