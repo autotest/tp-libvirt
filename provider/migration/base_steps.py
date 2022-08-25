@@ -231,16 +231,18 @@ class MigrationBase(object):
 
         """
         transport_type = self.params.get("transport_type")
-        extra = self.params.get("virsh_migrate_extra")
+        transport_type_again = self.params.get("transport_type_again")
         migrate_desturi_port = self.params.get("migrate_desturi_port")
+        migrate_desturi_type = self.params.get("migrate_desturi_type", "tcp")
 
-        if transport_type:
+        if migrate_desturi_type:
+            self.conn_list.append(migration_base.setup_conn_obj(migrate_desturi_type, self.params, self.test))
+
+        if transport_type and transport_type != migrate_desturi_type:
             self.conn_list.append(migration_base.setup_conn_obj(transport_type, self.params, self.test))
 
-        if self.params.get("virsh_migrate_extra_mig_again"):
-            extra += self.params.get("virsh_migrate_extra_mig_again")
-        if '--tls' in extra:
-            self.conn_list.append(migration_base.setup_conn_obj('tls', self.params, self.test))
+        if transport_type_again and transport_type_again not in [transport_type, migrate_desturi_type]:
+            self.conn_list.append(migration_base.setup_conn_obj(transport_type_again, self.params, self.test))
 
         if migrate_desturi_port:
             self.remote_add_or_remove_port(migrate_desturi_port)
