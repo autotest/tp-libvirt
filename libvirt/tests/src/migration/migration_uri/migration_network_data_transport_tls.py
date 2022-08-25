@@ -1,5 +1,8 @@
+from avocado.utils import process
+
 from virttest import libvirt_remote
 from virttest import libvirt_version
+from virttest import remote
 
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_config
@@ -80,6 +83,23 @@ def run(test, params, env):
                                                  is_recover=True,
                                                  extra_params=params,
                                                  config_object=obj)
+
+    def setup_wrong_cert_configuration():
+        """
+        Setup for wrong cert configuration
+
+        """
+        cert_configuration = params.get("cert_configuration", '')
+        custom_pki_path = params.get("custom_pki_path")
+        cert_path = params.get("cert_path")
+
+        test.log.info("Setup for wrong cert configuration.")
+        migration_obj.setup_connection()
+        cmd = "rm -f %s" % cert_path
+        if cert_configuration == "no_client_cert_on_src":
+            process.run(cmd, shell=True)
+        elif cert_configuration == "no_server_cert_on_target":
+            remote.run_remote_cmd(cmd, params, ignore_status=False)
 
     libvirt_version.is_libvirt_feature_supported(params)
 
