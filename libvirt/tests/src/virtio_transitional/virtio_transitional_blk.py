@@ -168,11 +168,12 @@ def run(test, params, env):
 
         v_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         slot = get_free_slot(pci_bridge_index, v_xml)
-        disk_xml = _generate_disk_xml()
-        attach(disk_xml, device_target, plug_method)
+        disk_dev = devices.disk.Disk("file")
+        disk_dev.xml = _generate_disk_xml()
+        attach(disk_dev.xml, device_target, plug_method)
         if plug_method == "cold":
-            disk_xml = _generate_disk_xml()
-        detach(disk_xml, device_target, plug_method)
+            disk_dev.xml = _generate_disk_xml()
+        detach(disk_dev.xml, device_target, plug_method)
         if not utils_misc.wait_for(
                 lambda: not libvirt.device_exists(vm, device_target),
                 detect_time):
