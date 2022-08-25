@@ -3,7 +3,6 @@ import logging
 import re
 import uuid
 import shutil
-import time
 import tempfile
 import ovirtsdk4
 import xml.etree.ElementTree as ET
@@ -201,11 +200,7 @@ def run(test, params, env):
         Check if rhev files exist
         """
         file_path = {
-            'rhev-apt.exe': r'C:\rhev-apt.exe',
             'rhsrvany.exe': r'"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"'}
-        # rhev-apt.ext is removed on rhel9
-        if utils_v2v.multiple_versions_compare(V2V_UNSUPPORT_RHEV_APT_VER):
-            file_path.pop('rhev-apt.exe')
         for key in file_path:
             status = vmcheck.session.cmd_status('dir %s' % file_path[key])
             if status == 0:
@@ -229,39 +224,6 @@ def run(test, params, env):
             LOG.info(
                 'file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' %
                 content)
-
-    def check_windows_signature(vmcheck, full_name):
-        """
-        Check signature of a file in windows VM
-
-        :param vmcheck: VMCheck object for vm checking
-        :param full_name: a file's full path name
-        """
-        LOG.info(
-            'powershell or signtool needs to be installed in guest first')
-
-        cmds = [
-            ('powershell "Get-AuthenticodeSignature %s | format-list"' %
-             full_name,
-             r'SignerCertificate.*?Not After](.*?)\[Thumbprint',
-             '%m/%d/%Y %I:%M:%S %p'),
-            ('signtool verify /v %s' %
-             full_name,
-             r'Issued to: Red Hat.*?Expires:(.*?)SHA1 hash',
-             '')]
-        for cmd, ptn, fmt in cmds:
-            _, output = vmcheck.run_cmd(cmd)
-            if re.search(ptn, output, re.S):
-                expire_time = re.search(ptn, output, re.S).group(1).strip()
-                if fmt:
-                    expire_time = time.strptime(expire_time, fmt)
-                else:
-                    expire_time = time.strptime(expire_time)
-                if time.time() > time.mktime(expire_time):
-                    test.fail("Signature of '%s' has expired" % full_name)
-                return
-        # Get here means the guest doesn't have powershell or signtool
-        test.error("Powershell or Signtool must be installed in guest")
 
     def check_windows_vmware_tools(vmcheck):
         """
@@ -582,9 +544,6 @@ def run(test, params, env):
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
                     services = ['qemu-ga']
-                    if not utils_v2v.multiple_versions_compare(
-                            V2V_UNSUPPORT_RHEV_APT_VER):
-                        services.append('rhev-apt')
                     virtio_win_env = os.getenv('VIRTIO_WIN')
                     if virtio_win_env and 'rhv-guest-tools' in virtio_win_env:
                         services.append('spice-ga')
@@ -598,10 +557,6 @@ def run(test, params, env):
             if len(ret) == 0:
                 LOG.info("All common checkpoints passed")
             # Check specific checkpoints
-            if 'ogac' in checkpoint and 'signature' in checkpoint:
-                if not utils_v2v.multiple_versions_compare(
-                        V2V_UNSUPPORT_RHEV_APT_VER):
-                    check_windows_signature(vmchecker.checker, r'c:\rhev-apt.exe')
             if 'cdrom' in checkpoint and "device='cdrom'" not in vmchecker.vmxml:
                 test.fail('CDROM no longer exists')
             if 'vmtools' in checkpoint:
