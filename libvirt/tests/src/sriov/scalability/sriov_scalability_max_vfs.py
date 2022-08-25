@@ -31,9 +31,9 @@ def create_network(net_name, pf_name, params):
     :param pf_name: PF device
     :param params: The parameters dict
     """
-    net_dict = {"net_name": net_name,
-                "net_forward": params.get("net_forward"),
-                "net_forward_pf": '{"dev": "%s"}' % pf_name
+    net_dict = {"name": net_name,
+                "forward": eval(params.get("net_forward")),
+                "pf": {"dev": pf_name}
                 }
     libvirt_network.create_or_del_network(net_dict)
 
@@ -113,7 +113,7 @@ def run(test, params, env):
         net_info = get_net_dict(pf_info)
         for pf_dev in net_info:
             libvirt_network.create_or_del_network(
-                        {"net_name": net_info[pf_dev]}, True)
+                        {"name": net_info[pf_dev]}, True)
 
     def run_test():
         """

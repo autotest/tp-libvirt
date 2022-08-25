@@ -43,9 +43,11 @@ def run(test, params, env):
         """
         Create VF pool
         """
-        net_hostdev_dict = {"net_name": params.get("net_name"),
-                            "net_forward": params.get("net_forward"),
-                            "vf_list_attrs": "[%s]" % utils_sriov.pci_to_addr(vf_pci)}
+        net_hostdev_dict = {"name": params.get("net_name"),
+                            "forward": eval(params.get("net_forward")),
+                            'vf_list': [{'type_name': 'pci',
+                                         'attrs': utils_sriov.pci_to_addr(vf_pci)}]
+                            }
         libvirt_network.create_or_del_network(net_hostdev_dict)
 
     def check_vm_iface_managed(vm_name, iface_dict):
@@ -153,5 +155,5 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         orig_config_xml.sync()
         libvirt_network.create_or_del_network(
-            {"net_name": params.get("net_name")}, True)
+            {"name": params.get("net_name")}, True)
         virsh.nodedev_reattach(dev_name, debug=True)
