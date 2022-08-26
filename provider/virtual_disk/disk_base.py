@@ -98,7 +98,8 @@ class DiskBase(object):
                 if kwargs.get("size"):
                     kwargs.pop("size")
                 libvirt.create_local_disk("file", path=new_image_path,
-                                          size=size, disk_format="qcow2", **kwargs)
+                                          size=size, disk_format="qcow2",
+                                          **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
         elif disk_type == 'block':
@@ -111,15 +112,18 @@ class DiskBase(object):
             if not new_image_path:
                 pool_name, new_image_path = self.create_volume_for_disk_path(
                     self.test, self.params, self.pool_name,
-                    self.pool_type, self.pool_target, self.emulated_image, **kwargs)
+                    self.pool_type, self.pool_target, self.emulated_image,
+                    **kwargs)
             disk_dict.update({'source': {'attrs': {'pool': self.pool_name,
                                                    'volume': new_image_path}}})
         elif disk_type == 'nfs':
             if not new_image_path:
-                nfs_res = libvirt.setup_or_cleanup_nfs(is_setup=True, is_mount=True)
+                nfs_res = libvirt.setup_or_cleanup_nfs(is_setup=True,
+                                                       is_mount=True)
                 new_image_path = nfs_res['mount_dir'] + '/test.img'
 
-                libvirt.create_local_disk("file", path=new_image_path, size='50M',
+                libvirt.create_local_disk("file", path=new_image_path,
+                                          size='50M',
                                           disk_format="qcow2", **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
@@ -131,11 +135,11 @@ class DiskBase(object):
                 mon_host, auth_username, new_image_path = \
                     self.create_rbd_disk_path(self.params)
                 disk_dict.update({'source': {
-                        'attrs': {'protocol': "rbd", "name": new_image_path},
-                        "hosts": [{"name": mon_host}],
-                        "auth": {"auth_user": auth_username,
-                                 "secret_usage": "cephlibvirt",
-                                 "secret_type": "ceph"}}})
+                    'attrs': {'protocol': "rbd", "name": new_image_path},
+                    "hosts": [{"name": mon_host}],
+                    "auth": {"auth_user": auth_username,
+                             "secret_usage": "cephlibvirt",
+                             "secret_type": "ceph"}}})
 
         disk_xml = self.set_disk_xml(disk_dict)
         libvirt.add_vm_device(vmxml, disk_xml)
@@ -185,7 +189,8 @@ class DiskBase(object):
                                     pool_type='dir', pool_target='dir_pool',
                                     emulated_image='dir_pool_img',
                                     vol_name='vol_name', capacity='2G',
-                                    allocation='2G', volume_type='qcow2', **kwargs):
+                                    allocation='2G', volume_type='qcow2',
+                                    **kwargs):
         """
         Prepare volume type disk image path
 
@@ -294,8 +299,8 @@ class DiskBase(object):
             pool_name = self.create_pool_from_xml(pool_dict, source_dict)
             source_path = []
             for i in range(0, self.lv_num):
-                source = "/dev/%s/%s" % (pool_name, self.lv_name+str(i))
-                virsh.vol_create_as(self.lv_name+str(i), pool_name, "20M",
+                source = "/dev/%s/%s" % (pool_name, self.lv_name + str(i))
+                virsh.vol_create_as(self.lv_name + str(i), pool_name, "20M",
                                     "10M", "", debug=True)
                 libvirt.create_local_disk("file", source, "10M", "qcow2")
                 source_path.append(source)
@@ -305,7 +310,7 @@ class DiskBase(object):
 
         elif disk_type == "rbd_with_auth":
             origin_image = self._pre_rbd_origin_image()
-            dst_img, backing_list = libvirt_disk.\
+            dst_img, backing_list = libvirt_disk. \
                 make_relative_path_backing_files(self.vm,
                                                  pre_set_root_dir=self.base_dir,
                                                  origin_image=origin_image,
@@ -357,7 +362,8 @@ class DiskBase(object):
         pool.source = source_xml
 
         virsh.pool_define(pool.xml, debug=True, ignore_status=False)
-        virsh.pool_build(pool_name, options='--overwrite', debug=True, ignore_status=False)
+        virsh.pool_build(pool_name, options='--overwrite', debug=True,
+                         ignore_status=False)
         virsh.pool_start(pool_name, debug=True, ignore_status=False)
 
         return pool_name

@@ -38,6 +38,7 @@ class BlockCommand(object):
         self.old_parts = []
         self.original_disk_source = ''
         self.backing_file = ''
+        self.lvm_list = []
 
     def prepare_iscsi(self):
         """
@@ -78,7 +79,8 @@ class BlockCommand(object):
         libvirt.set_vm_disk(self.vm, self.params)
 
     def prepare_snapshot(self, start_num=0, snap_num=3,
-                         snap_path="", option='--disk-only', extra=''):
+                         snap_path="", option='--disk-only', extra='',
+                         clean_snap_file=True):
         """
         Prepare domain snapshot
 
@@ -87,6 +89,7 @@ class BlockCommand(object):
         :params snap_path: path of snap
         :params option: option to create snapshot, default value is '--disk-only'
         :params extra: extra option to create snap
+        :params clean_snap_file: Clean snap file before create snap if True.
         """
         # Create backing chain
         for i in range(start_num, snap_num):
@@ -94,7 +97,7 @@ class BlockCommand(object):
                 path = self.tmp_dir + '%d' % i
             else:
                 path = snap_path
-            if os.path.exists(path) and "reuse" not in option:
+            if os.path.exists(path) and "reuse" not in option and clean_snap_file:
                 libvirt.delete_local_disk('file', path)
             snap_option = "%s %s --diskspec %s,file=%s%s" % \
                           ('snap%d' % i, option, self.new_dev, path, extra)
