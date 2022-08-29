@@ -232,6 +232,22 @@ def run(test, params, env):
             vmxml.sync()
             logging.debug("updated domain xml is: %s" % vmxml.xmltreefile)
 
+        # Change ownership of VARS.fd file
+        if dynamic_ownership is False:
+            vars_path = None
+            if vmxml.os.xmltreefile.find('nvram') is not None:
+                vars_path = vmxml.os.nvram
+            elif vmxml.os.fetch_attrs().get('os_firmware') == 'efi':
+                vars_path = params.get('vars_path')
+
+            if vars_path is not None and os.path.exists(vars_path):
+                if qemu_user.isdigit():
+                    uid, gid = int(qemu_user), int(qemu_group)
+                else:
+                    user_info = pwd.getpwnam(qemu_user)
+                    uid, gid = user_info.pw_uid, user_info.pw_gid
+                os.chown(vars_path, uid, gid)
+
         # Start VM to check the qemu process and image.
         try:
             libvirtd.restart()

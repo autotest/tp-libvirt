@@ -1,4 +1,5 @@
 import os
+import pwd
 import logging as log
 
 from avocado.core import exceptions
@@ -111,6 +112,18 @@ def run(test, params, env):
                 os.chown(disk_path, 0, 0)
             elif qemu_user == "qemu":
                 os.chown(disk_path, 107, 107)
+
+        # Change ownership of VARS.fd file
+        if dynamic_ownership is False:
+            vars_path = None
+            if vmxml.os.xmltreefile.find('nvram') is not None:
+                vars_path = vmxml.os.nvram
+            elif vmxml.os.fetch_attrs().get('os_firmware') == 'efi':
+                vars_path = params.get('vars_path')
+
+            if vars_path is not None and os.path.exists(vars_path):
+                user_info = pwd.getpwnam(qemu_user)
+                os.chown(vars_path, user_info.pw_uid, user_info.pw_gid)
 
         # Set selinux of host.
         utils_selinux.set_status(host_sestatus)
