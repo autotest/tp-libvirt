@@ -597,16 +597,12 @@ class VMChecker(object):
             self.log_err(err_msg)
 
         LOG.info("Checking boot os info in VM XML")
-        chipset, bootinfo, secboot = self.get_expected_boottype(self.boottype)
+        chipset, bootinfo, _ = self.get_expected_boottype(self.boottype)
 
         chip_pattern = r"machine='pc-%s" % ('q35' if chipset ==
                                             'q35' else 'i440fx')
         if bootinfo == 'uefi':
-            boot_pattern = r"secure='%s' type='pflash'" % (
-                'yes' if secboot else 'no')
-            # v2v doesn't support secure boot to ovirt
-            if self.target == "ovirt":
-                boot_pattern = boot_pattern.replace('yes', 'no')
+            boot_pattern = r"type='pflash'"
         else:
             boot_pattern = None
 

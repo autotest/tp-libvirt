@@ -712,18 +712,12 @@ def run(test, params, env):
                 'devices').find('graphics').get('type')
             params['vm_machine'] = ori_vm_xml.xmltreefile.find(
                 './os/type').get('machine')
-            # Inactive xml only has firmware attribute. There is no way
-            # to determine whether it's secure or not.
             uefi_firmware = ori_vm_xml_root.find('./os[@firmware="efi"]')
             if uefi_firmware is not None:
-                # If convert to local kvm host, set it to 3 which is default in RHEL.
-                params['boottype'] = 3 if target == 'libvirt' else 2
-            # This detection is not conflict with above detection. In different libvirt
-            # and qemu versions, the configuration is different. There is no good way to
-            # check the boot type.
-            element_loader = ori_vm_xml_root.find('./os/loader[@type="pflash"]')
-            if element_loader is not None:
-                params['boottype'] = 2 if element_loader.get('secure') == 'no' else 3
+                # No good way to determine whether it's secure boot or not.
+                # So the check is skipped. There is no difference between
+                # 2 and 3.
+                params['boottype'] = 2
 
         backup_xml = None
         # Only kvm guest's xml needs to be backup currently
