@@ -1,10 +1,13 @@
 import logging
 import os
+import re
+import json
 
 from avocado.utils import process
 
-from virttest import virsh
 from virttest import data_dir
+from virttest import libvirt_storage
+from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -122,6 +125,44 @@ class BlockCommand(object):
         LOG.debug("Expected chain is : %s", expected_chain)
 
         return expected_chain
+
+    @staticmethod
+    def get_relative_path(image_path):
+        """
+        Get image backing chain relative path
+
+        :param image_path: image path
+
+
+        Example:
+            qemu-img info -U /var/lib/libvirt/images/d/d --backing-chain
+        Get:
+            image: /var/lib/libvirt/images/d/d
+            file format: qcow2
+            backing file: ../c/c (actual path: /var/lib/libvirt/images/d/../c/c)
+            backing file format: qcow2
+            Format specific information:
+                compat: 1.1
+                extended l2: false
+            image: /var/lib/libvirt/images/d/../c/c
+        The function returned:
+            /var/lib/libvirt/images/d/../c/c
+        """
+        relative_path = []
+        cmd = "qemu-img info %s --backing-chain" % image_path
+        if libvirt_storage.check_qemu_image_lock_support():
+            cmd += " -U"
+        ret = process.run(cmd, shell=True).stdout_text.strip()
+        match = re.findall(r'(image: )(.+\n)', ret)
+
+        for i in range(len(match)):
+            path = match[i][1].split('\n')[0]
+            if 'json' in path:
+                source = json.loads(path.split('json:')[1])["file"]
+                path = source["pool"] + "/" + source["image"]
+            relative_path.append(path)
+
+        return relative_path
 
     def get_hash_value(self, session=None, check_item=''):
         """
