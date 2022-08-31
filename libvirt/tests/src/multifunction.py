@@ -151,7 +151,7 @@ def create_disk_xml(params):
     diskxml.target = {'dev': target_dev, 'bus': target_bus}
     diskxml.address = diskxml.new_disk_address(addr_type, attrs=addr_attr)
     logging.debug("Disk XML:\n%s", str(diskxml))
-    return diskxml.xml
+    return diskxml
 
 
 def device_exists(vm, target_dev):
@@ -185,12 +185,12 @@ def attach_additional_device(vm_name, disksize, targetdev, params):
     params['target_dev'] = targetdev
 
     # Create a file of device
-    xmlfile = create_disk_xml(params)
+    xmlobj = create_disk_xml(params)
 
     # To confirm attached device do not exist.
     virsh.detach_disk(vm_name, targetdev, extra="--config")
 
-    return virsh.attach_device(vm_name, xmlfile,
+    return virsh.attach_device(vm_name, xmlobj.xml,
                                flagstr="--config", debug=True)
 
 
