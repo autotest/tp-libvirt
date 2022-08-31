@@ -236,10 +236,10 @@ def set_migrate_speed_to_high(params):
     :param params: dict, used to setup the connection
     """
     vm_name = params.get("migrate_main_vm")
-    migrate_speed_high = params.get("migrate_speed_high")
+    migrate_speed_high = params.get("migrate_speed_high", "8796093022207")
     postcopy_options = params.get("postcopy_options")
 
-    mode = 'both' if '--postcopy' in postcopy_options else 'precopy'
+    mode = 'both' if postcopy_options else 'precopy'
     MigrationTest().control_migrate_speed(vm_name, int(migrate_speed_high), mode)
 
 
