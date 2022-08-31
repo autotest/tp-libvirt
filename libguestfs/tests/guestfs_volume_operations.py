@@ -530,7 +530,7 @@ def test_shrink_volume(test, vm, params):
             if not re.search(mountpoint, str(output)):
                 raise utils_test.libguestfs.VTMountError("df", output)
         output = session.cmd_output("dd if=/dev/zero of=%s bs=1M "
-                                    "count=%s" % (file_path, dd_size1),
+                                    "count=%s" % (file_path, int(dd_size1)),
                                     timeout=5)
         logging.debug(output)
         md51 = session.cmd_output("md5sum %s" % file_path)
@@ -682,7 +682,7 @@ def test_expand_volume(test, vm, params):
             if not re.search(mountpoint, str(output)):
                 raise utils_test.libguestfs.VTMountError("df", output)
         output = session.cmd_output("dd if=/dev/zero of=%s bs=1M "
-                                    "count=%s" % (file_path, dd_size1),
+                                    "count=%s" % (file_path, int(dd_size1)),
                                     timeout=5)
         logging.debug(output)
         md51 = session.cmd_output("md5sum %s" % file_path)
