@@ -35,7 +35,7 @@ def run(test, params, env):
             session.cmd("touch /var/mail/tmp")
             tmp_hostname = "%stmp" % sysprep_hostname
             session.cmd("hostname %s" % tmp_hostname)
-            o_ssh = session.cmd_output("cd /etc/ssh && cat ssh_host_key.pub")
+            o_ssh = session.cmd_output("cd /etc/ssh && cat ssh_host_rsa_key.pub")
 
             # Confirm the file/hostname has been created/modified
             log_out = session.cmd_output("cd /var/log/ && ls | grep tmp.log")
@@ -112,7 +112,7 @@ def run(test, params, env):
             log_out = session.cmd_output("cd /var/log/ && ls | grep tmp.log")
             mail_out = session.cmd_output("cd /var/mail && ls | grep tmp")
             hname_out = session.cmd_output("hostname")
-            ssh_out = session.cmd_output("cd /etc/ssh && cat ssh_host_key.pub")
+            ssh_out = session.cmd_output("cd /etc/ssh && cat ssh_host_rsa_key.pub")
             session.close()
             vm.destroy()
             if (log_out.strip() or mail_out.strip() or
