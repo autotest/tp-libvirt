@@ -240,6 +240,7 @@ class SRIOVTest(object):
         self.test.log.info("TEST_SETUP: Clear up the existing VM "
                            "interface(s) before testing.")
         libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'interface')
+        libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'hostdev')
         if network_dict:
             self.test.log.info("TEST_SETUP: Create new network.")
             libvirt_network.create_or_del_network(network_dict)
