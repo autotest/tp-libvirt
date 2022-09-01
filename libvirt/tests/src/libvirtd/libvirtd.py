@@ -45,6 +45,7 @@ def test_check_journal(libvirtd, params, test):
     libvirtd_debug_file = params.get("libvirtd_debug_file")
     error_msg_in_journal = params.get("error_msg_in_journal")
     error_msg_in_log = params.get("error_msg_in_log")
+    ignore_log_err_msg = params.get("ignore_log_err_msg", "")
 
     utils_libvirtd.Libvirtd("libvirtd-tls.socket").stop()
     utils_libvirtd.Libvirtd("libvirtd-tcp.socket").stop()
@@ -68,7 +69,8 @@ def test_check_journal(libvirtd, params, test):
         logging.info("Not found error message during libvirtd restarting.")
 
     # Check error messages in libvirtd log
-    libvirt.check_logfile(error_msg_in_log, libvirtd_debug_file, False)
+    libvirt.check_logfile(error_msg_in_log, libvirtd_debug_file,
+                          False, ignore_str=ignore_log_err_msg)
 
 
 def run(test, params, env):
