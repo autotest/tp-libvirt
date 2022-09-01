@@ -392,13 +392,8 @@ def run(test, params, env):
             def is_detached_interface():
                 return len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) == interface_num
 
-            ret = virsh.detach_interface(vm_name, "network --mac %s" % mac_addr)
+            ret = virsh.detach_interface(vm_name, "network --mac %s" % mac_addr, wait_for_event=True)
             libvirt.check_exit_status(ret)
-            utils_misc.wait_for(is_detached_interface, timeout=50)
-            # Wait for timeout and if not succeeded, detach again (during testing, detaching interface failed from q35 VM for the first time when using this function)
-            if len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) != interface_num:
-                ret = virsh.detach_interface(vm_name, "network --mac %s" % mac_addr)
-                libvirt.check_exit_status(ret)
             if utils_misc.wait_for(is_detached_interface, timeout=50) is not True:
                 test.fail("Detaching interface failed.")
             if libvirt_version.version_compare(6, 0, 0):
