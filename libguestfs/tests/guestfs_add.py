@@ -190,7 +190,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             session.cmd("mount %s /mnt" % root)
             try:
-                login_wrote_text = session.cmd_output("cat /mnt/guestfs_temp",
+                login_wrote_text = session.cmd_output("cat /mnt/guestfs_temp; echo",
                                                       timeout=5)
             except aexpect.ShellTimeoutError as detail:
                 # written content with guestfs.write won't contain line break
