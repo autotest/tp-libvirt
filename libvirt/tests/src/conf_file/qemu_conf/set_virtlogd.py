@@ -105,7 +105,8 @@ def run(test, params, env):
         console.target_type = 'serial'
 
         if dev_type == "file" and guest_log_file is not None:
-            serial.sources = console.sources = [{'path': guest_log_file, 'append': 'off'}]
+            serial.sources = console.sources = [
+                {'attrs': {'path': guest_log_file, 'append': 'off'}}]
         guest_xml.add_device(serial)
         guest_xml.add_device(console)
         guest_xml.sync()

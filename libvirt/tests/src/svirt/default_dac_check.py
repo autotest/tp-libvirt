@@ -135,7 +135,7 @@ def run(test, params, env):
             for channel in channels:
                 logging.debug(channel)
                 if channel.type_name == "unix":
-                    check_ownership(channel.source['path'])
+                    check_ownership(channel.sources[0].attrs['path'])
     finally:
         logging.info("Restoring hugepage setting...")
         if huge_pages:

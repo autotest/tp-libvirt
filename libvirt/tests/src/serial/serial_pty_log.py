@@ -7,7 +7,7 @@ from virttest import utils_misc
 from virttest import virsh
 
 from virttest.utils_test import libvirt
-from virttest.libvirt_xml.devices import librarian
+from virttest.libvirt_xml.devices.serial import Serial
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -44,7 +44,7 @@ def run(test, params, env):
 
         :return: the serial device xml object
         """
-        serial = librarian.get('serial')(serial_type)
+        serial = Serial(serial_type)
 
         serial.target_port = target_port
         serial.target_type = target_type
