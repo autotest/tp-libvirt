@@ -13,10 +13,10 @@ def run(test, params, env):
     """
     def setup_auto_converge():
         """
-        Setup for auto converge
+        Setup for auto converge case
 
         """
-        test.log.info("Setup maxdowntime.")
+        test.log.info("Setup for auto converge case.")
         # Set maxdowntime to small value, then migration won't converge too fast.
         virsh.migrate_setmaxdowntime(vm_name, "100", debug=True)
         migration_obj.setup_connection()
