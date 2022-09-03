@@ -11,10 +11,11 @@ from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
 from virttest import utils_conn
 
-from virttest.utils_libvirt import libvirt_memory
-from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.migration import MigrationTest
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_memory
+from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
+from virttest.utils_test import libvirt_domjobinfo   # pylint: disable=W0611
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -155,7 +156,7 @@ def monitor_event(params):
     """
     Monitor event on source/target host
 
-    :param params: dict, used to setup the connection
+    :param params: dict, get expected event string and remote parameters
     :return: virsh session and remote virsh session to catch events
     """
     expected_event_src = params.get("expected_event_src")
@@ -204,7 +205,7 @@ def check_event_output(params, test, virsh_session=None, remote_virsh_session=No
     """
     Check event on source/target host
 
-    :param params: dict, used to setup the connection
+    :param params: dict, get expected event string
     :param test: test object
     :param virsh_session: virsh session to catch events
     :param remote_virsh_session: remote virsh session to catch events
@@ -224,7 +225,7 @@ def poweroff_src_vm(params):
     """
     Poweroff guest on source host
 
-    :param params: dict, used to setup the connection
+    :param params: dict, get vm session
     """
     vm_session = params.get("vm_session")
     vm_session.cmd("poweroff", ignore_all_errors=True)
@@ -234,7 +235,7 @@ def set_migrate_speed_to_high(params):
     """
     Set migrate speed to high value
 
-    :param params: dict, used to setup the connection
+    :param params: dict, get vm name, migrate speed and postcopy options
     """
     vm_name = params.get("migrate_main_vm")
     migrate_speed_high = params.get("migrate_speed_high", "8796093022207")
@@ -248,7 +249,7 @@ def execute_statistics_command(params):
     """
     Execute statistics command
 
-    :param params: dict, used to setup the connection
+    :param params: dict, get vm name and disk type
     """
     vm_name = params.get("migrate_main_vm")
     disk_type = params.get("loop_disk_type")
@@ -272,6 +273,8 @@ def check_qemu_mem_lock_hard_limit(params):
     """
     Check qemu process memlock hard limit
 
+    :param params: dict, get expected hard limit
+    :raise: test fail if hard limit is not expected
     """
     expect_hard_limit = params.get("expect_hard_limit")
     output = libvirt_memory.get_qemu_process_memlock_hard_limit()
@@ -335,3 +338,32 @@ def check_auto_converge_during_mig(params):
                 raise exceptions.TestFail("'Auto converge throttle' is not found in the domjobinfo")
             break
         time.sleep(5)
+
+
+def set_maxdowntime_during_mig(params):
+    """
+    Set maxdowntime during migration
+
+    :param params: dict, get vm name and compared value
+    :raise: test fail if set maxdowntime failed or maxdowntime is not expected
+    """
+    vm_name = params.get("migrate_main_vm")
+    compared_value = params.get("compared_value")
+
+    ret = virsh.migrate_setmaxdowntime(vm_name, compared_value, debug=True)
+    if ret.exit_status:
+        raise exceptions.TestFail("Set maxdowntime during migration failed.")
+    maxdowntime = virsh.migrate_getmaxdowntime(vm_name).stdout.strip()
+    if maxdowntime != compared_value:
+        raise exceptions.TestFail("Get maxdowntime error: %s" % maxdowntime)
+
+
+def check_domjobinfo_during_mig(params):
+    """
+    Check domjobinfo during migration
+
+    :param params: dict, get vm object
+    """
+    vm = params.get("vm_obj")
+
+    libvirt_domjobinfo.check_domjobinfo(vm, params)
