@@ -125,7 +125,7 @@ class DiskBase(object):
             if no_secret:
                 disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
             else:
-                mon_host, auth_username, _ = \
+                mon_host, auth_username, new_image_path = \
                     self.create_rbd_disk_path(self.params)
                 disk_dict.update({'source': {
                         'attrs': {'protocol': "rbd", "name": new_image_path},
