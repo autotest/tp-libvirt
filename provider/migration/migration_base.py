@@ -2,6 +2,7 @@ import logging as log
 import types
 import re
 import signal                                        # pylint: disable=W0611
+import time
 
 from avocado.core import exceptions
 
@@ -276,3 +277,61 @@ def check_qemu_mem_lock_hard_limit(params):
     output = libvirt_memory.get_qemu_process_memlock_hard_limit()
     if int(output) != int(expect_hard_limit) * 1024:
         raise exceptions.TestFail("'%s' is not matched expect hard limit '%s'" % (output, expect_hard_limit))
+
+
+def check_auto_converge_during_mig(params):
+    """
+    Check auto converge during migration
+
+    :param params: dict, get initial throttle, increment, max converge
+                   and vm name
+    :raise: test fail if get domjobinfo failed or get invalid auto converge
+            throttle or not found auto converge throttle in the domjobinfo
+    """
+    initial = int(params.get("initial_throttle"))
+    increment = int(params.get("increment"))
+    max_converge = int(params.get("max_converge", 99))
+    vm_name = params.get("migrate_main_vm")
+
+    allow_throttle_list = [initial + count * increment
+                           for count in range(0, (100 - initial) // increment + 1)
+                           if (initial + count * increment) < 100]
+    allow_throttle_list.append(max_converge)
+
+    throttle = 0
+    jobtype = "None"
+
+    while throttle < max_converge:
+        cmd_result = virsh.domjobinfo(vm_name, debug=True, ignore_status=True)
+        if cmd_result.exit_status:
+            # Check if migration is completed
+            if "domain is not running" in cmd_result.stderr:
+                args = vm_name + " --completed"
+                cmd_result = virsh.domjobinfo(args, debug=True,
+                                              ignore_status=True)
+                if cmd_result.exit_status:
+                    raise exceptions.TestFail("Failed to get domjobinfo and domjobinfo "
+                                              "--completed: %s" % cmd_result.stderr)
+            else:
+                raise exceptions.TestFail("Failed to get domjobinfo: %s" % cmd_result.stderr)
+        jobinfo = cmd_result.stdout
+        for line in jobinfo.splitlines():
+            key = line.split(':')[0]
+            if key.count("Job type"):
+                jobtype = line.split(':')[-1].strip()
+            elif key.count("Auto converge throttle"):
+                throttle = int(line.split(':')[-1].strip())
+                logging.debug("Auto converge throttle:%s", str(throttle))
+        if throttle and throttle not in allow_throttle_list:
+            raise exceptions.TestFail("Invalid auto converge throttle "
+                                      "value '%s'" % throttle)
+        if throttle == 99:
+            logging.debug("'Auto converge throttle' reaches maximum "
+                          "allowed value ")
+            break
+        if jobtype == "None" or jobtype == "Completed":
+            logging.debug("Jobtype:%s", jobtype)
+            if throttle == 0:
+                raise exceptions.TestFail("'Auto converge throttle' is not found in the domjobinfo")
+            break
+        time.sleep(5)
