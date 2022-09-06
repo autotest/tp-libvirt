@@ -5,7 +5,9 @@ from virttest import migration
 from virttest import libvirt_remote
 from virttest import libvirt_vm
 from virttest import remote
+from virttest import utils_config
 from virttest import utils_conn
+from virttest import utils_libvirtd
 from virttest import utils_iptables
 
 from virttest.utils_test import libvirt
@@ -267,13 +269,18 @@ class MigrationBase(object):
         """
         log_level = self.params.get("libvirtd_debug_level")
         log_file = self.params.get("libvirtd_debug_file")
-        libvirtd_file_path = self.params.get("libvirtd_file_path")
+        log_filters = self.params.get("libvirtd_debug_filters")
+        file_type = self.params.get("libvirtd_file_type")
 
+        service_name = utils_libvirtd.Libvirtd(file_type).service_name
+        file_path = utils_config.get_conf_obj(service_name).conf_path
+        self.test.log.debug("Config file path: %s" % file_path)
         cmd = "ls {0} || mkdir -p {0}".format(os.path.dirname(log_file))
         remote.run_remote_cmd(cmd, self.params, ignore_status=False)
         libvirtd_conf_dest = ('{".*log_level\s*=.*": "log_level = %s", '
-                              '".*log_outputs\s*=.*": \'log_outputs="1:file:%s"\'}') % (log_level, log_file)
-        self.remote_libvirtd_log = libvirt_remote.update_remote_file(self.params, libvirtd_conf_dest, libvirtd_file_path)
+                              '".*log_filters\s*=.*": \'log_filters="%s"\', '
+                              '".*log_outputs\s*=.*": \'log_outputs="1:file:%s"\'}') % (log_level, log_filters, log_file)
+        self.remote_libvirtd_log = libvirt_remote.update_remote_file(self.params, libvirtd_conf_dest, file_path)
 
     def check_local_and_remote_log(self, local_str_in_log=True, remote_str_in_log=True):
         """
