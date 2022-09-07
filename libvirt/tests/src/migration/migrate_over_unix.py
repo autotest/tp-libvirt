@@ -78,6 +78,9 @@ def run(test, params, env):
             for idx in range(2, disk_num+1):
                 disk_path = os.path.join(os.path.dirname(blk_source),
                                          "test%s.img" % str(idx))
+                # Delete dirty disk if existed
+                if os.path.exists(disk_path):
+                    os.remove(disk_path)
                 # Create disk on local
                 libvirt_disk.create_disk("file", disk_format=disk_format,
                                          path=disk_path)
