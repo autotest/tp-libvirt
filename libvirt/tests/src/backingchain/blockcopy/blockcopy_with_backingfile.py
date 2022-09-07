@@ -28,7 +28,8 @@ def run(test, params, env):
         Prepare expected disk type, snapshots, blockcopy path.
         """
         test.log.info("TEST_SETUP: Start setup.")
-        test_obj.new_image_path = disk_obj.add_vm_disk(disk_type, disk_dict)
+        test_obj.new_image_path = disk_obj.add_vm_disk(disk_type, disk_dict,
+                                                       size=disk_size)
         if not vm.is_alive():
             vm.start()
         vm.wait_for_login().close()
@@ -91,8 +92,9 @@ def run(test, params, env):
         if disk_type == 'file':
             test_obj.copy_image = data_dir.get_data_dir() + \
                                   '/copy_dst_base_image.qcow2'
+            # "Source and target image needs to have same sizes"
             libvirt.create_local_disk('file', test_obj.copy_image,
-                                      size='500M', disk_format="qcow2")
+                                      size=disk_size, disk_format="qcow2")
         elif disk_type == 'block':
             test_obj.copy_image = libvirt.create_local_disk(
                 "lvm", size="100M", vgname=disk_obj.vg_name, lvname=lv3)
@@ -114,6 +116,7 @@ def run(test, params, env):
     create_snap_option = params.get("create_snap_option")
     snap_extra = params.get("snap_extra", "")
     backing_fmt = params.get("backing_fmt", "qcow2")
+    disk_size = params.get("disk_size")
     # Create object
     test_obj = blockcommand_base.BlockCommand(test, vm, params)
     check_obj = check_functions.Checkfunction(test, vm, params)
