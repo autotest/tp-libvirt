@@ -164,7 +164,8 @@ def run(test, params, env):
         if mount_noexec_tmp:
             device_name = utlv.setup_or_cleanup_iscsi(is_setup=True)
             utlv.mkfs(device_name, 'ext4')
-            cmd = "mount %s /tmp -o noexec,nosuid" % device_name
+            # update the tmp to /tmp/mnt since tmp directory is used for tpm device
+            cmd = "mkdir /tmp/mnt; mount %s /tmp/mnt -o noexec,nosuid" % device_name
             process.run(cmd, shell=True)
 
         if ipset_command:
