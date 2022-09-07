@@ -37,8 +37,8 @@ def run(test, params, env):
         snap_path = ""
         if disk_type == "block":
             snap_path = libvirt.create_local_disk(
-                "lvm", size="100M", vgname=disk_obj.vg_name, lvname=lv1)
-            cmd = "qemu-img create -f qcow2 %s 100M" % snap_path
+                "lvm", size=disk_size, vgname=disk_obj.vg_name, lvname=lv1)
+            cmd = "qemu-img create -f qcow2 %s %s" % (snap_path, disk_size)
             process.run(cmd, shell=True, verbose=True)
 
         test.log.info("TEST_STEP1: Prepare snap chain :%s", test_obj.snap_path_list)
@@ -97,7 +97,7 @@ def run(test, params, env):
                                       size=disk_size, disk_format="qcow2")
         elif disk_type == 'block':
             test_obj.copy_image = libvirt.create_local_disk(
-                "lvm", size="100M", vgname=disk_obj.vg_name, lvname=lv3)
+                "lvm", size=disk_size, vgname=disk_obj.vg_name, lvname=lv3)
 
         create_backing_cmd = "qemu-img create -f qcow2 -F %s -b %s %s" % (
             backing_fmt, test_obj.copy_image, tmp_copy_path)
