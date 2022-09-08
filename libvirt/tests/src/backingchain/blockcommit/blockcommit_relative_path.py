@@ -35,9 +35,7 @@ def run(test, params, env):
         test.log.info("TEST_SETUP1: Prepare relative path and new disk.")
         test_obj.new_image_path, _ = disk_obj.prepare_relative_path(disk_type)
 
-        kwargs = {}
-        if disk_type == "rbd_with_auth":
-            kwargs.update({'no_secret': True})
+        disk_dict, kwargs = _get_disk_param()
         disk_obj.add_vm_disk(disk_type, disk_dict,
                              new_image_path=test_obj.new_image_path, **kwargs)
 
@@ -46,6 +44,7 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         test_obj.snap_path_list = disk_obj.get_source_list(vmxml, disk_type,
                                                            test_obj.new_dev)[1:]
+        test.log.info("After start vm with relative path, The xml is:\n%s", vmxml)
 
     def run_test():
         """
@@ -71,7 +70,7 @@ def run(test, params, env):
             check_obj.check_backingchain_from_vmxml(disk_type, test_obj.new_dev,
                                                     expected_chain)
 
-        elif test_scenario == "inactivate":
+        elif test_scenario == "inactive":
             test.log.info("TEST_STEP: Do blockcommit.")
             _do_blockcommit_inactive()
             expected_chain = test_obj.convert_expected_chain(expected_chain_index)[::-1]
@@ -102,6 +101,24 @@ def run(test, params, env):
             cmd = ("rbd -m {0} info {1} && rbd -m {0} rm {1}".format(
                 mon_host, rbd_source_name))
             process.run(cmd, ignore_status=True, shell=True)
+
+    def _get_disk_param():
+        """
+        Get the param value according to different type disk.
+
+        :return disk_dict and **kwargs
+        """
+        kwargs = {}
+        if disk_type == "rbd_with_auth":
+            kwargs.update({'no_update_dict': True})
+            relative = test_obj.get_relative_path(test_obj.new_image_path)
+
+            disk_dict = eval(params.get('disk_dict', '{}')
+                             % (relative[0], relative[1], relative[2], relative[3]))
+        else:
+            disk_dict = eval(params.get("disk_dict", "{}"))
+
+        return disk_dict, kwargs
 
     def _pre_vm_state():
         if not vm.is_alive():
@@ -139,7 +156,6 @@ def run(test, params, env):
     # Process cartesian parameters
     vm_name = params.get("main_vm")
     disk_type = params.get('disk_type')
-    disk_dict = eval(params.get('disk_dict', '{}'))
     commit_options = params.get('commit_options')
     expected_chain_index = params.get('expected_chain')
     top_index = params.get('top_image_suffix')
