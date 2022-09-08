@@ -987,7 +987,7 @@ def handle_auto_filled_items(given_graphic_attrs, params):
     """
     vnc_listen_address = params.get("vnc_listen_address")
     if vnc_listen_address == '':
-        given_graphic_attrs['listens'][0].update({'address': '127.0.0.1'})
+        given_graphic_attrs['listen_attrs'].update({'address': '127.0.0.1'})
 
     return given_graphic_attrs
 
