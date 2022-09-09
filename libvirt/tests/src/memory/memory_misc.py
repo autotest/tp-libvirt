@@ -3,7 +3,6 @@ import re
 from avocado.utils import process
 
 from virttest import libvirt_version
-from virttest import test_setup
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -82,21 +81,17 @@ def run(test, params, env):
 
         :param case: test case
         """
+        if case == 'prealloc_thread':
+            vm_mem_size = vmxml.memory
+            set_hugepage(vm_mem_size)
 
-        def _setup_memorybacking():
-            """
-            Setup memoryBacking of vmxml from attrs
-            """
+            # Setup memoryBacking of vmxml from attrs
             mem_backing = vm_xml.VMMemBackingXML()
             mem_backing_attrs = eval(params.get('mem_backing_attrs', '{}'))
             mem_backing.setup_attrs(**mem_backing_attrs)
             test.log.debug('memoryBacking xml is: %s', mem_backing)
             vmxml.mb = mem_backing
 
-        if case == 'prealloc_thread':
-            vm_mem_size = vmxml.memory
-            set_hugepage(vm_mem_size)
-            _setup_memorybacking()
             vmxml.sync()
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
@@ -113,21 +108,6 @@ def run(test, params, env):
             set_vmxml(vmxml, params)
 
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
-
-        if case == 'nodeset_specified':
-            pagesize = int(params.get('pagesize'))
-            pagenum = int(params.get('pagenum'))
-            hp_cfg = test_setup.HugePageConfig(params)
-            params['page_num_bk'] = hp_cfg.get_kernel_hugepages(pagesize)
-            test.log.debug('Current number of pages: %s', params['page_num_bk'])
-            test.log.info('Setting number of %s size of hugepages to %s',
-                          pagesize, pagenum)
-            hp_cfg.set_kernel_hugepages(pagesize, pagenum)
-            if pagenum != int(hp_cfg.get_kernel_hugepages(pagesize)):
-                test.cancel('Page number doesn\'t meet test requirement.')
-
-            # Setup memoryBacking of vmxml from attrs
-            _setup_memorybacking()
 
     def run_test_memorybacking(case):
         """
@@ -217,34 +197,6 @@ def run(test, params, env):
             if len(mem_devices_after_attach) != len(mem_devices) + 1:
                 test.fail('Attach memory device failed.')
 
-        if case == 'nodeset_specified':
-            cmd_result = virsh.define(vmxml.xml, debug=True)
-            check_result(cmd_result, status_error, error_msg)
-
-            if not status_error:
-                vmxml_after_start = vm_xml.VMXML.new_from_dumpxml(vm_name)
-                mem_backing = vmxml_after_start.mb
-                test.log.debug(mem_backing)
-
-                if scenario == 'nodeset_0':
-                    mb_attrs = mem_backing.fetch_attrs()
-                    test.log.debug(mb_attrs)
-                    for page_attr in mb_attrs['hugepages']['pages']:
-                        if 'nodeset' in page_attr:
-                            test.fail('nodeset should be removed after vm defined.')
-
-    def cleanup_test_memorybacking(case):
-        """
-        Clean up steps of memoryBacking tests
-
-        :param case: test case
-        """
-        # Restore original page number setting
-        if params.get('page_num_bk'):
-            pagesize = int(params.get('pagesize'))
-            hp_cfg = test_setup.HugePageConfig(params)
-            hp_cfg.set_kernel_hugepages(pagesize, params['page_num_bk'])
-
     def run_test_edit_mem(case):
         """
         Test memory edit cases
@@ -281,29 +233,6 @@ def run(test, params, env):
                 new_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
                 test.log.debug(new_vmxml.current_mem)
                 test.log.debug(new_vmxml.memory)
-
-        if case == 'mem_unit':
-            vm_attrs = eval(params.get('vm_attrs', '{}'))
-            vmxml.setup_attrs(**vm_attrs)
-            vmxml.sync()
-            new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            result_attrs = eval(params.get('result_attrs', '{}'))
-
-            for attr in result_attrs.keys():
-                get_func = eval('new_vmxml.get_%s' % attr)
-                test.log.debug('Expected %s: %s\nActual: %s',
-                               attr, result_attrs[attr], get_func())
-                if get_func() != result_attrs[attr]:
-                    test.fail('Result not met: value of %s(%s) should be %s' %
-                              (attr, result_attrs[attr], get_func()))
-
-            virsh.start(vm_name, **VIRSH_ARGS)
-            session = vm.wait_for_login()
-            meminfo = utils_misc.get_mem_info(session)
-            test.log.debug(meminfo)
-            session.close()
-            if int(meminfo) > result_attrs['memory']:
-                test.fail('Memory inside vm is larger than specified in vm\'s xml.')
 
     def run_test_dommemstat(case):
         """
