@@ -123,8 +123,11 @@ class SRIOVTest(object):
             self.pf_pci, session=self.session)
         self.vf_pci = utils_sriov.get_vf_pci_id(
             self.pf_pci, session=self.session)
+        self.vf_pci2 = utils_sriov.get_vf_pci_id(
+            self.pf_pci, 1, session=self.session)
         self.pf_pci_addr = utils_sriov.pci_to_addr(self.pf_pci)
         self.vf_pci_addr = utils_sriov.pci_to_addr(self.vf_pci)
+        self.vf_pci_addr2 = utils_sriov.pci_to_addr(self.vf_pci2)
         self.pf_name = self.pf_info.get('iface')
         self.vf_name = utils_sriov.get_iface_name(
             self.vf_pci, session=self.session)
@@ -149,6 +152,7 @@ class SRIOVTest(object):
         mac_addr = utils_net.generate_mac_address_simple()
         pf_pci_addr = self.pf_pci_addr
         vf_pci_addr = self.vf_pci_addr
+        vf_pci_addr2 = self.vf_pci_addr2
         pf_name = self.pf_name
         vf_name = self.vf_name
         if self.params.get('iface_dict'):
@@ -158,6 +162,8 @@ class SRIOVTest(object):
                 del pf_pci_addr['type']
             if vf_pci_addr.get('type'):
                 del vf_pci_addr['type']
+            if vf_pci_addr2.get('type'):
+                del vf_pci_addr2['type']
             iface_dict = eval(self.params.get('hostdev_dict', '{}'))
 
         self.test.log.debug("iface_dict: %s.", iface_dict)
@@ -170,6 +176,7 @@ class SRIOVTest(object):
         :return: The updated network dict
         """
         vf_pci_addr = self.vf_pci_addr
+        vf_pci_addr2 = self.vf_pci_addr2
         pf_name = self.pf_name
         vf_name = self.vf_name
         net_forward_pf = str({'dev': pf_name})
