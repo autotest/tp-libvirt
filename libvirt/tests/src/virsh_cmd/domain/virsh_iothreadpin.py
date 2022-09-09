@@ -47,7 +47,7 @@ def setup_vmxml_before_start(vmxml, params):
 
     if iothreadids:
         ids_xml = vm_xml.VMIothreadidsXML()
-        ids_xml.iothread = iothreadids.split()
+        ids_xml.iothread = [{'id': id} for id in iothreadids.split()]
         vmxml.iothreadids = ids_xml
     if iothreadpins:
         cputune_xml = vm_xml.VMCPUTuneXML()

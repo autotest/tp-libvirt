@@ -71,7 +71,7 @@ def run(test, params, env):
         # Set iothreads first
         if iothreadids:
             ids_xml = vm_xml.VMIothreadidsXML()
-            ids_xml.iothread = iothreadids.split()
+            ids_xml.iothread = [{'id': id} for id in iothreadids.split()]
             vmxml.iothreadids = ids_xml
         if iothreadpins:
             cputune_xml = vm_xml.VMCPUTuneXML()
@@ -115,15 +115,15 @@ def run(test, params, env):
             # Check domainxml
             iothread_info = get_xmlinfo(vm_name, options)
             logging.debug("iothreadinfo: %s", iothread_info)
-            if iothread_id not in iothread_info:
-                raise exceptions.TestFail("Failed to add iothread %s in domain xml",
-                                          iothread_id)
+            if {'id': iothread_id} not in iothread_info:
+                test.fail("Failed to add iothread '%s' in "
+                          "domain xml" % iothread_id)
 
             # Check iothreadinfo by virsh command
             iothread_info = libvirt.get_iothreadsinfo(dom_option, options)
             logging.debug("iothreadinfo: %s", iothread_info)
             if iothread_id not in iothread_info:
-                raise exceptions.TestFail("Failed to add iothread %s", iothread_id)
+                test.fail("Failed to add iothread '%s'" % iothread_id)
 
     finally:
         # Cleanup
