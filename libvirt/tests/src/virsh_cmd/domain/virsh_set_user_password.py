@@ -125,7 +125,7 @@ def run(test, params, env):
             # Del user
             if add_user:
                 session = vm.wait_for_login(timeout=30, username="root", password=ori_passwd)
-                cmd = "userdel -r %s" % set_user_name
+                cmd = "userdel -f -r %s" % set_user_name
                 status, output = session.cmd_status_output(cmd)
                 if status:
                     test.error("Deleting user '%s' got failed: '%s'" %
