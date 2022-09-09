@@ -2,6 +2,7 @@ import os
 import logging as log
 import time
 import threading
+from aexpect import ShellTimeoutError
 
 from avocado.utils import process
 from avocado.utils import path as utils_path
@@ -87,8 +88,12 @@ def run(test, params, env):
                     if status != 0:
                         session.close()
                         test.fail("Write data failed: %s" % output)
-                md5_value = session.cmd_status_output("md5sum %s" % filename_guest,
-                                                      timeout=300)[1].strip().split()[0]
+                try:
+                    md5_value = session.cmd_status_output("md5sum %s" % filename_guest,
+                                                          timeout=300)[1].strip().split()[0]
+                except ShellTimeoutError:
+                    md5_value = session.cmd_status_output("md5sum %s" % filename_guest,
+                                                          timeout=300)[1].strip().split()[0]
                 md5s.append(md5_value)
                 logging.debug(md5_value)
                 md5_value = process.run("md5sum %s" % filename_guest).stdout_text.strip().split()[0]
