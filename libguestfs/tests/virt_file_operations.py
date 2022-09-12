@@ -267,7 +267,7 @@ def test_virt_copy_out(test, vm, params):
             test.fail("Catted file do not match.")
 
 
-def run_virt_file_operations(test, params, env):
+def run(test, params, env):
     """
     Test libguestfs with file commands: virt-tar-in, virt-tar-out,
                                         virt-copy-in, virt-copy-out
