@@ -330,6 +330,14 @@ def run(test, params, env):
                 elif event == "reset":
                     virsh.reset(dom.name, **virsh_dargs)
                     expected_events_list.append("'reboot' for %s")
+                elif event == "reboot_from_console":
+                    session = dom.wait_for_login()
+                    try:
+                        session.cmd("shutdown -r now")
+                    except ShellProcessTerminatedError:
+                        logging.info("Shell terminated as host restarts as expected.")
+                    session.close()
+                    expected_events_list.append("'reboot' for %s")
                 elif event == "vcpupin":
                     virsh.vcpupin(dom.name, '0', '0', **virsh_dargs)
                     expected_events_list.append("'tunable' for %s:"
