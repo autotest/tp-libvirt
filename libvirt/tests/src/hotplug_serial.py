@@ -43,13 +43,18 @@ def run(test, params, env):
     # add controller for each char device
     devices = vm_xml.get_devices()
     controllers = vm_xml.get_devices(device_type="controller")
+    virtio_serial_flag = False
     for dev in controllers:
-        if dev.type == "virtio-serial":
+        if dev.type == "virtio-serial" and dev.index == "0":
+            virtio_serial_flag = True
+            continue
+        elif dev.type == "virtio-serial":
             devices.remove(dev)
-    controller = Controller("controller")
-    controller.type = "virtio-serial"
-    controller.index = 0
-    devices.append(controller)
+    if not virtio_serial_flag:
+        controller = Controller("controller")
+        controller.type = "virtio-serial"
+        controller.index = 0
+        devices.append(controller)
     vm_xml.set_devices(devices)
     vm_xml.sync()
 
@@ -102,7 +107,7 @@ def run(test, params, env):
                 test.error('Failed to add device %s to %s. Result:\n %s'
                            % (char_dev, vm_name, result))
         elif type == "attach":
-            xml_file = os.path.join(tmp_dir, "xml_%s" % char_dev)
+            xml_file = os.path.join(tmp_dir, char_dev)
             if char_dev in ["file", "socket"]:
                 prepare_channel_xml(xml_file, char_dev)
             elif char_dev == "pty":
@@ -175,7 +180,7 @@ def run(test, params, env):
             if not os.path.exists(dev_file):
                 test.fail("%s doesn't exist." % dev_file)
             p = subprocess.Popen(["/usr/bin/cat", dev_file], universal_newlines=True,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             session.cmd("echo test >> /tmp/file &")
             while True:
                 r_o = p.stdout.readline()
