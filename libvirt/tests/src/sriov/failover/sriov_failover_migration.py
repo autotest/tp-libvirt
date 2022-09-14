@@ -32,15 +32,17 @@ def run(test, params, env):
 
         guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name,
                                                   options="--migratable")
+        guest_xml.remove_all_device_by_type("hostdev")
+        guest_xml.add_device(hostdev_dev)
+        guest_xml.xmltreefile.write()
+        tmp_dir = data_dir.get_tmp_dir()
+        xmlfile = os.path.join(tmp_dir, "xml_file")
+        shutil.copyfile(guest_xml.xml, xmlfile)
+        remote_session.cmd("mkdir -p %s" % tmp_dir)
         remote.scp_to_remote(remote_ip, '22', remote_user, remote_pwd,
                              guest_xml.xml, guest_xml.xml, limit="",
                              log_filename=None, timeout=600,
                              interface=None)
-        guest_xml.remove_all_device_by_type("hostdev")
-        guest_xml.add_device(hostdev_dev)
-        guest_xml.xmltreefile.write()
-        xmlfile = os.path.join(data_dir.get_tmp_dir(), "xml_file")
-        shutil.copyfile(guest_xml.xml, xmlfile)
         params["virsh_migrate_extra"] += "--xml %s" % xmlfile
 
     def setup_test():
