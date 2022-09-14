@@ -239,11 +239,12 @@ def run(test, params, env):
 
         :param case: test case
         """
-        # Restore original page number setting
-        if params.get('page_num_bk'):
-            pagesize = int(params.get('pagesize'))
-            hp_cfg = test_setup.HugePageConfig(params)
-            hp_cfg.set_kernel_hugepages(pagesize, params['page_num_bk'])
+        if case == 'nodeset_specified':
+            # Restore original page number setting
+            if params.get('page_num_bk'):
+                pagesize = int(params.get('pagesize'))
+                hp_cfg = test_setup.HugePageConfig(params)
+                hp_cfg.set_kernel_hugepages(pagesize, params['page_num_bk'])
 
     def run_test_edit_mem(case):
         """
@@ -291,11 +292,12 @@ def run(test, params, env):
 
             for attr in result_attrs.keys():
                 get_func = eval('new_vmxml.get_%s' % attr)
+                new_value = get_func()
                 test.log.debug('Expected %s: %s\nActual: %s',
-                               attr, result_attrs[attr], get_func())
-                if get_func() != result_attrs[attr]:
+                               attr, result_attrs[attr], new_value)
+                if new_value != result_attrs[attr]:
                     test.fail('Result not met: value of %s(%s) should be %s' %
-                              (attr, result_attrs[attr], get_func()))
+                              (attr, result_attrs[attr], new_value))
 
             virsh.start(vm_name, **VIRSH_ARGS)
             session = vm.wait_for_login()
@@ -303,7 +305,8 @@ def run(test, params, env):
             test.log.debug(meminfo)
             session.close()
             if int(meminfo) > result_attrs['memory']:
-                test.fail('Memory inside vm is larger than specified in vm\'s xml.')
+                test.fail('Memory inside vm(%s) is larger than specified in'
+                          ' vm\'s xml(%s).' % (meminfo, result_attrs['memory']))
 
     def run_test_dommemstat(case):
         """
