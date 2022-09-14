@@ -1,9 +1,12 @@
+import os
 import re
+import shutil
 
 from provider.migration import base_steps
 from provider.sriov import check_points
 from provider.sriov import sriov_base
 
+from virttest import data_dir
 from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -36,8 +39,9 @@ def run(test, params, env):
         guest_xml.remove_all_device_by_type("hostdev")
         guest_xml.add_device(hostdev_dev)
         guest_xml.xmltreefile.write()
-
-        params["virsh_migrate_extra"] += "--xml %s" % guest_xml.xml
+        xmlfile = os.path.join(data_dir.get_tmp_dir(), "xml_file")
+        shutil.copyfile(guest_xml.xml, xmlfile)
+        params["virsh_migrate_extra"] += "--xml %s" % xmlfile
 
     def setup_test():
         """
