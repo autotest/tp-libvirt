@@ -48,7 +48,8 @@ def run(test, params, env):
         result = virsh.blockcopy(vm_name, target_disk, "",
                                  options=blockcopy_option % tmp_copy_path,
                                  debug=True, ignore_status=True)
-        libvirt.check_result(result, blockcopy_err)
+        libvirt.check_result(result, expected_fails=blockcopy_err,
+                             check_both_on_error=True)
 
         test.log.info("TEST_STEP3: Check no blockjob running")
         if not libvirt.check_blockjob(vm_name, target_disk, "none"):
@@ -58,7 +59,8 @@ def run(test, params, env):
         result = virsh.blockcopy(vm_name, target_disk, "",
                                  options=blockcopy_option % tmp_copy_path,
                                  debug=True, ignore_status=True)
-        libvirt.check_result(result, blockcopy_err)
+        libvirt.check_result(result, expected_fails=blockcopy_err,
+                             check_both_on_error=True)
 
     def teardown_test():
         """
