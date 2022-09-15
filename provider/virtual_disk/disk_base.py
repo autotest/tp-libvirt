@@ -70,7 +70,8 @@ class DiskBase(object):
                                elem.find('source').get('name') or
                                elem.find('source').get('dev') or
                                elem.find('source').get('volume')
-                               for elem in backing_list]
+                               for elem in backing_list
+                               if elem.find("source") is not None]
                 source_list.insert(0, active_level_path)
                 break
 
