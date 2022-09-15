@@ -40,7 +40,7 @@ def run(test, params, env):
         shutil.copyfile(guest_xml.xml, xmlfile)
         remote_session.cmd("mkdir -p %s" % tmp_dir)
         remote.scp_to_remote(remote_ip, '22', remote_user, remote_pwd,
-                             guest_xml.xml, guest_xml.xml, limit="",
+                             xmlfile, xmlfile, limit="",
                              log_filename=None, timeout=600,
                              interface=None)
         params["virsh_migrate_extra"] += "--xml %s" % xmlfile
