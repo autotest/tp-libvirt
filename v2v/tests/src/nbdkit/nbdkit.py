@@ -107,6 +107,9 @@ nbdkit -rfv -U - --exportname / \
                 vddk_stats = params_get(params, "vddk_stats")
                 nbdkit_cmd = nbdkit_cmd + ' -D vddk.stats=%s' % vddk_stats
                 LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
+            if checkpoint == 'backend_datapath_controlpath':
+                nbdkit_cmd = nbdkit_cmd + ' -D nbdkit.backend.datapath=0 -D nbdkit.backend.controlpath=0'
+                LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
 
             # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
@@ -121,6 +124,8 @@ nbdkit -rfv -U - --exportname / \
             if checkpoint == 'has_run_againt_vddk7_0' and not re.search(
                     r'virtual size', output):
                 test.fail('failed to test has_run_againt_vddk7_0')
+            if checkpoint == 'backend_datapath_controlpath' and re.search(r'vddk: (open|pread)', output):
+                test.fail('fail to test nbdkit.backend.datapath and nbdkit.backend.controlpath option')
 
     def test_memory_max_disk_size():
         """
@@ -175,13 +180,37 @@ nbdkit -rfv -U - --exportname / \
             if 'open readonly' in cmd_result.stdout_text:
                 test.fail('failed to test cve_2019_14850')
 
+    def test_python_error():
+        """
+        check case for bz1613946
+        """
+        lines = """
+def function():
+    raise RuntimeError("error")
+def config(key, value):
+    function()
+def open(readonly):
+    raise RuntimeError("open")
+def get_size(h):
+    raise RuntimeError("get_size")
+def pread(h, count, offset):
+    raise RuntimeError("pread")
+    """
+        python_file_path = os.path.join(data_dir.get_tmp_dir(), "python_check.py")
+        with open(python_file_path, "w") as f:
+            f.write(lines)
+        cmd = "nbdkit -fv python %s foo=bar" % python_file_path
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        if not re.search('config: error: Traceback', cmd_result.stderr_text):
+            test.fail('failed to test enhance_python_error')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
-    elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats']:
+    elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats', 'backend_datapath_controlpath']:
         test_has_run_againt_vddk7_0()
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
@@ -189,5 +218,7 @@ nbdkit -rfv -U - --exportname / \
         test_data_corruption()
     elif checkpoint == 'cve_2019_14850':
         test_cve_2019_14850()
+    elif checkpoint == 'enhance_python_error':
+        test_python_error()
     else:
         test.error('Not found testcase: %s' % checkpoint)
