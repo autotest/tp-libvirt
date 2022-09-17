@@ -5,7 +5,7 @@ from provider.migration import base_steps
 
 def run(test, params, env):
     """
-    Test memory compression.
+    Test cases about migration performance tuning.
 
     :param test: test object
     :param params: Dictionary with the test parameters
