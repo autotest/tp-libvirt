@@ -11,8 +11,8 @@ from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
 from virttest import utils_conn
 
-from virttest.migration import MigrationTest
 from virttest.libvirt_xml import vm_xml
+from virttest.migration import MigrationTest
 from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.utils_test import libvirt_domjobinfo   # pylint: disable=W0611
@@ -367,3 +367,17 @@ def check_domjobinfo_during_mig(params):
     vm = params.get("vm_obj")
 
     libvirt_domjobinfo.check_domjobinfo(vm, params)
+
+
+def set_bandwidth_during_mig(params):
+    """
+    Set bandwidth during migration
+
+    :param params: dict, get vm name and compared value
+    """
+    vm_name = params.get("migrate_main_vm")
+    compared_value = params.get("compared_value")
+
+    virsh_args = {"debug": True, "ignore_status": False}
+    virsh.migrate_setspeed(vm_name, compared_value, **virsh_args)
+    virsh.migrate_getspeed(vm_name, debug=True)
