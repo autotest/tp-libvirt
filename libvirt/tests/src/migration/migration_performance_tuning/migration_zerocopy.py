@@ -1,7 +1,7 @@
 from virttest import libvirt_version
+from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
-
 from virttest.utils_libvirt import libvirt_memory
 
 from provider.migration import base_steps
@@ -21,22 +21,19 @@ def run(test, params, env):
 
         """
         test.log.debug("Setup for with memtune.")
+        memtune_options = params.get("memtune_options")
         hard_limit = params.get("hard_limit")
         if hard_limit:
             params.update({'expect_hard_limit': hard_limit})
         test.log.info("hard limit: %s", hard_limit)
-        vm_attrs = eval(params.get('vm_attrs', '{}'))
 
         if check_hard_limit:
             old_hard_limit.append(libvirt_memory.get_qemu_process_memlock_hard_limit())
 
-        if vm_attrs:
-            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            vmxml.setup_attrs(**vm_attrs)
-            vmxml.sync()
-            test.log.info("Updated VM xml: %s", vm_xml.VMXML.new_from_dumpxml(vm_name))
-
         migration_obj.setup_connection()
+        if memtune_options:
+            virsh_args = {"ignore_status": False, "debug": True}
+            virsh.memtune_set(vm_name, memtune_options, **virsh_args)
 
     def setup_without_memtune():
         """
