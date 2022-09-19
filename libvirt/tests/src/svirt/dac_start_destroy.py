@@ -91,6 +91,18 @@ def format_user_group_str(user, group):
     return label_str
 
 
+def set_tpm_perms(swtpm_lib):
+    """
+    Set the perms of swtpm lib to allow other users to write in the dir
+
+    :param swtpm_lib: the dir of swtpm lib
+    """
+    cmd = "getfacl -R %s > /tmp/permis.facl" % swtpm_lib
+    process.run(cmd, ignore_status=True, shell=True)
+    cmd = "chmod -R 777 %s" % swtpm_lib
+    process.run(cmd, ignore_status=False, shell=True)
+
+
 def run(test, params, env):
     """
     Test DAC setting in both domain xml and qemu.conf.
@@ -106,6 +118,7 @@ def run(test, params, env):
     status_error = ('yes' == params.get("status_error", 'no'))
     host_sestatus = params.get("dac_start_destroy_host_selinux", "enforcing")
     qemu_group_user = "yes" == params.get("qemu_group_user", "no")
+    swtpm_lib = params.get("swtpm_lib")
     # Get variables about seclabel for VM.
     sec_type = params.get("dac_start_destroy_vm_sec_type", "dynamic")
     sec_model = params.get("dac_start_destroy_vm_sec_model", "dac")
@@ -206,12 +219,18 @@ def run(test, params, env):
             # Set qemu.conf for user and group
             if qemu_user:
                 qemu_conf.user = qemu_user
+                if not dynamic_ownership:
+                    qemu_conf.swtpm_user = qemu_user
             if qemu_group:
                 qemu_conf.group = qemu_group
+                if not dynamic_ownership:
+                    qemu_conf.swtpm_group = qemu_group
             if dynamic_ownership:
                 qemu_conf.dynamic_ownership = 1
             else:
                 qemu_conf.dynamic_ownership = 0
+                if vmxml.devices.by_device_tag('tpm') is not None:
+                    set_tpm_perms(swtpm_lib)
             if security_default_confined:
                 qemu_conf.security_default_confined = security_default_confined
             if set_process_name:
@@ -393,4 +412,9 @@ def run(test, params, env):
         if create_qemu_user:
             cmd = "userdel -r vdsm_fake"
             output = process.run(cmd, ignore_status=True, shell=True)
+        if vmxml.devices.by_device_tag('tpm') is not None:
+            if os.path.isfile('/tmp/permis.facl'):
+                cmd = "setfacl --restore=/tmp/permis.facl"
+                process.run(cmd, ignore_status=True, shell=True)
+                os.unlink('/tmp/permis.facl')
         utils_selinux.set_status(backup_sestatus)
