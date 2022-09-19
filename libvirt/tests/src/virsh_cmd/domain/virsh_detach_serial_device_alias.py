@@ -121,6 +121,7 @@ def run(test, params, env):
         vm_xml.sync()
 
         vm.start()
+        vm.wait_for_login().close()
         check_vm_xml()
 
         # Hot detach device by its alias name.
