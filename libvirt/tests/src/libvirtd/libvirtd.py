@@ -63,7 +63,7 @@ def test_check_journal(libvirtd, params, test):
     output = msg_queue.get()
     # Check error message in journal
     if re.search(error_msg_in_journal, output):
-        test.fail("Found error message during libvirtd restarting: %s", output)
+        test.fail("Found error message during libvirtd restarting: %s" % output)
     else:
         logging.info("Not found error message during libvirtd restarting.")
 
