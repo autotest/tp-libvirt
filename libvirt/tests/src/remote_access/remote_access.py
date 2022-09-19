@@ -515,12 +515,10 @@ def run(test, params, env):
         # change /etc/pki/libvirt/servercert.pem then
         # restart libvirt service on the remote host
         if tls_sanity_cert == "no" and ca_cn_new:
-            test_dict['ca_cn'] = ca_cn_new
-            test_dict['scp_new_cacert'] = 'no'
-            tls_obj_new = TLSConnection(test_dict)
-            test_dict['tls_obj_new'] = tls_obj_new
+            tls_obj.ca_cn = ca_cn_new
+            tls_obj.scp_new_cacert = "no"
             # only setup new CA and server
-            tls_obj_new.conn_setup(True, False)
+            tls_obj.conn_setup(True, False)
 
         # obtain and cache a ticket
         if kinit_pwd and sasl_type == 'gssapi' and auth_unix_rw == 'sasl':
