@@ -97,7 +97,7 @@ def run(test, params, env):
         wait_for_event = True if vm.is_alive() and not flagstr.count('config') \
             else False
         virsh.detach_device(vm.name, vm_hostdev.xml, debug=True,
-                            flagstr=flagstr, ignore_errors=False,
+                            flagstr=flagstr, ignore_status=False,
                             wait_for_event=wait_for_event, event_timeout=15)
 
         test.log.info("TEST_STEP4: Check VM xml.")

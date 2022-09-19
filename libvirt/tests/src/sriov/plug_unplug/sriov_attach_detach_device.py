@@ -24,7 +24,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP2: Attach a hostdev interface/device to VM")
         iface_dev = sriov_test_obj.create_iface_dev(dev_type, iface_dict)
         virsh.attach_device(vm.name, iface_dev.xml, debug=True,
-                            ignore_errors=False)
+                            ignore_status=False)
 
         test.log.info("TEST_STEP3: Check hostdev xml after VM startup")
         if dev_type == "network_interface":
@@ -45,7 +45,7 @@ def run(test, params, env):
         vm_hostdev = vm_xml.VMXML.new_from_dumpxml(vm.name)\
             .devices.by_device_tag(device_type)[0]
         virsh.detach_device(vm.name, vm_hostdev.xml, debug=True,
-                            ignore_errors=False)
+                            ignore_status=False)
         cur_hostdevs = vm_xml.VMXML.new_from_dumpxml(vm.name)\
             .devices.by_device_tag(device_type)
         if cur_hostdevs:
@@ -57,7 +57,7 @@ def run(test, params, env):
                 dev_pci, not managed_disabled, True), 10, 5):
             test.fail("Got incorrect driver!")
         if managed_disabled:
-            virsh.nodedev_reattach(dev_name, debug=True, ignore_errors=False)
+            virsh.nodedev_reattach(dev_name, debug=True, ignore_status=False)
             libvirt_vfio.check_vfio_pci(dev_pci, True)
 
     dev_type = params.get("dev_type", "")

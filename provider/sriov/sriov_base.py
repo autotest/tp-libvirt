@@ -254,7 +254,7 @@ class SRIOVTest(object):
             libvirt_network.create_or_del_network(network_dict)
 
         if managed_disabled:
-            virsh.nodedev_detach(dev_name, debug=True, ignore_errors=False)
+            virsh.nodedev_detach(dev_name, debug=True, ignore_status=False)
 
     def teardown_default(self, **dargs):
         """
@@ -275,7 +275,7 @@ class SRIOVTest(object):
             utils_libvirtd.Libvirtd().restart()
             self.orig_config_xml.sync()
         if managed_disabled:
-            virsh.nodedev_reattach(dev_name, debug=True, ignore_errors=False)
+            virsh.nodedev_reattach(dev_name, debug=True, ignore_status=False)
         if network_dict:
             libvirt_network.create_or_del_network(network_dict, True)
 

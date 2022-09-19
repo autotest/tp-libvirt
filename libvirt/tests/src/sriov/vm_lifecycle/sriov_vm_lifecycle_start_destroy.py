@@ -64,7 +64,7 @@ def run(test, params, env):
                 dev_pci, not managed_disabled, True), 10, 5):
             test.fail("Got incorrect driver!")
         if managed_disabled:
-            virsh.nodedev_reattach(dev_name, debug=True, ignore_errors=False)
+            virsh.nodedev_reattach(dev_name, debug=True, ignore_status=False)
             libvirt_vfio.check_vfio_pci(dev_pci, True)
         check_points.check_mac_addr_recovery(
             sriov_test_obj.pf_name, device_type, iface_dict)
