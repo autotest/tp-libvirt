@@ -40,6 +40,17 @@ def check_ownership(file_path):
     return label
 
 
+def set_tpm_perms(swtpm_lib):
+    """
+    Set the perms of swtpm lib dir to allow other users to write in the dir
+    :param swtpm_lib: the dir of swtpm lib
+    """
+    cmd = "getfacl -pR %s > /tmp/permis.facl" % swtpm_lib
+    process.run(cmd, ignore_status=True, shell=True)
+    cmd = "chmod -R 777 %s" % swtpm_lib
+    process.run(cmd, ignore_status=False, shell=True)
+
+
 def run(test, params, env):
     """
     Test DAC in adding nfs pool disk to VM.
@@ -52,6 +63,7 @@ def run(test, params, env):
     # Get general variables.
     status_error = ('yes' == params.get("status_error", 'no'))
     host_sestatus = params.get("dac_nfs_disk_host_selinux", "enforcing")
+    swtpm_lib = params.get("swtpm_lib")
     # Get qemu.conf config variables
     qemu_user = params.get("qemu_user")
     qemu_group = params.get("qemu_group")
@@ -145,6 +157,7 @@ def run(test, params, env):
             if vmxml.devices.by_device_tag('tpm') is not None:
                 qemu_conf.swtpm_user = qemu_user
                 qemu_conf.swtpm_group = qemu_group
+                set_tpm_perms(swtpm_lib)
         logging.debug("the qemu.conf content is: %s", qemu_conf)
         libvirtd.restart()
 
@@ -263,5 +276,10 @@ def run(test, params, env):
                                  emulated_image)
             except exceptions.TestFail as detail:
                 logging.error(str(detail))
+        if vmxml.devices.by_device_tag('tpm') is not None:
+            if os.path.isfile('/tmp/permis.facl'):
+                cmd = "setfacl --restore=/tmp/permis.facl"
+                process.run(cmd, ignore_status=True, shell=True)
+                os.unlink('/tmp/permis.facl')
         utils_selinux.set_status(backup_sestatus)
         libvirtd.restart()
