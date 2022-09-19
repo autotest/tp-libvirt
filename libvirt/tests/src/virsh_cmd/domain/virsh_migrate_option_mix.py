@@ -222,7 +222,7 @@ def run(test, params, env):
             vm_xml_backup.define()
         elif src_vm_cfg == "transient" and vm.is_persistent():
             logging.debug("Make src vm transient")
-            vm.undefine(options='--nvram')
+            vm.undefine(options='--keep-nvram')
 
         # Prepare for postcopy migration: install and run stress in VM
         if postcopy and src_vm_status == "running":
