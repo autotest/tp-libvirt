@@ -3,6 +3,8 @@ import pwd
 import grp
 import logging as log
 
+from avocado.utils import process
+
 from virttest import qemu_storage
 from virttest import data_dir
 from virttest import virsh
@@ -71,6 +73,34 @@ def format_user_group_str(user, group):
     return label_str
 
 
+def set_tpm_perms(swtpm_lib):
+    """
+    Set swtpm_user/swtpm_group in qemu conf and swtpm_lib permission
+    if dynamic_ownership is disabled
+
+    :param swtpm_lib: the dir of swtpm lib
+    """
+    cmd = "getfacl -pR %s > /tmp/permis.facl" % swtpm_lib
+    process.run(cmd, ignore_status=True, shell=True)
+    cmd = "chmod -R 777 %s" % swtpm_lib
+    process.run(cmd, ignore_status=False, shell=True)
+
+
+def set_nvram_perms(vars_path, qemu_user, qemu_group):
+    """
+    Set nvram file permission when dynamic_ownership is disabled
+
+    :param vars_path: the path of nvram file
+    :param qemu_user: qemu_user set in qemu.conf
+    :param qemu_group: group_user set in qemu.conf
+    """
+    if vars_path is not None and os.path.exists(vars_path):
+        user_info = format_user_group_str(qemu_user, qemu_group)
+        user_id = int(user_info.split(":")[0])
+        group_id = int(user_info.split(":")[1])
+        os.chown(vars_path, user_id, group_id)
+
+
 def run(test, params, env):
     """
     Test per-image DAC disk hotplug to VM.
@@ -94,6 +124,8 @@ def run(test, params, env):
     img_user = params.get("img_user")
     img_group = params.get("img_group")
     relabel = 'yes' == params.get('relabel', 'yes')
+    vars_path = params.get('vars_path')
+    swtpm_lib = params.get('swtpm_lib')
 
     if not libvirt_version.version_compare(1, 2, 7):
         test.cancel("per-image DAC only supported on version 1.2.7"
@@ -115,6 +147,16 @@ def run(test, params, env):
             qemu_conf.dynamic_ownership = 1
         else:
             qemu_conf.dynamic_ownership = 0
+            if vmxml.devices.by_device_tag('tpm') is not None:
+                qemu_conf.swtpm_user = qemu_user
+                qemu_conf.swtpm_group = qemu_group
+                set_tpm_perms(swtpm_lib)
+            if vmxml.os.xmltreefile.find('nvram') is not None:
+                vars_path = vmxml.os.nvram
+            elif vmxml.os.fetch_attrs().get('os_firmware') == 'efi':
+                vars_path = params.get('vars_path')
+            set_nvram_perms(vars_path, qemu_user, qemu_group)
+
         logging.debug("the qemu.conf content is: %s" % qemu_conf)
         libvirtd.restart()
 
@@ -123,6 +165,7 @@ def run(test, params, env):
         owner_str = format_user_group_str(qemu_user, qemu_group)
         src_usr, src_grp = owner_str.split(':')
         os.chown(blk_source, int(src_usr), int(src_grp))
+        xml = VMXML.new_from_inactive_dumpxml(vm_name)
         vm.start()
 
         # Init a QemuImg instance and create a img.
@@ -173,5 +216,10 @@ def run(test, params, env):
         qemu_conf.restore()
         vmxml.sync()
         libvirtd.restart()
+        if vmxml.devices.by_device_tag('tpm') is not None:
+            if os.path.isfile('/tmp/permis.facl'):
+                cmd = "setfacl --restore=/tmp/permis.facl"
+                process.run(cmd, ignore_status=True, shell=True)
+                os.unlink('/tmp/permis.facl')
         if img_path and os.path.exists(img_path):
             os.unlink(img_path)
