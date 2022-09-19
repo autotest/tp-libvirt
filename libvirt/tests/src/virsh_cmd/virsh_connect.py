@@ -193,6 +193,8 @@ def run(test, params, env):
         elif transport == "tcp":
             tcp_connection = utils_conn.TCPConnection(server_ip=server_ip,
                                                       server_pwd=server_pwd,
+                                                      client_ip=client_ip,
+                                                      client_pwd=client_pwd,
                                                       tcp_port=tcp_port)
             tcp_connection.conn_setup()
 
