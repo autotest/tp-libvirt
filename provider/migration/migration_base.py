@@ -16,6 +16,7 @@ from virttest.migration import MigrationTest
 from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.utils_test import libvirt_domjobinfo   # pylint: disable=W0611
+from virttest.utils_test import libvirt
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -381,3 +382,22 @@ def set_bandwidth_during_mig(params):
     virsh_args = {"debug": True, "ignore_status": False}
     virsh.migrate_setspeed(vm_name, compared_value, **virsh_args)
     virsh.migrate_getspeed(vm_name, debug=True)
+
+
+def check_vm_status_during_mig(params):
+    """
+    Check vm status during migration
+
+    :param params: dict, get expected status of vm, vm name, destination uri, source uri and timeout value
+    :raise: test fail when check vm status failed
+    """
+    vm_status_during_mig = params.get("vm_status_during_mig")
+    vm_name = params.get("migrate_main_vm")
+    dest_uri = params.get("virsh_migrate_desturi")
+    src_uri = params.get("virsh_migrate_connect_uri")
+    timeout_value = params.get("timeout_value")
+    if timeout_value:
+        time.sleep(int(timeout_value))
+    for uri in [dest_uri, src_uri]:
+        if not libvirt.check_vm_state(vm_name, vm_status_during_mig, uri=uri):
+            raise exceptions.TestFail("VM status is not '%s' during migration on %s." % (vm_status_during_mig, uri))
