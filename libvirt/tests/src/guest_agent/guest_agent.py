@@ -68,7 +68,7 @@ def get_ga_xml(vm, vm_name):
         if target is not None:
             name = target.get('name')
             if name and name.startswith("org.qemu.guest_agent"):
-                ga_xml = channel.xml
+                ga_xml = channel
                 break
     return ga_xml
 
@@ -114,7 +114,7 @@ def run(test, params, env):
 
         if hotunplug_ga:
             ga_xml = get_ga_xml(vm, vm_name)
-            result = virsh.detach_device(vm_name, ga_xml)
+            result = virsh.detach_device(vm_name, ga_xml.xml)
             if result.exit_status:
                 test.fail("hotunplug guest agent device failed, %s"
                           % result)
