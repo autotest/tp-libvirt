@@ -1,5 +1,6 @@
 import aexpect
 import logging
+import re
 import os
 
 from avocado.utils import process
@@ -110,7 +111,7 @@ def check_dmeg_and_domblkerror(params, vm, test, check_error_msg=True):
             session.cmd("dmesg -C")
             return False
         else:
-            return error_msg in output
+            return re.search(r'%s' % error_msg, output)
 
     result = _check_dmeg_msg(error_msg)
     if check_error_msg:
