@@ -612,10 +612,11 @@ class VMChecker(object):
             err_msg = "Checking boot os info failed"
             self.log_err(err_msg)
 
+        root = ET.fromstring(self.vmxml)
+
         LOG.info("Checking cache='none' not existing in VM XML")
         if self.target == 'libvirt' and compare_version(
                 FEATURE_SUPPORT['cache_none']):
-            root = ET.fromstring(self.vmxml)
             err_msg = "Checking cache='none' not existing failed"
             for disk in root.findall("./devices/disk/driver[@cache]"):
                 if disk.get('cache') == 'none':
@@ -624,10 +625,15 @@ class VMChecker(object):
         LOG.info("Checking model='virtio-transitional' not existing in VM XML")
         if self.os_type == 'windows' and self.target == 'libvirt' and compare_version(
                 FEATURE_SUPPORT['virtio_model']):
-            root = ET.fromstring(self.vmxml)
             err_msg = "Checking model='virtio-transitional' not existing failed"
             if root.findall(
                     ".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
+                self.log_err(err_msg)
+
+        LOG.info("Checking firware='efi' existing in VM XML")
+        if bootinfo == 'uefi':
+            err_msg = "Checking firmware='efi' existing failed"
+            if root.findall("./os[@firmware='efi']"):
                 self.log_err(err_msg)
 
         if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
