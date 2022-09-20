@@ -1,6 +1,8 @@
 import re
+import os
 
 from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import libvirt_version
 from virttest import utils_libvirtd
@@ -221,6 +223,20 @@ class SRIOVTest(object):
         else:
             self.test.log.warning("Unkown device source.")
         return dev_name
+
+    def get_rom_file(self):
+        """
+        Get rom file path
+
+        :return: rom file path
+        """
+        cmd = "lspci -nn | awk '/%s/ {print $12}'" % self.vf_pci[5:]
+        lspci_stdout = process.run(cmd, shell=True).stdout_text.strip()
+        rom_vendor_device = lspci_stdout[1:-1].replace(':', '') + '.rom'
+        rom_file = os.path.join('/usr/share/ipxe', rom_vendor_device)
+        if not os.path.exists(rom_file):
+            self.test.error("This test needs rom file: %s." % rom_file)
+        return rom_file
 
     def create_iface_dev(self, dev_type, iface_dict):
         """
