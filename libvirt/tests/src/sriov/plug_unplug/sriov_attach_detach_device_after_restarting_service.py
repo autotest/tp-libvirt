@@ -35,11 +35,11 @@ def run(test, params, env):
         test.log.info("TEST_STEP2: Attach a hostdev interface/device to VM")
         iface_dev = sriov_test_obj.create_iface_dev(dev_type, iface_dict)
         virsh.attach_device(vm.name, iface_dev.xml, debug=True,
-                            ignore_errors=False)
+                            ignore_status=False)
 
         test.log.info("TEST_STEP3: Detach the hostdev interface/device")
         virsh.detach_device(vm.name, iface_dev.xml, debug=True,
-                            ignore_errors=False)
+                            ignore_status=False)
 
     dev_type = params.get("dev_type", "")
     pre_iface_dict = eval(params.get("pre_iface_dict", "{}"))
