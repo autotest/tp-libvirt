@@ -131,7 +131,8 @@ def setup_conn_obj(conn_type, params, test):
     elif conn_type.upper() == 'RDMA':
         test.cancel("TODO: rdma")
     else:
-        test.error("Invalid parameter, only support tls/tcp/ssh/unix_socket/rdma")
+        test.log.error("Invalid parameter, only support tls/tcp/ssh/unix_socket/rdma")
+        return None
     conn_obj.auto_recover = True
     conn_obj.conn_setup()
     return conn_obj
