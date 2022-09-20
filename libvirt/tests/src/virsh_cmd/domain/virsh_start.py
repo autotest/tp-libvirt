@@ -1,5 +1,8 @@
 import logging as log
 
+from avocado.utils import process
+from avocado.utils import service
+
 from virttest import remote
 from virttest import virsh
 from virttest import libvirt_xml
@@ -11,6 +14,20 @@ from virttest import libvirt_version
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+
+
+def check_audit_log(test, audit_log_search_string):
+    """
+    Run ausearch and look for audit_log_search_string.
+
+    :param test: Test object for utility functions
+    :param audit_log_search_string: String describing ausearch criteria
+    """
+    cmd = f"ausearch  -m {audit_log_search_string}"
+    cmd_result = process.run(cmd, shell=True, ignore_status=True)
+    if cmd_result.exit_status == 0:
+        test.fail(f"Unexpectedly found '{audit_log_search_string}'"
+                  "in'{cmd_result.stdout_text}'")
 
 
 def run(test, params, env):
@@ -27,6 +44,8 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm_ref = params.get("vm_ref", "vm1")
     opt = params.get("vs_opt", "")
+    audit_log_search_string = params.get("audit_log_search_string")
+    service_mgr = service.ServiceManager()
 
     # Backup for recovery.
     vmxml_backup = libvirt_xml.vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -114,6 +133,9 @@ def run(test, params, env):
                 virsh.managedsave(vm_ref)
                 virsh.start(vm_ref, options=opt)
             else:
+                if audit_log_search_string:
+                    if not service_mgr.status("auditd"):
+                        service_mgr.start("auditd")
                 cmd_result = virsh.start(vm_ref, options=opt)
                 if cmd_result.exit_status:
                     if status_error == "no":
@@ -147,6 +169,8 @@ def run(test, params, env):
                     test.fail("VM was started with --force-boot,"
                               "but it is restored from a"
                               " managedsave.")
+            elif audit_log_search_string:
+                check_audit_log(test, audit_log_search_string)
             else:
                 if status_error == "no" and not vm.is_alive() and pre_operation != "remote":
                     test.fail("VM was started but it is not alive.")
