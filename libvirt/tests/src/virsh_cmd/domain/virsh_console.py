@@ -198,7 +198,7 @@ def run(test, params, env):
 
     # PAPR guests don't usually have a true serial device (ttyS0),
     # they only have the hypervisor console (/dev/hvc0)
-    if 'ppc64' in platform.machine():
+    if 'ppc64' in platform.machine() or 's390x' in platform.machine():
         params["console_device"] = 'hvc0'
 
     update_console = params.get("update_console", "yes")
