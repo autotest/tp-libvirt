@@ -77,7 +77,7 @@ def run(test, params, env):
             address_dict['port'] = '%s' % port_id
 
         channel_tmp = Channel(type_name=channel_type)
-        channel_tmp.source = source_dict
+        channel_tmp.sources = [{'attrs': source_dict}]
         channel_tmp.target = target_dict
         channel_tmp.address = address_dict
 
@@ -109,7 +109,7 @@ def run(test, params, env):
             target_dict['port'] = target_port
 
         if source_dict:
-            channel.source = source_dict
+            channel.sources = [{'attrs': source_dict}]
         if target_dict:
             channel.target = target_dict
 
@@ -161,7 +161,7 @@ def run(test, params, env):
         expected_channel = Channel(channel_type)
 
         try:
-            source_dict = channel.source
+            source_dict = channel.fetch_attrs()['sources'][0]['attrs']
         except LibvirtXMLNotFoundError:
             source_dict = {}
 
@@ -199,7 +199,7 @@ def run(test, params, env):
                 target_dict['port'] = channel.target['port']
 
         if source_dict:
-            expected_channel.source = source_dict
+            expected_channel.sources = [{'attrs': source_dict}]
         if target_dict:
             expected_channel.target = target_dict
 

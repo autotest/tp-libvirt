@@ -16,8 +16,9 @@ from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.libvirt_xml.vm_xml import VMXML
-from virttest.libvirt_xml.devices import librarian
 from virttest.libvirt_xml.devices.graphics import Graphics
+from virttest.libvirt_xml.devices.serial import Serial
+from virttest.libvirt_xml.devices.console import Console
 
 from virttest import libvirt_version
 
@@ -29,7 +30,7 @@ from avocado.utils import astring
 logging = log.getLogger('avocado.' + __name__)
 
 
-class Console(aexpect.ShellSession):
+class ConsoleSession(aexpect.ShellSession):
 
     """
     This class create a socket or file/pipe descriptor for console connect
@@ -351,7 +352,7 @@ def run(test, params, env):
         local_serial_type = serial_type
         if serial_type == "tls":
             local_serial_type = "tcp"
-        serial = librarian.get('serial')(local_serial_type)
+        serial = Serial(local_serial_type)
 
         serial.target_port = "0"
 
@@ -365,7 +366,7 @@ def run(test, params, env):
                 key, val = att.split(':')
                 source_dict[key] = val
             sources.append(source_dict)
-        serial.sources = sources
+        serial.sources = [{'attrs': attrs} for attrs in sources]
         return serial
 
     def prepare_console_device():
@@ -375,7 +376,7 @@ def run(test, params, env):
         local_serial_type = serial_type
         if serial_type == "tls":
             local_serial_type = "tcp"
-        console = librarian.get('console')(local_serial_type)
+        console = Console(local_serial_type)
         console.target_type = console_target_type
         console.target_port = console_target_port
 
@@ -387,7 +388,7 @@ def run(test, params, env):
                 key, val = att.split(':')
                 source_dict[key] = val
             sources.append(source_dict)
-        console.sources = sources
+        console.sources = [{'attrs': attrs} for attrs in sources]
         return console
 
     def define_and_check():
@@ -397,24 +398,24 @@ def run(test, params, env):
         """
         fail_patts = []
         if serial_type in ['dev', 'file', 'pipe', 'unix'] and not any(
-                ['path' in s for s in serial_dev.sources]):
+                ['path' in s.attrs for s in serial_dev.sources]):
             fail_patts.append(r"Missing source path attribute for char device")
         if serial_type in ['tcp'] and not any(
-                ['host' in s for s in serial_dev.sources]):
+                ['host' in s.attrs for s in serial_dev.sources]):
             fail_patts.append(r"Missing source host attribute for char device")
         if serial_type in ['tcp', 'udp'] and not any(
-                ['service' in s for s in serial_dev.sources]):
+                ['service' in s.attrs for s in serial_dev.sources]):
             fail_patts.append(r"Missing source service attribute for char "
                               "device")
         if serial_type in ['spiceport'] and not any(
-                ['channel' in s for s in serial_dev.sources]):
+                ['channel' in s.attrs for s in serial_dev.sources]):
             fail_patts.append(r"Missing source channel attribute for char "
                               "device")
         if serial_type in ['nmdm'] and not any(
-                ['master' in s for s in serial_dev.sources]):
+                ['master' in s.attrs for s in serial_dev.sources]):
             fail_patts.append(r"Missing master path attribute for nmdm device")
         if serial_type in ['nmdm'] and not any(
-                ['slave' in s for s in serial_dev.sources]):
+                ['slave' in s.attrs for s in serial_dev.sources]):
             fail_patts.append(r"Missing slave path attribute for nmdm device")
         if serial_type in ['spicevmc']:
             fail_patts.append(r"spicevmc device type only supports virtio")
@@ -429,20 +430,20 @@ def run(test, params, env):
         Predict the result serial device and generated console device
         and check the result domain XML against expectation
         """
-        console_cls = librarian.get('console')
-
         local_serial_type = serial_type
 
         if serial_type == 'tls':
             local_serial_type = 'tcp'
         # Predict expected serial and console XML
-        expected_console = console_cls(local_serial_type)
+        expected_console = Console(local_serial_type)
 
         if local_serial_type == 'udp':
             sources = []
             for source in serial_dev.sources:
-                if 'service' in source and 'mode' not in source:
-                    source['mode'] = 'connect'
+                source_attrs = source.attrs
+                if 'service' in source_attrs and 'mode' not in source_attrs:
+                    source_attrs['mode'] = 'connect'
+                    source.attrs = source_attrs
                 sources.append(source)
         else:
             sources = serial_dev.sources
@@ -472,7 +473,7 @@ def run(test, params, env):
             test.fail("Don't Expect exist serial device, "
                       "but found:\n%s" % serial_elem)
 
-        cur_console = console_cls.new_from_element(console_elem)
+        cur_console = Console.new_from_element(console_elem)
         logging.debug("Current console XML is:\n%s", cur_console)
         # Compare current serial and console with oracle.
         if not expected_console == cur_console:
@@ -481,8 +482,7 @@ def run(test, params, env):
                       (expected_console, cur_console))
 
         if console_target_type == 'serial':
-            serial_cls = librarian.get('serial')
-            expected_serial = serial_cls(local_serial_type)
+            expected_serial = Serial(local_serial_type)
             expected_serial.sources = sources
 
             set_targets(expected_serial)
@@ -496,7 +496,7 @@ def run(test, params, env):
             if serial_elem is None:
                 test.fail("Expect exist serial device, "
                           "but found none.")
-            cur_serial = serial_cls.new_from_element(serial_elem)
+            cur_serial = Serial.new_from_element(serial_elem)
             if target_type == 'pci-serial':
                 if cur_serial.address is None:
                     test.fail("Expect serial device address is not assigned")
@@ -521,26 +521,26 @@ def run(test, params, env):
         if serial_type == 'unix':
             # Unix socket path should match SELinux label
             socket_path = '/var/lib/libvirt/qemu/virt-test'
-            console = Console('unix', socket_path, is_server)
+            console = ConsoleSession('unix', socket_path, is_server)
         elif serial_type == 'tls':
             host = '127.0.0.1'
             service = 5556
-            console = Console('tls', (host, service), is_server,
-                              custom_pki_path)
+            console = ConsoleSession('tls', (host, service), is_server,
+                                     custom_pki_path)
         elif serial_type == 'tcp':
             host = '127.0.0.1'
             service = 2445
-            console = Console('tcp', (host, service), is_server)
+            console = ConsoleSession('tcp', (host, service), is_server)
         elif serial_type == 'udp':
             host = '127.0.0.1'
             service = 2445
-            console = Console('udp', (host, service), is_server)
+            console = ConsoleSession('udp', (host, service), is_server)
         elif serial_type == 'file':
             socket_path = '/var/lib/libvirt/virt-test'
-            console = Console('file', socket_path, is_server)
+            console = ConsoleSession('file', socket_path, is_server)
         elif serial_type == 'pipe':
             socket_path = '/tmp/virt-test'
-            console = Console('pipe', socket_path, is_server)
+            console = ConsoleSession('pipe', socket_path, is_server)
         else:
             logging.debug("Serial type %s don't support console test yet.",
                           serial_type)
@@ -587,8 +587,8 @@ def run(test, params, env):
         exp_ser_opts = [ser_type, 'id=charserial0']
         if serial_type in ['dev', 'file', 'pipe', 'unix']:
             for source in serial_dev.sources:
-                if 'path' in source:
-                    path = source['path']
+                if 'path' in source.attrs:
+                    path = source.attrs['path']
             if serial_type == 'file':
                 # Use re to make this fdset number flexible
                 exp_ser_opts.append(r'path=/dev/fdset/\d+')
@@ -600,26 +600,26 @@ def run(test, params, env):
                 exp_ser_opts.append('path=%s' % path)
         elif serial_type in ['tcp', 'tls']:
             for source in serial_dev.sources:
-                if 'host' in source:
-                    host = source['host']
-                if 'service' in source:
-                    port = source['service']
+                if 'host' in source.attrs:
+                    host = source.attrs['host']
+                if 'service' in source.attrs:
+                    port = source.attrs['service']
             exp_ser_opts.append('host=%s' % host)
             exp_ser_opts.append('port=%s' % port)
         elif serial_type in ['udp']:
             localaddr = ''
             localport = '0'
             for source in serial_dev.sources:
-                if source['mode'] == 'connect':
-                    if 'host' in source:
-                        host = source['host']
-                    if 'service' in source:
-                        port = source['service']
+                if source.attrs['mode'] == 'connect':
+                    if 'host' in source.attrs:
+                        host = source.attrs['host']
+                    if 'service' in source.attrs:
+                        port = source.attrs['service']
                 else:
-                    if 'host' in source:
-                        localaddr = source['host']
-                    if 'service' in source:
-                        localport = source['service']
+                    if 'host' in source.attrs:
+                        localaddr = source.attrs['host']
+                    if 'service' in source.attrs:
+                        localport = source.attrs['service']
             exp_ser_opts.append('host=%s' % host)
             exp_ser_opts.append('port=%s' % port)
             exp_ser_opts.append('localaddr=%s' % localaddr)
@@ -627,8 +627,8 @@ def run(test, params, env):
 
         if serial_type in ['unix', 'tcp', 'udp', 'tls']:
             for source in serial_dev.sources:
-                if 'mode' in source:
-                    mode = source['mode']
+                if 'mode' in source.attrs:
+                    mode = source.attrs['mode']
             if mode == 'bind':
                 exp_ser_opts.append('server')
                 exp_ser_opts.append('nowait')
@@ -728,7 +728,7 @@ def run(test, params, env):
         """
         if serial_type in ['tcp', 'unix', 'udp', 'tls']:
             for source in serial_dev.sources:
-                if 'mode' in source and source['mode'] == 'connect':
+                if 'mode' in source.attrs and source.attrs['mode'] == 'connect':
                     return 'server'
             return 'client'
         elif serial_type in ['file']:
