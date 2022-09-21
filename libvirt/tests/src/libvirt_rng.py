@@ -534,6 +534,7 @@ def run(test, params, env):
     # Build the xml and run test.
     try:
         bgjob = None
+        bgjob2 = None
 
         # Prepare xml, make sure no extra rng dev.
         vmxml = vmxml_backup.copy()
@@ -598,6 +599,14 @@ def run(test, params, env):
             if random_source and params.get("backend_type") == "tcp" and not test_guest_dump:
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
                 bgjob = utils_misc.AsyncJob(cmd)
+
+            if all([guest_arch == 'x86_64', random_source, params.get("backend_type") == "udp", test_guest_dump]):
+                if not utils_package.package_install("socat"):
+                    test.error("Failed to install socat on host")
+                cmd1 = "cat /dev/urandom|nc -l 127.0.0.1 1235"
+                bgjob = utils_misc.AsyncJob(cmd1)
+                cmd2 = "socat udp-listen:1234,reuseaddr,fork tcp:127.0.0.1:1235"
+                bgjob2 = utils_misc.AsyncJob(cmd2)
 
             vm.start()
             # Wait guest to enter boot stage
@@ -700,5 +709,7 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
         vmxml_backup.sync()
+        if bgjob2:
+            bgjob2.kill_func()
         if bgjob:
             bgjob.kill_func()
