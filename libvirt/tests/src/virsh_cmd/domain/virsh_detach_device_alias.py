@@ -45,7 +45,7 @@ def run(test, params, env):
     redir_bus = params.get("detach_redirdev_bus")
     # channel params
     channel_type = params.get("detach_channel_type")
-    channel_target = eval(params.get("detach_channel_target", "{}"))
+    channel_dict = eval(params.get("channel_dict", "{}"))
     # virtual disk params
     virtual_disk_type = params.get("detach_virtual_disk_type")
     virtual_disk_dict = eval(params.get("virtual_disk_dict", "{}"))
@@ -126,9 +126,18 @@ def run(test, params, env):
         device_xml = libvirt.create_redirdev_xml(redir_type, redir_bus, device_alias)
 
     if channel_type:
-        channel_params = {'channel_type_name': channel_type}
-        channel_params.update(channel_target)
-        device_xml = libvirt.create_channel_xml(channel_params, device_alias)
+        channel_dict.update(
+            {"alias": {"name": device_alias}, 'type_name': channel_type})
+
+        libvirt_vmxml.modify_vm_device(
+            vmxml=vmxml, dev_type='channel', dev_dict=channel_dict)
+
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login().close()
+
+        attach_device = False
+
     if virtual_disk_type:
         image_path = data_dir.get_data_dir() + '/new_image'
         libvirt.create_local_disk("file", path=image_path, disk_format="qcow2")
