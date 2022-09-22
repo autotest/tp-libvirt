@@ -115,11 +115,12 @@ def check_duplicated_console(command, force_command, status_error, login_user,
     session.close()
 
 
-def check_disconnect_on_shutdown(command, status_error, login_user,
+def check_disconnect_on_shutdown(vm, command, status_error, login_user,
                                  login_passwd, test):
     """
     Test whether an active console will disconnect after shutting down the VM.
 
+    :param vm: VM instance
     :param command: Test command without --force option
     :param status_error: Whether the command is fault.
     :param login_user: User name for logging into the VM.
@@ -168,6 +169,10 @@ def check_disconnect_on_shutdown(command, status_error, login_user,
             logging.debug("Shell terminated on VM shutdown:\n%s\n%s",
                           detail, log)
             session.close()
+            # Need destroy VM explicitly if exception happens
+            vm.destroy()
+            # Confirm vm is down
+            vm.wait_for_shutdown()
 
 
 def run(test, params, env):
@@ -264,7 +269,7 @@ def run(test, params, env):
 
         check_duplicated_console(command, force_command, status_error,
                                  login_user, login_passwd, test)
-        check_disconnect_on_shutdown(command, status_error, login_user,
+        check_disconnect_on_shutdown(vm, command, status_error, login_user,
                                      login_passwd, test)
     finally:
         # Recover state of vm.
