@@ -1,6 +1,7 @@
 import logging
 
-from avocado.utils import lv_utils, process
+from avocado.utils import lv_utils
+from avocado.utils import process
 
 from virttest import ceph
 from virttest import data_dir
@@ -39,6 +40,7 @@ class DiskBase(object):
         self.pool_target = params.get("pool_target", 'dir_pool')
         self.emulated_image = params.get("emulated_image", 'dir_pool_img')
         self.base_dir = params.get("base_dir", "/var/lib/libvirt/images")
+        self.lv_backing = 'lv1'
         self.new_image_path = ''
         self.path_list = ''
 
@@ -64,7 +66,7 @@ class DiskBase(object):
                     or disk.xmltreefile.find('source').get('name')
 
                 backing_list = disk.get_backingstore_list()
-                if disk_type != 'rbd_with_auth':
+                if disk_type != 'rbd_with_auth' and backing_list != []:
                     backing_list.pop()
                 source_list = [elem.find('source').get('file') or
                                elem.find('source').get('name') or
@@ -358,3 +360,38 @@ class DiskBase(object):
         virsh.pool_start(pool_name, debug=True, ignore_status=False)
 
         return pool_name
+
+    def prepare_backing_file(self, disk_type, backing_file_type, backing_format):
+        """
+        Prepare backing file
+
+        :param disk_type: disk type
+        :param backing_file_type: backing file type.
+        :param backing_format: backing file format.
+        :return: based image and the backing file of the based image
+        """
+        based_image, backing_file = '', ''
+
+        if disk_type == 'file':
+            based_image = data_dir.get_data_dir()+'/based.qcow2'
+            if backing_file_type == 'file':
+                backing_file = data_dir.get_data_dir()+'/backing.qcow2'
+                libvirt.create_local_disk('file', backing_file,
+                                          size='200M', disk_format="qcow2")
+            if backing_file_type == 'block':
+                backing_file = self.create_lvm_disk_path(self.vg_name, self.lv_backing)
+
+        elif disk_type == 'block':
+            based_image = self.create_lvm_disk_path(self.vg_name, self.lv_name)
+            if backing_file_type == 'file':
+                backing_file = data_dir.get_data_dir() + '/backing.qcow2'
+                libvirt.create_local_disk('file', backing_file, '200M', "qcow2")
+            if backing_file_type == 'block':
+                backing_file = libvirt.create_local_disk(
+                    "lvm", size="10M", vgname=self.vg_name, lvname=self.lv_backing)
+
+        backing_cmd = "qemu-img create -f qcow2 -b %s -F %s %s" % (
+            backing_file, backing_format, based_image)
+        process.run(backing_cmd, shell=True, verbose=True)
+
+        return based_image, backing_file
