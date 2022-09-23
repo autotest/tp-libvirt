@@ -124,9 +124,9 @@ class DiskBase(object):
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
         elif disk_type == 'rbd_with_auth':
-            no_secret = kwargs.get("no_secret")
-            if no_secret:
-                disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
+            no_update_dict = kwargs.get("no_update_dict")
+            if no_update_dict:
+                pass
             else:
                 mon_host, auth_username, new_image_path = \
                     self.create_rbd_disk_path(self.params)
@@ -325,10 +325,11 @@ class DiskBase(object):
             {'keyfile': ceph.create_keyring_file(client_name, auth_key)})
 
         process.run("mkdir %s" % (self.base_dir + "/c"))
-        origin_image = self.base_dir + '/c/c'
-        cmd = "qemu-img create -f qcow2 -F raw -o " \
-              "backing_file=rbd:%s:mon_host=%s %s" % (new_image_path,
-                                                      mon_host, origin_image)
+        cmd = "cd %s && qemu-img create -f qcow2 -F raw -o " \
+              "backing_file=rbd:%s:mon_host=%s %s" % (self.base_dir+"/c",
+                                                      new_image_path,
+                                                      mon_host, "c")
+        origin_image = "../c/c"
         process.run(cmd, ignore_status=False, shell=True)
 
         return origin_image
