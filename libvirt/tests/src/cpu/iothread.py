@@ -4,11 +4,11 @@ import os
 
 from avocado.utils import process
 
-from virttest import virsh
-from virttest import utils_libvirtd
-from virttest import libvirt_version
-from virttest import utils_misc
 from virttest import data_dir
+from virttest import libvirt_version
+from virttest import utils_libvirtd
+from virttest import utils_misc
+from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -44,6 +44,7 @@ def run(test, params, env):
         Update xml for test
         """
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        vm_attrs = eval(params.get("vm_attrs", "{}"))
         del vmxml.cputune
         del vmxml.iothreadids
         del vmxml.iothreads
@@ -53,7 +54,7 @@ def run(test, params, env):
         # Set iothreads first
         if iothread_ids:
             ids_xml = vm_xml.VMIothreadidsXML()
-            ids_xml.iothread = iothread_ids.split()
+            ids_xml.iothread = [{'id': id} for id in iothread_ids.split()]
             vmxml.iothreadids = ids_xml
         # Set cputune
         if any([iothreadpins, iothreadscheds, iothread_quota, iothread_period]):
@@ -82,7 +83,8 @@ def run(test, params, env):
         # Set iothread
         if iothread_num:
             vmxml.iothreads = int(iothread_num)
-
+        if vm_attrs:
+            vmxml.setup_attrs(**vm_attrs)
         logging.debug("Pre-test xml is %s", vmxml)
         if not define_error:
             vmxml.sync()
@@ -224,7 +226,7 @@ def run(test, params, env):
                                      iothreadadd, "add")
         # Check xml
         xml_info = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        if iothreadadd not in xml_info.iothreadids.iothread:
+        if {'id': iothreadadd} not in xml_info.iothreadids.iothread:
             test.fail("The iothread id {} is not added into xml"
                       .format(iothreadadd))
 
@@ -245,28 +247,43 @@ def run(test, params, env):
         if item not in xml_info.cputune.iothreadpins:
             test.fail("Unable to get {} from xml".format(item))
 
-    def exec_iothreadset():
+    def verify_thread_pool():
         """
-        Run "virsh iothreadset" and check if iothread pool values are updated
-        or not
-
-        :raise: test.fail if the result of virsh command is not as expected
+        Verify the thread pool values are updated correctly
         """
-        # The command "virsh iothreadset" needs vm in running stats
-        if not vm.is_alive():
-            vm.start()
-            vm.wait_for_login().close()
+        iothreadset_id = params.get("iothreadset_id")
+        thread_pool_min = params.get("thread_pool_min")
+        thread_pool_max = params.get("thread_pool_max")
+        opt = '--inactive' if params.get("cmd_options") == '--config' else ''
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name, options=opt)
+        iothreadid_list = vmxml.iothreadids.iothread
 
-        # Check domstats before run virsh iothreadset
-        global ORG_IOTHREAD_POOL
-        ORG_IOTHREAD_POOL = get_iothread_pool(vm_name, iothreadset_id)
-        result = virsh.iothreadset(vm_name, iothreadset_id, iothreadset_val,
-                                   debug=True, ignore_status=True)
+        iothread_found = False
+        for one_iothread in iothreadid_list:
+            if one_iothread['id'] == iothreadset_id:
+                iothread_found = True
+                if one_iothread['thread_pool_min'] != thread_pool_min:
+                    test.fail("The iothread '%s' thread_pool_min should "
+                              "be '%s', but found '%s'" % (iothreadset_id,
+                                                           thread_pool_min,
+                                                           one_iothread['thread_pool_min']))
+                if one_iothread['thread_pool_max'] != thread_pool_max:
+                    test.fail("The iothread '%s' thread_pool_max should "
+                              "be '%s', but found '%s'" % (iothreadset_id,
+                                                           thread_pool_max,
+                                                           one_iothread['thread_pool_max']))
+                break
+        if not iothread_found:
+            test.fail("The iothread id '%s' is set, but not found in vm xml "
+                      "iothread info '%s'" % (iothreadset_id, iothreadid_list))
+        else:
+            logging.debug("The iothread id '%s' is found", iothreadset_id)
+        logging.debug("Verify thread pool min & max: PASS")
 
-        libvirt.check_exit_status(result, status_error)
-        if err_msg:
-            libvirt.check_result(result, expected_fails=err_msg)
-
+    def verify_poll():
+        """
+        Verify the thread pool values are updated correctly
+        """
         # Check domstats again
         global UPDATE_IOTHREAD_POOL
         UPDATE_IOTHREAD_POOL = get_iothread_pool(vm_name, iothreadset_id)
@@ -279,6 +296,30 @@ def run(test, params, env):
             exp_pool = {re.sub('--', "iothread."+iothreadset_id+".",
                         lst[i]): lst[i + 1] for i in range(0, len(lst), 2)}
             check_iothread_pool(UPDATE_IOTHREAD_POOL, exp_pool, True)
+        logging.debug("Verify iothread poll: PASS")
+
+    def exec_iothreadset():
+        """
+        Run "virsh iothreadset" and do checking according to the parameters
+
+        """
+        test_poll = True if '--poll' in params.get('iothreadset_val') else False
+        test_thread_pool = True if '--thread-pool' in params.get('iothreadset_val') else False
+        if test_poll:
+            # Check domstats before run virsh iothreadset
+            global ORG_IOTHREAD_POOL
+            ORG_IOTHREAD_POOL = get_iothread_pool(vm_name, iothreadset_id)
+
+        result = virsh.iothreadset(vm_name, iothreadset_id, iothreadset_val,
+                                   options=cmd_options, debug=True, ignore_status=True)
+        libvirt.check_exit_status(result, status_error)
+        if err_msg:
+            libvirt.check_result(result, expected_fails=err_msg)
+
+        if test_poll:
+            verify_poll()
+        if test_thread_pool:
+            verify_thread_pool()
 
     def exec_attach_disk(vm_name, source, target, thread_id,
                          ignore_status=False):
@@ -399,6 +440,8 @@ def run(test, params, env):
             vm.wait_for_login().close()
         _exec_schedinfo(items, True)
 
+    libvirt_version.is_libvirt_feature_supported(params)
+
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
 
@@ -427,6 +470,7 @@ def run(test, params, env):
     restart_vm = "yes" == params.get("restart_vm", "no")
     start_vm = "yes" == params.get("start_vm", "no")
     test_operations = params.get("test_operations")
+    cmd_options = params.get("cmd_options", '')
 
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -502,6 +546,7 @@ def run(test, params, env):
                 if vm.is_alive():
                     vm.destroy()
                 result = virsh.start(vm_name, debug=True)
+                logging.debug("After vm is started, vm xml:\n%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
                 libvirt.check_exit_status(result, status_error)
                 if err_msg:
                     libvirt.check_result(result, expected_fails=err_msg)
