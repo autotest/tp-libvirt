@@ -2,12 +2,13 @@ import os
 import re
 import shutil
 
+from aexpect import remote
+
 from provider.migration import base_steps
 from provider.sriov import check_points
 from provider.sriov import sriov_base
 
 from virttest import data_dir
-from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
