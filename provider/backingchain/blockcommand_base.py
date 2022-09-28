@@ -5,6 +5,7 @@ import json
 
 from avocado.utils import process
 
+from virttest import utils_misc
 from virttest import data_dir
 from virttest import libvirt_storage
 from virttest import virsh
@@ -99,14 +100,20 @@ class BlockCommand(object):
                 path = snap_path
             if os.path.exists(path) and "reuse" not in option and clean_snap_file:
                 libvirt.delete_local_disk('file', path)
+            snap_name = 'snap%d' % i
             snap_option = "%s %s --diskspec %s,file=%s%s" % \
-                          ('snap%d' % i, option, self.new_dev, path, extra)
+                          (snap_name, option, self.new_dev, path, extra)
 
             virsh.snapshot_create_as(self.vm.name, snap_option,
                                      ignore_status=False,
                                      debug=True)
             self.snap_path_list.append(path)
-            self.snap_name_list.append('snap%d' % i)
+            self.snap_name_list.append(snap_name)
+
+            if not utils_misc.wait_for(
+                    lambda: snap_name in virsh.snapshot_list(
+                        self.vm.name, ignore_status=False, debug=True), 10, first=2):
+                self.test.error("%s should be in snapshot list", snap_name)
 
     def convert_expected_chain(self, expected_chain_index):
         """
