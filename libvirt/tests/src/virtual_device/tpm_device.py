@@ -4,6 +4,7 @@ import logging as log
 import time
 import platform
 import shutil
+import glob
 
 from virttest import data_dir
 from virttest import libvirt_version
@@ -621,6 +622,17 @@ def run(test, params, env):
         ret = virsh.managedsave_define(vm_name, xmlfile, '', ignore_status=True, debug=True)
         libvirt.check_exit_status(ret, status_error)
 
+    def check_swtpmpidfile(vm_name, test_stage):
+        """
+        Report error if swtpm.pid file exists at some test stage.
+
+        :param vm_name: current vm name
+        :param test_stage: test stage that checking this file
+        """
+        swtpm_pidfile = glob.glob("/run/libvirt/qemu/swtpm/*-%s-swtpm.pid" % vm_name)
+        if swtpm_pidfile:
+            test.error('swtpm.pid still exists after %s: %s' % (test_stage, swtpm_pidfile))
+
     try:
         tpm_real_v = None
         sec_uuids = []
@@ -719,6 +731,7 @@ def run(test, params, env):
                     virsh.snapshot_create_as(vm_name, "sp1 --memspec file=/tmp/testvm_sp1", **virsh_dargs)
                 elif vm_operate in ["restart", "create"]:
                     vm.destroy()
+                    check_swtpmpidfile(vm_name, "vm destroyed")
                     if vm_operate == "create":
                         virsh.undefine(vm_name, options="--nvram", **virsh_dargs)
                         if os.path.exists(swtpm_statedir):
@@ -780,6 +793,7 @@ def run(test, params, env):
                 elif vm_operate == 'managedsave':
                     virsh.managedsave(vm_name, **virsh_dargs)
                     time.sleep(5)
+                    check_swtpmpidfile(vm_name, "vm managedsaved")
                     if pcrbank_change:
                         save_modify_pcrbank(vm_name, active_pcr_banks, pcrbank_change)
                         return
@@ -855,6 +869,7 @@ def run(test, params, env):
         if vm_operate == "create":
             vm.define(vm_xml.xml)
         vm_xml_backup.sync(options="--nvram --managed-save")
+        check_swtpmpidfile(vm_name, "test finished")
         # Remove swtpm log file in case of impact on later runs
         if os.path.exists("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name):
             os.remove("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name)
