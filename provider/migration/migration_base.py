@@ -71,21 +71,25 @@ def parse_funcs(action_during_mig, test, params):
                    "function name and list are supported")
 
 
-def do_migration(vm, mig_test, src_uri, dest_uri, options, virsh_options,
-                 extra, action_during_mig, extra_args):
+def do_migration(do_mig_param):
     """
     The wrapper function to call migration
 
-    :param vm: vm object
-    :param mig_test: MigrationTest object
-    :param src_uri: source uri
-    :param dest_uri: target uri
-    :param options: migration options
-    :param virsh_options: virsh options
-    :param extra: extra options for migration
-    :param action_during_mig: list or single function to run during migration
-    :param extra_args: arguments for test
+    :param do_mig_param: do migration parameters, dict, contains vm object,
+                         MigrationTest object, source uri, target uri, migration
+                         options, virsh options, extra options for migration, list
+                         or single function to run during migration, arguments for test
     """
+    vm = do_mig_param['vm']
+    mig_test = do_mig_param['mig_test']
+    src_uri = do_mig_param['src_uri']
+    dest_uri = do_mig_param['dest_uri']
+    options = do_mig_param['options']
+    virsh_options = do_mig_param['virsh_options']
+    extra = do_mig_param['extra']
+    action_during_mig = do_mig_param['action_during_mig']
+    extra_args = do_mig_param['extra_args']
+
     logging.info("Starting migration...")
     vms = [vm]
     if not action_during_mig or isinstance(action_during_mig,
