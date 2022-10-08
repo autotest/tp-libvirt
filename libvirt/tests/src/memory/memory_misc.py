@@ -4,6 +4,7 @@ from avocado.utils import process
 
 from virttest import libvirt_version
 from virttest import test_setup
+from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -41,6 +42,64 @@ def set_hugepage(vm_mem_size):
 
     page_num = vm_mem_size // page_size
     utils_memory.set_num_huge_pages(page_num)
+
+
+def mount_hugepages(page_size):
+    """
+    To mount hugepages
+
+    :param page_size: unit is kB, it can be 4,2048,1048576,etc
+    """
+    if page_size == 4:
+        perm = ""
+    else:
+        perm = "pagesize=%dK" % page_size
+
+    tlbfs_status = utils_misc.is_mounted("hugetlbfs", "/dev/hugepages",
+                                         "hugetlbfs")
+    if tlbfs_status:
+        utils_misc.umount("hugetlbfs", "/dev/hugepages", "hugetlbfs")
+    utils_misc.mount("hugetlbfs", "/dev/hugepages", "hugetlbfs", perm)
+
+
+def setup_hugepages(page_size=2048, hp_num=1000):
+    """
+    To set up hugepages
+
+    :param page_size: unit is kB, it can be 4,2048,1048576,etc
+    :param hp_num: number of hugepage, string type
+    """
+    mount_hugepages(page_size)
+    utils_memory.set_num_huge_pages(hp_num)
+    utils_libvirtd.libvirtd_restart()
+
+
+def restore_hugepages(page_size=4):
+    """
+    To recover hugepages
+    :param page_size: unit is libvirt/tests/src/svirt/default_dac_check.pykB,
+     it can be 4,2048,1048576,etc
+    """
+    mount_hugepages(page_size)
+    utils_libvirtd.libvirtd_restart()
+
+
+def get_node_meminfo(node, key, session=None):
+    """
+    Get value from /sys/devices/system/node/node*/meminfo
+    using key
+
+    :param node: node to get meminfo from
+    :param key: filter based on the key
+    :param session: ShellSession Object of remote host / guest
+    :return: value mapped to the key of type int
+    """
+    func = process.getoutput
+    if session:
+        func = session.cmd_output
+    meminfo = func('grep %s /sys/devices/system/node/node%d/meminfo'
+                   % (key, node))
+    return int(re.search(r':\s+(\d+)', meminfo).group(1))
 
 
 def run(test, params, env):
@@ -83,7 +142,7 @@ def run(test, params, env):
         :param case: test case
         """
 
-        def _setup_memorybacking():
+        def _setup_mbxml():
             """
             Setup memoryBacking of vmxml from attrs
             """
@@ -96,7 +155,9 @@ def run(test, params, env):
         if case == 'prealloc_thread':
             vm_mem_size = vmxml.memory
             set_hugepage(vm_mem_size)
-            _setup_memorybacking()
+
+            # Setup memoryBacking of vmxml
+            _setup_mbxml()
             vmxml.sync()
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
@@ -127,7 +188,34 @@ def run(test, params, env):
                 test.cancel('Page number doesn\'t meet test requirement.')
 
             # Setup memoryBacking of vmxml from attrs
-            _setup_memorybacking()
+            _setup_mbxml()
+
+        if case == 'hp_from_2_numa_nodes':
+            if len(utils_memory.numa_nodes()) != 2:
+                test.cancel('Test requires 2 numa nodes.')
+
+            # Setup hugepage
+            pagesize = int(params.get('pagesize'))
+            pagenum = int(params.get('pagenum'))
+            setup_hugepages(pagesize, pagenum * 2)
+
+            hp_cmd = 'echo %d> /sys/devices/system/node/node%d/hugepages/' \
+                     'hugepages-%dkB/nr_hugepages'
+            for node in range(2):
+                process.run(hp_cmd % (pagenum, node, pagesize))
+
+            # Setup vmxml: Add memory device
+            mem_device = Memory()
+            mem_device_attrs = eval(params.get('mem_device_attrs'))
+            mem_device.setup_attrs(**mem_device_attrs)
+            vmxml.add_device(mem_device)
+
+            # Setup vmxml: Setup memoryBacking of vmxml from attrs
+            # and other vm attrs
+            set_vmxml(vmxml, params)
+            _setup_mbxml()
+
+            test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
     def run_test_memorybacking(case):
         """
@@ -178,7 +266,8 @@ def run(test, params, env):
             output = process.run('prlimit -p `pidof qemu-kvm`',
                                  shell=True, verbose=True).stdout_text
             if not re.search(expect_msg, output):
-                test.fail('Not found expected content "%s" in output.' % expect_msg)
+                test.fail('Not found expected content "%s" in output.' %
+                          expect_msg)
 
         if case == 'prealloc_thread':
             virsh.start(vm_name, ignore_status=False)
@@ -232,6 +321,31 @@ def run(test, params, env):
                     for page_attr in mb_attrs['hugepages']['pages']:
                         if 'nodeset' in page_attr:
                             test.fail('nodeset should be removed after vm defined.')
+        if case == 'hp_from_2_numa_nodes':
+            pagenum = int(params.get('pagenum'))
+            virsh.start(vm_name, **VIRSH_ARGS)
+
+            # Check hugepage number of /sys/devices/system/node/node*/meminfo
+            keyword = 'HugePages_Total'
+            for node in range(2):
+                node_hp_total = get_node_meminfo(node, keyword)
+                test.log.debug('%s of node %d is %d', keyword, node,
+                               node_hp_total)
+                if node_hp_total != pagenum:
+                    test.fail('Page number of node %d:%d is incorrect, '
+                              'should be %d' % (node, node_hp_total,
+                                                pagenum))
+
+            virsh.destroy(vm_name, **VIRSH_ARGS)
+
+            # Check hugepage number of virsh freepages
+            test.log.debug(virsh.freepages(options='--all').stdout_text)
+            for node in range(2):
+                free_pages = virsh.freepages(node, params.get('pagesize')
+                                             ).stdout_text.split()[-1]
+                if int(free_pages) != pagenum:
+                    test.fail('Freepage number of node %d:%s is incorrect, '
+                              'should be %d' % (node, free_pages, pagenum))
 
     def cleanup_test_memorybacking(case):
         """
@@ -245,6 +359,8 @@ def run(test, params, env):
                 pagesize = int(params.get('pagesize'))
                 hp_cfg = test_setup.HugePageConfig(params)
                 hp_cfg.set_kernel_hugepages(pagesize, params['page_num_bk'])
+        if case == 'hp_from_2_numa_nodes':
+            restore_hugepages()
 
     def run_test_edit_mem(case):
         """
