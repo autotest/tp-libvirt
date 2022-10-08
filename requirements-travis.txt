@@ -7,3 +7,4 @@ simplejson==3.8.1
 inspektor==0.5.2
 pylint==2.11.1
 pyenchant
+importlib-metadata==4.13.0; python_version == '3.7'
