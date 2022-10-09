@@ -1,4 +1,5 @@
 import re
+import math
 import os.path
 import logging as log
 
@@ -210,15 +211,17 @@ def run(test, params, env):
 
             # check cgroup cpu_time > sum of cpu_time
             if end_num >= 0:
-                logging.debug("Check sum of cgroup cpu_time %d >= cpu_time %d",
+                # usage_percpu reports the CPU time in nanoseconds
+                sum_cgtime = sum_cgtime/1000000000
+                logging.debug("Check sum of cgroup cpu_time %0.9f >= cpu_time %0.9f",
                               sum_cgtime, sum_cputime)
-                if sum_cputime > sum_cgtime:
+                if not (math.isclose(sum_cgtime, sum_cputime) or sum_cgtime > sum_cputime):
                     test.fail("Check sum of cgroup cpu_time < sum "
                               "of output cpu_time")
 
             # check Total cpu_time >= sum of cpu_time when no options
             if get_noopt:
-                logging.debug("Check total time %d >= sum of output cpu_time"
-                              " %d", total_time, sum_cputime)
-                if total_time < sum_cputime:
+                logging.debug("Check total time %0.9f >= sum of output cpu_time"
+                              " %0.9f", total_time, sum_cputime)
+                if not (math.isclose(total_time, sum_cputime) or total_time > sum_cputime):
                     test.fail("total time < sum of output cpu_time")
