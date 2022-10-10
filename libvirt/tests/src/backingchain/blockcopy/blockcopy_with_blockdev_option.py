@@ -65,7 +65,7 @@ def run(test, params, env):
         bkxml.sync()
         disk_obj.cleanup_block_disk_preparation(disk_obj.vg_name, lv_name+"1")
 
-        process.run("rm -f %s" % ("/dev/%s" % disk_obj.vg_name))
+        process.run("rm -rf %s" % ("/dev/%s" % disk_obj.vg_name))
         process.run("rm -f %s" % file_snap_path)
 
     def _do_snap(lvm_list):
