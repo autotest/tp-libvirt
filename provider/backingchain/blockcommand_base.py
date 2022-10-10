@@ -110,10 +110,8 @@ class BlockCommand(object):
             self.snap_path_list.append(path)
             self.snap_name_list.append(snap_name)
 
-            if not utils_misc.wait_for(
-                    lambda: snap_name in virsh.snapshot_list(
-                        self.vm.name, ignore_status=False, debug=True), 10, first=2):
-                self.test.error("%s should be in snapshot list", snap_name)
+            if not utils_misc.wait_for(lambda: os.path.exists(path), 10, first=2):
+                self.test.error("%s should be in snapshot list" % snap_name)
 
     def convert_expected_chain(self, expected_chain_index):
         """
