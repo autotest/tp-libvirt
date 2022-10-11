@@ -229,7 +229,7 @@ def run(test, params, env):
                         private_key_encrypt_passphrase=private_key_encrypt_passphrase, secret_uuid=secret_uuid)
         nbd.start_nbd_server()
         utils_misc.wait_for(
-            lambda: process.system('pgrep qemu-nbd', ignore_status=True, shell=True) == 0, 10)
+            lambda: process.system('netstat -nlp | grep %s ' % nbd_server_port, ignore_status=True, shell=True) == 0, 10)
         # Prepare disk source xml
         source_attrs_dict = {"protocol": "nbd", "tls": "%s" % tls_bit}
         if export_name:
