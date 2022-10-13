@@ -6,11 +6,14 @@ import time
 from avocado.utils import process
 from avocado.utils.software_manager.backends import rpm
 
+from virttest import element_tree
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.interface import Interface
+from virttest.libvirt_xml.devices import iommu
 from virttest.utils_test import libvirt
 
 
@@ -53,6 +56,7 @@ def run(test, params, env):
     new_network_name = params.get("net_name")
     expect_error = "yes" == params.get("status_error", "no")
     expect_err_msg = params.get("expect_err_msg")
+    case = params.get('case', '')
 
     iface_driver = params.get("iface_driver")
     iface_driver_host = params.get("iface_driver_host")
@@ -91,6 +95,7 @@ def run(test, params, env):
     rules = eval(params.get("rules", "{}"))
     del_mac = "yes" == params.get("del_mac", "no")
     del_coalesce = 'yes' == params.get('del_coalesce', 'no')
+    del_bandwidth = 'yes' == params.get('del_bandwidth', 'no')
     direct_net = 'yes' == params.get('direct_net', 'no')
     direct_mode = params.get("direct_mode", "bridge")
 
@@ -121,6 +126,13 @@ def run(test, params, env):
             logging.debug('Network xml before update:\n%s', netxml)
             if del_net_bandwidth:
                 netxml.del_element('/bandwidth')
+                netxml.sync()
+            if case == 'update_portgroup':
+                net_dict = {k[9:]: eval(
+                    params[k]) for k in params
+                    if k.startswith('net_attr_')}
+                logging.debug('New net attributes: %s', net_dict)
+                netxml.setup_attrs(**net_dict)
                 netxml.sync()
             logging.debug('Network xml after prepare:\n%s', netxml)
 
@@ -158,13 +170,15 @@ def run(test, params, env):
         for update_item_aft in update_list_aft:
             if names["new_iface_"+update_item_aft]:
                 iface_dict_aft.update({update_item_aft: names["new_iface_"+update_item_aft]})
-        logging.info("iface_dict_bef is %s, iface_dict_aft is %s",
-                     iface_dict_bef, iface_dict_aft)
 
-        del_list = ["del_addr", "del_rom", "del_filter", "del_mac", "del_coalesce"]
+        del_list = ["del_addr", "del_rom", "del_filter", "del_mac",
+                    "del_coalesce", "del_bandwidth"]
         for del_item in del_list:
             if names[del_item]:
                 iface_dict_aft.update({del_item: names[del_item]})
+
+        logging.info("iface_dict_bef is %s, iface_dict_aft is %s",
+                     iface_dict_bef, iface_dict_aft)
 
         # Operations before updating vm's iface xml
         if iface_boot:
@@ -180,6 +194,24 @@ def run(test, params, env):
             logging.debug('Will set boot order %s to device %s',
                           disk_boot, target_dev)
             vmxml.set_boot_order_by_target_dev(target_dev, disk_boot)
+            vmxml.sync()
+
+        if case == 'update_driver_iommu_ast':
+            # Update vmxml features
+            vm_feature_append = eval(params.get('vm_feature_append'))
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            features = vmxml.features
+            for fea in vm_feature_append:
+                setattr(features, fea, vm_feature_append[fea])
+            logging.info('Update vmxml features.')
+            vmxml.features = features
+
+            # Add Iommu device
+            logging.info('Add IOMMU device.')
+            iommu_device = iommu.Iommu()
+            iommu_attrs = eval(params.get('iommu_attrs', '{}'))
+            iommu_device.setup_attrs(**iommu_attrs)
+            vmxml.add_device(iommu_device)
             vmxml.sync()
 
         # Update vm interface with items in iface_dict_bef and start it
@@ -240,6 +272,9 @@ def run(test, params, env):
                             test.fail("Get value is not equal to expect")
             vmxml_aft = vm_xml.VMXML.new_from_dumpxml(vm_name)
             iface_aft = list(vmxml_aft.get_iface_all().values())[0]
+            iface_inst = Interface()
+            iface_inst.xml = element_tree.tostring(iface_aft)
+            logging.debug('Interface after update:\n%s', iface_inst)
             if new_iface_link:
                 iface_link_value = iface_aft.find('link').get('state')
                 if iface_link_value == new_iface_link:
@@ -311,6 +346,18 @@ def run(test, params, env):
                     logging.info('coalesce delete check PASS.')
                 else:
                     test.fail('coalesce not deleted.')
+            if case == 'update_portgroup':
+                logging.debug(iface_inst.fetch_attrs())
+                net_pgs = eval(params['net_attr_portgroups'])
+                logging.debug(net_pgs)
+                cur_pg = net_pgs[0] if net_pgs[0]['name'] == 'engineering' \
+                    else net_pgs[1]
+                iface_bw = iface_inst.fetch_attrs()['bandwidth']
+
+                if iface_bw['outbound'] != cur_pg['bandwidth_outbound'] \
+                        or iface_bw['inbound'] != cur_pg['bandwidth_inbound']:
+                    test.fail('Bandwidth of iface(%s) is incorrect. '
+                              'Should be %s' % (iface_bw, cur_pg))
 
     finally:
         vmxml_backup.sync()
