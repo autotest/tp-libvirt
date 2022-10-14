@@ -75,6 +75,8 @@ def run(test, params, env):
             vmxml = vmxml.new_from_dumpxml(vm_ref)
             vmxml.undefine()
 
+        logging.debug('Current vmxml: %s', virsh.dumpxml(vm_name).stdout_text)
+
         # do the start operation
         try:
             if pre_operation == "remote":
