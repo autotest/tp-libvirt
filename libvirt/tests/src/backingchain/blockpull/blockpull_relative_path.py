@@ -5,6 +5,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 
 from provider.backingchain import blockcommand_base
@@ -32,7 +33,12 @@ def run(test, params, env):
         test.log.info("TEST_SETUP1: Prepare relative path and new disk.")
         test_obj.new_image_path, _ = disk_obj.prepare_relative_path(disk_type)
 
-        disk_dict, kwargs = get_disk_param()
+        disk_dict, sec_dict, kwargs = get_disk_param()
+        if disk_type == 'rbd_with_auth':
+            libvirt_secret.clean_up_secrets()
+            sec_uuid = libvirt_secret.create_secret(sec_dict=sec_dict)
+            virsh.secret_set_value(sec_uuid, auth_key, debug=True)
+
         disk_obj.add_vm_disk(disk_type, disk_dict,
                              new_image_path=test_obj.new_image_path, **kwargs)
 
@@ -74,7 +80,8 @@ def run(test, params, env):
             pvt.cleanup_pool(**params)
             process.run("rm -rf %s" % pool_target)
 
-        if disk_type == 'rbd_with_auth_disk':
+        if disk_type == 'rbd_with_auth':
+            libvirt_secret.clean_up_secrets()
             process.run("rm -f %s" % params.get("keyfile"))
             cmd = ("rbd -m {0} info {1} && rbd -m {0} rm {1}".format(
                 mon_host, rbd_source_name))
@@ -96,6 +103,7 @@ def run(test, params, env):
 
         :return disk_dict and **kwargs
         """
+        sec_dict = eval(params.get("sec_dict", "{}"))
         kwargs = {}
         if disk_type == "rbd_with_auth":
             kwargs.update({'no_update_dict': True})
@@ -106,7 +114,7 @@ def run(test, params, env):
         else:
             disk_dict = eval(params.get("disk_dict", "{}"))
 
-        return disk_dict, kwargs
+        return disk_dict, sec_dict, kwargs
 
     def do_several_blockpull():
         """
@@ -124,6 +132,7 @@ def run(test, params, env):
     expected_chain_index = params.get('expected_chain')
     virsh_opt = params.get('virsh_opt')
     pool_target = params.get('pool_target')
+    auth_key = params.get('auth_key')
 
     test_scenario = params.get('test_scenario')
     pull_times = int(params.get('pull_times'))
