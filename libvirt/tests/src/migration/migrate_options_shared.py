@@ -1430,7 +1430,7 @@ def run(test, params, env):
             for elem in local_vmxml.devices.by_device_tag('channel'):
                 logging.debug("Found channel device {}".format(elem))
                 if elem.type_name == channel_type_name:
-                    host_source = elem.source.get('path')
+                    host_source = elem.sources[0].attrs.get('path')
                     logging.debug("Remote guest uses {} for channel device".format(host_source))
                     break
             remote_virsh_session.close_session()
