@@ -202,7 +202,7 @@ def make_memory_spread(test, vm, session, memory_to_eat, memhog_rt):
     """
     def run_memhog(test, session, test_memory, memhog_rt):
         try:
-            session.cmd('memhog -r1 {}k'.format(test_memory), timeout=120)
+            session.cmd('memhog -r1 {}k'.format(test_memory), timeout=1200)
         except Exception as err:
             memhog_rt["err"] = str(err)
     # Start consuming memory
