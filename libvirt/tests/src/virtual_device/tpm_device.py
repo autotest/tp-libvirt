@@ -630,7 +630,8 @@ def run(test, params, env):
         :param test_stage: test stage that checking this file
         """
         swtpm_pidfile = glob.glob("/run/libvirt/qemu/swtpm/*-%s-swtpm.pid" % vm_name)
-        if swtpm_pidfile:
+        # since bz2111301, only report error from libvirt-8.7.0.
+        if swtpm_pidfile and libvirt_version.version_compare(8, 7, 0):
             test.error('swtpm.pid still exists after %s: %s' % (test_stage, swtpm_pidfile))
 
     try:
