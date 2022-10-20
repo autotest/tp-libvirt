@@ -41,7 +41,7 @@ def prepare_boot_xml(vmxml, params):
     logging.debug("Set boot loader common attributes")
     dict_os_attrs.update({"bootmenu_enable": bootmenu_enable})
     dict_os_attrs.update({"bootmenu_timeout": bootmenu_timeout})
-    if loader:
+    if boot_type == "seabios" or (boot_type == "ovmf" and not libvirt_version.version_compare(8, 5, 0)):
         dict_os_attrs.update({"loader": loader})
         dict_os_attrs.update({"loader_type": loader_type})
         dict_os_attrs.update({"loader_readonly": readonly})
@@ -49,7 +49,7 @@ def prepare_boot_xml(vmxml, params):
         dict_os_attrs.update({"smbios_mode": smbios_mode})
 
     # Set Uefi special attributes
-    if boot_type == "ovmf":
+    if boot_type == "ovmf" and not libvirt_version.version_compare(8, 5, 0):
         logging.debug("Set Uefi special attributes")
         nvram = params.get("nvram", "")
         nvram_template = params.get("template", "")
