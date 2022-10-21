@@ -326,8 +326,11 @@ class DiskBase(object):
         new_image_path = self.params.get("image_path")
         auth_key = self.params.get("auth_key")
         client_name = self.params.get("client_name")
+
+        self.params.update({'configfile': ceph.create_config_file(mon_host)})
         self.params.update(
             {'keyfile': ceph.create_keyring_file(client_name, auth_key)})
+        LOG.debug('Create ceph key file and config file')
 
         process.run("mkdir %s" % (self.base_dir + "/c"))
         cmd = "cd %s && qemu-img create -f qcow2 -F raw -o " \

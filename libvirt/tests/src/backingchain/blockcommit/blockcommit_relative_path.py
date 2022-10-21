@@ -104,6 +104,7 @@ def run(test, params, env):
 
         if disk_type == 'rbd_with_auth':
             libvirt_secret.clean_up_secrets()
+            process.run("rm -f %s" % params.get("configfile"))
             process.run("rm -f %s" % params.get("keyfile"))
             cmd = ("rbd -m {0} info {1} && rbd -m {0} rm {1}".format(
                 mon_host, rbd_source_name))
