@@ -377,7 +377,7 @@ def run(test, params, env):
                     virsh.domblkthreshold(vm_name, 'vdb', '100M')
                     session = dom.wait_for_login()
                     session.cmd("mkfs.ext4 /dev/vdb && mount /dev/vdb /mnt && ls /mnt && "
-                                "dd if=/dev/urandom of=/mnt/bigfile bs=1M count=300 && sync")
+                                "dd if=/dev/urandom of=/mnt/bigfile bs=1M count=300 && sync", timeout=90)
                     time.sleep(5)
                     session.close()
                     expected_events_list.append("'block-threshold' for %s:"
