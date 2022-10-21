@@ -115,7 +115,7 @@ def run(test, params, env):
         check whether the guests has been shut down concurrently
         on host shutdown.
         """
-        pattern = r".+ libvirt-guests.sh.*: Starting shutdown on guest: .+"
+        pattern = r".+ libvirt-guests.sh.*: .*tarting shutdown on guest: .+"
         shut_start_line_nums = []
         for line_num, line in enumerate(output.splitlines()):
             if re.search(pattern, line):
@@ -123,7 +123,7 @@ def run(test, params, env):
         logging.debug("the line_numbers contains shutdown messages is: %s ",
                       shut_start_line_nums)
 
-        pattern = r".+ libvirt-guests.sh.*: Shutdown of guest.+complete"
+        pattern = r".+ libvirt-guests.sh.*: .*hutdown of guest.+complete"
         for line_num, line in enumerate(output.splitlines()):
             if re.search(pattern, line):
                 shut_complete_first_line = line_num
@@ -155,7 +155,7 @@ def run(test, params, env):
             if status_error == "no":
                 if on_shutdown == "shutdown":
                     expect_msg[dom.name] = ("libvirt-guests.sh.*: "
-                                            "Shutdown of guest %s "
+                                            ".*hutdown of guest %s "
                                             "complete" % dom.name)
                 else:
                     expect_msg[dom.name] = ("libvirt-guests.sh.*: "
@@ -165,7 +165,7 @@ def run(test, params, env):
                 # Now the negative tests are only about ON_SHUTDOWN=shutdown.
                 if on_shutdown == "shutdown":
                     expect_msg[dom.name] = ("libvirt-guests.sh.*: "
-                                            "Shutdown of guest %s "
+                                            ".*hutdown of guest %s "
                                             "failed to complete in "
                                             "time" % dom.name)
         return expect_msg
