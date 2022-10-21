@@ -354,6 +354,12 @@ def run(test, params, env):
             options += "  --diskspec  %s,snapshot=external,file=%s" % (block_target, disk_external)
             virsh.snapshot_create_as(vm_name, options,
                                      ignore_status=False, debug=True)
+
+            if not utils_misc.wait_for(
+                    lambda: libvirt.check_blockjob(vm_name, block_target,
+                                                   "none"), 30, first=3):
+                test.fail("There should be no current block job")
+
             virsh.blockcommit(vm_name, block_target,
                               " --active --pivot ", ignore_status=False, debug=True)
             virsh.snapshot_delete(vm_name, tmp_snapshot_name, " --metadata")
