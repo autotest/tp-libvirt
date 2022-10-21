@@ -12,6 +12,7 @@ from virttest import utils_misc
 from virttest import cpu
 from virttest import utils_test
 
+from virttest.utils_libvirt import libvirt_numa
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -104,7 +105,9 @@ def mem_compare(test, used_node, left_node, memory_status):
     for i in left_node:
         left_node_mem_total += int(memory_status[i])
     if left_node_mem_total > used_mem_total:
-        test.fail("nodes memory usage not expected.")
+        test.fail("nodes memory usage not expected. The left node "
+                  "memory '%s' should be smaller or equal to the used "
+                  "node memory '%s'" % (left_node_mem_total, used_mem_total))
 
 
 def verify_numa_for_auto_replacement(test, params, vmxml, node_list, qemu_cpu, vm, memory_status):
@@ -169,8 +172,10 @@ def run(test, params, env):
     # Get host numa node list
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes_withmem
+    online_node_list = host_numa_node.online_nodes
 
-    logging.debug("host node list is %s", " ".join(map(str, node_list)))
+    logging.debug("The host node list with memory is %s", " ".join(map(str, node_list)))
+    logging.debug("The host online node list is %s", " ".join(map(str, online_node_list)))
 
     # Prepare numatune memory parameter dict
     mem_tuple = ('memory_mode', 'memory_placement', 'memory_nodeset')
@@ -208,6 +213,10 @@ def run(test, params, env):
         dynamic_parameters = params.get('can_be_dynamic', 'no') == 'yes'
 
         if numa_memory.get('nodeset'):
+            numa_nodeset_format = numa_memory.get('nodeset')
+            numa_memory['nodeset'] = libvirt_numa.parse_numa_nodeset_to_str(numa_nodeset_format,
+                                                                            node_list,
+                                                                            ignore_error=True)
             used_node = cpu.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
             if not status_error:
@@ -315,8 +324,8 @@ def run(test, params, env):
             # convert it into sequence number so that it can be used
             # in mem_compare
             if numa_memory.get('mode') == 'strict':
-                left_node = [node_list.index(i) for i in node_list if i not in used_node]
-                used_node = [node_list.index(i) for i in used_node]
+                left_node = [online_node_list.index(i) for i in node_list if i not in used_node]
+                used_node = [online_node_list.index(i) for i in used_node]
                 mem_compare(test, used_node, left_node, memory_status=memory_status)
             elif numa_memory.get('mode') == 'preferred':
                 mode_nodeset = 'prefer:' + numa_memory.get('nodeset')
