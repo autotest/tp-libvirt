@@ -5,7 +5,9 @@ import signal                                        # pylint: disable=W0611
 import time
 
 from avocado.core import exceptions
+from avocado.utils import process
 
+from virttest import remote
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
@@ -275,13 +277,18 @@ def check_qemu_mem_lock_hard_limit(params):
     """
     Check qemu process memlock hard limit
 
-    :param params: dict, get expected hard limit
+    :param params: dict, get expected hard limit and comapred hard limit
     :raise: test fail if hard limit is not expected
     """
     expect_hard_limit = params.get("expect_hard_limit")
+    compared_hard_limit = params.get("compared_hard_limit")
     output = libvirt_memory.get_qemu_process_memlock_hard_limit()
-    if int(output) != int(expect_hard_limit) * 1024:
-        raise exceptions.TestFail("'%s' is not matched expect hard limit '%s'" % (output, expect_hard_limit))
+    if expect_hard_limit:
+        if int(output) != int(expect_hard_limit) * 1024:
+            raise exceptions.TestFail("'%s' is not matched expect hard limit '%s'" % (output, expect_hard_limit))
+    if compared_hard_limit:
+        if int(output) == int(compared_hard_limit) * 1024:
+            raise exceptions.TestFail("'%s' is matched hard limit '%s'" % (output, compared_hard_limit))
 
 
 def check_auto_converge_during_mig(params):
@@ -402,3 +409,20 @@ def check_vm_status_during_mig(params):
     for uri in [dest_uri, src_uri]:
         if not libvirt.check_vm_state(vm_name, vm_status_during_mig, uri=uri):
             raise exceptions.TestFail("VM status is not '%s' during migration on %s." % (vm_status_during_mig, uri))
+
+
+def kill_libvirt_daemon(params):
+    """
+    Kill src/dst libvirt daemon
+
+    :param params: dict, get kill_daemon
+    """
+    kill_daemon = params.get("kill_daemon")
+
+    daemon_name = kill_daemon.split("_")[2]
+    service_name = utils_libvirtd.Libvirtd(daemon_name).service_name
+    cmd = "kill -9 `pidof %s`" % service_name
+    if kill_daemon.split("_")[1] == "dest":
+        remote.run_remote_cmd(cmd, params, ignore_status=False)
+    else:
+        process.run(cmd, shell=True, ignore_status=False)
