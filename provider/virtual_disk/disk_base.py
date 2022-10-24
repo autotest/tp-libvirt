@@ -226,7 +226,7 @@ class DiskBase(object):
         """
         device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
         lv_utils.vg_create(vg_name, device_name)
-        size = kwargs.get("size", "50M")
+        size = kwargs.get("size", "200M")
         if kwargs.get("size"):
             kwargs.pop("size")
         path = libvirt.create_local_disk("lvm", size=size, vgname=vg_name,
