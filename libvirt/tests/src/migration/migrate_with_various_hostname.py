@@ -194,10 +194,10 @@ def run(test, params, env):
         vm.wait_for_login()
 
         # Execute migration process
-        migration_base.do_migration(vm, migration_test, None, dest_uri,
-                                    options, virsh_options, extra,
-                                    None,
-                                    extra_args)
+        do_mig_param = {"vm": vm, "mig_test": migration_test, "src_uri": None, "dest_uri": dest_uri,
+                        "options": options, "virsh_options": virsh_options, "extra": extra,
+                        "action_during_mig": None, "extra_args": extra_args}
+        migration_base.do_migration(do_mig_param)
 
         func_returns = dict(migration_test.func_ret)
         migration_test.func_ret.clear()
@@ -212,10 +212,10 @@ def run(test, params, env):
             if params.get("virsh_migrate_extra_mig_again"):
                 extra = params.get("virsh_migrate_extra_mig_again")
 
-            migration_base.do_migration(vm, migration_test, None, dest_uri,
-                                        options, virsh_options,
-                                        extra, None,
-                                        extra_args)
+            do_mig_param = {"vm": vm, "mig_test": migration_test, "src_uri": None, "dest_uri": dest_uri,
+                            "options": options, "virsh_options": virsh_options, "extra": extra,
+                            "action_during_mig": None, "extra_args": extra_args}
+            migration_base.do_migration(do_mig_param)
         if int(migration_test.ret.exit_status) == 0:
             migration_test.post_migration_check([vm], params, dest_uri=dest_uri, src_uri=bk_uri)
     finally:
