@@ -2,10 +2,12 @@ import re
 import os
 import logging as log
 import json
+import shutil
 
 from avocado.utils import distro
 from avocado.utils import process
 
+from virttest import data_dir
 from virttest import virsh
 from virttest import remote
 from virttest import utils_config
@@ -170,7 +172,56 @@ def change_libvirtconf_on_client(params_to_change_dict):
     return config
 
 
+def change_ssh_conf_on_client(filepath, hostname):
+    """
+    Create a ssh config file for at the filepath specified.
+
+    :param filepath: String, File location to copy the config to
+    :param hostname: String, hostname of the host in config
+    """
+    with open(filepath, "w") as ssh_config_file:
+        data = (f"Host {hostname}\n"
+                "KexAlgorithms            +diffie-hellman-group14-sha1\n"
+                "MACs                     +hmac-sha1\n"
+                "HostKeyAlgorithms        +ssh-rsa\n"
+                "PubkeyAcceptedKeyTypes   +ssh-rsa\n"
+                "PubkeyAcceptedAlgorithms +ssh-rsa\n")
+        ssh_config_file.write(data)
+
+
+def change_openssl_conf_on_client(filepath):
+    """
+    Create a Open SSL config file for at the filepath specified.
+
+    :param filepath: String, File location to copy the config to
+    """
+    with open(filepath, "x") as openssl_config_file:
+        data = (".include /etc/ssl/openssl.cnf\n"
+                "[openssl_init]\n"
+                "alg_section = evp_properties\n"
+                "[evp_properties]\n"
+                "rh-allow-sha1-signatures = yes\n")
+        openssl_config_file.write(data)
+
+
+def create_file_backup(filepath):
+    """
+    Create a backup file next to the original specified in filepath.
+
+    :param filepath: String, path to the file that should be backed up
+    :returns backup_path: String, path to the backup that was created
+    """
+    backup_path = filepath + ".bkp"
+    shutil.copy(filepath, backup_path)
+    return backup_path
+
+
 def restore_libvirtconf_on_client(config):
+    """
+    Change libvirt configuration to the one specified in config argument.
+
+    :param config: The configuration to restore to
+    """
     customize_libvirt_config({}, is_recover=True, config_type="libvirt",
                              config_object=config)
 
@@ -270,6 +321,10 @@ def run(test, params, env):
     auth_unix_rw = test_dict.get("auth_unix_rw")
     kinit_pwd = test_dict.get("kinit_pwd")
     test_alias = test_dict.get("test_alias")
+    ssh_config_path = test_dict.get("ssh_config_path")
+    openssl_config_name = test_dict.get("openssl_config_name")
+    if openssl_config_name:
+        openssl_config_path = os.path.join(data_dir.get_tmp_dir(), openssl_config_name)
 
     libvirt_version.is_libvirt_feature_supported(params)
 
@@ -304,6 +359,16 @@ def run(test, params, env):
         # https://libguestfs.org/virt-v2v-input-xen.1.html#ssh-authentication
         crypto_policies = process.run("update-crypto-policies --set LEGACY",
                                       ignore_status=False)
+
+    # Another bug check below
+    if driver == "xen":
+        if ssh_config_path:
+            if os.path.exists(ssh_config_path):
+                ssh_config_backup_path = create_file_backup(ssh_config_path)
+            change_ssh_conf_on_client(ssh_config_path, uri_path)
+        if openssl_config_path:
+            change_openssl_conf_on_client(openssl_config_path)
+            test_dict["extra_env"] = f"OPENSSL_CONF={openssl_config_path}"
 
     # only simply connect libvirt daemon then return
     if no_any_config == "yes":
@@ -595,3 +660,13 @@ def run(test, params, env):
 
         if polkit_pkla and os.path.isfile(polkit_pkla):
             os.unlink(polkit_pkla)
+
+        if ssh_config_path:
+            os.remove(ssh_config_path)
+
+        if ssh_config_backup_path:
+            shutil.copy(ssh_config_backup_path, ssh_config_path)
+            os.remove(ssh_config_backup_path)
+
+        if openssl_config_path:
+            os.remove(openssl_config_path)
