@@ -40,6 +40,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    shell = params.get('shell', 'no') == 'yes'
     implementation_change_ver = params_get(params, 'implementation_change_ver')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
@@ -852,6 +853,10 @@ def run(test, params, env):
                         fd.write(luks_password)
             v2v_params['v2v_opts'] += ' ' + keys_options
 
+        if 'cve_2022_2211' in checkpoint:
+            luks_keys = params_get(params, 'luks_keys', '').split(':')[-1]
+            v2v_params['v2v_opts'] += ' ' + "$(seq -f '--key /dev/sda%%g:key:%s' 200)" % luks_keys
+
         if 'empty_cdrom' in checkpoint:
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
@@ -871,7 +876,7 @@ def run(test, params, env):
                 cmd_only = True
                 auto_clean = False
             v2v_result = utils_v2v.v2v_cmd(
-                v2v_params, auto_clean, cmd_only, interaction_run)
+                v2v_params, auto_clean, cmd_only, interaction_run, shell=shell)
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
 
