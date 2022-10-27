@@ -8,9 +8,9 @@ from virttest import data_dir
 from virttest import virsh
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml.devices.disk import Disk
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_secret
 
 LOG = logging.getLogger('avocado.' + __name__)
@@ -141,7 +141,7 @@ class DiskBase(object):
                              "secret_usage": "cephlibvirt",
                              "secret_type": "ceph"}}})
 
-        disk_xml = self.set_disk_xml(disk_dict)
+        disk_xml = libvirt_vmxml.create_vm_device_by_type("disk", disk_dict)
         libvirt.add_vm_device(vmxml, disk_xml)
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
@@ -259,19 +259,6 @@ class DiskBase(object):
         virsh.secret_set_value(sec_uuid, auth_key, debug=True)
 
         return mon_host, auth_username, new_image_path
-
-    @staticmethod
-    def set_disk_xml(disk_dict):
-        """
-        Set vm disk xml by disk dict.
-
-        :params disk_dict: dict to get disk xml
-        :return: disk xml
-        """
-        new_disk = Disk()
-        new_disk.setup_attrs(**disk_dict)
-
-        return new_disk
 
     def prepare_relative_path(self, disk_type, **kwargs):
         """
