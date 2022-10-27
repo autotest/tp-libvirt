@@ -57,6 +57,32 @@ def format_user_group_str(user, group):
     return label_str
 
 
+def set_tpm_perms(swtpm_lib):
+    """
+    Set swtpm_user/swtpm_group in qemu conf and swtpm_lib permission
+    if dynamic_ownership is disabled
+
+    :param swtpm_lib: the dir of swtpm lib
+    """
+    cmd = "getfacl -pR %s > /tmp/permis.facl" % swtpm_lib
+    process.run(cmd, ignore_status=True, shell=True)
+    cmd = "chmod -R 777 %s" % swtpm_lib
+    process.run(cmd, ignore_status=False, shell=True)
+
+
+def format_user_group_id(vm_sec_label):
+    """
+    Transfer "user:group" str to integer user_id, integer group_id
+
+    :param vm_sec_label: seclabel for the vm
+    """
+    label = vm_sec_label.split(":")
+    user_info = format_user_group_str(label[0], label[1])
+    user_id = int(user_info.split(":")[0])
+    group_id = int(user_info.split(":")[1])
+    return user_id, group_id
+
+
 def run(test, params, env):
     """
     Test DAC setting in both domain xml and qemu.conf.
@@ -70,6 +96,7 @@ def run(test, params, env):
     # Get general variables.
     status_error = ('yes' == params.get("status_error", 'no'))
     host_sestatus = params.get("host_selinux", "enforcing")
+    swtpm_lib = params.get('swtpm_lib')
     # Get variables about seclabel for VM.
     sec_type = params.get("vm_sec_type", "dynamic")
     vm_sec_model = params.get("vm_sec_model", "dac")
@@ -123,8 +150,17 @@ def run(test, params, env):
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
-        if set_qemu_conf:
+        if set_qemu_conf or sec_type == 'static':
             # Set qemu.conf for user and group
+            if sec_type == 'static':
+                if vmxml.devices.by_device_tag('tpm') is not None:
+                    user_id, group_id = format_user_group_id(vm_sec_label)
+                    if user_id != 107 or group_id != 107:
+                        qemu_conf.swtpm_user = user_id
+                        qemu_conf.swtpm_group = group_id
+                        set_tpm_perms(swtpm_lib)
+                qemu_conf.dynamic_ownership = 1
+                dynamic_ownership = True
             if qemu_user:
                 qemu_conf.user = qemu_user
             if qemu_group:
@@ -133,6 +169,9 @@ def run(test, params, env):
                 qemu_conf.dynamic_ownership = 1
             else:
                 qemu_conf.dynamic_ownership = 0
+            if not dynamic_ownership or not sec_label:
+                if vmxml.devices.by_device_tag('tpm') is not None:
+                    set_tpm_perms(swtpm_lib)
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
             libvirtd.restart()
             st = os.stat(qemu_sock_path)
@@ -216,3 +255,8 @@ def run(test, params, env):
         elif disk_src_protocol == 'netfs':
             utlv.setup_or_cleanup_nfs(is_setup=False,
                                       restore_selinux=backup_sestatus)
+        if vmxml.devices.by_device_tag('tpm') is not None:
+            if os.path.isfile('/tmp/permis.facl'):
+                cmd = "setfacl --restore=/tmp/permis.facl"
+                process.run(cmd, ignore_status=True, shell=True)
+                os.unlink('/tmp/permis.facl')
