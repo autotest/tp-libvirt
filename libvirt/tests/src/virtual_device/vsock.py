@@ -271,7 +271,9 @@ def run(test, params, env):
                     vm.name, vsock_dev.alias['name'], ignore_status=False,
                     debug=True, wait_for_event=True, event_timeout=20)
             else:
-                result = virsh.detach_device(vm_name, vsock_dev.xml, debug=True)
+                result = virsh.detach_device(
+                    vm_name, vsock_dev.xml, debug=True,
+                    wait_for_event=True, event_timeout=20)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
             utils_misc.wait_for(_detach_completed, timeout=20)
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
