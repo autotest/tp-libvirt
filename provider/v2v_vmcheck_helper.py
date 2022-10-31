@@ -635,6 +635,11 @@ class VMChecker(object):
             err_msg = "Checking firmware='efi' existing failed"
             self.log_err(err_msg)
 
+        LOG.info("Checking CPU topology existing in VM XML")
+        if not root.findall("./cpu/topology"):
+            err_msg = "Checking CPU topology existing failed"
+            self.log_err(err_msg)
+
         if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
             self.check_xml('./devices/vsock')
 
