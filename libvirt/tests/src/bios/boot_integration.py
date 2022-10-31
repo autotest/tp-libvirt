@@ -54,7 +54,7 @@ def prepare_boot_xml(vmxml, params):
         nvram = params.get("nvram", "")
         nvram_template = params.get("template", "")
         dict_os_attrs.update({"nvram": nvram})
-        dict_os_attrs.update({"nvram_template": nvram_template})
+        dict_os_attrs.update({"nvram_attrs": {"template": nvram_template}})
 
     # Set Seabios special attributes
     if boot_type == "seabios":
