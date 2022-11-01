@@ -324,6 +324,7 @@ def run(test, params, env):
     ssh_config_path = test_dict.get("ssh_config_path")
     openssl_config_name = test_dict.get("openssl_config_name")
     ssh_config_backup_path = None
+    openssl_config_path = None
     if openssl_config_name:
         openssl_config_path = os.path.join(data_dir.get_tmp_dir(), openssl_config_name)
 
