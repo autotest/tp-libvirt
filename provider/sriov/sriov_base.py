@@ -372,9 +372,6 @@ class SRIOVTest(object):
         """
         iommu_dict = dargs.get('iommu_dict', {})
         test_scenario = dargs.get('test_scenario', '')
-        br_dict = dargs.get('br_dict', "{'source': {'bridge': 'br0'}}")
-        brg_dict = {'pf_name': self.pf_name,
-                    'bridge_name': br_dict['source']['bridge']}
         dev_type = dargs.get("dev_type", "interface")
 
         self.setup_default(**dargs)
@@ -383,6 +380,9 @@ class SRIOVTest(object):
             libvirt_virtio.add_iommu_dev(self.vm, iommu_dict)
 
         if test_scenario == "failover":
+            br_dict = dargs.get('br_dict', "{'source': {'bridge': 'br0'}}")
+            brg_dict = {'pf_name': self.pf_name,
+                        'bridge_name': br_dict['source']['bridge']}
             self.test.log.info("TEST_SETUP: Create host bridge.")
             utils_sriov.add_or_del_connection(brg_dict)
             self.test.log.info("TEST_SETUP: Add bridge interface.")
@@ -397,10 +397,11 @@ class SRIOVTest(object):
         :param dargs: Other test keywords
         """
         test_scenario = dargs.get('test_scenario', '')
-        br_dict = dargs.get('br_dict', "{'source': {'bridge': 'br0'}}")
-        brg_dict = {'pf_name': self.pf_name,
-                    'bridge_name': br_dict['source']['bridge']}
+
         self.teardown_default(**dargs)
         if test_scenario == 'failover':
+            br_dict = dargs.get('br_dict', "{'source': {'bridge': 'br0'}}")
+            brg_dict = {'pf_name': self.pf_name,
+                        'bridge_name': br_dict['source']['bridge']}
             self.test.log.info("TEST_TEARDOWN: Remove host bridge.")
             utils_sriov.add_or_del_connection(brg_dict, is_del=True)
