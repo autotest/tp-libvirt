@@ -218,6 +218,9 @@ def run(test, params, env):
             if cancel_migration:
                 action_during_mig = None
             extra_args["status_error"] = "no"
+            if params.get("virsh_migrate_extra_mig_again"):
+                extra = params.get("virsh_migrate_extra_mig_again")
+                extra = "{} {}".format(extra, copy_storage_option)
             migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                         options, thread_timeout=1200,
                                         ignore_status=True,
