@@ -321,12 +321,15 @@ def run(test, params, env):
     auth_unix_rw = test_dict.get("auth_unix_rw")
     kinit_pwd = test_dict.get("kinit_pwd")
     test_alias = test_dict.get("test_alias")
-    ssh_config_path = test_dict.get("ssh_config_path")
-    openssl_config_name = test_dict.get("openssl_config_name")
+    ssh_config_path = None
     ssh_config_backup_path = None
     openssl_config_path = None
-    if openssl_config_name:
-        openssl_config_path = os.path.join(data_dir.get_tmp_dir(), openssl_config_name)
+
+    if libvirt_version.version_compare(8, 5, 0):
+        ssh_config_path = test_dict.get("ssh_config_path")
+        openssl_config_name = test_dict.get("openssl_config_name")
+        if openssl_config_name:
+            openssl_config_path = os.path.join(data_dir.get_tmp_dir(), openssl_config_name)
 
     libvirt_version.is_libvirt_feature_supported(params)
 
@@ -364,13 +367,14 @@ def run(test, params, env):
 
     # Another bug check below
     if driver == "xen":
-        if ssh_config_path:
-            if os.path.exists(ssh_config_path):
-                ssh_config_backup_path = create_file_backup(ssh_config_path)
-            change_ssh_conf_on_client(ssh_config_path, uri_path)
-        if openssl_config_path:
-            change_openssl_conf_on_client(openssl_config_path)
-            test_dict["extra_env"] = f"OPENSSL_CONF={openssl_config_path}"
+        if libvirt_version.version_compare(8, 5, 0):
+            if ssh_config_path:
+                if os.path.exists(ssh_config_path):
+                    ssh_config_backup_path = create_file_backup(ssh_config_path)
+                change_ssh_conf_on_client(ssh_config_path, uri_path)
+            if openssl_config_path:
+                change_openssl_conf_on_client(openssl_config_path)
+                test_dict["extra_env"] = f"OPENSSL_CONF={openssl_config_path}"
 
     # only simply connect libvirt daemon then return
     if no_any_config == "yes":
