@@ -85,6 +85,9 @@ class MigrationBase(object):
         extra_args = self.migration_test.update_virsh_migrate_extra_args(self.params)
         postcopy_options = self.params.get("postcopy_options")
         postcopy_options_during_mig = self.params.get("postcopy_options_during_mig")
+        do_migration_during_mig = "yes" == self.params.get("do_migration_during_mig", "no")
+        initiating_bandwidth = self.params.get("initiating_bandwidth")
+        second_bandwidth = self.params.get("second_bandwidth")
 
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
@@ -96,13 +99,16 @@ class MigrationBase(object):
                             vm_xml.VMXML.new_from_dumpxml(vm_name))
 
         if action_during_mig:
-            do_migration_during_mig = "yes" == self.params.get("do_migration_during_mig", "no")
             if do_migration_during_mig:
                 action_list = eval(action_during_mig)
                 for index in range(len(action_list)):
                     if action_list[index]['func'] == 'do_migration':
                         if postcopy_options_during_mig:
-                            extra_during_mig = "%s %s" % (extra, postcopy_options_during_mig)
+                            if second_bandwidth:
+                                temp = self.params.get("postcopy_options").replace("--postcopy-bandwidth %s" % initiating_bandwidth, "--postcopy-bandwidth %s" % second_bandwidth)
+                                extra_during_mig = "%s %s %s" % (self.params.get("virsh_migrate_extra"), temp, postcopy_options_during_mig)
+                            else:
+                                extra_during_mig = "%s %s" % (extra, postcopy_options_during_mig)
                         else:
                             extra_during_mig = extra
                         action_during_mig = migration_base.parse_funcs(action_during_mig,
@@ -114,9 +120,16 @@ class MigrationBase(object):
                             err_msg_during_mig = self.params.get("err_msg_during_mig")
                             if err_msg_during_mig:
                                 extra_args_during_mig.update({'err_msg': err_msg_during_mig})
-                        action_params_during_mig = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
-                                                    "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
-                                                    "extra": extra_during_mig, "action_during_mig": None, "extra_args": extra_args_during_mig}
+                        action_during_do_mig = self.params.get("action_during_do_mig")
+                        if action_during_do_mig:
+                            action_during_do_mig = migration_base.parse_funcs(action_during_do_mig, self.test, self.params)
+                            action_params_during_mig = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
+                                                        "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
+                                                        "extra": extra_during_mig, "action_during_mig": action_during_do_mig, "extra_args": extra_args_during_mig}
+                        else:
+                            action_params_during_mig = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
+                                                        "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
+                                                        "extra": extra_during_mig, "action_during_mig": None, "extra_args": extra_args_during_mig}
                         action_during_mig[index].update({'func_param': action_params_during_mig})
                         break
             else:
@@ -150,14 +163,16 @@ class MigrationBase(object):
         err_msg_again = self.params.get("err_msg_again")
         extra = self.params.get("virsh_migrate_extra")
         extra_args = self.migration_test.update_virsh_migrate_extra_args(self.params)
+        postcopy_resume_migration = "yes" == self.params.get("postcopy_resume_migration", "no")
         postcopy_options = self.params.get("postcopy_options")
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
 
-        if not self.vm.is_alive():
-            self.vm.connect_uri = self.src_uri
-            self.vm.start()
-        self.vm.wait_for_login().close()
+        if not postcopy_resume_migration:
+            if not self.vm.is_alive():
+                self.vm.connect_uri = self.src_uri
+                self.vm.start()
+            self.vm.wait_for_login().close()
         action_during_mig = migration_base.parse_funcs(self.params.get('action_during_mig_again'),
                                                        self.test, self.params)
         extra_args['status_error'] = self.params.get("migrate_again_status_error", "no")
@@ -357,3 +372,30 @@ class MigrationBase(object):
         else:
             firewall_cmd.remove_port(port, 'tcp', permanent=True)
         remote_session.close()
+
+
+def setup_network_data_transport(params):
+    """
+    Setup for network data transport
+
+    """
+    network_data_transport = params.get("network_data_transport")
+    extra = params.get("virsh_migrate_extra")
+
+    if network_data_transport and network_data_transport == "tls":
+        extra = "--tls %s" % extra
+        params.update({"virsh_migrate_extra": extra})
+
+
+def recreate_conn_objs(params):
+    """
+    Recreate conn object
+
+    :param params: dict, get migration object and transport type
+    """
+    transport_type = params.get("transport_type")
+    migration_obj = params.get("migration_obj")
+
+    migration_base.cleanup_conn_obj(migration_obj.conn_list, migration_obj.test)
+    migration_obj.conn_list.append(migration_base.setup_conn_obj(transport_type, params, migration_obj.test))
+    time.sleep(3)

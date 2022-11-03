@@ -5,9 +5,7 @@ import signal                                        # pylint: disable=W0611
 import time
 
 from avocado.core import exceptions
-from avocado.utils import process
 
-from virttest import remote
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
@@ -16,7 +14,9 @@ from virttest import utils_conn
 from virttest.libvirt_xml import vm_xml
 from virttest.migration import MigrationTest
 from virttest.utils_libvirt import libvirt_memory
+from virttest.utils_libvirt import libvirt_monitor
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
+from virttest.utils_libvirt import libvirt_service   # pylint: disable=W0611
 from virttest.utils_test import libvirt_domjobinfo   # pylint: disable=W0611
 from virttest.utils_test import libvirt
 
@@ -65,6 +65,7 @@ def parse_funcs(action_during_mig, test, params):
                              'after_event': one_action.get('after_event'),
                              'before_event': one_action.get('before_event'),
                              'before_pause': one_action.get('before_pause'),
+                             'need_sleep_time': one_action.get('need_sleep_time'),
                              'func_param': func_param})
             action_during_mig.append(act_dict)
         return action_during_mig
@@ -91,6 +92,15 @@ def do_migration(do_mig_param):
     extra = do_mig_param['extra']
     action_during_mig = do_mig_param['action_during_mig']
     extra_args = do_mig_param['extra_args']
+    vm_name = None
+
+    if "--dname" in extra:
+        if action_during_mig:
+            for i in range(len(action_during_mig)):
+                if action_during_mig[i]['func_param']:
+                    vm_name = action_during_mig[i]['func_param'].get('main_vm')
+                    break
+            vm.name = vm_name
 
     logging.info("Starting migration...")
     vms = [vm]
@@ -229,14 +239,35 @@ def check_event_output(params, test, virsh_session=None, remote_virsh_session=No
         check_output(target_output, eval(expected_event_target), test)
 
 
-def poweroff_src_vm(params):
+def poweroff_vm(params):
     """
-    Poweroff guest on source host
+    Poweroff guest on source or destination host
 
-    :param params: dict, get vm session
+    :param params: dict, get vm session or migration object
     """
-    vm_session = params.get("vm_session")
-    vm_session.cmd("poweroff", ignore_all_errors=True)
+    poweroff_vm_dest = "yes" == params.get("poweroff_vm_dest", "no")
+    migration_obj = params.get("migration_obj")
+    test_case = params.get('test_case', '')
+
+    if poweroff_vm_dest:
+        dest_uri = params.get("virsh_migrate_desturi")
+        if test_case == "poweroff_vm":
+            time.sleep(90)
+        backup_uri, migration_obj.vm.connect_uri = migration_obj.vm.connect_uri, dest_uri
+        migration_obj.vm.cleanup_serial_console()
+        migration_obj.vm.create_serial_console()
+        remote_vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
+        remote_vm_session.cmd("poweroff", ignore_all_errors=True)
+        remote_vm_session.close()
+        migration_obj.vm.cleanup_serial_console()
+        migration_obj.vm.connect_uri = backup_uri
+        vm_state_src = params.get("virsh_migrate_src_state", "shut off")
+        if not libvirt.check_vm_state(migration_obj.vm.name, vm_state_src, uri=migration_obj.src_uri):
+            raise exceptions.TestFail("Migrated VM failed to be in %s state at source" % vm_state_src)
+    else:
+        vm_session = params.get("vm_session")
+        vm_session.cmd("poweroff", ignore_all_errors=True)
+        vm_session.close()
 
 
 def set_migrate_speed_to_high(params):
@@ -263,11 +294,14 @@ def execute_statistics_command(params):
     disk_type = params.get("loop_disk_type")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-    disks = vmxml.get_disk_all_by_expr('type==%s' % disk_type, 'device==disk')
+    if disk_type:
+        disks = vmxml.get_disk_all_by_expr('type==%s' % disk_type, 'device==disk')
+    else:
+        disks = vmxml.get_disk_all_by_expr('device==disk')
     logging.debug("disks: %s", disks)
     debug_kargs = {'ignore_status': False, 'debug': True}
     for disk in list(disks.values()):
-        disk_source = disk.find('source').get('dev')
+        disk_source = disk.find('source').get('file')
         disk_target = disk.find('target').get('dev')
         logging.debug("disk_source: %s", disk_source)
         logging.debug("disk_target: %s", disk_target)
@@ -415,18 +449,175 @@ def check_vm_status_during_mig(params):
             raise exceptions.TestFail("VM status is not '%s' during migration on %s." % (vm_status_during_mig, uri))
 
 
-def kill_libvirt_daemon(params):
+def check_vm_state(params):
     """
-    Kill src/dst libvirt daemon
+    Check vm state
 
-    :param params: dict, get kill_daemon
+    :param params: dict, get vm name, dest uri, source uri, expected vm state
+                   on dest, expected vm state on source and options
     """
-    kill_daemon = params.get("kill_daemon")
-
-    daemon_name = kill_daemon.split("_")[2]
-    service_name = utils_libvirtd.Libvirtd(daemon_name).service_name
-    cmd = "kill -9 `pidof %s`" % service_name
-    if kill_daemon.split("_")[1] == "dest":
-        remote.run_remote_cmd(cmd, params, ignore_status=False)
+    vm_name = params.get("migrate_main_vm")
+    dest_uri = "qemu+ssh://%s/system" % params.get("server_ip")
+    src_uri = params.get("virsh_migrate_connect_uri")
+    expected_dest_state = params.get("expected_dest_state")
+    expected_src_state = params.get("expected_src_state")
+    migration_options = params.get("migration_options")
+    if migration_options == "dname":
+        dname_value = params.get("dname_value")
+        if not libvirt.check_vm_state(dname_value, expected_dest_state, uri=dest_uri):
+            raise exceptions.TestFail("Migrated VM failed to be in %s "
+                                      "state at destination" % expected_dest_state)
     else:
-        process.run(cmd, shell=True, ignore_status=False)
+        if expected_dest_state:
+            if not libvirt.check_vm_state(vm_name, expected_dest_state, uri=dest_uri):
+                raise exceptions.TestFail("Migrated VM failed to be in %s "
+                                          "state at destination" % expected_dest_state)
+            logging.debug("Guest state is '%s' at destination is as expected", expected_dest_state)
+        if expected_src_state:
+            if not libvirt.check_vm_state(vm_name, expected_src_state, uri=src_uri):
+                raise exceptions.TestFail("Migrated VMs failed to be in %s "
+                                          "state at source" % expected_src_state)
+            logging.debug("Guest state is '%s' at source is as expected", expected_src_state)
+
+
+def do_common_check(params):
+    """
+    Do some common check during migration
+
+    :param params: dict, test parameters
+    """
+    migration_options = params.get("migration_options")
+    second_bandwidth = params.get("second_bandwidth")
+    migration_obj = params.get("migration_obj")
+
+    if migration_options == "migrateuri":
+        libvirt_network.check_established(params)
+    if migration_options == "postcopy_bandwidth" and second_bandwidth:
+        libvirt_domjobinfo.check_domjobinfo(migration_obj.vm, params)
+
+    # check job info when migration is in paused status
+    expected_list = {"Job type": "Unbounded", "Operation": "Outgoing migration"}
+    libvirt_monitor.check_domjobinfo(params, expected_list)
+
+    # check domain state with reason
+    check_vm_state(params)
+
+    # check statistic commands on source host
+    execute_statistics_command(params)
+
+
+def clear_pmsocat(params):
+    """
+    Clear pmsocat to break proxy
+
+    :param params: dict, get vm name, migration object, dest uri and source uri
+    """
+    migration_obj = params.get("migration_obj")
+
+    migration_obj.conn_list[0].clear_pmsocat()
+
+
+def resume_migration_again(params):
+    """
+    Resume migration again
+
+    :param params: dict, get migration object and transport type
+    """
+    migration_obj = params.get("migration_obj")
+    virsh_options = params.get("virsh_options", "")
+    options = params.get("virsh_migrate_options", "--live --verbose")
+    dest_uri = params.get("virsh_migrate_desturi")
+    extra = params.get("virsh_migrate_extra")
+    postcopy_options = params.get("postcopy_options")
+    postcopy_options_during_mig = params.get("postcopy_options_during_mig")
+    status_error_during_mig_twice = params.get("status_error_during_mig_twice", "no")
+    extra_args_twice_during_mig = migration_obj.migration_test.update_virsh_migrate_extra_args(params)
+
+    if status_error_during_mig_twice:
+        extra_args_twice_during_mig.update({'status_error': status_error_during_mig_twice})
+
+    if postcopy_options_during_mig:
+        extra_twice_during_mig = "%s %s %s" % (extra, postcopy_options, postcopy_options_during_mig)
+    else:
+        extra_twice_during_mig = "%s %s" % (extra, postcopy_options)
+
+    do_mig_param = {"vm": migration_obj.vm, "mig_test": migration_obj.migration_test, "src_uri": None,
+                    "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
+                    "extra": extra_twice_during_mig, "action_during_mig": None, "extra_args": extra_args_twice_during_mig}
+    do_migration(do_mig_param)
+
+
+def check_event_before_unattended(params):
+    """
+    Check event before unattended migration
+
+    :param params: dict, get make_unattended
+    """
+    make_unattended = params.get("make_unattended")
+    expected_event_src = params.get("expected_event_src")
+    expected_event_target = params.get("expected_event_target")
+    migration_obj = params.get("migration_obj")
+    virsh_session = params.get("virsh_session")
+    remote_virsh_session = params.get("remote_virsh_session")
+    remote_ip = params.get("migrate_dest_host")
+
+    time.sleep(5)
+    if make_unattended == "kill_dest_virtqemud":
+        if remote_virsh_session:
+            expected_event = {"expected_event_target": expected_event_target}
+            check_event_output(expected_event, migration_obj.test, remote_virsh_session=remote_virsh_session)
+    else:
+        if virsh_session:
+            src_output = virsh_session.get_stripped_output()
+            logging.debug("src event: %s", src_output)
+            check_output(src_output, eval(expected_event_src), migration_obj.test)
+
+
+def wait_for_unattended_mig(params):
+    """
+    Make migration becomes unattended migration
+
+    :param params: dict, get make_unattended
+    """
+    make_unattended = params.get("make_unattended")
+    expected_event_src = params.get("expected_event_src")
+    expected_event_src_2 = params.get("expected_event_src_2")
+    expected_event_target = params.get("expected_event_target")
+    expected_event_target_2 = params.get("expected_event_target_2")
+    migration_obj = params.get("migration_obj")
+    virsh_session = params.get("virsh_session")
+    remote_virsh_session = params.get("remote_virsh_session")
+    remote_ip = params.get("migrate_dest_host")
+
+    src_event = "Stopped Migrated"
+    dest_event = "Resumed Migrated"
+    if make_unattended == "kill_dest_virtqemud":
+        time.sleep(3)
+        _, dest_session = monitor_event({"expected_event_target": dest_event, "migrate_dest_host": remote_ip})
+    if make_unattended != "kill_dest_virtqemud":
+        src_session, _ = monitor_event({"expected_event_src": src_event})
+
+    i = 0
+    while i < 100:
+        if make_unattended != "kill_dest_virtqemud":
+            src_output = src_session.get_stripped_output()
+        else:
+            src_output = virsh_session.get_stripped_output()
+        if src_event in src_output:
+            break
+        else:
+            logging.debug("waitting for migration ...")
+            time.sleep(5)
+            i = i + 1
+    logging.debug("Source event: %s", src_output)
+    if make_unattended == "kill_dest_virtqemud":
+        if expected_event_src:
+            check_output(src_output, eval(expected_event_src), migration_obj.test)
+        if expected_event_target_2:
+            dest_output = dest_session.get_stripped_output()
+            check_output(dest_output, eval(expected_event_target_2), migration_obj.test)
+    if expected_event_src_2:
+        check_output(src_output, eval(expected_event_src_2), migration_obj.test)
+    if remote_virsh_session and expected_event_target:
+        dest_output = remote_virsh_session.get_stripped_output()
+        check_output(dest_output, eval(expected_event_target), migration_obj.test)
