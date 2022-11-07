@@ -16,14 +16,14 @@ from virttest import libvirt_version
 logging = log.getLogger('avocado.' + __name__)
 
 
-def check_audit_log(test, audit_log_search_string):
+def check_audit_log(test, audit_log_search_string, start_date, start_time):
     """
     Run ausearch and look for audit_log_search_string.
 
     :param test: Test object for utility functions
     :param audit_log_search_string: String describing ausearch criteria
     """
-    cmd = f"ausearch  -m {audit_log_search_string}"
+    cmd = f"ausearch -m {audit_log_search_string} --start {start_date} {start_time}"
     cmd_result = process.run(cmd, shell=True, ignore_status=True)
     if cmd_result.exit_status == 0:
         test.fail(f"Unexpectedly found '{audit_log_search_string}'"
@@ -45,6 +45,8 @@ def run(test, params, env):
     vm_ref = params.get("vm_ref", "vm1")
     opt = params.get("vs_opt", "")
     audit_log_search_string = params.get("audit_log_search_string")
+    start_date = process.run("date +%x", ignore_status=True, shell=True).stdout_text.strip()
+    start_time = process.run("date +%H:%M:%S", ignore_status=True, shell=True).stdout_text.strip()
     service_mgr = service.ServiceManager()
 
     # Backup for recovery.
@@ -172,7 +174,7 @@ def run(test, params, env):
                               "but it is restored from a"
                               " managedsave.")
             elif audit_log_search_string:
-                check_audit_log(test, audit_log_search_string)
+                check_audit_log(test, audit_log_search_string, start_date, start_time)
             else:
                 if status_error == "no" and not vm.is_alive() and pre_operation != "remote":
                     test.fail("VM was started but it is not alive.")
