@@ -229,6 +229,7 @@ domfsthaw
 domfstrim
 domid
 domif
+domifaddr
 domiflist
 domifstat
 domiftune
