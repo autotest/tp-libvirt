@@ -8,6 +8,7 @@ import logging as log
 from string import ascii_lowercase
 import itertools
 import platform
+import time
 import aexpect
 
 from six import iteritems
@@ -367,6 +368,7 @@ class AttachDeviceBase(TestDeviceBase):
         if (cmdresult.exit_status == 0):
             if (cmdresult.stdout.strip().count('attached successfully') or
                     cmdresult.stderr.strip().count('attached successfully')):
+                time.sleep(3)
                 return True
         else:
             # See analyze_negative_results - expects return of true
