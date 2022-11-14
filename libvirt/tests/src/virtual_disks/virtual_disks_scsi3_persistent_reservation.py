@@ -10,6 +10,7 @@ from avocado.utils import service
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
+from virttest import utils_misc
 
 from virttest.utils_test import libvirt
 
@@ -244,10 +245,9 @@ def run(test, params, env):
                 result = virsh.attach_device(vm_name, disk_xml.xml,
                                              ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
-            new_parts = get_delta_parts(vm, old_parts)
-            if len(new_parts) != 1:
-                logging.error("Expected 1 dev added but has %s" % len(new_parts))
-            new_part = new_parts[0]
+            if not utils_misc.wait_for(lambda: len(get_delta_parts(vm, old_parts)) == 1, timeout=5):
+                test.fail("Expected 1 dev added but has %s" % len(get_delta_parts(vm, old_parts)))
+            new_part = get_delta_parts(vm, old_parts)[0]
             check_pr_cmds(vm, new_part)
             result = virsh.detach_device(vm_name, disk_xml.xml,
                                          ignore_status=True, debug=True, wait_for_event=True)
