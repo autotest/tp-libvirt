@@ -6,7 +6,7 @@ import logging as log
 import platform
 import locale
 
-from aexpect import ShellError
+from aexpect import ShellError, ShellSession
 
 from avocado.utils import process
 
@@ -181,6 +181,20 @@ def run(test, params, env):
                                                                    chap_user=chap_user,
                                                                    chap_passwd=chap_passwd,
                                                                    portal_ip=disk_src_host)
+
+        # setup_or_cleanup_iscsi will restart iscsid, and need ensure iscsid is
+        # active before any further operation
+        def _verify_iscsid_alive():
+            """
+            Verify whether iscsid status is active, return bool value
+            """
+            host_session = ShellSession("sh")
+            return utils_misc.get_guest_service_status(
+                host_session, 'iscsid') == 'active'
+
+        # Allow time to enable iscsid alive after restart
+        utils_misc.wait_for(_verify_iscsid_alive, 40)
+
         # Create iscsi pool
         if disk_type == "volume":
             # Create an iscsi pool xml to create it
