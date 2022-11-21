@@ -256,6 +256,8 @@ class BlockCommand(object):
         vmxml.devices = vmxml.devices.append(new_disk)
         vmxml.xmltreefile.write()
         vmxml.sync()
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
+        self.test.log.debug("Current vm xml is :%s", vmxml)
 
     @staticmethod
     def clean_file(file_path):
