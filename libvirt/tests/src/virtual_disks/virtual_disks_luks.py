@@ -292,12 +292,18 @@ def run(test, params, env):
                         disk_auth_dict = {"auth_user": chap_user,
                                           "secret_type": auth_sec_usage_type,
                                           "secret_usage": auth_sec_usage_target}
+                    device_source = "iscsi://{}%{}@{}:{}/{}/{}".format(chap_user,
+                                                                       chap_passwd,
+                                                                       iscsi_host,
+                                                                       iscsi_port,
+                                                                       iscsi_target,
+                                                                       lun_num)
                 else:
                     iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(
                         is_setup=True, is_login=False, image_size=storage_size,
                         portal_ip=iscsi_host)
-                device_source = "iscsi://%s:%s/%s/%s" % (iscsi_host, iscsi_port,
-                                                         iscsi_target, lun_num)
+                    device_source = "iscsi://%s:%s/%s/%s" % (iscsi_host, iscsi_port,
+                                                             iscsi_target, lun_num)
                 disk_src_dict = {"attrs": {"protocol": "iscsi",
                                            "name": "%s/%s" % (iscsi_target, lun_num)},
                                  "hosts": [{"name": iscsi_host, "port": iscsi_port}]}

@@ -56,19 +56,21 @@ def run(test, params, env):
         encoding = locale.getpreferredencoding()
         secret_string = base64.b64encode(chap_passwd.encode(encoding)).decode(encoding)
 
-        device_source = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                       is_login=True,
-                                                       image_size=emulated_size,
-                                                       chap_user=chap_user,
-                                                       chap_passwd=chap_passwd,
-                                                       portal_ip="127.0.0.1")
+        iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                               is_login=False,
+                                                               image_size=emulated_size,
+                                                               chap_user=chap_user,
+                                                               chap_passwd=chap_passwd,
+                                                               portal_ip="127.0.0.1")
 
         auth_sec_uuid = libvirt_ceph_utils._create_secret(auth_sec_usage_type, secret_string)
         disk_auth_dict = {"auth_user": chap_user,
                           "secret_type": auth_sec_usage_type,
                           "secret_uuid": auth_sec_uuid}
 
-        disk_src_dict = {'attrs': {'dev': device_source}}
+        disk_src_dict = {"attrs": {"protocol": "iscsi",
+                                   "name": "%s/%s" % (iscsi_target, lun_num)},
+                         "hosts": [{"name": "127.0.0.1", "port": "3260"}]}
         iscsi_disk = libvirt_disk.create_primitive_disk_xml(
             type_name, disk_device,
             device_target, device_bus,
