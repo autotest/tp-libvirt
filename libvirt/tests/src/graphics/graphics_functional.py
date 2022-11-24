@@ -730,6 +730,9 @@ def get_fail_pattern(params, expected_result):
         if net_type and net_type not in ['nat', 'route']:
             if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips if isinstance(ip, utils_net.IPAddress)]):
                 fail_patts.append(r'Cannot assign requested address')
+        fail_pattern = params.get('fail_pattern')
+        if fail_pattern:
+            fail_patts.append(fail_pattern)
 
     expected_result['fail_patts'] = fail_patts
 
