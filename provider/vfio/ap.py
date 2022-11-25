@@ -43,6 +43,20 @@ def create_autostart_mediated_device(domain_info, session=None):
     :param session: If given run the commands in the VM session
     :return uuid: The mediated device' UUID
     """
+    return create_mediated_device(domain_info, session=session, start="-a")
+
+
+def create_mediated_device(domain_info, session=None, start="-m"):
+    """
+    Creates the full persistent device configuration, using mdevctl,
+    sets its start method and starts it.
+
+    :param domain_info: The crypto domain identifier as listed by lszcrypt
+                        CARD.DOMAIN e.g. 02.002b
+    :param session: If given run the commands in the VM session
+    :param start: device' start method: "-m": manual, "-a" autostart
+    :return uuid: The mediated device' UUID
+    """
     card_domain = domain_info.split(".")
 
     card_domain_10 = [int(x, 16) for x in card_domain]
@@ -56,7 +70,7 @@ def create_autostart_mediated_device(domain_info, session=None):
     uuid = str(uuid4())
     card_domain_16 = ["0x%s" % x for x in card_domain]
     cmds = ["mdevctl define -p matrix -t vfio_ap-passthrough -u %s" % uuid,
-            "mdevctl modify -u %s -a" % uuid,
+            "mdevctl modify -u %s %s" % (uuid, start),
             ("mdevctl modify -u %s"
              " --addattr assign_adapter --value %s" % (uuid, card_domain_16[0])),
             ("mdevctl modify -u %s"
@@ -67,3 +81,18 @@ def create_autostart_mediated_device(domain_info, session=None):
         if err:
             raise TestError("Couldn't configure mediated device: %s" % out)
     return uuid
+
+
+def set_crypto_device_refresh_interval(session=None, interval=5):
+    """
+    Set the crypto device refresh interval
+
+    :param session: If not None, the command will be executed in a guest
+    :param interval: Interval in seconds for refreshing the crypto device info
+    """
+
+    cmd = "chzcrypt -c %s" % interval
+    err, out = cmd_status_output(cmd, shell=True, session=session)
+    if err:
+        raise TestError("Couldn't set crypto refresh interval: %s" % out)
+    return
