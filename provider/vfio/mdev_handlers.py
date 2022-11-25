@@ -191,6 +191,22 @@ class ApMdevHandler(MdevHandler):
 
         return get_first_mdev_nodedev_name()
 
+    def create_blank_nodedev(self):
+        """
+        Creates a mediated device for vfio_ap but doesn't assign
+        anything to the matrix yet.
+        """
+
+        load_vfio_ap()
+        self.vfio_ap_loaded = True
+        info = CryptoDeviceInfoBuilder.get()
+        LOG.debug("Host lszcrypt got %s", info)
+
+        self.devices = info.domains
+        self.mask_helper = APMaskHelper.from_infos(self.devices)
+
+        self.matrix_dev = MatrixDevice()
+
     def get_target_address(self):
         """
         Returns a valid target device address
