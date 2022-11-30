@@ -5,6 +5,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_test
 from virttest.staging import utils_memory
+from virttest import libvirt_version
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -79,11 +80,10 @@ def run(test, params, env):
         status_error = params.get("status_error")
         if status_error == "yes":
             if status == 0:
-                if libvirtd == "off":
-                    utils_libvirtd.libvirtd_start()
-                    test.fail("Command 'virsh nodememstats' "
-                              "succeeded with libvirtd service"
-                              " stopped, incorrect")
+                if libvirtd == "off" and \
+                   libvirt_version.version_compare(5, 6, 0):
+                    logging.info("From libvirt version 5.6.0 libvirtd is "
+                                 "restarted and command should succeed")
                 else:
                     test.fail("Command 'virsh nodememstats %s' "
                               "succeeded (incorrect command)"
