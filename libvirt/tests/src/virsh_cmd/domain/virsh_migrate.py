@@ -1133,6 +1133,8 @@ def run(test, params, env):
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
             if (not options.count("dname") and not extra.count("dname")):
+                if vm.serial_console is None:
+                    vm.create_serial_console()
                 # Check VM uptime after migrating to destination
                 migrated_vm_uptime = vm.uptime(connect_uri=dest_uri)
                 logging.info("Check VM uptime in destination after "
