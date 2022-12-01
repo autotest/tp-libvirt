@@ -51,8 +51,11 @@ def run(test, params, env):
         """
         Attach hostdev type interface to a guest and detach it.
         """
-        if start_vm and not vm.is_alive():
-            vm.start()
+        if start_vm:
+            if not vm.is_alive():
+                vm.start()
+            vm.cleanup_serial_console()
+            vm.create_serial_console()
             vm_session = vm.wait_for_serial_login(timeout=240)
 
         mac_addr = utils_net.generate_mac_address_simple()
@@ -73,7 +76,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP3: Check VM xml after attaching a host device.")
         check_vm_xml(vm, params, iface_dict)
 
-        if 'vm_session' in locals():
+        if 'vm_session' in locals() and not flagstr.count('config'):
             check_points.check_vm_network_accessed(vm_session)
 
         test.log.info("TEST_STEP4: Detach the hostdev interface.")
