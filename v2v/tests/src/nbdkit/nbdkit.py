@@ -196,6 +196,7 @@ def get_size(h):
 def pread(h, count, offset):
     raise RuntimeError("pread")
     """
+
         python_file_path = os.path.join(data_dir.get_tmp_dir(), "python_check.py")
         with open(python_file_path, "w") as f:
             f.write(lines)
@@ -203,6 +204,54 @@ def pread(h, count, offset):
         cmd_result = process.run(cmd, shell=True, ignore_status=True)
         if not re.search('config: error: Traceback', cmd_result.stderr_text):
             test.fail('failed to test enhance_python_error')
+
+    def test_checkwrite_filter():
+        lines = """
+#!/bin/bash -
+
+set -e
+
+rm -f /tmp/sock
+
+nbdkit --exit-with-parent -U /tmp/sock sh - --filter=checkwrite <<'EOF' &
+case "$1" in
+  get_size) echo 1048576 ;;
+  pread) dd if=/dev/zero count=$3 iflag=count_bytes ;;
+  can_extents) exit 0 ;;
+  extents)
+    echo 0 262144 3
+    echo 262144 131072 0
+    echo 393216 655360 3
+  ;;
+  *) exit 2 ;;
+esac
+EOF
+
+sleep 1
+
+nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
+        """
+
+        file_path = data_dir.get_tmp_dir()
+        shell_file_path = os.path.join(file_path, "bound.sh")
+        with open(shell_file_path, "w") as f:
+            f.write(lines)
+        cmd = "cd %s; chmod +x %s; ./bound.sh" % (file_path, shell_file_path)
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        if re.search('core dumped', cmd_result.stderr_text):
+            test.fail('failed to test checkwrite filter')
+
+    def test_blocksize_policy_filter():
+        cmd_1 = "nbdkit --filter=blocksize-policy memory 1G blocksize-preferred=32K blocksize-maximum=40K " \
+                "blocksize-minimum=4K blocksize-error-policy=allow"
+        cmd_2 = "nbdinfo nbd://localhost"
+        cmd_1_result = process.run(cmd_1, shell=True, ignore_status=True)
+        if re.search('error', cmd_1_result.stderr_text):
+            test.fail('failed to execute nbdkit command with blocksize-policy filter')
+        cmd_2_result = process.run(cmd_2, shell=True, ignore_status=True)
+        for data in ['block_size_minimum: 4096', 'block_size_preferred: 32768', 'block_size_maximum: 40960']:
+            if not re.search(data, cmd_2_result.stdout_text):
+                test.fail('failed to test blocksize policy filter')
 
     if version_required and not multiple_versions_compare(
             version_required):
@@ -220,5 +269,9 @@ def pread(h, count, offset):
         test_cve_2019_14850()
     elif checkpoint == 'enhance_python_error':
         test_python_error()
+    elif checkpoint == 'checkwrite':
+        test_checkwrite_filter()
+    elif checkpoint == 'blocksize_policy':
+        test_blocksize_policy_filter()
     else:
         test.error('Not found testcase: %s' % checkpoint)
