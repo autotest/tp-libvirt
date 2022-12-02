@@ -2,7 +2,7 @@ from virttest import ssh_key
 from virttest import virsh
 from virttest import utils_libvirtd
 import logging
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

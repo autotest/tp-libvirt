@@ -229,6 +229,7 @@ domfsthaw
 domfstrim
 domid
 domif
+domifaddr
 domiflist
 domifstat
 domiftune
@@ -1022,6 +1023,7 @@ umask
 umount
 umounted
 un
+unassign
 unbridge
 Unbridge
 Unclassifed

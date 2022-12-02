@@ -108,6 +108,17 @@ def attach_disk(vm_name, target, path):
     virsh.attach_disk(vm_name, path, target, source_info, ignore_status=False)
 
 
+def detach_disk(vm_name, target):
+    """
+    Detaches the target disk
+
+    :param vm_name: VM name
+    :param target: //target@dev, e.g. 'vdb'
+    """
+
+    virsh.detach_disk(vm_name, target, ignore_status=False)
+
+
 def check_dasd_partition_table(session, device_target):
     """
     Checks that the partition table can be read
@@ -143,7 +154,10 @@ def run(test, params, env):
 
         session = vm.wait_for_login()
         check_dasd_partition_table(session, TARGET)
+        detach_disk(vm_name, TARGET)
     finally:
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
         # sync will release attached disk, precondition for disablement
         backup_xml.sync()
         global TEST_DASD_ID

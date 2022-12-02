@@ -42,7 +42,7 @@ class Checkfunction(object):
             self.test.fail('Expect source file to be %s, '
                            'but got %s' % (expected_chain, source_list))
         else:
-            LOG.debug('Get correct backingchin after blockcommit')
+            LOG.debug('Get correct backingchin')
 
     def check_block_operation_result(self, vmxml, blockcommand,
                                      target_dev, bc_chain):
