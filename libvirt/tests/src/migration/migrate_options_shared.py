@@ -1565,6 +1565,8 @@ def run(test, params, env):
         if int(mig_result.exit_status) == 0:
             if cmd_in_vm_after_migration:
                 vm.connect_uri = dest_uri
+                if vm.serial_console is None:
+                    vm.create_serial_console()
                 vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
                 vm_session_after_mig.cmd(cmd_in_vm_after_migration)
                 vm_session_after_mig.close()
