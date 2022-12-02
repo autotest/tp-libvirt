@@ -84,8 +84,17 @@ def run(test, params, env):
     pcrbank_change = params.get("pcrbank_change")
     test_rsaencypt = ('yes' == params.get("test_rsaencypt", "no"))
     active_pcr_banks = params.get("active_pcr_banks")
+    if backend_version == 'none' and libvirt_version.version_compare(8, 7, 0):
+        #bz2084046 fixed active_pcr_banks disappear issue with default version.
+        active_pcr_banks = 'sha256'
     if active_pcr_banks:
         active_pcr_banks = active_pcr_banks.split(",")
+    if tpm_model == '0_or_default':
+        #bz2084046, previously 'default' is accepted before libvirt-8.7.0.
+        tpm_model = 'default' if libvirt_version.version_compare(8, 7, 0) else '0'
+    if backend_version == 'default' and not libvirt_version.version_compare(8, 7, 0):
+        err_msg = ""
+        status_error = False
 
     libvirt_version.is_libvirt_feature_supported(params)
 
@@ -226,6 +235,21 @@ def run(test, params, env):
 
     service_mgr = service.ServiceManager()
 
+    def check_active_pcr_banks(xml):
+        """
+        Check whether active_pcr_banks show in guest xml
+
+        :param xml: the xml to find active_pcr_banks
+        """
+        pattern = '<active_pcr_banks>'
+        if pattern not in astring.to_text(xml):
+            test.fail("Can not find the %s xml for tpm dev "
+                      "in the guest xml file." % pattern)
+        for pcrbank in active_pcr_banks:
+            if pcrbank not in astring.to_text(xml):
+                test.fail("Can not find the %s pcrbank xml for tpm dev "
+                          "in the guest xml file." % pcrbank)
+
     def check_dumpxml(vm_name):
         """
         Check whether the added devices are shown in the guest xml
@@ -251,11 +275,14 @@ def run(test, params, env):
                       "in the guest xml file." % backend_type)
         # Check backend version
         if backend_version:
-            check_ver = backend_version if backend_version != 'none' else '2.0'
+            check_ver = backend_version if backend_version not in ["none", "default"] else '2.0'
             pattern = '"emulator" version="%s"' % check_ver
             if pattern not in astring.to_text(xml_after_adding_device):
                 test.fail("Can not find the %s backend version xml for tpm dev "
                           "in the guest xml file." % check_ver)
+        # Check active_pcr_banks
+        if active_pcr_banks and not remove_pcrbank:
+            check_active_pcr_banks(xml_after_adding_device)
         # Check device path
         if backend_type == "passthrough":
             pattern = '<device path="/dev/tpm0"'
@@ -704,8 +731,7 @@ def run(test, params, env):
             return
         if vm_operate != "restart":
             check_dumpxml(vm_name)
-        # For default model, no need start guest to test
-        if tpm_model:
+        if tpm_model and backend_version != 'default':
             expect_fail = False
             try:
                 vm.start()
