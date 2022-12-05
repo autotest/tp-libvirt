@@ -66,7 +66,7 @@ class MigrationBase(object):
         libvirt.set_vm_disk(self.vm, self.params)
         if not self.vm.is_alive():
             self.vm.start()
-            self.vm.wait_for_login().close()
+        self.vm.wait_for_login().close()
 
     def run_migration(self):
         """
