@@ -103,7 +103,7 @@ def run(test, params, env):
                 time.sleep(0.05)
                 continue
             cmd2 = "cat /proc/%s/fdinfo/1 |grep flags|awk '{print $NF}'" % output
-            ret = process.run(cmd2, allow_output_check='combined', shell=True)
+            ret = process.run(cmd2, shell=True)
             status, output = ret.exit_status, ret.stdout_text.strip()
             if status:
                 error = "Fail to get the flags of dumped file"
@@ -176,7 +176,7 @@ def run(test, params, env):
             return True
         else:
             file_cmd = "file %s" % dump_file
-            ret = process.run(file_cmd, allow_output_check='combined', shell=True)
+            ret = process.run(file_cmd, shell=True)
             status, output = ret.exit_status, ret.stdout_text.strip()
             if status:
                 logging.error("Fail to check dumped file %s", dump_file)
