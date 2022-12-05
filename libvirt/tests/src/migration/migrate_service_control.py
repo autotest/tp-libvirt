@@ -8,8 +8,6 @@ from virttest import libvirt_vm
 from virttest import migration
 from virttest import virsh
 from virttest import libvirt_version
-from virttest import remote
-from virttest import utils_libvirtd
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -124,16 +122,6 @@ def run(test, params, env):
 
         if kill_service:
             check_image_ownership(vm_name, expected_image_ownership, test)
-            if service_name == "libvirtd":
-                if service_on_dst:
-                    remote_session = remote.wait_for_login('ssh', server_ip, '22',
-                                                           server_user, server_pwd,
-                                                           r"[\#\$]\s*$")
-                    service_name = utils_libvirtd.Libvirtd(session=remote_session).service_name
-                    remote_session.close()
-                else:
-                    service_name = utils_libvirtd.Libvirtd().service_name
-                params.update({'service_name': service_name})
 
         if migrate_speed:
             mode = 'both' if '--postcopy' in postcopy_options else 'precopy'
