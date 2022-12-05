@@ -606,7 +606,7 @@ def get_expected_ports(params, expected_result):
             if auto_unix_socket == '1':
                 expected_vnc_port = 'not_set'
 
-        logging.debug('Expected VNC port: ' + expected_vnc_port)
+        logging.debug('Expected VNC port: %s', expected_vnc_port)
         expected_result['vnc_port'] = expected_vnc_port
 
 
@@ -1012,6 +1012,12 @@ def handle_auto_filled_items(given_graphic_attrs, vm, params):
         given_graphic_attrs['listen_attrs'].update({'address': utils_net.get_host_ip_address()})
     if vnc_listen_type == 'socket':
         given_graphic_attrs['listen_attrs'].update({'socket': get_socket_file_path(vm)})
+    elif vnc_listen_type == 'network':
+        vnc_network_type = params.get('vnc_network_type')
+        if vnc_network_type in ['macvtap', 'bridge']:
+            given_graphic_attrs['listen_attrs'].update({'address': utils_net.get_host_ip_address()})
+        elif vnc_network_type == 'vnet':
+            given_graphic_attrs['listen_attrs'].update({'address': params.get('vnet_address')})
     return given_graphic_attrs
 
 
@@ -1037,6 +1043,7 @@ def compare_guest_xml(vnc_graphic, vm, params, test):
 
     for key, value in given_graphic_attrs.items():
         if value != graphic_attributes[key]:
+            logging.debug('key:%s, value:%s', key, value)
             test.fail("Configured device XML value: '%s' does not match "
                       "the entry '%s' in VMXML" % (value, graphic_attributes[key]))
 
@@ -1140,11 +1147,13 @@ def generate_spice_graphic_xml(params, expected_result):
 
     if listen_type == 'network':
         net_type = params.get("spice_network_type", "vnet")
-        if net_type == 'macvtap':
-            address = str(expected_result['spice_ips'][0].addr)
-        else:
+        address = None
+        if net_type in ['nat', 'route']:
             address = params.get("listen_address", "not_set")
-        listen = {'type': 'network', 'network': 'virt-test-%s' % net_type, 'address': address}
+        net_name = params.get('net_name', 'virt-test-%s' % net_type)
+        listen = {'type': 'network', 'network': net_name}
+        if address:
+            listen['address'] = address
         graphic.listen_attrs = listen
     elif listen_type == 'address':
         address = params.get("spice_listen_address", "127.0.0.1")
@@ -1182,11 +1191,14 @@ def generate_vnc_graphic_xml(params, expected_result):
 
     if listen_type == 'network':
         net_type = params.get("vnc_network_type", "vnet")
-        if net_type == 'macvtap':
-            address = str(expected_result['vnc_ips'][0].addr)
-        else:
+        address = None
+        if net_type in ['nat', 'route']:
             address = params.get("listen_address", "not_set")
-        listen = {'type': 'network', 'network': 'virt-test-%s' % net_type, 'address': address}
+
+        net_name = params.get('net_name', 'virt-test-%s' % net_type)
+        listen = {'type': 'network', 'network': net_name}
+        if address:
+            listen['address'] = address
         graphic.listen_attrs = listen
     elif listen_type == 'address':
         address = params.get("vnc_listen_address", "127.0.0.1")
@@ -1248,24 +1260,22 @@ def setup_networks(params, test):
     # Setup networks
     for net_type in networks:
         if net_type == 'vnet':
-            net_name = 'virt-test-%s' % net_type
-            address = params.get('vnet_address', '192.168.123.1')
-            networks[net_type] = libvirt.LibvirtNetwork(
-                net_type, address=address, net_name=net_name, persistent=True)
+            networks[net_type] = libvirt.LibvirtNetwork(net_type,
+                                                        address=params.get('vnet_address'),
+                                                        net_name=params.get('net_name'),
+                                                        persistent=True)
         elif net_type == 'macvtap':
-            iface = params.get('macvtap_device', 'EXAMPLE.MACVTAP.DEVICE')
-            if 'EXAMPLE' in iface:
-                test.cancel('Need to setup macvtap_device first.')
+            iface = utils_net.get_net_if(state="UP")[0]
             networks[net_type] = libvirt.LibvirtNetwork(
-                net_type, iface=iface, persistent=True)
+                net_type, iface=iface, persistent=True, net_name=params.get('net_name'))
         elif net_type == 'bridge':
-            iface = params.get('bridge_device', 'EXAMPLE.BRIDGE.DEVICE')
-            if 'EXAMPLE' in iface:
-                test.cancel('Need to setup bridge_device first.')
+            iface = utils_net.get_net_if(state="UP")[0]
+            os_bridge_name = params.get('os_bridge_name')
+            utils_net.create_linux_bridge_tmux(os_bridge_name, iface, remove_addr_on_dev=False)
             networks[net_type] = libvirt.LibvirtNetwork(
-                net_type, iface=iface, persistent=True)
+                net_type, iface=iface, persistent=True, net_name=params.get('net_name'), os_bridge=os_bridge_name)
         elif net_type in ['nat', 'route']:
-            net_kwargs = {'net_name': 'virt-test-%s' % net_type,
+            net_kwargs = {'net_name': params.get('net_name'),
                           'br_name': 'br_%s' % net_type,
                           'address': params.get('listen_address', 'not_set'),
                           'dhcp_start': params.get('network_dhcp_start', 'not_set'),
@@ -1479,6 +1489,7 @@ def update_vm_xml(params, guest_xml):
     on_crash = params.get("on_crash")
     if on_crash:
         guest_xml.on_crash = on_crash
+
     return guest_xml
 
 
@@ -1556,6 +1567,11 @@ def cleanup(params):
         if params.get("del_hook_dir") == "yes":
             logging.debug("Delete the hook directory '%s' now", os.path.dirname(hook_path))
             os.rmdir(os.path.dirname(hook_path))
+
+    net_type = params.get("vnc_network_type")
+    if net_type == 'bridge':
+        iface = utils_net.get_net_if(state="UP")[0]
+        utils_net.delete_linux_bridge_tmux(params.get('os_bridge_name'), iface)
 
     os.system('rm -f /dev/shm/spice*')
 
@@ -1684,6 +1700,7 @@ def run(test, params, env):
             for ip in all_ips:
                 ip.addr = ipaddress.ip_address(ip.addr).compressed
         try:
+            logging.debug("Before starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
             vm.start()
             logging.debug("After starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
         except virt_vm.VMStartError as detail:
