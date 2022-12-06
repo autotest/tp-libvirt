@@ -247,12 +247,9 @@ def poweroff_vm(params):
     """
     poweroff_vm_dest = "yes" == params.get("poweroff_vm_dest", "no")
     migration_obj = params.get("migration_obj")
-    test_case = params.get('test_case', '')
 
     if poweroff_vm_dest:
         dest_uri = params.get("virsh_migrate_desturi")
-        if test_case == "poweroff_vm":
-            time.sleep(90)
         backup_uri, migration_obj.vm.connect_uri = migration_obj.vm.connect_uri, dest_uri
         migration_obj.vm.cleanup_serial_console()
         migration_obj.vm.create_serial_console()
@@ -489,6 +486,7 @@ def do_common_check(params):
     migration_options = params.get("migration_options")
     second_bandwidth = params.get("second_bandwidth")
     migration_obj = params.get("migration_obj")
+    vm_name = params.get("main_vm")
 
     if migration_options == "migrateuri":
         libvirt_network.check_established(params)
@@ -496,8 +494,8 @@ def do_common_check(params):
         libvirt_domjobinfo.check_domjobinfo(migration_obj.vm, params)
 
     # check job info when migration is in paused status
-    expected_list = {"Job type": "Unbounded", "Operation": "Outgoing migration"}
-    libvirt_monitor.check_domjobinfo(params, expected_list)
+    expected_dict = {"Job type": "Unbounded", "Operation": "Outgoing migration"}
+    libvirt_monitor.check_domjobinfo(vm_name, expected_dict)
 
     # check domain state with reason
     check_vm_state(params)
