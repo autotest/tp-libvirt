@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import logging as log
 
@@ -37,6 +38,7 @@ def run(test, params, env):
     # hostdev device params
     hostdev_type = params.get("detach_hostdev_type", "")
     hostdev_managed = params.get("detach_hostdev_managed")
+    controller_dict = eval(params.get('controller_dict', '{}'))
     # controller params
     contr_type = params.get("detach_controller_type")
     contr_model = params.get("detach_controller_mode")
@@ -98,13 +100,30 @@ def run(test, params, env):
     vm.wait_for_login()
 
     if hostdev_type:
-        if hostdev_type in ["usb", "scsi"]:
+        if hostdev_type in ["usb", "scsi", "pci"]:
             if hostdev_type == "usb":
                 pci_id = get_usb_info()
             elif hostdev_type == "scsi":
                 source_disk = libvirt.create_scsi_disk(scsi_option="",
                                                        scsi_size="8")
                 pci_id = get_scsi_info(source_disk)
+            elif hostdev_type == "pci":
+                libvirt_vmxml.modify_vm_device(vmxml=vmxml,
+                                               dev_type='controller',
+                                               dev_dict=controller_dict)
+                kernel_cmd = utils_misc.get_ker_cmd()
+                res = re.search("iommu=on", kernel_cmd)
+                if not res:
+                    test.error("iommu should be enabled in kernel "
+                               "cmd line - '%s'." % kernel_cmd)
+
+                pci_id = utils_misc.get_full_pci_id(
+                    utils_misc.get_pci_id_using_filter('')[-1])
+
+                if not vm.is_alive():
+                    vm.start()
+                vm.wait_for_login()
+
             device_xml = libvirt.create_hostdev_xml(pci_id=pci_id,
                                                     dev_type=hostdev_type,
                                                     managed=hostdev_managed,
