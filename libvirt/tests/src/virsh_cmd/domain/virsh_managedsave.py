@@ -429,7 +429,7 @@ def run(test, params, env):
 
         # For bypass_cache test. Run a shell command to check fd flags while
         # executing managedsave command
-        software_mgr = software_manager.SoftwareManager()
+        software_mgr = software_manager.manager.SoftwareManager()
         if not software_mgr.check_installed('lsof'):
             logging.info('Installing lsof package:')
             software_mgr.install('lsof')

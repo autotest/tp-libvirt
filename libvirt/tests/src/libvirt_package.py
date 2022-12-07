@@ -37,7 +37,7 @@ def run(test, params, env):
         elif libvirtd_state == "off":
             utils_libvirtd.libvirtd_stop()
         # if package exist, remove it
-        sm = software_manager.SoftwareManager()
+        sm = software_manager.manager.SoftwareManager()
         pkg_exist = []
         for item in pkg_list:
             if sm.check_installed(item):
