@@ -12,7 +12,7 @@ def run(test, params, env):
     res = re.search("iommu=on", kernel_cmd)
     if not res:
         test.error("iommu should be enabled in kernel cmd line - "
-                   "'%s'." % res)
+                   "'%s'." % kernel_cmd)
     cap_xml = capability_xml.CapabilityXML()
     if cap_xml.get_iommu().get('support') != 'yes':
         test.fail("IOMMU is disabled in capabilities: %s. "
