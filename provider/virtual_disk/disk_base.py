@@ -13,6 +13,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_secret
+from virttest.utils_nbd import NbdExport
 from virttest.utils_test import libvirt
 
 LOG = logging.getLogger('avocado.' + __name__)
@@ -45,6 +46,7 @@ class DiskBase(object):
         self.lv_backing = 'lv1'
         self.new_image_path = ''
         self.path_list = ''
+        self.disk_backend = ''
 
     @staticmethod
     def get_source_list(vmxml, disk_type, target_dev):
@@ -93,22 +95,22 @@ class DiskBase(object):
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
 
-        disk_xml, new_image_path = self.prepare_disk_xml(
+        dest_obj, new_image_path = self.prepare_disk_obj(
             disk_type, disk_dict, new_image_path, **kwargs)
 
-        libvirt.add_vm_device(vmxml, disk_xml)
+        libvirt.add_vm_device(vmxml, dest_obj)
 
         return new_image_path
 
-    def prepare_disk_xml(self, disk_type, disk_dict, new_image_path='', **kwargs):
+    def prepare_disk_obj(self, disk_type, disk_dict, new_image_path='', **kwargs):
         """
-        Prepare disk xml
+        Prepare disk object
 
         :param disk_type: disk type
         :param disk_dict: dict to update disk
         :param new_image_path: new disk image if needed
         :param kwargs: optional keyword arguments.
-        :return disk_xml: return disk xml
+        :return disk_obj: return disk object
         :return new_image_path: return the updated new image path of new disk
         """
         if disk_type == 'file':
@@ -161,10 +163,37 @@ class DiskBase(object):
                              "secret_usage": "cephlibvirt",
                              "secret_type": "ceph"}}})
 
-        disk_xml = libvirt_vmxml.create_vm_device_by_type("disk", disk_dict)
-        LOG.debug('Create disk xml is :%s' % disk_xml)
+        elif disk_type == "nbd":
+            nbd_server_host = process.run('hostname', ignore_status=False,
+                                          shell=True,
+                                          verbose=True).stdout_text.strip()
+            nbd_server_port = self.params.get("nbd_server_port", "10001")
+            image_path = self.params.get(
+                "image_path", data_dir.get_data_dir() + "/images/nbdtest.img")
 
-        return disk_xml, new_image_path
+            device_format = self.params.get("device_format", "qcow2")
+            export_name = self.params.get("export_name", "new")
+            tls_enabled = "yes" == self.params.get("enable_tls", "yes")
+            image_size = kwargs.get("size",
+                                    self.params.get("image_size", "500M"))
+
+            self.disk_backend = NbdExport(
+                image_path, image_format=device_format, port=nbd_server_port,
+                image_size=image_size, export_name=export_name, tls=tls_enabled)
+            self.disk_backend.start_nbd_server()
+
+            disk_dict.update(
+                {'source': {"attrs": {"protocol": "nbd",
+                                      "tls": self.params.get("enable_tls", "yes"),
+                                      "name": export_name},
+                            "hosts": [{"name": nbd_server_host,
+                                       "port": nbd_server_port}]},
+                 })
+
+        disk_obj = libvirt_vmxml.create_vm_device_by_type("disk", disk_dict)
+        self.test.log.debug('Create disk object is :%s', disk_obj)
+
+        return disk_obj, new_image_path
 
     def cleanup_disk_preparation(self, disk_type):
         """
@@ -198,6 +227,11 @@ class DiskBase(object):
                 os.remove(self.params.get('keyfile'))
             if os.path.exists(self.params.get('configfile')):
                 os.remove(self.params.get('configfile'))
+        elif disk_type == "nbd":
+            try:
+                self.disk_backend.cleanup()
+            except Exception as ndbEx:
+                self.test.log.debug("Clean Up nbd failed: %s", str(ndbEx))
 
     @staticmethod
     def cleanup_block_disk_preparation(vg_name, lv_name):
@@ -305,8 +339,9 @@ class DiskBase(object):
         """
         dst_img, backing_list = '', []
         if disk_type == "file":
+            size = self.params.get("size", "200M")
             libvirt.create_local_disk(
-                "file", path=self.base_dir + "/a/a", size="200M",
+                "file", path=self.base_dir + "/a/a", size=size,
                 disk_format="qcow2", **kwargs)
 
             dst_img, backing_list = libvirt_disk.make_relative_path_backing_files(
