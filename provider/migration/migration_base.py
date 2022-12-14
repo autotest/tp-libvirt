@@ -94,7 +94,7 @@ def do_migration(do_mig_param):
     extra_args = do_mig_param['extra_args']
     vm_name = None
 
-    if "--dname" in extra:
+    if extra and "--dname" in extra:
         if action_during_mig:
             for i in range(len(action_during_mig)):
                 if action_during_mig[i]['func_param']:
