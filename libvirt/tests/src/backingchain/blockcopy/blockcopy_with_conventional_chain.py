@@ -34,6 +34,7 @@ def run(test, params, env):
 
         test_obj.prepare_snapshot(snap_num=snap_num,
                                   extra=snap_extra)
+        test_obj.clean_file(tmp_copy_path)
 
     def run_test():
         """
