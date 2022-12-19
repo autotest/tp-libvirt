@@ -1855,7 +1855,7 @@ def run(test, params, env):
                                                        "address", "devno").replace("0x", "")
                 dev_id_prefix = "fe.0."
 
-                cmd += (" | grep virtio-blk-ccw,devno=%s%s"
+                cmd += (" | grep virtio-blk-ccw.*devno.*%s%s"
                         % (dev_id_prefix, dev_devno))
 
             else:
