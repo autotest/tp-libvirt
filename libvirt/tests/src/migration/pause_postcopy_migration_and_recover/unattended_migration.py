@@ -1,3 +1,4 @@
+from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.utils_libvirt import libvirt_network
@@ -77,6 +78,8 @@ def run(test, params, env):
         recover_tcp_config_list = eval(params.get("recover_tcp_config_list"))
         libvirt_network.change_tcp_config(recover_tcp_config_list)
         migration_obj.cleanup_connection()
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     vm_name = params.get("migrate_main_vm")
     make_unattended = params.get("make_unattended")

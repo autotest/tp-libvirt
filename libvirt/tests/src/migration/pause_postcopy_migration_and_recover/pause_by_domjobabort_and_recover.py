@@ -1,3 +1,4 @@
+from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -96,6 +97,8 @@ def run(test, params, env):
 
         # Check event output
         migration_base.check_event_output(params, test, virsh_session, remote_virsh_session)
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     migration_options = params.get('migration_options', '')
     vm_name = params.get("migrate_main_vm")

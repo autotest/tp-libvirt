@@ -1,3 +1,5 @@
+from virttest import libvirt_version
+
 from virttest.utils_libvirt import libvirt_network
 
 from provider.migration import base_steps
@@ -31,6 +33,8 @@ def run(test, params, env):
         recover_tcp_config_list = eval(params.get("recover_tcp_config_list"))
         libvirt_network.change_tcp_config(recover_tcp_config_list)
         migration_obj.cleanup_connection()
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     vm_name = params.get("migrate_main_vm")
     disruptive_operations = params.get("disruptive_operations")
