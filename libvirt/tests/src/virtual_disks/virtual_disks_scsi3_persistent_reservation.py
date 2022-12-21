@@ -1,7 +1,4 @@
-import re
-import locale
 import logging as log
-import base64
 import time
 import shutil
 
@@ -15,7 +12,6 @@ from virttest import utils_misc
 from virttest.utils_test import libvirt
 
 from virttest.libvirt_xml import vm_xml, xcepts
-from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.controller import Controller
 
 from virttest.libvirt_xml.devices.disk import Disk
@@ -125,8 +121,6 @@ def run(test, params, env):
     iscsi_host = params.get("iscsi_host")
     iscsi_port = params.get("iscsi_port")
     emulated_size = params.get("iscsi_image_size", "1G")
-    auth_uuid = "yes" == params.get("auth_uuid")
-    auth_usage = "yes" == params.get("auth_usage")
     # SCSI3 PR options
     reservations_managed = "yes" == params.get("reservations_managed", "yes")
     reservations_source_type = params.get("reservations_source_type", "unix")
@@ -149,50 +143,10 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
-        chap_user = ""
-        chap_passwd = ""
-        if auth_uuid or auth_usage:
-            auth_in_source = "yes" == params.get("auth_in_source", "no")
-            if auth_in_source and not libvirt_version.version_compare(3, 9, 0):
-                test.cancel("place auth in source is not supported in "
-                            "current libvirt version.")
-            auth_type = params.get("auth_type", "chap")
-            secret_usage_target = params.get("secret_usage_target",
-                                             "libvirtiscsi")
-            secret_usage_type = params.get("secret_usage_type", "iscsi")
-            chap_user = params.get("iscsi_user", "redhat")
-            chap_passwd = params.get("iscsi_password", "redhat")
-
-            sec_xml = secret_xml.SecretXML("no", "yes")
-            sec_xml.description = "iSCSI secret"
-            sec_xml.auth_type = auth_type
-            sec_xml.auth_username = chap_user
-            sec_xml.usage = secret_usage_type
-            sec_xml.target = secret_usage_target
-            sec_xml.xmltreefile.write()
-
-            ret = virsh.secret_define(sec_xml.xml)
-            libvirt.check_exit_status(ret)
-
-            secret_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
-                                     ret.stdout.strip())[0].lstrip()
-            logging.debug("Secret uuid %s", secret_uuid)
-            if secret_uuid == "":
-                test.error("Failed to get secret uuid")
-
-            # Set secret value
-            encoding = locale.getpreferredencoding()
-            secret_string = base64.b64encode(str(chap_passwd).encode(encoding)).decode(encoding)
-            ret = virsh.secret_set_value(secret_uuid, secret_string,
-                                         **virsh_dargs)
-            libvirt.check_exit_status(ret)
-
         # Setup iscsi target
         blk_dev = libvirt.setup_or_cleanup_iscsi(is_setup=True,
                                                  is_login=True,
                                                  image_size=emulated_size,
-                                                 chap_user=chap_user,
-                                                 chap_passwd=chap_passwd,
                                                  portal_ip=iscsi_host)
 
         # Add disk xml
@@ -202,23 +156,8 @@ def run(test, params, env):
         disk_xml.target = {"dev": device_target, "bus": device_bus}
         driver_dict = {"name": "qemu", "type": device_format}
         disk_xml.driver = driver_dict
-        auth_dict = {}
-        if auth_uuid:
-            auth_dict = {"auth_user": chap_user,
-                         "secret_type": secret_usage_type,
-                         "secret_uuid": secret_uuid}
-        elif auth_usage:
-            auth_dict = {"auth_user": chap_user,
-                         "secret_type": secret_usage_type,
-                         "secret_usage": secret_usage_target}
         disk_source = disk_xml.new_disk_source(
             **{"attrs": {"dev": blk_dev}})
-        if auth_dict:
-            disk_auth = disk_xml.new_auth(**auth_dict)
-            if auth_in_source:
-                disk_source.auth = disk_auth
-            else:
-                disk_xml.auth = disk_auth
         if reservations_managed:
             reservations_dict = {"reservations_managed": "yes"}
         else:
@@ -265,8 +204,5 @@ def run(test, params, env):
         vmxml_backup.sync("--snapshots-metadata")
         # Delete the tmp files.
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        # Clean up secret
-        if secret_uuid:
-            virsh.secret_undefine(secret_uuid)
         # Stop qemu-pr-helper daemon
         start_or_stop_qemu_pr_helper(is_start=False)
