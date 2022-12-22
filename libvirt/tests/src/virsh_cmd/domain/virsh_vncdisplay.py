@@ -1,5 +1,6 @@
+import logging
 from avocado.utils import process
-
+from virttest import libvirt_version
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
@@ -104,7 +105,12 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command!")
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.debug("From libvirt version 5.6.0 libvirtd is restarted "
+                              "and command should succeed")
+            else:
+                logging.debug(result)
+                test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0 or output == "":
             test.fail("Run failed with right command")
