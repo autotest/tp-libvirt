@@ -79,7 +79,7 @@ class BlockCommand(object):
         # Update vm disk
         libvirt.set_vm_disk(self.vm, self.params)
 
-    def prepare_snapshot(self, start_num=0, snap_num=3,
+    def prepare_snapshot(self, start_num=0, snap_num=3, snap_name="",
                          snap_path="", option='--disk-only', extra='',
                          clean_snap_file=True):
         """
@@ -87,6 +87,7 @@ class BlockCommand(object):
 
         :params start_num: snap path start index
         :params snap_num: snapshot number, default value is 3
+        :params snap_name: snapshot name
         :params snap_path: path of snap
         :params option: option to create snapshot, default value is '--disk-only'
         :params extra: extra option to create snap
@@ -100,15 +101,19 @@ class BlockCommand(object):
                 path = snap_path
             if os.path.exists(path) and "reuse" not in option and clean_snap_file:
                 libvirt.delete_local_disk('file', path)
-            snap_name = 'snap%d' % i
+
+            if not snap_name:
+                name = 'snap%d' % i
+            else:
+                name = snap_name
             snap_option = "%s %s --diskspec %s,file=%s%s" % \
-                          (snap_name, option, self.new_dev, path, extra)
+                          (name, option, self.new_dev, path, extra)
 
             virsh.snapshot_create_as(self.vm.name, snap_option,
                                      ignore_status=False,
                                      debug=True)
             self.snap_path_list.append(path)
-            self.snap_name_list.append(snap_name)
+            self.snap_name_list.append(name)
 
             if not utils_misc.wait_for(lambda: os.path.exists(path), 10, first=2):
                 self.test.error("%s should be in snapshot list" % snap_name)
