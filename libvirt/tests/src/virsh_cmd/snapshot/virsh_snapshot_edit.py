@@ -22,6 +22,7 @@ def run(test, params, env):
     """
 
     vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
     status_error = params.get("status_error", "no")
     snap_desc = params.get("snapshot_edit_description")
     snap_cur = params.get("snapshot_edit_current", "")
@@ -127,6 +128,8 @@ def run(test, params, env):
 
     snapshot_oldlist = None
     try:
+        if params.get("start_vm") == "yes":
+            vm.wait_for_login().close()
         # Create disk snapshot before all to make the origin image clean
         logging.debug("Create snap-temp --disk-only")
         ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only",
