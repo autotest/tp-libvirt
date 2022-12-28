@@ -161,13 +161,19 @@ def run(test, params, env):
         libvirt.check_exit_status(result, expect_error=True)
         # This is for status_error check
         status = result.exit_status
+        output = result
 
     # check status_error
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command! "
-                      "Output:\n%s" % output)
+            if libvirtd == "off" and \
+                    libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is "
+                             "restarted and destroy command should succeed")
+            else:
+                test.fail("Run successfully with destroy command! "
+                          "Output:\n%s" % output)
     elif status_error == "no":
         if status != 0:
-            test.fail("Run failed with right command! Output:\n%s"
+            test.fail("Run failed with destroy command! Output:\n%s"
                       % output)
