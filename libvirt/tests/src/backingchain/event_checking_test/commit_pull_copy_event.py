@@ -1,7 +1,5 @@
 import logging
 
-from avocado.utils import process
-
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
