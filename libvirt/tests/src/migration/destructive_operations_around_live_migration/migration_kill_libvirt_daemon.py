@@ -1,6 +1,7 @@
 import json
 
 from virttest import libvirt_version
+from virttest import utils_split_daemons
 from virttest import virsh
 
 from virttest.utils_libvirt import libvirt_memory
@@ -82,6 +83,11 @@ def run(test, params, env):
     test_case = params.get('test_case', '')
     vm_name = params.get("migrate_main_vm")
     migrate_again = "yes" == params.get("migrate_again", "no")
+    service_name = params.get("service_name")
+
+    if service_name and service_name == "virtproxyd":
+        if not utils_split_daemons.is_modular_daemon():
+            test.cancel("This libvirt version doesn't support virtproxyd.")
 
     old_hard_limit = []
 

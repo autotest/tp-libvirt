@@ -20,6 +20,7 @@ from virttest.utils_libvirt import libvirt_service   # pylint: disable=W0611
 from virttest.utils_test import libvirt_domjobinfo   # pylint: disable=W0611
 from virttest.utils_test import libvirt
 
+from provider.migration import base_steps            # pylint: disable=W0611
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -298,7 +299,10 @@ def execute_statistics_command(params):
     logging.debug("disks: %s", disks)
     debug_kargs = {'ignore_status': False, 'debug': True}
     for disk in list(disks.values()):
-        disk_source = disk.find('source').get('file')
+        if disk_type:
+            disk_source = disk.find('source').get('dev')
+        else:
+            disk_source = disk.find('source').get('file')
         disk_target = disk.find('target').get('dev')
         logging.debug("disk_source: %s", disk_source)
         logging.debug("disk_target: %s", disk_target)

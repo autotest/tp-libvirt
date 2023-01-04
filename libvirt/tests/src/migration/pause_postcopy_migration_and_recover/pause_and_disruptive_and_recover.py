@@ -1,3 +1,4 @@
+from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.utils_test import libvirt
@@ -22,6 +23,8 @@ def run(test, params, env):
             virsh.destroy(vm_name, ignore_status=True, debug=True)
             virsh.start(vm_name, ignore_status=True, debug=True)
         migration_obj.cleanup_connection()
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     disruptive_operations = params.get("disruptive_operations")
     vm_name = params.get("migrate_main_vm")
