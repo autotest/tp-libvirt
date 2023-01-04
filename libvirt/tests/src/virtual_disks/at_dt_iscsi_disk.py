@@ -175,12 +175,14 @@ def run(test, params, env):
                                                           chap_passwd=chap_passwd,
                                                           portal_ip=disk_src_host)
         else:
+            enable_authentication = "yes" == params.get("enable_authentication", "no")
             iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
                                                                    is_login=False,
                                                                    image_size='1G',
                                                                    chap_user=chap_user,
                                                                    chap_passwd=chap_passwd,
-                                                                   portal_ip=disk_src_host)
+                                                                   portal_ip=disk_src_host,
+                                                                   enable_authentication=enable_authentication)
         # Create iscsi pool
         if disk_type == "volume":
             # Create an iscsi pool xml to create it
