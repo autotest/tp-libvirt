@@ -60,6 +60,9 @@ def run(test, params, env):
     # rng params
     rng_type = params.get("detach_rng_type")
     rng_dict = eval(params.get('rng_dict', '{}'))
+    # input params
+    input_type = params.get("detach_input_type")
+    input_dict = eval(params.get('input_dict', '{}'))
 
     device_alias = "ua-" + str(uuid.uuid4())
 
@@ -209,6 +212,17 @@ def run(test, params, env):
         rng_dict.update({"alias": {"name": device_alias}})
         libvirt_vmxml.modify_vm_device(vmxml=vmxml,
                                        dev_type='rng', dev_dict=rng_dict)
+
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login(timeout=240).close()
+
+        attach_device = False
+
+    if input_type:
+        input_dict.update({"alias": {"name": device_alias}})
+        libvirt_vmxml.modify_vm_device(vmxml, "input",
+                                       dev_dict=input_dict)
 
         if not vm.is_alive():
             vm.start()
