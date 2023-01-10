@@ -1,5 +1,4 @@
 import os
-import re
 import uuid
 import logging as log
 
@@ -39,6 +38,7 @@ def run(test, params, env):
     hostdev_type = params.get("detach_hostdev_type", "")
     hostdev_managed = params.get("detach_hostdev_managed")
     controller_dict = eval(params.get('controller_dict', '{}'))
+    pci_filter = params.get("pci_filter", "")
     # controller params
     contr_type = params.get("detach_controller_type")
     contr_model = params.get("detach_controller_mode")
@@ -114,14 +114,14 @@ def run(test, params, env):
                 libvirt_vmxml.modify_vm_device(vmxml=vmxml,
                                                dev_type='controller',
                                                dev_dict=controller_dict)
-                kernel_cmd = utils_misc.get_ker_cmd()
-                res = re.search("iommu=on", kernel_cmd)
-                if not res:
-                    test.error("iommu should be enabled in kernel "
-                               "cmd line - '%s'." % kernel_cmd)
+                cmd = "virsh capabilities | grep iommu | awk -F \"'\" '{print $2}'"
+                cmd_result = process.run(cmd, ignore_status=True, shell=True).stdout_text.strip()
+                support_iommu = "yes" == cmd_result
+                if not support_iommu:
+                    test.cancel("Host does not support iommu")
 
                 pci_id = utils_misc.get_full_pci_id(
-                    utils_misc.get_pci_id_using_filter('')[-1])
+                    utils_misc.get_pci_id_using_filter(pci_filter)[-1])
 
                 if not vm.is_alive():
                     vm.start()
