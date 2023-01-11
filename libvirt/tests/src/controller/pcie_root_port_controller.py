@@ -18,6 +18,7 @@ def setup_test(params):
     """
     controller_model = params.get("controller_model")
     controller_target = ast.literal_eval(params.get("controller_target"))
+    controller_index = params.get("controller_index", 0)
     second_controller_model = params.get("second_controller_model")
     second_controller_target = ast.literal_eval(
         params.get("second_controller_target", "{}"))
@@ -101,11 +102,7 @@ def check_define_vm(vmxml, params):
     interface_slot_type = params.get("interface_slot_type", "int")
     if interface_slot_type == "hex":
         interface_slot = hex(int(interface_slot))
-    max_indexes = libvirt_pcicontr.get_max_contr_indexes(vmxml, 'pci', model, 1)
-    if max_indexes:
-        index = max_indexes[0] + 1
-    else:
-        index = 1
+    index = get_controller_index(vmxml, params)
     if address:
         address["bus"] = hex(index + bus_offset)
     contr_dict = {'controller_type': 'pci',
@@ -126,6 +123,18 @@ def check_define_vm(vmxml, params):
         libvirt.check_result(cmd_result, [failure_message])
     else:
         libvirt.check_exit_status(cmd_result, status_error)
+
+
+def get_controller_index(vmxml, params):
+    # We want to default to None so we can differentiate between None and 0
+    controller_index = params.get("controller_index", None)
+    model = params.get("controller_model")
+    if controller_index is not None:
+        return controller_index
+    max_indexes = libvirt_pcicontr.get_max_contr_indexes(vmxml, 'pci', model, 1)
+    if max_indexes:
+        return max_indexes[0] + 1
+    return 1
 
 
 def customize_interface_dict(minimal_dict, interface_bus=None, interface_slot=None):
