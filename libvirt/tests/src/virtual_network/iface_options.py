@@ -287,7 +287,8 @@ def run(test, params, env):
         ret = process.run(cmd, shell=True)
         logging.debug("Command line %s", ret.stdout_text)
         if test_vhost_net:
-            if not ret.stdout_text.count("vhost=on") and not rm_vhost_driver:
+            if not re.search('"vhost":true|vhost=on', ret.stdout_text) \
+                    and not rm_vhost_driver:
                 test.fail("Can't see vhost options in"
                           " qemu-kvm command line")
 
