@@ -45,6 +45,8 @@ def run(test, params, env):
     # redirdev params
     redir_type = params.get("detach_redirdev_type")
     redir_bus = params.get("detach_redirdev_bus")
+    redir_params = eval(params.get("redir_params", "{}"))
+    port = params.get("port")
     # channel params
     channel_type = params.get("detach_channel_type")
     channel_dict = eval(params.get("channel_dict", "{}"))
@@ -87,6 +89,17 @@ def run(test, params, env):
             return result.stdout_text.rstrip(':')
         else:
             test.error("Can not get usb hub info for testing")
+
+    def start_usbredirserver():
+        """
+        Start usbredirserver
+
+        """
+        lsusb_list = process.run('lsusb').stdout_text.splitlines()
+        ps = process.SubProcess("usbredirserver -p {} {}".format
+                                (port, lsusb_list[0].split()[5]), shell=True)
+        server_id = ps.start()
+        return server_id
 
     # backup xml
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -142,7 +155,10 @@ def run(test, params, env):
         detach_check_xml = detach_check_xml % contr_index
 
     if redir_type:
-        device_xml = libvirt.create_redirdev_xml(redir_type, redir_bus, device_alias)
+        if redir_type == "tcp":
+            start_usbredirserver()
+        device_xml = libvirt.create_redirdev_xml(redir_type, redir_bus,
+                                                 device_alias, redir_params)
 
     if channel_type:
         channel_dict.update(
@@ -250,3 +266,5 @@ def run(test, params, env):
             libvirt.delete_scsi_disk()
         if virtual_disk_type and os.path.exists(image_path):
             os.remove(image_path)
+        if 'server_id' in locals():
+            process.run("killall usbredirserver")
