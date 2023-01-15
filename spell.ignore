@@ -679,6 +679,7 @@ numanode
 numastat
 numatune
 nvdimm
+nvme
 nvram
 nwfilter
 objs
