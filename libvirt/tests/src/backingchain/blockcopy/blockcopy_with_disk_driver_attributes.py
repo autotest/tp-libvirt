@@ -24,8 +24,8 @@ def run(test, params, env):
         Prepare active domain
         """
         test.log.info("TEST_SETUP: Start guest and prepare disk.")
-        global xml_file
-        xml_file = libvirt_vmxml.create_vm_device_by_type("disk", disk_dict).xml
+        global disk_xml
+        disk_xml = libvirt_vmxml.create_vm_device_by_type("disk", disk_dict)
         test_obj.backingchain_common_setup()
 
     def run_test():
@@ -34,7 +34,7 @@ def run(test, params, env):
         """
         test.log.info("TEST_STEP1: Do blockcopy.")
         virsh.blockcopy(vm_name, device,
-                        blockcopy_options.format(xml_file),
+                        blockcopy_options.format(disk_xml.xml),
                         ignore_status=False,
                         debug=True)
 
