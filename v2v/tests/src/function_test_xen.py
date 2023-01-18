@@ -99,7 +99,8 @@ def run(test, params, env):
             fd.write(openssl_cnf)
 
         # export the environment variable
-        os.environ['OPENSSL_CONF'] = '%s/openssl-sha1.cnf' % os.getenv('HOME')
+        os.environ['OPENSSL_CONF'] = os.path.expanduser('~/openssl-sha1.cnf')
+        LOG.debug('OPENSSL_CONF is %s' % os.getenv('OPENSSL_CONF'))
 
     def check_grub_file(vmcheck, check):
         """
