@@ -57,20 +57,9 @@ def execute_test(vm, test, params):
     test_define_only = params.get("test_define_only") == "yes"
     if test_define_only:
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
-        check_define_vm(vmxml, params, test)
+        check_define_vm(vmxml, params)
     else:
-        status_error = params.get("status_error") == "yes"
-        LOG.debug("Starting VM with XML:\n%s", vm_xml.VMXML.new_from_dumpxml(vm.name))
-        try:
-            vm.start()
-        except Exception as exc:
-            if status_error:
-                LOG.info("VM failed to start as expected.")
-            else:
-                test.fail("VM failed to start, reason: %s" % exc)
-        else:
-            if vm.is_alive() and status_error:
-                test.fail("VM started sucessfully, but shouldn't.")
+        check_vm_start(vm, params)
 
 
 def create_controller_dict(model, target, index, address=None):
@@ -92,14 +81,13 @@ def create_controller_dict(model, target, index, address=None):
     return contr_dict
 
 
-def check_define_vm(vmxml, params, test):
+def check_define_vm(vmxml, params):
     """
     Alternate function for checking and finishing the test.
     Checks only if VM define action was successful instead of VM start.
 
     :param vmxml: VM XML object
     :param params: Test parameters object
-    :param test: Avocado test object
     """
     LOG.info("Checking VM in define only mode.")
     model = params.get("controller_model")
@@ -114,7 +102,10 @@ def check_define_vm(vmxml, params, test):
     if interface_slot_type == "hex":
         interface_slot = hex(int(interface_slot))
     max_indexes = libvirt_pcicontr.get_max_contr_indexes(vmxml, 'pci', model, 1)
-    index = max_indexes[0] + 1
+    if max_indexes:
+        index = max_indexes[0] + 1
+    else:
+        index = 1
     if address:
         address["bus"] = hex(index + bus_offset)
     contr_dict = {'controller_type': 'pci',
@@ -168,6 +159,24 @@ def cleanup_test(vm, vmxml_backup):
         vm.destroy()
     LOG.info("Restore the VM XML")
     vmxml_backup.sync()
+
+
+def check_vm_start(vm, params, **virsh_options):
+    """
+    Start the vm and check if exception occurred.
+
+    :param vm: Avocado vm object
+    :param params: Avocado test parameters object
+    :param **virsh_options: Other parameters to hand to virsh start command
+    """
+    status_error = params.get("status_error") == "yes"
+    failure_message = params.get("failure_message")
+    LOG.debug("Starting VM with XML:\n%s", vm_xml.VMXML.new_from_dumpxml(vm.name))
+    cmd_result = virsh.start(vm.name, **virsh_options)
+    if failure_message:
+        libvirt.check_result(cmd_result, [failure_message])
+    else:
+        libvirt.check_exit_status(cmd_result, status_error)
 
 
 def run(test, params, env):
