@@ -17,6 +17,7 @@ def run(test, params, env):
     pci_dev = params.get("pci_dev", "pci_0000_00_00_0")
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+    session = None
 
     try:
         pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
