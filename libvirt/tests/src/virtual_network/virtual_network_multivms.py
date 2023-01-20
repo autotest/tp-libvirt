@@ -182,7 +182,9 @@ def run(test, params, env):
     rand_id = '_' + utils_misc.generate_random_string(3)
     resume_vm = 'yes' == params.get('resume_vm', 'no')
     bridge_name = params.get('bridge_name', 'test_br0') + rand_id
-    iface_name = utils_net.get_net_if(state="UP")[0]
+    iface_name = params.get("iface_name")
+    if not iface_name:
+        iface_name = utils_net.get_net_if(state="UP")[0]
     test_net = feature + rand_id
     bridge_created = False
 

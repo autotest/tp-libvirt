@@ -111,7 +111,9 @@ def run(test, params, env):
 
     try:
         if case == 'compare':
-            host_ifname = utils_net.get_net_if(state="UP")[0]
+            host_ifname = params.get("iface_name")
+            if not host_ifname:
+                host_ifname = utils_net.get_net_if(state="UP")[0]
             iface_dict = {k.replace('new_iface_', ''): v
                           for k, v in params.items() if k.startswith('new_iface_')}
             iface_dict['source'] = iface_dict['source'] % host_ifname
