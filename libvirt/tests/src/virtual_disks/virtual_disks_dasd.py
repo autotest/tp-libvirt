@@ -21,15 +21,20 @@ TARGET = "vdb"  # suppose guest has only one disk 'vda'
 logging = log.getLogger('avocado.' + __name__)
 
 
-def get_partitioned_dasd_path():
+def get_partitioned_dasd_path(devid):
     """
     Selects and prepares DASD for test case
 
+    :param devid: the ccw device id, e.g. 0.0.5200
     :return path: absolute path to block device, e.g. '/dev/dasda'
     """
     paths = SubchannelPaths()
     paths.get_info()
-    device = paths.get_first_unused_and_safely_removable()
+    device = None
+    if devid:
+        device = paths.get_device(devid)
+    else:
+        device = paths.get_first_unused_and_safely_removable()
     if not device:
         raise TestError("Couldn't find dasd device for test")
     global TEST_DASD_ID
@@ -147,9 +152,10 @@ def run(test, params, env):
 
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+    devid = params.get("devid")
 
     try:
-        disk_path = get_partitioned_dasd_path()
+        disk_path = get_partitioned_dasd_path(devid)
         attach_disk(vm_name, TARGET, disk_path)
 
         session = vm.wait_for_login()
