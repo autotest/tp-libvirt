@@ -80,5 +80,6 @@ def get_device(nodedev_list, pattern):
     """
     for dev_id in nodedev_list:
         if re.search(pattern, dev_id):
+            logging.debug("Selected %s", dev_id)
             return dev_id
     return None
