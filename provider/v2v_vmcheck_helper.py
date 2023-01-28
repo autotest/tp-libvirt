@@ -630,11 +630,6 @@ class VMChecker(object):
                     ".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
                 self.log_err(err_msg)
 
-        LOG.info("Checking firware='efi' existing in VM XML")
-        if bootinfo == 'uefi' and not root.findall("./os[@firmware='efi']"):
-            err_msg = "Checking firmware='efi' existing failed"
-            self.log_err(err_msg)
-
         if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
             self.check_xml('./devices/vsock')
 

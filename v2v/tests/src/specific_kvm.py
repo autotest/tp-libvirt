@@ -547,6 +547,21 @@ def run(test, params, env):
         except Exception as e:
             test.error('Bootup guest and login failed: %s' % str(e))
 
+    def check_vmware_os_firmware():
+        """
+        Check firmware='efi' exists in xml for vmware guests
+        """
+        LOG.info("Checking firmware='efi' exists in xml for vmware")
+        boottype = params_get(params, "boottype")
+        if not boottype:
+            test.error("boottype must be set")
+        if int(boottype) < 2:
+            test.error("Wrong boottype value(must be UEFI)")
+        guest_xml = v2v_virsh.dumpxml(vm_name)
+        root = ET.fromstring(guest_xml.stdout_text)
+        if not root.findall("./os[@firmware='efi']"):
+            test.error("Checking firmware='efi' failed")
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -857,10 +872,13 @@ def run(test, params, env):
             LOG.info('Disk type is %s', disk['type'])
             if disk['type'] != 'file':
                 test.error('Guest is not with file image')
-        v2v_result = utils_v2v.v2v_cmd(v2v_params)
-        if v2v_params.get('new_name'):
-            vm_name = params['main_vm'] = v2v_params['new_name']
-        check_result(v2v_result, status_error)
+        if checkpoint == 'vmware_os_firmware':
+            check_vmware_os_firmware()
+        else:
+            v2v_result = utils_v2v.v2v_cmd(v2v_params)
+            if v2v_params.get('new_name'):
+                vm_name = params['main_vm'] = v2v_params['new_name']
+            check_result(v2v_result, status_error)
     finally:
         if close_virsh and v2v_virsh:
             LOG.debug('virsh session %s is closing', v2v_virsh)
