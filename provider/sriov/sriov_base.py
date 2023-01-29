@@ -76,7 +76,9 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
         if not utils_package.package_install('dhcp-client', session=vm_session):
             raise exceptions.TestFail("Failed to install dhcp-client on guest.")
         utils_net.restart_guest_network(vm_session)
-    vm_iface = utils_net.get_linux_ifname(vm_session, mac_addr)
+    vm_iface = utils_misc.wait_for(
+        lambda: utils_net.get_linux_ifname(vm_session, mac_addr),
+        timeout=240, first=10)
     if not vm_iface:
         raise exceptions.TestError("Unable to get VM's interface!")
     if isinstance(vm_iface, list):
