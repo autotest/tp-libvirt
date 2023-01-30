@@ -63,7 +63,8 @@ def check_mac_addr(vm_session, vm_name, device_type, iface_dict):
     if device_type != 'interface' or not mac:
         LOG.warning("No need to check mac address.")
         return
-    iface = utils_net.get_linux_iface_info(mac, vm_session)
+    iface = utils_misc.wait_for(
+        lambda: utils_net.get_linux_iface_info(mac, vm_session), 120)
     if not iface:
         raise exceptions.TestFail("Unable to get VM interface with given mac "
                                   "address - %s!" % mac)
