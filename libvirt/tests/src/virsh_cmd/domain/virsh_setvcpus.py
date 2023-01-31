@@ -33,6 +33,7 @@ def run(test, params, env):
     options = params.get("setvcpus_options")
     vm_ref = params.get("setvcpus_vm_ref", "name")
     status_error = (params.get("status_error", "no") == "yes")
+    check_numa = (params.get("check_numa", "yes") == "yes")
     convert_err = "Can't convert {0} to integer type"
     try:
         current_vcpu = int(params.get("setvcpus_current", "1"))
@@ -250,8 +251,10 @@ def run(test, params, env):
                     set_expected(vm, options + " live")
 
                 set_expected(vm, options)
+                logging.debug("check_numa value %s", check_numa)
                 result = cpu.check_vcpu_value(vm, exp_vcpu,
-                                              option=options)
+                                              option=options,
+                                              check_numa=check_numa)
         setvcpu_exit_status = status.exit_status
         setvcpu_exit_stderr = status.stderr.strip()
 
