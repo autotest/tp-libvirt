@@ -161,7 +161,7 @@ def run(test, params, env):
         # with 'virsh list'. This will fail if socket file location
         # changed. We solve this by bypassing the checking part.
         else:
-            restarted = libvirtd.libvirtd.restart()
+            restarted = utils_libvirtd.libvirtd_restart()
 
         if not restarted:
             if expected_result != 'unbootable':
