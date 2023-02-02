@@ -221,6 +221,9 @@ def run(test, params, env):
 
     if input_type:
         input_dict.update({"alias": {"name": device_alias}})
+        if input_type == "passthrough":
+            event = process.run("ls /dev/input/event*", shell=True).stdout
+            input_dict.update({"source_evdev": event.decode('utf-8').split()[0]})
         libvirt_vmxml.modify_vm_device(vmxml, "input",
                                        dev_dict=input_dict)
 
