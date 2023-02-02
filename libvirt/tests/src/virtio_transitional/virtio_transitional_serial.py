@@ -131,7 +131,7 @@ def run(test, params, env):
         contr_dict = {'controller_type': 'virtio-serial',
                       'controller_model': virtio_model}
         if add_pcie_to_pci_bridge:
-            pci_devices = vmxml.xmltreefile.find('devices').getchildren()
+            pci_devices = list(vmxml.xmltreefile.find('devices'))
             slot = get_free_pci_slot()
             addr = '{"bus": %s, "slot": %s}' % (pci_bridge_index, slot)
             contr_dict.update({'controller_addr': addr})

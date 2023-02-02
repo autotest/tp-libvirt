@@ -1,10 +1,10 @@
 import logging as log
 import aexpect
 
+from xml.etree import ElementTree
 from avocado.utils import process
 
 from virttest import virsh
-from virttest import element_tree
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -129,7 +129,7 @@ def run(test, params, env):
         if status != 0:
             test.fail("Run failed with right command!")
         elif "--xml" in echo_option:
-            escape_out = element_tree._escape_attrib(echo_str)
+            escape_out = ElementTree._escape_attrib(echo_str)
             if escape_out != output:
                 test.fail("%s did not match with expected output %s"
                           % (output, escape_out))

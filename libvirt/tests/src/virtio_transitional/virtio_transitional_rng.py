@@ -63,7 +63,7 @@ def run(test, params, env):
             else:
                 other_ports.add(controller.get('index'))
         # Record the addresses being allocated for all pci devices
-        pci_devices = vmxml.xmltreefile.find('devices').getchildren()
+        pci_devices = list(vmxml.xmltreefile.find('devices'))
         for dev in pci_devices:
             address = dev.find('address')
             if address is not None:
@@ -175,7 +175,7 @@ def run(test, params, env):
         # General new rng xml per configurations
         rng_xml = libvirt.create_rng_xml({"rng_model": virtio_model})
         if params.get('specify_addr', 'no') == 'yes':
-            pci_devices = vmxml.xmltreefile.find('devices').getchildren()
+            pci_devices = list(vmxml.xmltreefile.find('devices'))
             addr = rng_xml.new_rng_address()
             if plug_to == 'pcie-root-port':
                 bus = get_free_root_port()

@@ -114,7 +114,7 @@ def run(test, params, env):
     test_xml = xml_utils.TempXMLFile()  # temporary file
     try:
         # LibvirtXMLBase.__str__ returns XML content
-        test_xml.write(str(backup['default']))
+        test_xml.write(str(backup['default']).encode())
         test_xml.flush()
     except (KeyError, AttributeError):
         test.cancel("Test requires default network to exist")
@@ -124,7 +124,7 @@ def run(test, params, env):
         # write garbage at middle of file
         test_xml.seek(test_xml.tell() // 2)
         test_xml.write('"<network><<<BAD>>><\'XML</network\>'
-                       '!@#$%^&*)>(}>}{CORRUPTE|>!')
+                       '!@#$%^&*)>(}>}{CORRUPTE|>!'.encode())
         test_xml.flush()
         # Assume next user might want to read
         test_xml.seek(0)

@@ -81,7 +81,7 @@ def run(test, params, env):
         if filter_xml == "invalid-filter-xml":
             tmp_xml = xml_utils.TempXMLFile()
             tmp_xml.write('"<filter><<<BAD>>><\'XML</name\>'
-                          '!@#$%^&*)>(}>}{CORRUPTE|>!</filter>')
+                          '!@#$%^&*)>(}>}{CORRUPTE|>!</filter>'.encode())
             tmp_xml.flush()
             filter_xml = tmp_xml.name
             logging.info("Test invalid xml is: %s" % filter_xml)

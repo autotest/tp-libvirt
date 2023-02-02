@@ -2,12 +2,12 @@ import os
 import re
 import logging as log
 from six import iteritems
+from xml.etree import ElementTree
 
 from avocado.utils import process
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import disk
-from virttest import element_tree as ElementTree
 
 SOURCE_LIST = ['file', 'dev', 'dir', 'name']
 
@@ -34,7 +34,7 @@ def get_disk_info(vm_name, options):
     new_disk = disk.Disk()
 
     for i in range(len(sourcelist)):
-        new_disk['xml'] = ElementTree.tostring(sourcelist[i])
+        new_disk['xml'] = ElementTree.tostring(sourcelist[i], encoding='unicode')
         logging.debug("Current disk xml is: %s" % new_disk.xmltreefile)
         if hasattr(new_disk, 'source'):
             for key in list(new_disk.source.attrs.keys()):
