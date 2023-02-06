@@ -251,17 +251,14 @@ def poweroff_vm(params):
 
     if poweroff_vm_dest:
         dest_uri = params.get("virsh_migrate_desturi")
-        backup_uri, migration_obj.vm.connect_uri = migration_obj.vm.connect_uri, dest_uri
         migration_obj.vm.cleanup_serial_console()
+        backup_uri, migration_obj.vm.connect_uri = migration_obj.vm.connect_uri, dest_uri
         migration_obj.vm.create_serial_console()
         remote_vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
         remote_vm_session.cmd("poweroff", ignore_all_errors=True)
         remote_vm_session.close()
         migration_obj.vm.cleanup_serial_console()
         migration_obj.vm.connect_uri = backup_uri
-        vm_state_src = params.get("virsh_migrate_src_state", "shut off")
-        if not libvirt.check_vm_state(migration_obj.vm.name, vm_state_src, uri=migration_obj.src_uri):
-            raise exceptions.TestFail("Migrated VM failed to be in %s state at source" % vm_state_src)
     else:
         vm_session = params.get("vm_session")
         vm_session.cmd("poweroff", ignore_all_errors=True)

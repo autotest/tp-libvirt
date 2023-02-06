@@ -54,7 +54,7 @@ def run(test, params, env):
             test.log.info("Guest don't exist on destination.")
         if not libvirt.check_vm_state(vm.name, vm_state_src, uri=migration_obj.src_uri):
             test.fail("Migrated VM failed to be in %s state at source" % vm_state_src)
-        test.log.info("Guest state is '%s' at source is as expected", vm_state_dest)
+        test.log.info("Guest state is '%s' at source is as expected", vm_state_src)
         migration_obj.verify_default()
 
     test_case = params.get('test_case', '')
@@ -62,6 +62,7 @@ def run(test, params, env):
 
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
+    params.update({"migration_obj": migration_obj})
     setup_test = eval("setup_%s" % test_case) if "setup_%s" % test_case in \
         locals() else migration_obj.setup_connection
     verify_test = eval("verify_%s" % test_case) if "verify_%s" % test_case in \
