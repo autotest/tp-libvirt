@@ -310,6 +310,9 @@ class MigrationBase(object):
         migrate_desturi_port = self.params.get("migrate_desturi_port")
         migrate_desturi_type = self.params.get("migrate_desturi_type", "tcp")
 
+        if migrate_desturi_port:
+            self.remote_add_or_remove_port(migrate_desturi_port)
+
         if migrate_desturi_type:
             self.conn_list.append(migration_base.setup_conn_obj(migrate_desturi_type, self.params, self.test))
 
@@ -319,8 +322,6 @@ class MigrationBase(object):
         if transport_type_again and transport_type_again not in [transport_type, migrate_desturi_type]:
             self.conn_list.append(migration_base.setup_conn_obj(transport_type_again, self.params, self.test))
 
-        if migrate_desturi_port:
-            self.remote_add_or_remove_port(migrate_desturi_port)
         self.setup_default()
 
     def cleanup_connection(self):
@@ -329,11 +330,17 @@ class MigrationBase(object):
 
         """
         migrate_desturi_port = self.params.get("migrate_desturi_port")
+        remote_ip = self.params.get("server_ip", self.params.get("remote_ip"))
+        remote_pwd = self.params.get("server_pwd", self.params.get("remote_pwd"))
+        remote_user = self.params.get("server_user", self.params.get("remote_user"))
 
         self.cleanup_default()
-        migration_base.cleanup_conn_obj(self.conn_list, self.test)
         if migrate_desturi_port:
             self.remote_add_or_remove_port(migrate_desturi_port, add=False)
+        libvirt.remotely_control_libvirtd(remote_ip, remote_user,
+                                          remote_pwd, action='restart',
+                                          status_error='no')
+        migration_base.cleanup_conn_obj(self.conn_list, self.test)
 
     def set_remote_log(self):
         """
@@ -401,8 +408,8 @@ class MigrationBase(object):
             firewall_cmd.add_port(port, 'tcp', permanent=True)
         else:
             firewall_cmd.remove_port(port, 'tcp', permanent=True)
-        # Wait for 2 seconds to make the firewall take effect
-        time.sleep(2)
+        # Wait for 3 seconds to make the firewall take effect
+        time.sleep(3)
         remote_session.close()
 
 
