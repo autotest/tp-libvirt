@@ -46,7 +46,12 @@ def run(test, params, env):
 
         :param dirty_rate: the dirty rate value calculated by domdirtyrate_calc
         """
-        if abs(int(dirty_rate)/int(ram_size) - 1) > 0.75:
+        if mode == "dirty-ring":
+            tolerance = 1
+        else:
+            tolerance = 0.75
+
+        if abs(int(dirty_rate)/int(ram_size) - 1) > tolerance:
             test.fail("Dirty rate calculated %s has a big difference "
                       "with the ram size %s loaded in guest "
                       % (dirty_rate, ram_size))
