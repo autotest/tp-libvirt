@@ -81,12 +81,7 @@ def run(test, params, env):
             process.run("rm -rf %s" % pool_target)
 
         if disk_type == 'rbd_with_auth':
-            libvirt_secret.clean_up_secrets()
-            process.run("rm -f %s" % params.get("configfile"))
-            process.run("rm -f %s" % params.get("keyfile"))
-            cmd = ("rbd -m {0} info {1} && rbd -m {0} rm {1}".format(
-                mon_host, rbd_source_name))
-            process.run(cmd, ignore_status=True, shell=True)
+            disk_obj.cleanup_disk_preparation(disk_type)
 
     def get_relative_path():
         """
