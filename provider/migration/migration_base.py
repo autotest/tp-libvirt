@@ -489,8 +489,6 @@ def do_common_check(params):
     migration_obj = params.get("migration_obj")
     vm_name = params.get("main_vm")
 
-    if migration_options == "migrateuri":
-        libvirt_network.check_established(params)
     if migration_options == "postcopy_bandwidth" and second_bandwidth:
         libvirt_domjobinfo.check_domjobinfo(migration_obj.vm, params)
 
