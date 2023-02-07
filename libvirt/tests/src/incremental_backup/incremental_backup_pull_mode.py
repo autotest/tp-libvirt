@@ -115,8 +115,10 @@ def run(test, params, env):
                           "server_pwd": tls_server_pwd,
                           }
             if custom_pki_path:
-                pki_path = os.path.join(tmp_dir, "inc_bkup_pki")
+                pki_path = params.get("backup_pki_path", "/etc/pki/custom_dir/")
             else:
+                # "/etc/pki/libvirt-backup/" is the default dir to store tls
+                # certs for pull mode backup job
                 pki_path = "/etc/pki/libvirt-backup/"
             if tls_x509_verify:
                 tls_config["client_ip"] = tls_client_ip
