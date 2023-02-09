@@ -63,7 +63,9 @@ def run(test, params, env):
     user_vm_name = params.get('user_vm_name', 'non_root_vm')
     bridge_name = params.get('bridge_name', 'test_br0') + rand_id
     device_type = params.get('device_type', '')
-    iface_name = utils_net.get_net_if(state="UP")[0]
+    iface_name = params.get("iface_name")
+    if not iface_name:
+        iface_name = utils_net.get_net_if(state="UP")[0]
     tap_name = params.get('tap_name', 'mytap0') + rand_id
     macvtap_name = params.get('macvtap_name', 'mymacvtap0') + rand_id
     remote_ip = params.get('remote_ip')
