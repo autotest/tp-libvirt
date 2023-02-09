@@ -65,6 +65,7 @@ def set_domain_disk(vm, blk_source, params):
     use_unbootable_dev = "yes" == params.get("use_unbootable_dev", "no")
     use_unbootable_dev_first = "yes" == params.get("use_unbootable_dev_first", "no")
     boot_order_bootable_first = "yes" == params.get("boot_order_bootable_first")
+    xml_boot_in_os = "yes" == params.get("xml_boot_in_os")
 
     # use_unbootable_dev_first means the xml contain both type of device
     # the one which is not bootable has higher order without "boot order" element
@@ -74,14 +75,16 @@ def set_domain_disk(vm, blk_source, params):
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
     vmxml.remove_all_disk()
-    vmxml.remove_all_boots()
+    if not xml_boot_in_os:
+        vmxml.remove_all_boots()
+    vmxml.sync()
     if use_unbootable_dev:
         unbootable_source = os.path.join(data_dir.get_data_dir(), "unbootable.img")
         unbootable_disk_params = {'source': {'attrs': {'file': unbootable_source}},
                                   'driver': {'name': driver_name, 'type': driver_type},
                                   'target': {'dev': unbootable_target_dev, 'bus': target_bus},
                                   'device': disk_device}
-        if not boot_order_bootable_first:
+        if not xml_boot_in_os and not boot_order_bootable_first:
             unbootable_disk_params["boot"] = 1
 
         libvirt.create_local_disk(disk_type, unbootable_source, image_size, disk_format)
@@ -94,10 +97,11 @@ def set_domain_disk(vm, blk_source, params):
                                 'driver': {'name': driver_name, 'type': driver_type},
                                 'target': {'dev': target_dev, 'bus': target_bus},
                                 'device': disk_device}
-        if boot_order_bootable_first:
-            bootable_disk_params["boot"] = 1
-        else:
-            bootable_disk_params["boot"] = 2
+        if not xml_boot_in_os:
+            if boot_order_bootable_first:
+                bootable_disk_params["boot"] = 1
+            else:
+                bootable_disk_params["boot"] = 2
 
         libvirt_vmxml.modify_vm_device(vmxml=vmxml, dev_type='disk',
                                        dev_dict=bootable_disk_params, index=1)

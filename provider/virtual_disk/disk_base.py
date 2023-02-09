@@ -1,4 +1,5 @@
 import logging
+import os
 
 from avocado.utils import lv_utils
 from avocado.utils import process
@@ -6,12 +7,13 @@ from avocado.utils import process
 from virttest import ceph
 from virttest import data_dir
 from virttest import virsh
+
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_secret
+from virttest.utils_test import libvirt
 
 LOG = logging.getLogger('avocado.' + __name__)
 
@@ -91,6 +93,24 @@ class DiskBase(object):
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
 
+        disk_xml, new_image_path = self.prepare_disk_xml(
+            disk_type, disk_dict, new_image_path, **kwargs)
+
+        libvirt.add_vm_device(vmxml, disk_xml)
+
+        return new_image_path
+
+    def prepare_disk_xml(self, disk_type, disk_dict, new_image_path='', **kwargs):
+        """
+        Prepare disk xml
+
+        :param disk_type: disk type
+        :param disk_dict: dict to update disk
+        :param new_image_path: new disk image if needed
+        :param kwargs: optional keyword arguments.
+        :return disk_xml: return disk xml
+        :return new_image_path: return the updated new image path of new disk
+        """
         if disk_type == 'file':
             if not new_image_path:
                 new_image_path = data_dir.get_data_dir() + '/test.img'
@@ -142,12 +162,9 @@ class DiskBase(object):
                              "secret_type": "ceph"}}})
 
         disk_xml = libvirt_vmxml.create_vm_device_by_type("disk", disk_dict)
-        libvirt.add_vm_device(vmxml, disk_xml)
+        LOG.debug('Create disk xml is :%s' % disk_xml)
 
-        vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
-        LOG.debug('vmxml after update disk is:%s', vmxml)
-
-        return new_image_path
+        return disk_xml, new_image_path
 
     def cleanup_disk_preparation(self, disk_type):
         """
@@ -159,7 +176,8 @@ class DiskBase(object):
             self.cleanup_block_disk_preparation(self.vg_name, self.lv_name)
 
         elif disk_type == 'file':
-            process.run('rm -f %s' % self.new_image_path)
+            if os.path.exists(self.new_image_path):
+                os.remove(self.new_image_path)
 
         elif disk_type == 'volume':
             pvt = libvirt.PoolVolumeTest(self.test, self.params)
@@ -170,7 +188,16 @@ class DiskBase(object):
             libvirt.setup_or_cleanup_nfs(is_setup=False)
 
         elif disk_type == "rbd_with_auth":
+            mon_host = self.params.get("mon_host")
+            new_image_path = self.params.get("image_path")
+
             libvirt_secret.clean_up_secrets()
+            ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
+                              new_image_path.split("/")[1])
+            if os.path.exists(self.params.get('keyfile')):
+                os.remove(self.params.get('keyfile'))
+            if os.path.exists(self.params.get('configfile')):
+                os.remove(self.params.get('configfile'))
 
     @staticmethod
     def cleanup_block_disk_preparation(vg_name, lv_name):
@@ -183,6 +210,8 @@ class DiskBase(object):
         lv_utils.lv_remove(vg_name, lv_name)
         lv_utils.vg_remove(vg_name)
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
+        if os.path.exists('/dev/%s' % vg_name):
+            os.rmdir('/dev/%s' % vg_name)
 
     @staticmethod
     def create_volume_for_disk_path(test, params, pool_name='pool_name',
@@ -245,11 +274,13 @@ class DiskBase(object):
         sec_dict = eval(params.get("sec_dict", '{}'))
         auth_key = params.get("auth_key")
         mon_host = params.get("mon_host")
+        rbd_image_size = params.get("rbd_image_size", '200M')
         new_image_path = params.get("image_path")
         auth_username = params.get("auth_user")
         client_name = params.get("client_name")
 
-        ceph.create_config_file(mon_host)
+        params.update(
+            {'configfile': ceph.create_config_file(mon_host)})
         params.update(
             {'keyfile': ceph.create_keyring_file(client_name, auth_key)})
         LOG.debug('Create key file :%s' % params.get('keyfile'))
@@ -257,6 +288,11 @@ class DiskBase(object):
         libvirt_secret.clean_up_secrets()
         sec_uuid = libvirt_secret.create_secret(sec_dict=sec_dict)
         virsh.secret_set_value(sec_uuid, auth_key, debug=True)
+
+        ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
+                          new_image_path.split("/")[1])
+        ceph.rbd_image_create(mon_host, new_image_path.split("/")[0],
+                              new_image_path.split("/")[1], rbd_image_size)
 
         return mon_host, auth_username, new_image_path
 
@@ -270,7 +306,7 @@ class DiskBase(object):
         dst_img, backing_list = '', []
         if disk_type == "file":
             libvirt.create_local_disk(
-                "file", path=self.base_dir + "/a/a", size="500M",
+                "file", path=self.base_dir + "/a/a", size="200M",
                 disk_format="qcow2", **kwargs)
 
             dst_img, backing_list = libvirt_disk.make_relative_path_backing_files(
@@ -313,11 +349,17 @@ class DiskBase(object):
         new_image_path = self.params.get("image_path")
         auth_key = self.params.get("auth_key")
         client_name = self.params.get("client_name")
+        rbd_image_size = self.params.get("rbd_image_size", "200M")
 
-        self.params.update({'configfile': ceph.create_config_file(mon_host)})
         self.params.update(
             {'keyfile': ceph.create_keyring_file(client_name, auth_key)})
-        LOG.debug('Create ceph key file and config file')
+        self.params.update(
+            {'configfile': ceph.create_config_file(mon_host)})
+
+        ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
+                          new_image_path.split("/")[1])
+        ceph.rbd_image_create(mon_host, new_image_path.split("/")[0],
+                              new_image_path.split("/")[1], rbd_image_size)
 
         process.run("mkdir %s" % (self.base_dir + "/c"))
         cmd = "cd %s && qemu-img create -f qcow2 -F raw -o " \

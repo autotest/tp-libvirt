@@ -299,11 +299,15 @@ def run(test, params, env):
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             if status_error:
+                err_msg = params.get('err_msg')
+                if err_msg:
+                    utils_test.libvirt.check_status_output(e.status,
+                                                           output=e.reason,
+                                                           expected_fails=err_msg)
                 return
             else:
                 test.fail("Test failed in positive case.\n "
                           "error: %s\n%s" % (e, bug_url))
-
         # Check qemu process numa memory usage
         memory_status, qemu_cpu = utils_test.qemu.get_numa_status(
             host_numa_node,

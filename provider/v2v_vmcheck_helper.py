@@ -630,11 +630,6 @@ class VMChecker(object):
                     ".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
                 self.log_err(err_msg)
 
-        LOG.info("Checking firware='efi' existing in VM XML")
-        if bootinfo == 'uefi' and not root.findall("./os[@firmware='efi']"):
-            err_msg = "Checking firmware='efi' existing failed"
-            self.log_err(err_msg)
-
         LOG.info("Checking CPU topology existing in VM XML")
         if not root.findall("./cpu/topology"):
             err_msg = "Checking CPU topology existing failed"

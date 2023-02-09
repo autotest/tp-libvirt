@@ -15,6 +15,7 @@ from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
 from virttest.utils_test import libvirt
+from virttest.utils_conn import update_crypto_policy
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -74,17 +75,32 @@ def run(test, params, env):
         LOG.error(msg)
         error_list.append(msg)
 
-    def set_graphics(virsh_instance, param):
+    def enable_legacy_cryptography(hostname):
         """
-        Set graphics attributes of vm xml
+        Enable the legacy sha1 algorithm.
         """
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-            vm_name, virsh_instance=virsh_instance)
-        graphic = vmxml.xmltreefile.find('devices').find('graphics')
-        for key in param:
-            LOG.debug('Set %s=\'%s\'' % (key, param[key]))
-            graphic.set(key, param[key])
-        vmxml.sync(virsh_instance=virsh_instance)
+        ssh_config = ("Host %s\n"
+                      "  KexAlgorithms            +diffie-hellman-group14-sha1\n"
+                      "  MACs                     +hmac-sha1\n"
+                      "  HostKeyAlgorithms        +ssh-rsa\n"
+                      "  PubkeyAcceptedKeyTypes   +ssh-rsa\n"
+                      "  PubkeyAcceptedAlgorithms +ssh-rsa") % hostname
+
+        openssl_cnf = (".include /etc/ssl/openssl.cnf\n"
+                       "[openssl_init]\n"
+                       "alg_section = evp_properties\n"
+                       "[evp_properties]\n"
+                       "rh-allow-sha1-signatures = yes")
+
+        with open(os.path.expanduser('~/.ssh/config'), 'w') as fd:
+            fd.write(ssh_config)
+
+        with open(os.path.expanduser('~/openssl-sha1.cnf'), 'w') as fd:
+            fd.write(openssl_cnf)
+
+        # export the environment variable
+        os.environ['OPENSSL_CONF'] = os.path.expanduser('~/openssl-sha1.cnf')
+        LOG.debug('OPENSSL_CONF is %s' % os.getenv('OPENSSL_CONF'))
 
     def check_grub_file(vmcheck, check):
         """
@@ -205,12 +221,11 @@ def run(test, params, env):
         bk_xml = None
         utils_v2v.set_libguestfs_backend(params)
 
-        # See man virt-v2v-input-xen(1)
-        process.run(
-            'update-crypto-policies --set LEGACY',
-            verbose=True,
-            ignore_status=True,
-            shell=True)
+        support_ver = '[virt-v2v-2.0.7-4,)'
+        if utils_v2v.multiple_versions_compare(support_ver):
+            enable_legacy_cryptography(xen_host)
+        else:
+            update_crypto_policy("LEGACY")
 
         # Setup ssh-agent access to xen hypervisor
         LOG.info('set up ssh-agent access ')
@@ -416,13 +431,6 @@ def run(test, params, env):
                                           xen_host_passwd, "#")
             session.cmd('rm -f /etc/ssh/ssh_banner')
             session.cmd('service sshd restart')
-        # Restore crypto-policies to DEFAULT, the setting is impossible to be
-        # other values by default in testing environment.
-        process.run(
-            'update-crypto-policies --set DEFAULT',
-            verbose=True,
-            ignore_status=True,
-            shell=True)
         if bk_xml:
             bk_xml.sync(virsh_instance=virsh_instance)
         if virsh_instance:
@@ -455,3 +463,5 @@ def run(test, params, env):
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
         process.run('ssh-agent -k')
+        if not utils_v2v.multiple_versions_compare(support_ver):
+            update_crypto_policy()

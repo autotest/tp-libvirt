@@ -287,7 +287,8 @@ def run(test, params, env):
         ret = process.run(cmd, shell=True)
         logging.debug("Command line %s", ret.stdout_text)
         if test_vhost_net:
-            if not ret.stdout_text.count("vhost=on") and not rm_vhost_driver:
+            if not re.search('"vhost":true|vhost=on', ret.stdout_text) \
+                    and not rm_vhost_driver:
                 test.fail("Can't see vhost options in"
                           " qemu-kvm command line")
 
@@ -445,7 +446,11 @@ def run(test, params, env):
         if not utils_package.package_install(["omping"]):
             test.error("Failed to install omping"
                        " on host")
-        cmd = ("iptables -F;omping -m %s %s" %
+        # open udp port 4321 on host for omping multicast on host
+        # if firewalld is inactive, it will return with "FirewallD is not running"
+        # if firewalld is active, it will open udp port 4321
+        cmd = ("iptables -F; firewall-cmd --add-port=4321/udp;"
+               "omping -m %s %s" %
                (src_addr, "192.168.122.1 %s" %
                 ' '.join(list(vms_ip_dict.values()))))
         # Run a backgroup job waiting for connection of client
@@ -457,7 +462,8 @@ def run(test, params, env):
             if not utils_package.package_install(["omping"], vms_sess_dict[vms]):
                 test.error("Failed to install omping"
                            " on guest")
-            cmd = ("iptables -F; omping -c 5 -T 5 -m %s %s" %
+            cmd = ("iptables -F; firewall-cmd --add-port=4321/udp; "
+                   "omping -c 5 -T 5 -m %s %s" %
                    (src_addr, "192.168.122.1 %s" %
                     vms_ip_dict[vms]))
             ret, output = vms_sess_dict[vms].cmd_status_output(cmd)

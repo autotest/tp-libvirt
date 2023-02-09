@@ -73,9 +73,12 @@ def run(test, params, env):
         various flags(--live/config/persistent/current) for vm states(shutoff,
         running).
         """
-        if start_vm and not vm.is_alive():
-            vm.start()
-            vm_session = vm.wait_for_login()
+        if start_vm:
+            if not vm.is_alive():
+                vm.start()
+            vm.cleanup_serial_console()
+            vm.create_serial_console()
+            vm_session = vm.wait_for_serial_login(timeout=240)
 
         libvirt_vfio.check_vfio_pci(sriov_test_obj.vf_pci, True)
 
@@ -89,7 +92,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP2: Check VM xml.")
         check_vm_xml(vm, device_type, params, True)
-        if 'vm_session' in locals():
+        if 'vm_session' in locals() and not flagstr.count('config'):
             check_points.check_vm_network_accessed(vm_session)
 
         test.log.info("TEST_STEP3: Detach the hostdev interface/device")

@@ -47,6 +47,12 @@ def run(test, params, env):
                 test.fail("Can not find the %s codec xml for sound dev "
                           "in the guest xml file." % codec_type)
 
+        if sound_model == "ich9":
+            sound_devices = xml_after_adding_device.get_devices("sound")
+            for device in sound_devices:
+                if device.model_type == "ich9":
+                    check_device_address_slot(device, expected_address_slot_value)
+
     def check_qemu_cmd_line():
         """
         Check whether the added devices are shown in the qemu cmd line
@@ -78,11 +84,26 @@ def run(test, params, env):
                 test.fail("Can not find the %s codec for sound dev "
                           "in qemu cmd line." % codec_type)
 
+    def check_device_address_slot(sound_device, expected_value):
+        """
+        Checks if the address slot of a given sound_device has expected value.
+
+        :param sound_device: XML device object, the sound device to check
+        :param expected_value: String, value the device addr. slot should match
+        """
+        slot_value = sound_device.address["slot"]
+        if slot_value != expected_value:
+            test.fail(f"Expected address slot value '{expected_value}' but got"
+                      "'{slot_value}'")
+        else:
+            logging.info(f"Address slot value matches '{expected_value}'")
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
     status_error = params.get("status_error", "no") == "yes"
     sound_model = params.get("sound_model")
+    expected_address_slot_value = params.get("slot_value")
 
     # AC97 sound model supported since 0.6.0
     if sound_model == "ac97":

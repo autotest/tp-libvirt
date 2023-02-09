@@ -256,12 +256,18 @@ class BlockCommand(object):
         vmxml.devices = vmxml.devices.append(new_disk)
         vmxml.xmltreefile.write()
         vmxml.sync()
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
+        self.test.log.debug("Current vm xml is :%s", vmxml)
 
     @staticmethod
-    def clean_file(file_path):
+    def clean_file(file_path, session=None):
         """
         Clean file
+
         :params file_path: the path of file to delete
+        :params session: vm session
         """
-        if os.path.exists(file_path):
+        if session:
+            session.cmd("rm -f %s" % file_path)
+        elif os.path.exists(file_path):
             os.remove(file_path)

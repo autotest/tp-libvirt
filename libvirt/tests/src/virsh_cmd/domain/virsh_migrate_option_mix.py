@@ -481,6 +481,8 @@ def run(test, params, env):
             # Check dst VM uptime after migration
             # Note: migrated_vm_uptime should be greater than the vm_uptime got
             # before migration
+            if vm.serial_console is None:
+                vm.create_serial_console()
             migrated_vm_uptime = vm.uptime(connect_uri=dest_uri)
             logging.info("Check VM uptime in destination after "
                          "migration: %s", migrated_vm_uptime)

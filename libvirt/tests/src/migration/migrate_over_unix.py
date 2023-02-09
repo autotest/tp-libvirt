@@ -266,6 +266,8 @@ def run(test, params, env):
                                       debug=True), 60):
                 test.fail("The migrated VM should be alive!")
             if vm_did_list:
+                if vm.serial_console is None:
+                    vm.create_serial_console()
                 vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
                 for did in vm_did_list:
                     vm_session_after_mig.cmd(

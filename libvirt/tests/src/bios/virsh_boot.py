@@ -359,7 +359,7 @@ def apply_boot_options(vmxml, params, test):
         nvram = nvram.replace("<VM_NAME>", vm_name)
         dict_os_attrs.update({"nvram": nvram})
         if with_nvram_template:
-            dict_os_attrs.update({"nvram_template": template})
+            dict_os_attrs.update({"nvram_attrs": {"template": template}})
 
     vmxml.set_os_attrs(**dict_os_attrs)
 

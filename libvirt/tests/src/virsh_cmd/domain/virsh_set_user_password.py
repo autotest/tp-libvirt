@@ -65,7 +65,7 @@ def run(test, params, env):
 
             # Add user
             if add_user:
-                cmd = " rm -f /etc/gshadow.lock & useradd %s" % set_user_name
+                cmd = " rm -f /etc/gshadow.lock /etc/subgid.lock & useradd %s" % set_user_name
                 status, output = session.cmd_status_output(cmd)
                 if status:
                     test.error("Adding user '%s' got failed: '%s'" %

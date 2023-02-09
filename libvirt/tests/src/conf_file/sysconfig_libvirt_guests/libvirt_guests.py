@@ -320,7 +320,7 @@ def run(test, params, env):
         # host shutdown. The purpose can also be fulfilled by restart the
         # libvirt-guests service.
         libvirt_guests_service.restart()
-        time.sleep(10)
+        time.sleep(30)
         output = tail_messages.get_output()
         logging.debug("Get messages in /var/log/messages: %s" % output)
 

@@ -1,9 +1,11 @@
+import os
 import re
 
 from avocado.utils import process
 
 from virttest import libvirt_version
 from virttest import test_setup
+from virttest import utils_disk
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import virsh
@@ -55,11 +57,11 @@ def mount_hugepages(page_size):
     else:
         perm = "pagesize=%dK" % page_size
 
-    tlbfs_status = utils_misc.is_mounted("hugetlbfs", "/dev/hugepages",
-                                         "hugetlbfs")
+    tlbfs_status = utils_disk.is_mount("hugetlbfs", "/dev/hugepages",
+                                       "hugetlbfs")
     if tlbfs_status:
-        utils_misc.umount("hugetlbfs", "/dev/hugepages", "hugetlbfs")
-    utils_misc.mount("hugetlbfs", "/dev/hugepages", "hugetlbfs", perm)
+        utils_disk.umount("hugetlbfs", "/dev/hugepages", "hugetlbfs")
+    utils_disk.mount("hugetlbfs", "/dev/hugepages", "hugetlbfs", perm)
 
 
 def setup_hugepages(page_size=2048, hp_num=1000):
@@ -100,6 +102,18 @@ def get_node_meminfo(node, key, session=None):
     meminfo = func('grep %s /sys/devices/system/node/node%d/meminfo'
                    % (key, node))
     return int(re.search(r':\s+(\d+)', meminfo).group(1))
+
+
+def attach_mem_device(params):
+    """
+    Attach memory device to vm
+
+    :param params: test params
+    """
+    mem_device = Memory()
+    mem_device_attrs = eval(params.get('mem_device_attrs'))
+    mem_device.setup_attrs(**mem_device_attrs)
+    virsh.attach_device(params['main_vm'], mem_device.xml, **VIRSH_ARGS)
 
 
 def run(test, params, env):
@@ -216,6 +230,15 @@ def run(test, params, env):
             _setup_mbxml()
 
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
+
+        if case == 'mount_hp_running_vm':
+            vm_mem_size = vmxml.memory
+            hp_cfg = test_setup.HugePageConfig(params)
+            hp_cfg.set_kernel_hugepages(1048576, vm_mem_size // 1048576)
+            hp_cfg.set_kernel_hugepages(2048, vm_mem_size // 2048)
+            set_vmxml(vmxml, params)
+            _setup_mbxml()
+            vmxml.sync()
 
     def run_test_memorybacking(case):
         """
@@ -346,6 +369,32 @@ def run(test, params, env):
                 if int(free_pages) != pagenum:
                     test.fail('Freepage number of node %d:%s is incorrect, '
                               'should be %d' % (node, free_pages, pagenum))
+        if case == 'mount_hp_running_vm':
+            vm.start()
+            utils_libvirtd.Libvirtd('virtqemud').stop()
+            hp_path = params.get('hp_path')
+            if not os.path.exists(hp_path):
+                os.mkdir(hp_path)
+            utils_disk.mount('hugetlbfs', hp_path, 'hugetlbfs',
+                             options='pagesize=1G', verbose=True)
+
+            vm_state = virsh.domstate(vm_name).stdout_text
+            if 'running' not in vm_state:
+                test.fail('VM should be "running", not "%s"' % vm_state)
+            attach_mem_device(params)
+            test.log.debug('VMxml before login: %s',
+                           virsh.dumpxml(vm_name).stdout_text)
+            session = vm.wait_for_login()
+            session.cmd('swapoff -a')
+
+            # Get free mem of vm to calculate mem size for memhog command.
+            # e.g. 100MiB less than free memory size
+            free_mem = utils_memory.freememtotal(session)
+            test.log.debug('Free mem on vm: %d kB', free_mem)
+            session.cmd('memhog %dM' % (free_mem // 1024 - 100))
+            vm.destroy()
+            utils_libvirtd.Libvirtd('virtqemud').restart()
+            virsh.start(vm_name, **VIRSH_ARGS)
 
     def cleanup_test_memorybacking(case):
         """
@@ -361,6 +410,10 @@ def run(test, params, env):
                 hp_cfg.set_kernel_hugepages(pagesize, params['page_num_bk'])
         if case == 'hp_from_2_numa_nodes':
             restore_hugepages()
+        if case == 'mount_hp_running_vm':
+            hp_path = params.get('hp_path')
+            utils_disk.umount('hugetlbfs', hp_path, 'hugetlbfs')
+            os.rmdir(hp_path)
 
     def run_test_edit_mem(case):
         """

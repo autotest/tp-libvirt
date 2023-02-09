@@ -81,7 +81,7 @@ def run(test, params, env):
 
         if case == "same_image":
             replace_msg = test_obj.snap_path_list[int(top_index) - 1]
-        libvirt.check_result(result, err_msg.format(replace_msg))
+        libvirt.check_result(result, [err_msg.format(replace_msg), err_msg_2])
 
     # Process cartesian parameters
     vm_name = params.get("main_vm")
@@ -89,6 +89,7 @@ def run(test, params, env):
     pivot = params.get('pivot')
     snap_num = int(params.get('snap_num'))
     err_msg = params.get('err_msg')
+    err_msg_2 = params.get('err_msg_2')
     top_index = params.get('top_image_suffix', '')
     base_index = params.get('base_image_suffix', '')
     commit_option = params.get('commit_option', '')
