@@ -9,6 +9,7 @@ from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.watchdog import Watchdog
+from virttest.libvirt_xml.devices.input import Input
 from virttest.utils_test import libvirt
 from virttest.utils_disk import get_scsi_info
 from virttest.utils_libvirt import libvirt_vmxml
@@ -220,12 +221,16 @@ def run(test, params, env):
         attach_device = False
 
     if input_type:
+        vmxml.remove_all_device_by_type('input')
         input_dict.update({"alias": {"name": device_alias}})
         if input_type == "passthrough":
             event = process.run("ls /dev/input/event*", shell=True).stdout
             input_dict.update({"source_evdev": event.decode('utf-8').split()[0]})
-        libvirt_vmxml.modify_vm_device(vmxml, "input",
-                                       dev_dict=input_dict)
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        input_obj = Input(type_name=input_type)
+        input_obj.setup_attrs(**input_dict)
+        libvirt.add_vm_device(vmxml, input_obj)
 
         if not vm.is_alive():
             vm.start()
