@@ -321,9 +321,13 @@ def run(test, params, env):
                     node_dict = i.copy()
                     node_dict['num'] = node_val
                     backup_list.append(node_dict)
-                    hp_cl.set_node_num_huge_pages(i['num'],
-                                                  i['nodenum'],
-                                                  i['size'])
+                    try:
+                        hp_cl.set_node_num_huge_pages(i['num'],
+                                                      i['nodenum'],
+                                                      i['size'])
+                    except ValueError as details:
+                        if "please check if the node has enough memory" in str(details):
+                            test.cancel(str(details))
                     node_val_after_set = hp_cl.get_node_num_huge_pages(i['nodenum'],
                                                                        i['size'])
                     if node_val_after_set < int(i['num']):
