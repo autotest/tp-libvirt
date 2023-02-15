@@ -101,7 +101,7 @@ def run(test, params, env):
     if pool_xml_f == "invalid-pool-xml":
         tmp_xml_f = xml_utils.TempXMLFile()
         tmp_xml_f.write('"<pool><<<BAD>>><\'XML</name\>'
-                        '!@#$%^&*)>(}>}{CORRUPTE|>!</pool>')
+                        '!@#$%^&*)>(}>}{CORRUPTE|>!</pool>'.encode())
         tmp_xml_f.flush()
         pool_xml_f = tmp_xml_f.name
     # Readonly mode

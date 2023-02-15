@@ -2,6 +2,8 @@ import re
 import os
 import logging as log
 
+from xml.etree import ElementTree as ET
+
 from avocado.core import exceptions
 
 from virttest import utils_libvirtd
@@ -12,7 +14,6 @@ from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import pool_xml
 from virttest import libvirt_version
-from virttest import element_tree as ET
 from virttest import data_dir
 
 

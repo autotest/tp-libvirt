@@ -32,7 +32,7 @@ def get_free_pci_slot(vm_name):
     """
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     pci_bridge_index = get_pci_bridge_index(vm_name)
-    pci_devices = vmxml.xmltreefile.find('devices').getchildren()
+    pci_devices = list(vmxml.xmltreefile.find('devices'))
     used_slot = []
     for dev in pci_devices:
         address = dev.find('address')
@@ -86,7 +86,7 @@ def get_free_root_port(vm_name):
         else:
             other_ports.add(controller.get('index'))
     # Record the addresses being allocated for all pci devices
-    pci_devices = vmxml.xmltreefile.find('devices').getchildren()
+    pci_devices = list(vmxml.xmltreefile.find('devices'))
     for dev in pci_devices:
         address = dev.find('address')
         if address is not None:

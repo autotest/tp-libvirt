@@ -3,10 +3,10 @@ import re
 import logging as log
 import time
 
+from xml.etree import ElementTree
 from avocado.utils import process
 from avocado.utils.software_manager.backends import rpm
 
-from virttest import element_tree
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_libvirtd
@@ -302,7 +302,7 @@ def run(test, params, env):
             vmxml_aft = vm_xml.VMXML.new_from_dumpxml(vm_name)
             iface_aft = list(vmxml_aft.get_iface_all().values())[0]
             iface_inst = Interface()
-            iface_inst.xml = element_tree.tostring(iface_aft)
+            iface_inst.xml = ElementTree.tostring(iface_aft, encoding='unicode')
             logging.debug('Interface after update:\n%s', iface_inst)
             if new_iface_link:
                 iface_link_value = iface_aft.find('link').get('state')

@@ -42,8 +42,7 @@ def get_cpu_definition(source_type, vm_name, test):
         cpu_xml = dom_xml.xmltreefile.get_element_string('/cpu')
     elif source_type == "domcapa_xml":
         domcapa_xml = domcapability_xml.DomCapabilityXML()
-        cpu_tmp = vm_xml.VMCPUXML.from_domcapabilities(domcapa_xml)
-        cpu_xml = cpu_tmp.xmltreefile.get_element_string('/')
+        cpu_xml = str(vm_xml.VMCPUXML.from_domcapabilities(domcapa_xml))
     elif source_type == "capa_xml":
         capa_xml = capability_xml.CapabilityXML()
         cpu_xml = capa_xml.xmltreefile.get_element_string('/host/cpu')

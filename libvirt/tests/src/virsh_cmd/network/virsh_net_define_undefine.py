@@ -159,7 +159,7 @@ def run(test, params, env):
     test_xml = xml_utils.TempXMLFile()  # temporary file
     try:
         # LibvirtXMLBase.__str__ returns XML content
-        test_xml.write(str(backup['default']))
+        test_xml.write(str(backup['default']).encode())
         test_xml.flush()
     except (KeyError, AttributeError):
         test.cancel("Test requires default network to exist")
