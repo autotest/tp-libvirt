@@ -205,7 +205,7 @@ def check_cgget_output(test, expected_value):
             cmd = 'cat /sys/fs/cgroup/cpuset/machine.slice/{}/libvirt/{}/cpuset.mems'.format(slice_line, item)
 
         result = process.run(cmd, shell=True, ignore_status=False, verbose=True)
-        if int(expected_value) != int(result.stdout_text):
+        if expected_value != result.stdout_text.strip():
             test.fail('{} is not found in the cpuset.mems file'.format(expected_value))
 
 
