@@ -417,15 +417,27 @@ def run(test, params, env):
                           " the limitation of configuration")
         if device_num > 1:
             rng_dev = rng_avail.split()
-            if len(rng_dev) != device_num:
-                test.cancel("Multiple virtio-rng devices are not"
-                            " supported on this guest kernel. "
-                            "Bug: https://bugzilla.redhat.com/"
-                            "show_bug.cgi?id=915335")
+            compare_device_numbers(rng_dev)
             session.cmd("echo -n %s > %s" % (rng_dev[1], rng_files[1]))
             # Read the random device
             if session.cmd_status(cmd, timeout=timeout):
                 test.fail("Failed to read the random device")
+
+    def compare_device_numbers(rng_dev):
+        """
+        Compares number of entries in rng_dev list, while doing some cleanup
+        of said entries.
+
+        :param rng_dev: List of names of RNG devices
+        """
+        if vm_xml.VMXML.get_devices("tpm"):
+            rng_dev.remove("tpm-rng-0")
+        if "trng" in rng_dev:
+            rng_dev.remove("trng")
+        if len(rng_dev) != device_num:
+            test.fail("Number of rng devices defined and available does not match.\n"
+                      "Rng devices: %s\n"
+                      "Number of devices: %i" % (rng_dev, device_num))
 
     def get_rng_device(guest_arch, rng_model):
         """
