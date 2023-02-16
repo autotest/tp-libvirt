@@ -92,13 +92,8 @@ def get_invalid_xml(data_xml):
     :return: The instance of VMCPUXML
     """
     invalid_xml = vm_xml.VMCPUXML()
-    with open(data_xml.xml, "r") as data_f, \
-            open(invalid_xml.xml, "w") as new_f:
-        # Discard line with <?xml
-        data_f.readline()
-        new_f.write("<host>{}</host>".format(data_f.read()))
-    # Reload xml content
-    invalid_xml.xmltreefile.parse(invalid_xml.xml)
+    data_xml_content = data_xml.xmltreefile.get_element_string('.')
+    invalid_xml.xml = f'<host>{data_xml_content}</host>'
     return invalid_xml
 
 
