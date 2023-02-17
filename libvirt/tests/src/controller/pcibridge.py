@@ -345,8 +345,7 @@ def run(test, params, env):
                 libvirt.check_exit_status(result_start_vm)
 
                 # Login to make sure vm is actually started
-                vm.create_serial_console()
-                vm.wait_for_serial_login().close()
+                vm.wait_for_login().close()
 
                 logging.debug(virsh.dumpxml(vm_name))
 
