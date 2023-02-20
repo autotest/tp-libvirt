@@ -9,6 +9,12 @@ import time
 import xml.etree.ElementTree as ET
 from distutils.version import LooseVersion  # pylint: disable=E0611
 
+from yaml import load
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
+
 from avocado.core import exceptions
 from avocado.utils import process
 from aexpect.exceptions import ShellStatusError
@@ -1082,5 +1088,33 @@ def check_qemu_output(params):
         output = cmd_result.stdout_text.strip() + cmd_result.stderr_text.strip()
         if 'server running' not in output or 'warning' in output:
             result = False
+
+    return result
+
+
+def check_kubevirt_output(params):
+    """
+    Check -o kubevirt result
+    """
+    LOG.info('checking kubevirt output')
+
+    os_directory = params.get('os_directory')
+    disk_count = int(params.get('vm_disk_count', 0))
+    vm_name = params.get('v2v_cmd_op_on')
+
+    result = True
+
+    with open(glob.glob("%s/*.yaml" % os_directory)[0])as fd:
+        LOG.debug(fd.read())
+        fd.seek(0)
+        data = load(fd, Loader=Loader)
+
+    if vm_name != data['metadata']['name']:
+        LOG.debug('expect vm name: %s' % vm_name)
+        result = False
+
+    if disk_count != len(data['spec']['domain']['devices']['disks']):
+        LOG.debug('expect disk count: %s' % disk_count)
+        result = False
 
     return result

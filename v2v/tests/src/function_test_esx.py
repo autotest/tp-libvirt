@@ -25,6 +25,7 @@ from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
 from provider.v2v_vmcheck_helper import check_qemu_output
+from provider.v2v_vmcheck_helper import check_kubevirt_output
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -510,11 +511,13 @@ def run(test, params, env):
 
             if output_mode == 'json' and not check_json_output(params):
                 test.fail('check json output failed')
+            if output_mode == 'kubevirt' and not check_kubevirt_output(params):
+                test.fail('check kubevirt output failed')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
             if output_mode == 'qemu' and not check_qemu_output(params):
                 test.fail('check qemu output failed')
-            if output_mode in ['null', 'json', 'local', 'qemu']:
+            if output_mode in ['null', 'json', 'kubevirt', 'local', 'qemu']:
                 return
 
             # vmchecker must be put before skip_vm_check in order to clean up
@@ -680,6 +683,9 @@ def run(test, params, env):
         # Rename guest with special name while converting to rhev
         if '#' in vm_name and output_mode == 'rhev':
             v2v_params['new_name'] = v2v_params['new_name'].replace('#', '_')
+
+        if output_mode == 'kubevirt':
+            v2v_params['new_name'] = re.sub('[^a-z-.0-9]', '', v2v_params['new_name'].lower())
 
         # Create SASL user on the ovirt host
         if output_mode == 'rhev':
