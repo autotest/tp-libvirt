@@ -93,7 +93,7 @@ class CcwMdevHandler(MdevHandler):
         self.device_id = None
         self.session = None
 
-    def create_nodedev(self, api="mdevctl"):
+    def create_nodedev(self, api="mdevctl", devid=None):
         """
         Creates a mediated device of a specific type
         and returns its name from libvirt.
@@ -103,7 +103,7 @@ class CcwMdevHandler(MdevHandler):
         if api != "mdevctl":
             raise TestError("Handling mdev via '%s' is not implemented." % api)
 
-        self.schid, self.chpids = ccw.get_device_info()
+        self.schid, self.chpids = ccw.get_device_info(devid)
         self.device_id, _ = ccw.get_first_device_identifiers(self.chpids, None)
         ccw.set_override(self.schid)
         self.uuid = str(uuid4())

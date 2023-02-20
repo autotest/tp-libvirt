@@ -19,6 +19,7 @@ def run(test, params, env):
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
+    devid = params.get("devid")
     schid = None
     uuid = None
     chpids = None
@@ -29,7 +30,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
 
-        schid, chpids = ccw.get_device_info()
+        schid, chpids = ccw.get_device_info(devid)
         uuid = str(uuid4())
 
         ccw.set_override(schid)

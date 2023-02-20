@@ -71,6 +71,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     mdev_type = params.get("mdev_type", "vfio_ccw-io")
+    devid = params.get("devid")
     handler = None
 
     try:
@@ -78,7 +79,7 @@ def run(test, params, env):
         vm.undefine()
         handler = MdevHandler.from_type(mdev_type)
         disk = get_disk_for_import(vmxml)
-        mdev_nodedev = handler.create_nodedev()
+        mdev_nodedev = handler.create_nodedev(devid=devid)
         target_address = handler.get_target_address()
 
         virt_install_with_hostdev(vm_name, mdev_nodedev, target_address, disk)

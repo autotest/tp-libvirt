@@ -299,16 +299,23 @@ def assure_preconditions():
                                    "driverctl"])
 
 
-def get_device_info():
+def get_device_info(devid=None):
     """
-    Gets the device info for passthrough
+    Gets the device info for passthrough.
+    It selects a device that's safely removable if devid
+    is not given.
 
+    :param devid: The ccw device id, e.g. 0.0.5000
     :return: Subchannel and Channel path ids (schid, chpids)
     """
 
     paths = SubchannelPaths()
     paths.get_info()
-    device = paths.get_first_unused_and_safely_removable()
+    device = None
+    if devid:
+        device = paths.get_device(devid)
+    else:
+        device = paths.get_first_unused_and_safely_removable()
     schid = device[paths.HEADER["Subchan."]]
     chpids = device[paths.HEADER["CHPIDs"]]
     return schid, chpids
