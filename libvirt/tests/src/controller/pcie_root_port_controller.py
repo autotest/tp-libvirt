@@ -1,6 +1,7 @@
 import ast
 import logging
 
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml, libvirt_pcicontr
@@ -79,6 +80,7 @@ def create_controller_dict(model, target, index, address=None):
                   'target': target}
     if address:
         contr_dict.update({"address": address})
+    LOG.debug("Created controller %s", contr_dict)
     return contr_dict
 
 
@@ -196,6 +198,7 @@ def run(test, params, env):
     :params params: Object containing parameters of a test from cfg file
     :params env: Environment object from Avocado framework
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(params.get("main_vm", "avocado-vt-vm1"))
     vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm.name)
     test_define_only = params.get("test_define_only")
