@@ -1,6 +1,9 @@
 import logging as log
+import os
+import shutil
 import time
 
+from virttest import data_dir
 from virttest import libvirt_version
 from virttest import utils_disk
 from virttest import utils_package
@@ -43,18 +46,21 @@ def run_cmd_in_guest(test, vm_session, cmd, any_error=False):
     libvirt.check_status_output(status, output, any_error=any_error)
 
 
-def create_second_disk(disk_dict):
+def create_second_disk(disk_dict, to_file_xml):
     """
     Create another disk using given parameters
 
     :param disk_dict: dict, parameters to use
+    :param to_file_xml: backup disk xml
     :return: disk xml
     """
     disk_path = disk_dict.get('source_file')
     disk_format = disk_dict.get('driver_type', 'raw')
     libvirt.create_local_disk('file', disk_path, '1', disk_format)
+    disk_xml = libvirt.create_disk_xml(disk_dict)
+    shutil.copyfile(disk_xml, to_file_xml)
 
-    return libvirt.create_disk_xml(disk_dict)
+    return disk_xml
 
 
 def run(test, params, env):
@@ -68,6 +74,7 @@ def run(test, params, env):
     at_dt = params.get('at_dt')
     cmds_in_guest = eval(params.get('cmds_in_guest'))
     target_rotation = params.get('target_rotation')
+    to_file_xml = os.path.join(data_dir.get_tmp_dir(), "detach_disk.xml")
 
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -87,7 +94,7 @@ def run(test, params, env):
 
         if at_dt:
             old_parts = utils_disk.get_parts_list(vm_session)
-            disk_xml = create_second_disk(params)
+            disk_xml = create_second_disk(params, to_file_xml)
             virsh.attach_device(vm_name, disk_xml, debug=True, ignore_status=False)
             pat_in_dumpxml = params.get('pattern_in_dumpxml')
             libvirt_vmxml.check_guest_xml(vm_name, pat_in_dumpxml, status_error=False)
@@ -98,7 +105,7 @@ def run(test, params, env):
                            "but found {}".format(added_parts))
             cmd = cmds_in_guest[0] % added_parts[0]
             run_cmd_in_guest(test, vm_session, cmd)
-            virsh.detach_device(vm_name, disk_xml, debug=True, ignore_status=False)
+            virsh.detach_device(vm_name, to_file_xml, debug=True, ignore_status=False)
             cmd = cmds_in_guest[1] % added_parts[0]
             run_cmd_in_guest(test, vm_session, cmd, any_error=True)
             libvirt_vmxml.check_guest_xml(vm_name, pat_in_dumpxml, status_error=True)
