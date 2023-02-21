@@ -430,7 +430,7 @@ def run(test, params, env):
 
         :param rng_dev: List of names of RNG devices
         """
-        if vm_xml.VMXML.get_devices("tpm"):
+        if vmxml.get_devices("tpm"):
             rng_dev.remove("tpm-rng-0")
         if "trng" in rng_dev:
             rng_dev.remove("trng")
