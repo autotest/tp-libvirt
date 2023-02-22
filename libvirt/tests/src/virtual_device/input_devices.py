@@ -27,7 +27,7 @@ def run(test, params, env):
         """
         Check whether the added devices are shown in the guest xml
         """
-        pattern = "<input bus=\"%s\" type=\"%s\">" % (bus_type, input_type)
+        pattern = "<input type=\"%s\" bus=\"%s\">" % (input_type, bus_type)
         if with_packed:
             pattern = "<driver packed=\"%s\"" % (driver_packed)
         logging.debug('Searching for %s in vm xml', pattern)
