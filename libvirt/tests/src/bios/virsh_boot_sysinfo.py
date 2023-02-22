@@ -122,12 +122,19 @@ def run(test, params, env):
         if not status_error:
             # Check result in dumpxml and qemu cmdline
             if with_file:
-                expect_xml_line = "<entry file=\"%s\" name=\"%s\" />" % (entry_file, entry_name)
+                xpaths = [
+                        ".//entry[@file='%s']" % entry_file,
+                        ".//entry[@name='%s']" % entry_name
+                        ]
+                text = None
                 expect_qemu_line = "-fw_cfg name=%s,file=%s" % (entry_name, entry_file)
             if with_value:
-                expect_xml_line = "<entry name=\"%s\">%s</entry>" % (entry_name, value_string)
+                xpaths = [
+                        ".//entry[@name='%s']" % entry_name
+                        ]
+                text = value_string
                 expect_qemu_line = "-fw_cfg name=%s,string=%s" % (entry_name, value_string)
-            libvirt.check_dumpxml(vm, expect_xml_line)
+            libvirt.check_xpaths(vmxml, xpaths, text)
             libvirt.check_qemu_cmd_line(expect_qemu_line)
 
             # Check result in guest
