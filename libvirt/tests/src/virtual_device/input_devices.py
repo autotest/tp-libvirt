@@ -5,6 +5,7 @@ import platform
 
 from virttest.libvirt_xml.devices.input import Input
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.utils_test import libvirt
 from virttest import virsh
 
 from virttest import libvirt_version
@@ -27,15 +28,16 @@ def run(test, params, env):
         """
         Check whether the added devices are shown in the guest xml
         """
-        pattern = "<input type=\"%s\" bus=\"%s\">" % (input_type, bus_type)
+        expected = [
+                ".//input[@type='%s']" % input_type,
+                ".//input[@bus='%s']" % bus_type
+                ]
         if with_packed:
-            pattern = "<driver packed=\"%s\"" % (driver_packed)
-        logging.debug('Searching for %s in vm xml', pattern)
+            expected.append(".//driver[@packed='%s']" % driver_packed)
+        logging.debug('Searching vm xml for values %s', expected)
         xml_after_adding_device = VMXML.new_from_dumpxml(vm_name)
         logging.debug('xml_after_adding_device:\n%s', xml_after_adding_device)
-        if pattern not in str(xml_after_adding_device):
-            test.fail("Can not find the %s input device xml "
-                      "in the guest xml file." % input_type)
+        libvirt.check_xpaths(xml_after_adding_device, expected)
 
     def check_qemu_cmd_line():
         """
