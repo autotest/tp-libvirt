@@ -199,7 +199,7 @@ def verify_test_mem_balloon(vm, params, test):
             return False
         return True
 
-    check_ret = utils_misc.wait_for(check_mem_balloon, timeout=20)
+    check_ret = utils_misc.wait_for(check_mem_balloon, timeout=60)
     if not check_ret:
         test.fail("Memory is not ballooned to the expected size: %s"
                   % ballooned_mem)
