@@ -33,7 +33,9 @@ def run(test, params, env):
                 ".//input[@bus='%s']" % bus_type
                 ]
         if with_packed:
-            expected.append(".//driver[@packed='%s']" % driver_packed)
+            expected = [
+                    ".//driver[@packed='%s']" % driver_packed
+                    ]
         logging.debug('Searching vm xml for values %s', expected)
         xml_after_adding_device = VMXML.new_from_dumpxml(vm_name)
         logging.debug('xml_after_adding_device:\n%s', xml_after_adding_device)
