@@ -1,7 +1,11 @@
+import logging as log
 import re
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import libvirt_version
+
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -53,8 +57,12 @@ def run(test, params, env):
     if status_error == "yes":
         if status == 0:
             if libvirtd == "off":
-                test.fail("Command 'virsh freecell' succeeded "
-                          "with libvirtd service stopped, incorrect")
+                if libvirt_version.version_compare(5, 6, 0):
+                    logging.info("From libvirt version 5.6.0 libvirtd is "
+                                 "restarted and command should succeed")
+                else:
+                    test.fail("Command 'virsh freecell' succeeded "
+                              "with libvirtd service stopped, incorrect")
             else:
                 # newer libvirt
                 if not OLD_LIBVIRT:
