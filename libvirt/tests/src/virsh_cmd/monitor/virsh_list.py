@@ -10,7 +10,7 @@ from virttest import remote
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest import ssh_key
-
+from virttest import libvirt_version
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -195,7 +195,12 @@ def run(test, params, env):
 
         if not status_error:
             if not status and re.search(result_expected, output):
-                raise exceptions.TestFail("Run successful with wrong command!")
+                if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                    logging.debug("From libvirt version 5.6.0 libvirtd is restarted "
+                                  "and command should succeed")
+                else:
+                    logging.debug(result)
+                    test.fail("Run successfully with wrong command!")
         else:
             if status:
                 raise exceptions.TestFail("Run failed with right command.")
