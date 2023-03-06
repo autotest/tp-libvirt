@@ -69,7 +69,8 @@ def run(test, params, env):
                           'mipsel', 'openrisc', 'parisc', 'ppc', 'ppcle',
                           'ppcemb', 's390', 'sh4', 'sparc', 'unicore32',
                           'xtensa', 'xtensaeb']
-        uri_type = process.run("virsh uri", shell=True).stdout_text.split(':')[0]
+        uri_type = process.run(
+            "virsh uri", shell=True).stdout_text.split(':')[0]
         domain_type = "domain_" + uri_type
         for arch_dict in list(itervalues(guest_capa)):
             for arch, val_dict in list(iteritems(arch_dict)):
@@ -80,10 +81,21 @@ def run(test, params, env):
                               (arch, val_dict['wordsize']))
                 # Check the type of hypervisor
                 if domain_type not in list(val_dict.keys()):
-                    test.fail("domain type '%s' is not matched"
-                              " under arch '%s' in "
-                              "capabilities_xml" %
-                              (uri_type, arch))
+                    if (arch == "ppc64" or arch == "ppc64le"):
+                        tcg_check = process.run("qemu-system-ppc64 --accel help",
+                                                shell=True).stdout_text.split('\n')
+                        if "tcg" not in tcg_check:
+                            logging.info("expected to fail as tcg is disabled")
+                        else:
+                            test.fail("domain type '%s' is not matched"
+                                      " under arch '%s' in "
+                                      "capabilities_xml" %
+                                      (uri_type, arch))
+                    else:
+                        test.fail("domain type '%s' is not matched"
+                                  " under arch '%s' in "
+                                  "capabilities_xml" %
+                                  (uri_type, arch))
 
         # check power management support.
         try:
@@ -121,7 +133,8 @@ def run(test, params, env):
     status_error = params.get("status_error")
     if status_error == "yes":
         if status == 0:
-            test.fail("Command virsh capabilities %s succeeded (incorrect command)" % option)
+            test.fail("Command virsh capabilities %s succeeded (incorrect \
+                       command)" % option)
     elif status_error == "no":
         compare_capabilities_xml(output)
         if status != 0:
