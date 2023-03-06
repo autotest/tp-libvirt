@@ -112,8 +112,7 @@ def run(test, params, env):
             logging.debug("VM is dead, starting")
             vm.start()
 
-        session = vm.wait_for_login()
-        session.close()
+        session = vm.wait_for_login().close()
 
     finally:
         if vm and vm.is_alive():
