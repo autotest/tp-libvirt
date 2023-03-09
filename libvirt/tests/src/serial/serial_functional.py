@@ -37,7 +37,7 @@ class ConsoleSession(aexpect.ShellSession):
     with qemu VM in different ways.
     """
 
-    def __init__(self, console_type, address, is_server=False, pki_path='.'):
+    def __init__(self, console_type, address, is_server=False, pki_path='.', output_prefix=""):
         """
         Initialize the instance and create socket/fd for connect with.
 
@@ -63,6 +63,7 @@ class ConsoleSession(aexpect.ShellSession):
         self.prompt = r"^\[.*\][\#\$]\s*$"
         self.status_test_command = "echo $?"
         self.process = None
+        self.output_prefix = output_prefix
 
         if console_type == 'unix':
             self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
