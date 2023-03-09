@@ -328,6 +328,8 @@ def run(test, params, env):
                     except ValueError as details:
                         if "please check if the node has enough memory" in str(details):
                             test.cancel(str(details))
+                        else:
+                            raise
                     node_val_after_set = hp_cl.get_node_num_huge_pages(i['nodenum'],
                                                                        i['size'])
                     if node_val_after_set < int(i['num']):
