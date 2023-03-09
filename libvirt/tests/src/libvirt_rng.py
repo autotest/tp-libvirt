@@ -417,24 +417,23 @@ def run(test, params, env):
                           " the limitation of configuration")
         if device_num > 1:
             rng_dev = rng_avail.split()
-            compare_device_numbers(rng_dev)
+            compare_device_numbers(ignored_devices, rng_dev, device_num)
             session.cmd("echo -n %s > %s" % (rng_dev[1], rng_files[1]))
             # Read the random device
             if session.cmd_status(cmd, timeout=timeout):
                 test.fail("Failed to read the random device")
 
-    def compare_device_numbers(rng_dev):
+    def compare_device_numbers(ignored_devices, rng_dev, device_num):
         """
         Compares number of entries in rng_dev list, while doing some cleanup
         of said entries.
 
+        :param ignored_devices: List of devices that should be ignored
         :param rng_dev: List of names of RNG devices
+        :param device_num: The expected number of listed devices
         """
-        if vmxml.get_devices("tpm"):
-            rng_dev.remove("tpm-rng-0")
-        if "trng" in rng_dev:
-            rng_dev.remove("trng")
-        if len(rng_dev) != device_num:
+        filtered_rng_dev = [x for x in rng_dev if x not in ignored_devices]
+        if len(filtered_rng_dev) != device_num:
             test.fail("Number of rng devices defined and available does not match.\n"
                       "Rng devices: %s\n"
                       "Number of devices: %i" % (rng_dev, device_num))
@@ -495,6 +494,7 @@ def run(test, params, env):
     snapshot_with_rng = "yes" == params.get("snapshot_with_rng", "no")
     snapshot_name = params.get("snapshot_name")
     device_num = int(params.get("device_num", 1))
+    ignored_devices = params.get("ignored_devices", "").split(",")
     detach_alias = "yes" == params.get("rng_detach_alias", "no")
     detach_alias_options = params.get("rng_detach_alias_options")
     attach_rng = "yes" == params.get("rng_attach_device", "no")
