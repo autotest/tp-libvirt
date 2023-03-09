@@ -1,6 +1,10 @@
+import logging as log
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
+from virttest import libvirt_version
+
+logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
@@ -55,12 +59,14 @@ def run(test, params, env):
                 test.cancel("remote ip parameters not set.")
             ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
             remote_uri = "qemu+ssh://%s/system" % remote_ip
-            virsh.start(vm_name, ignore_status=False, debug=True, uri=remote_uri)
+            virsh.start(vm_name, ignore_status=False,
+                        debug=True, uri=remote_uri)
             status = virsh.dommemstat(vm_name, ignore_status=True,
                                       debug=True, uri=remote_uri).exit_status
     finally:
         if vm_ref == "remote":
-            virsh.destroy(vm_name, ignore_status=False, debug=True, uri=remote_uri)
+            virsh.destroy(vm_name, ignore_status=False,
+                          debug=True, uri=remote_uri)
 
     # recover libvirtd service start
     if libvirtd == "off":
@@ -69,6 +75,11 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
+            if libvirtd == "off" and \
+                    libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is "
+                             "restarted and command should succeed")
+        else:
             test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
