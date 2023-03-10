@@ -198,7 +198,10 @@ def run(test, params, env):
         """
         Wait for vm state is ready.
         """
-        utils_misc.wait_for(lambda: vm.state() == vm_state, 10)
+        timeout = 120
+        if not utils_misc.wait_for(lambda: vm.state() == vm_state, timeout):
+            test.fail(f'Wait {timeout}s for vm to be {vm_state} and failed.'
+                      f'Current VM state is {vm.state()}')
 
     def check_guest_flags(bash_cmd, flags):
         """
