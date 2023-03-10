@@ -239,7 +239,12 @@ class SRIOVTest(object):
         rom_vendor_device = lspci_stdout[1:-1].replace(':', '') + '.rom'
         rom_file = os.path.join('/usr/share/ipxe', rom_vendor_device)
         if not os.path.exists(rom_file):
-            self.test.error("This test needs rom file: %s." % rom_file)
+            build_cmd = "git clone https://github.com/ipxe/ipxe.git;\
+                         pushd ipxe/src; make bin/{0}; cp bin/{0} {1}; popd; \
+                         rm -rf ipxe".format(rom_vendor_device, rom_file)
+            process.run(build_cmd, shell=True, verbose=True)
+            if not os.path.exists(rom_file):
+                self.test.error("This test needs rom file: %s." % rom_file)
         return rom_file
 
     def create_iface_dev(self, dev_type, iface_dict):
