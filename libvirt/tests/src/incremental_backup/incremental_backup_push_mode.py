@@ -327,8 +327,11 @@ def run(test, params, env):
             test.fail("Backup job canceled: %s" % detail)
     finally:
         # Remove checkpoints
+        only_clean_checkpoint_metadata = not vm.is_alive()
+        if "expect_backup_canceled" in locals() and expect_backup_canceled:
+            only_clean_checkpoint_metadata = True
         utils_backup.clean_checkpoints(vm_name,
-                                       clean_metadata=not vm.is_alive())
+                                       clean_metadata=only_clean_checkpoint_metadata)
 
         if vm.is_alive():
             vm.destroy(gracefully=False)
