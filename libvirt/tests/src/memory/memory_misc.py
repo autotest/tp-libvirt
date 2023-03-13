@@ -212,11 +212,25 @@ def run(test, params, env):
             pagesize = int(params.get('pagesize'))
             pagenum = int(params.get('pagenum'))
             setup_hugepages(pagesize, pagenum * 2)
+            hp_cfg = test_setup.HugePageConfig(params)
 
-            hp_cmd = 'echo %d> /sys/devices/system/node/node%d/hugepages/' \
-                     'hugepages-%dkB/nr_hugepages'
+            cancel = False
             for node in range(2):
-                process.run(hp_cmd % (pagenum, node, pagesize))
+                try:
+                    hp_cfg.set_node_num_huge_pages(pagenum, node, pagesize)
+                except ValueError as details:
+                    err_msg = 'please check if the node has enough memory'
+                    if err_msg in str(details):
+                        pgnum = hp_cfg.get_node_num_huge_pages(node, pagesize)
+                        test.log.error(f'Setting pagenum of node{node} failed, '
+                                       f'actual pagenum: {pgnum}. '
+                                       f'Error message: {str(details)}')
+                        cancel = True
+                    else:
+                        raise
+            if cancel:
+                test.cancel('Setting pagenum of numa nodes failed, '
+                            'please check log')
 
             # Setup vmxml: Add memory device
             mem_device = Memory()
