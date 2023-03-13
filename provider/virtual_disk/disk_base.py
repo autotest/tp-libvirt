@@ -6,6 +6,7 @@ from avocado.utils import process
 
 from virttest import ceph
 from virttest import data_dir
+from virttest import utils_misc
 from virttest import virsh
 
 from virttest.libvirt_xml import pool_xml
@@ -181,6 +182,8 @@ class DiskBase(object):
                 image_path, image_format=device_format, port=nbd_server_port,
                 image_size=image_size, export_name=export_name, tls=tls_enabled)
             self.disk_backend.start_nbd_server()
+            utils_misc.wait_for(
+                lambda: process.system('netstat -nlp | grep %s ' % nbd_server_port, ignore_status=True, shell=True) == 0, 10)
 
             disk_dict.update(
                 {'source': {"attrs": {"protocol": "nbd",
