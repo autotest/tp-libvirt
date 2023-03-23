@@ -38,7 +38,7 @@ def run(test, params, env):
     vcpus_hotplug = eval(params.get("vcpus_hotpluggable", "{0}"))
     setvcpu_option = eval(params.get("setvcpu_option", "{}"))
     setvcpu_action = params.get("setvcpu_action", "")
-    start_timeout = int(params.get("start_timeout", "60"))
+    start_timeout = int(params.get("login_timeout", "60"))
     modify_non_hp_ol_vcpus = params.get("modify_non_hotpluggable_online", "no")
     check = params.get("check", "")
     err_msg = params.get("err_msg", "")
