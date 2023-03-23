@@ -253,6 +253,25 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             if not re.search(data, cmd_2_result.stdout_text):
                 test.fail('failed to test blocksize policy filter')
 
+    def test_curl_multi_conn():
+        cmd = "nbdkit -r curl file:/var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2" \
+              " --run 'nbdinfo $uri' | grep can_multi_conn"
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        if re.search('can_multi_conn: false', cmd_result.stderr_text):
+            test.fail('curl plugin does not support multi_conn')
+
+    def test_luks_filter():
+        cmd_1 = "qemu-img create -f luks --object secret,data=LETMEPASS,id=sec0 -o key-secret=sec0 encrypted.img 100M"
+        cmd_2 = "nbdkit file encrypted.img --filter=luks passphrase=LETMEPASS --run 'nbdcopy $nbd data.img'"
+        cmd_3 = "nbdkit file data.img --filter=luks passphrase=LETMEPASS --run 'nbdcopy $nbd data-b.img'"
+        cmd_1_result = process.run(cmd_1, shell=True, ignore_status=True)
+        cmd_2_result = process.run(cmd_2, shell=True, ignore_status=True)
+        cmd_3_result = process.run(cmd_3, shell=True, ignore_status=True)
+        if len(cmd_2_result.stdout_text) > 0:
+            test.fail('failed to use luks filter to read luks image which is created by qemu-img')
+        if re.search('nbdkit command was killed by signal 11', cmd_3_result.stderr_text):
+            test.fail('nbdkit was killed by signal 11')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -273,5 +292,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_checkwrite_filter()
     elif checkpoint == 'blocksize_policy':
         test_blocksize_policy_filter()
+    elif checkpoint == 'test_curl_multi_conn':
+        test_curl_multi_conn()
+    elif checkpoint == 'test_luks_filter':
+        test_luks_filter()
     else:
         test.error('Not found testcase: %s' % checkpoint)
