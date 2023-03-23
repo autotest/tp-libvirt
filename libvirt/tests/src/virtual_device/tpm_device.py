@@ -79,6 +79,7 @@ def run(test, params, env):
     tpm_testsuite_url = params.get("tpm_testsuite_url", "")
     download_file_path = os.path.join(data_dir.get_data_dir(), "uefi_disk.qcow2")
     persistent_state = ("yes" == params.get("persistent_state", "no"))
+    undefine_flag = params.get("undefine_flag")
     check_pcrbanks = ('yes' == params.get("check_pcrbanks", "no"))
     remove_pcrbank = ('yes' == params.get("remove_pcrbank", "no"))
     pcrbank_change = params.get("pcrbank_change")
@@ -591,7 +592,7 @@ def run(test, params, env):
 
     def persistent_test(vm, vm_xml):
         """
-        Test for vtpm with persistent_state.
+        Test vtpm with persistent_state for transient vm.
         """
         vm.undefine("--nvram")
         virsh.create(vm_xml.xml, **virsh_dargs)
@@ -606,6 +607,25 @@ def run(test, params, env):
         if not os.path.exists(state_file):
             test.fail("Swtpm state file: %s does not exist after destroy vm'" % state_file)
         process.run("ls -Z %s" % state_file)
+
+    def test_undefine_tpmstate(vm):
+        """
+        Test undefining vm with --tpm or --keep-tpm flags.
+        """
+        ret = virsh.undefine(vm.name, undefine_flag + ' --nvram', debug=True)
+        expect_error = True if undefine_flag == '--tpm --keep-tpm' else False
+        libvirt.check_exit_status(ret, expect_error)
+        state_file = "/var/lib/libvirt/swtpm/%s/tpm2/tpm2-00.permall" % vm.get_uuid()
+        tpmstate_exist = os.path.exists(state_file)
+        process.run("ls -Z %s" % state_file, shell=True, ignore_status=True)
+        if tpmstate_exist:
+            if undefine_flag == '--tpm' or (not persistent_state and undefine_flag == ''):
+                test.fail("Swtpm state file: %s still exists after undefine vm %s"
+                          % (state_file, undefine_flag))
+        else:
+            if undefine_flag == '--keep-tpm' or (persistent_state and undefine_flag == ''):
+                test.fail("Swtpm state file: %s does not exist after undefine vm %s"
+                          % (state_file, undefine_flag))
 
     def reuse_by_vm2(tpm_dev):
         """
@@ -717,7 +737,7 @@ def run(test, params, env):
         logging.debug("tpm dev xml to add is:\n %s", tpm_dev)
         for num in range(tpm_num):
             vm_xml.add_device(tpm_dev, True)
-        if persistent_state:
+        if persistent_state and not undefine_flag:
             persistent_test(vm, vm_xml)
             return
         else:
@@ -741,6 +761,11 @@ def run(test, params, env):
                     return
                 else:
                     test.fail(detail)
+            if undefine_flag:
+                time.sleep(5)
+                vm.destroy()
+                test_undefine_tpmstate(vm)
+                return
             domuuid = vm.get_uuid()
             if vm_operate or restart_libvirtd:
                 # Make sure OS works before vm operate or restart libvirtd
