@@ -67,7 +67,7 @@ def run(test, params, env):
         """
         test.log.info("TEST_STEP1: Do blockcopy")
         virsh.blockcopy(vm_name, target_disk,
-                        blockcopy_options.format(xml_file),
+                        blockcopy_options.format(dest_xml.xml),
                         debug=True, ignore_status=False)
 
         test.log.info("TEST_STEP2: Check backingchain and slice value")
@@ -131,14 +131,10 @@ def run(test, params, env):
                          "slices": {"slice_type": "storage",
                                     "slice_offset": offset,
                                     "slice_size": str(size)}}})
+        global dest_xml
         dest_xml = libvirt_vmxml.create_vm_device_by_type("disk",
                                                           dest_disk_dict)
         test.log.debug("Current dest xml is:%s" % dest_xml)
-
-        global xml_file
-        xml_file = dest_xml.xml
-
-        return xml_file
 
     def check_result():
         """
