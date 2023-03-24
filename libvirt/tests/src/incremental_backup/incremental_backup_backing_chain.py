@@ -37,7 +37,7 @@ def run(test, params, env):
 
     def run_blk_cmd():
         """
-        Run blockcommit/blockpull/blockcopy command.
+        Run blockcommit/blockpull/blockcopy/snapshot-delete command.
         """
 
         def run_blockpull():
@@ -111,6 +111,25 @@ def run(test, params, env):
             virsh.blockcopy(vm_name, original_disk_target, copy_dest, cmd_option,
                             debug=True, ignore_status=False)
 
+        def run_snapshot_delete():
+            """
+            Run snapshot-delete command.
+            """
+            if not libvirt_version.version_compare(9, 0, 0):
+                test.cancel("Current libvirt version doesn't support "
+                            "to delete external snapshots.")
+            if delete_layer == "active_layer":
+                logging.debug("The active layer to be deleted is: %s",
+                              active_snapshot_name)
+                snapshot_name = active_snapshot_name
+            elif delete_layer == "inactive_layer":
+                logging.debug("The inactive layer to be deleted is: %s",
+                              inactive_snapshot_name)
+                snapshot_name = inactive_snapshot_name
+            virsh.snapshot_delete(vm_name, snapshot_name,
+                                  debug=True, ignore_status=False)
+            snapshot_list.remove(snapshot_name)
+
         # Get disk backing store indice info in vm disk xml
         cur_vm_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         cur_disk_xmls = cur_vm_xml.get_devices(device_type="disk")
@@ -142,6 +161,8 @@ def run(test, params, env):
             run_blockcommit()
         if blockcommand == "blockcopy":
             run_blockcopy()
+        if blockcommand == "snapshot-delete":
+            run_snapshot_delete()
 
     def create_shutoff_snapshot(original_img, snapshot_img):
         """
@@ -188,6 +209,7 @@ def run(test, params, env):
     shutoff_snapshot = "yes" == params.get("shutoff_snapshot")
     blockcommand = params.get("blockcommand")
     from_to = params.get("from_to")
+    delete_layer = params.get("delete_layer")
     blockcopy_method = params.get("blockcopy_method")
     blockcopy_reuse = params.get("blockcopy_reuse")
     backup_error = "yes" == params.get("backup_error")
@@ -253,6 +275,8 @@ def run(test, params, env):
         cur_disk_path = disk_path
         cur_disk_params = disk_params
         backend_img = ""
+        active_snapshot_name = ""
+        inactive_snapshot_name = ""
         for backup_index in range(backup_rounds):
             # Do external snapshot
             if shutoff_snapshot:
@@ -286,6 +310,11 @@ def run(test, params, env):
                                          "%s --disk-only %s" % (snapshot_name,
                                                                 snapshot_option),
                                          debug=True)
+                # Set last round snapshot as inactive snapshot
+                if active_snapshot_name:
+                    inactive_snapshot_name = active_snapshot_name
+                # Set the newly created snapshot as active snapshot
+                active_snapshot_name = snapshot_name
                 snapshot_list.append(snapshot_name)
 
             # Prepare backup xml
@@ -382,9 +411,9 @@ def run(test, params, env):
                         nbd_params, backup_file_path, nbd_bitmap_name,
                         original_disk_size)
             virsh.domjobabort(vm_name, debug=True)
-            # Start to run the blockcommit/blockpull cmd before the last round
-            # of backup job, this is to test if the block command will keep the
-            # dirty bitmap data.
+            # Start to run the blockcommit/blockpull/blockcopy/snapshot-delete
+            # cmd before the last round of backup job, this is to test if the
+            # block command will keep the dirty bitmap data.
             if backup_index == backup_rounds - 2:
                 run_blk_cmd()
                 cur_disk_path = vm.get_blk_devices()[original_disk_target]['source']
