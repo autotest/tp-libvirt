@@ -50,7 +50,7 @@ def run(test, params, env):
     try:
         vm.verify_kernel_crash()
         status = 1  # bad
-    except virt_vm.VMDeadKernelCrashError:
+    except virt_vm.VMKernelCrashError:
         status = 0  # good
 
     # Restore environment to stable state
