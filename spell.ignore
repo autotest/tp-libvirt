@@ -717,6 +717,7 @@ parsers
 partnum
 partprobe
 parttype
+passt
 passthrough
 Passthrough
 passwd
