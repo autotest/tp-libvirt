@@ -311,7 +311,7 @@ class DiskBase(object):
         sec_dict = eval(params.get("sec_dict", '{}'))
         auth_key = params.get("auth_key")
         mon_host = params.get("mon_host")
-        rbd_image_size = params.get("rbd_image_size", '200M')
+        rbd_image_size = params.get("rbd_image_size", '50M')
         new_image_path = params.get("image_path")
         auth_username = params.get("auth_user")
         client_name = params.get("client_name")
