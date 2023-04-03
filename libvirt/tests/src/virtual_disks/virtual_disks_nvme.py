@@ -118,6 +118,10 @@ def run(test, params, env):
 
         pci_addr_in_dict = get_usable_nvme_pci_address()
 
+        # Delete partitions if exist on nvme device
+        process.run("sfdisk --delete  /dev/nvme[0-9]n[0-9]",
+                    timeout=10, ignore_status=True, verbose=True, shell=True)
+
         device_obj = create_customized_disk(params, pci_addr_in_dict)
         if not hotplug:
             vmxml.add_device(device_obj)
