@@ -301,6 +301,7 @@ def run(test, params, env):
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Stopped Shutdown")
                 elif event == "crash":
+                    libvirt_version.is_libvirt_feature_supported(params)
                     if not vmxml.xmltreefile.find('devices').findall('panic'):
                         # Set panic device
                         panic_dev = Panic()
