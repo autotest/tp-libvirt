@@ -304,7 +304,8 @@ def run(test, params, env):
             remote.scp_from_remote(xen_host, 22, xen_host_user,
                                    xen_host_passwd,
                                    params['remote_disk_image'],
-                                   params['img_path'])
+                                   params['img_path'],
+                                   timeout=1200)
         if checkpoint == 'pool_uuid':
             virsh.pool_start(pool_name)
             pooluuid = virsh.pool_uuid(pool_name).stdout.strip()
