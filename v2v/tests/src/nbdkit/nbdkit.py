@@ -1,5 +1,6 @@
 import re
 import os
+import signal
 import logging
 import tempfile
 
@@ -252,6 +253,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         for data in ['block_size_minimum: 4096', 'block_size_preferred: 32768', 'block_size_maximum: 40960']:
             if not re.search(data, cmd_2_result.stdout_text):
                 test.fail('failed to test blocksize policy filter')
+        cmd_3 = "ps ax | grep 'nbdkit ' | grep -v grep | awk '{print $1}'"
+        cmd_3_result = process.run(cmd_3, shell=True, ignore_status=True).stdout_text.split()
+        os.kill(int(cmd_3_result[0]), signal.SIGKILL)
 
     def test_curl_multi_conn():
         cmd = "nbdkit -r curl file:/var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2" \
