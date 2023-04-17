@@ -248,8 +248,13 @@ def run(test, params, env):
         # Attach xml to domain
         if attach_device:
             logging.info("Attach xml is %s" % process.run("cat %s" % device_xml.xml).stdout_text)
-            virsh.attach_device(vm_name, device_xml.xml, flagstr=detach_options,
-                                debug=True, ignore_status=False)
+            ignore_status = True if hostdev_type == 'pci' else False
+            ret = virsh.attach_device(vm_name, device_xml.xml, flagstr=detach_options,
+                                      debug=True, ignore_status=ignore_status)
+            if ret.exit_status and hostdev_type == 'pci':
+                test.cancel("The PCI device with xml '%s' does not support "
+                            "attaching to the vm with errors:\n%s" % (device_xml,
+                                                                      ret.stderr_text))
 
         domxml_at = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
         if detach_check_xml not in domxml_at:
