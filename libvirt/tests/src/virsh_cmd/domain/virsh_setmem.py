@@ -281,7 +281,7 @@ def run(test, params, env):
         memballoon_xml = vmxml.get_device_class('memballoon')()
         memballoon_xml.model = memballoon_model
         if with_packed:
-            memballoon_xml.driver_packed = driver_packed
+            memballoon_xml.driver = {"packed": driver_packed}
         vmxml.add_device(memballoon_xml)
         logging.info(memballoon_xml)
         vmxml.sync()

@@ -98,7 +98,7 @@ def run(test, params, env):
                               "to the host.", kbd_dev_name[0])
                 input_dev.source_evdev = kbd_dev_name[0]
             if with_packed:
-                input_dev.driver_packed = driver_packed
+                input_dev.driver = {"packed": driver_packed}
             vm_xml.add_device(input_dev)
             try:
                 vm_xml.sync()
