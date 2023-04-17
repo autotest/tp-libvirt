@@ -72,7 +72,7 @@ def cleanup_iface(iface_type, iface_name):
     Clean up tap/macvtap device
     """
     if iface_type in ['tap', 'macvtap']:
-        process.run(f'ip l delete {iface_name}', shell=True)
+        process.run(f'ip l delete {iface_name}', shell=True, ignore_status=True)
 
 
 def run(test, params, env):
