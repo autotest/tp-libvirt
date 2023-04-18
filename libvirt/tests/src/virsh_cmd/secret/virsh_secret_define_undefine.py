@@ -171,7 +171,8 @@ def run(test, params, env):
             virsh.attach_device(vm_name, diskxml.xml,
                                 ignore_status=False, debug=True)
             virsh.detach_device(vm_name, diskxml.xml,
-                                ignore_status=False, debug=True)
+                                ignore_status=False, debug=True,
+                                wait_for_event=True, event_timeout=20)
 
         if undefine_acl:
             cmd_result = virsh.secret_undefine(uuid, **acl_dargs)
