@@ -14,6 +14,7 @@ from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_bios
 from virttest.utils_libvirt import libvirt_config
 
 
@@ -138,13 +139,7 @@ def run(test, params, env):
                 params["disk_model"] = "virtio-transitional"
         if 'rhel6' in params.get("shortname"):
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            os_xml = vmxml.os
-            if os_xml.fetch_attrs().get('os_firmware') == 'efi':
-                os_xml.del_os_firmware()
-            os_xml.del_nvram()
-            os_xml.del_loader()
-            vmxml.os = os_xml
-            vmxml.xmltreefile.write()
+            vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
             vmxml.sync("--nvram")
         if set_crypto_policy:
             utils_conn.update_crypto_policy(set_crypto_policy)
