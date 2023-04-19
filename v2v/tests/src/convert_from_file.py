@@ -3,6 +3,7 @@ import pwd
 import logging
 import shutil
 import time
+import re
 
 from avocado.utils import process
 
@@ -246,6 +247,13 @@ def run(test, params, env):
             else:
                 shutil.copy(src_dir, dest_dir)
             LOG.info('Copy ova from %s to %s', src_dir, dest_dir)
+        if input_mode == 'disk':
+            tmp_path = data_dir.get_tmp_dir()
+            image_path = 'cd %s ; curl -O %s --insecure' % (tmp_path, params.get('image_url'))
+            if process.run(image_path, shell=True).exit_status != 0:
+                log_fail('fail to download guest image from libvirt-ci resource')
+            image_name = re.search(r'RHEL-\S*\w*.qcow2', params.get('image_url')).group()
+            v2v_params.update({'input_file': os.path.join(tmp_path, image_name)})
         if output_format:
             v2v_params.update({'of_format': output_format})
         # Create libvirt dir pool
