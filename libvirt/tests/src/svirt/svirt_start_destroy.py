@@ -45,6 +45,8 @@ def run(test, params, env):
     sec_relabel = params.get("svirt_start_destroy_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'relabel': sec_relabel}
     sec_dict_list = []
+    swtpm_dir = params.get('swtpm_dir')
+    reset_swtpm_dir = False
 
     def _set_sec_model(model):
         """
@@ -135,6 +137,14 @@ def run(test, params, env):
                                         forcedesc=True)
             if sec_relabel == "no" and sec_type == 'none':
                 os.chown(disk_path, 107, 107)
+                if vmxml.devices.by_device_tag('tpm'):
+                    qemu_conf.set_string('swtpm_user', 'qemu')
+                    qemu_conf.set_string('swtpm_group', 'qemu')
+                    params['swtpm_dir_mode'] = os.stat(swtpm_dir).st_mode
+                    logging.debug(oct(params['swtpm_dir_mode']))
+                    process.run(f'chmod -R 777 {swtpm_dir}', shell=True)
+                    reset_swtpm_dir = True
+                    process.run(f'ls -dl {swtpm_dir}', shell=True)
 
         # Set selinux of host.
         utils_selinux.set_status(host_sestatus)
@@ -272,8 +282,9 @@ def run(test, params, env):
         backup_xml.sync()
         if xattr_check:
             virsh.undefine(guest_name, options='--nvram', ignore_status=True)
+        if reset_swtpm_dir:
+            os.chmod(swtpm_dir, params['swtpm_dir_mode'])
+            process.run(f'rm {swtpm_dir}/* -f')
         utils_selinux.set_status(backup_sestatus)
-        if (security_driver or security_default_confined or
-                security_require_confined):
-            qemu_conf.restore()
-            libvirtd.restart()
+        qemu_conf.restore()
+        libvirtd.restart()
