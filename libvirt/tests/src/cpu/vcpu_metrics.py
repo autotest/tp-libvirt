@@ -23,6 +23,7 @@ from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_bios
 from virttest.utils_libvirt import libvirt_vmxml
 
 
@@ -131,14 +132,15 @@ def setup_with_unprivileged_user(vm, params, test):
     unprivileged_boot_disk_path = os.path.join(unprivileged_boot_disk_path, os.path.basename(first_disk_source))
     disk_attrs = {'source': {'attrs': {'file': unprivileged_boot_disk_path}}}
     libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_attrs)
-    test.log.debug('VM XML after updating:\n%s', vm_xml.VMXML.new_from_dumpxml(vm.name))
+    vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
+    test.log.debug('VM XML after updating:\n%s', vmxml)
 
     test.log.debug("Step: Prepare boot disk image in unprivileged user's home directory")
     shutil.copy(first_disk_source, unprivileged_boot_disk_path)
     shutil.chown(unprivileged_boot_disk_path, unprivileged_user)
 
     test.log.debug("Step: Define and start vm using unprivileged user")
-    virsh.dumpxml(vm.name, extra="--inactive", to_file=unprivileged_user_dumpxml_path, ignore_status=False)
+    shutil.copy(vmxml.xml, unprivileged_user_dumpxml_path)
     os.chmod(unprivileged_user_dumpxml_path, stat.S_IRWXO)
     virsh.define(unprivileged_user_dumpxml_path, **virsh_opt)
     virsh.start(vm.name, **virsh_opt)
@@ -191,16 +193,19 @@ def cleanup_with_unprivileged_user(vm, params, test):
     unprivileged_user = params.get("unprivileged_user")
     virsh_opt = {'debug': True, 'ignore_status': False, 'unprivileged_user': unprivileged_user}
     unprivileged_user_dumpxml_path = params.get('unprivileged_user_dumpxml_path')
-    if os.path.exists(unprivileged_user_dumpxml_path):
-        test.log.debug("Step: Remove dumpxml file used by unprivileged user")
-        os.remove(unprivileged_user_dumpxml_path)
-    if virsh.domain_exists(vm.name, **virsh_opt):
-        test.log.debug("Step: Destory and undefine the vm created by unprivileged user")
-        virsh.destroy(vm.name, **virsh_opt)
-        virsh.undefine(vm.name, options='--nvram', **virsh_opt)
-    test.log.debug("Step: Delete the unprivileged user account")
-    manage_unprivileged_user(unprivileged_user, test, is_create=False)
-    cleanup_default(vm, params, test)
+    try:
+        if os.path.exists(unprivileged_user_dumpxml_path):
+            test.log.debug("Step: Remove dumpxml file used by unprivileged user")
+            os.remove(unprivileged_user_dumpxml_path)
+        if virsh.domain_exists(vm.name, **virsh_opt):
+            test.log.debug("Step: Destory and undefine the vm created by unprivileged user")
+            if virsh.is_alive(vm.name, **virsh_opt):
+                virsh.destroy(vm.name, **virsh_opt)
+            virsh.undefine(vm.name, options='--nvram', **virsh_opt)
+        test.log.debug("Step: Delete the unprivileged user account")
+        manage_unprivileged_user(unprivileged_user, test, is_create=False)
+    finally:
+        cleanup_default(vm, params, test)
 
 
 def run(test, params, env):
