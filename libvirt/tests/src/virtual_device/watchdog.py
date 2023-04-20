@@ -38,6 +38,9 @@ def run(test, params, env):
         :param model: action when watchdog triggered
         """
         watchdog_device = model
+        if model == "itco":
+            watchdog_device = "ICH9-LPC.noreboot=off"
+
         if action == "dump":
             watchdog_action = "watchdog-action pause"
         else:
@@ -56,7 +59,7 @@ def run(test, params, env):
             try_modprobe(watchdog_dev, session, test)
             logging.info("dmesg watchdog messages: %s" % session.cmd("dmesg | grep -i %s" % model,
                                                                      ignore_all_errors=True))
-            session.cmd("lsmod | grep %s" % model)
+            session.cmd("lsmod | grep -i %s" % model)
             session.cmd("echo 1 > /dev/watchdog")
         except aexpect.ShellCmdError as e:
             session.close()
