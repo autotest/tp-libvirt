@@ -133,6 +133,8 @@ def create_macvtap(macvtap_name, iface, user):
     # Check if device owner is changed to unprivileged user
     process.run('ls -l %s' % device_path, shell=True)
 
+    return mac_addr
+
 
 def delete_tap(tap_name):
     """
@@ -224,9 +226,6 @@ def unprivileged_user_login(unpr_vm_name, unpr_user, username, password,
     :param timeout: timeout of login attempt
     :return: shell session instance of vm
     """
-    # Start vm as unprivileged user
-    virsh.start(unpr_vm_name, debug=True, ignore_status=False,
-                unprivileged_user=unpr_user)
     cmd = f"su - {unpr_user} -c 'virsh console {unpr_vm_name}'"
 
     session = aexpect.ShellSession(cmd)
