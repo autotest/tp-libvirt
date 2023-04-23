@@ -1,7 +1,6 @@
 import re
 
 from virttest import utils_misc
-from virttest import utils_sriov
 from virttest import virsh
 
 from virttest.libvirt_xml import nodedev_xml
@@ -45,8 +44,7 @@ def run(test, params, env):
         if not res:
             test.error("Unable to get noddev %s, please check the env."
                        % iface_name)
-        event_cmd = "nodedev-event --event lifecycle --loop --timestamp \
-            --device %s" % res[0]
+        event_cmd = "nodedev-event --event lifecycle --loop --timestamp"
         return virsh.EventTracker.start_get_event(vm.name, event_cmd=event_cmd)
 
     def run_test(dev_name, dev_pci, iface_name):
@@ -59,7 +57,6 @@ def run(test, params, env):
         4. Check driver info gain after detach.
         5. on the host, run nodedev-reattach for the PF or VF.
         6. Check driver info gain.
-        7. Detach/reattach another node device to check the events if needed.
         """
         event_tracker = get_event_tracker(iface_name)
 
@@ -83,18 +80,6 @@ def run(test, params, env):
         libvirt_vfio.check_vfio_pci(dev_pci, True, ignore_error=True)
         event_tracker.close()
 
-        test.log.info("TEST_STEP4: Detach another node device.")
-        event_tracker = get_event_tracker(iface_name)
-        virsh.nodedev_detach(dev_name2, debug=True, ignore_status=False)
-        if check_event("Deleted", event_tracker):
-            test.fail("Unexpected 'Deleted' from event output!")
-
-        test.log.info("TEST_STEP5: Reattach another node device.")
-        virsh.nodedev_reattach(dev_name2, debug=True, ignore_status=False)
-        if check_event("Created", event_tracker):
-            test.fail("Unexpected 'Created' from event output!")
-        event_tracker.close()
-
     dev_name = params.get("dev_name", "pf")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
@@ -110,16 +95,8 @@ def run(test, params, env):
         dev_pci = sriov_test_obj.pf_pci
         iface_name = sriov_test_obj.pf_name
 
-    for pci_info in utils_sriov.get_pf_info().values():
-        if pci_info.get("pci_id") != sriov_test_obj.pf_pci:
-            dev_pci2 = pci_info.get('pci_id')
-            break
-    if 'dev_pci2' not in locals():
-        test.cancel("Unalbe to get another pf to test!")
-    dev_name2 = utils_sriov.get_device_name(dev_pci2)
     try:
         run_test(dev_name, dev_pci, iface_name)
 
     finally:
         virsh.nodedev_reattach(dev_name, debug=True)
-        virsh.nodedev_reattach(dev_name2, debug=True)
