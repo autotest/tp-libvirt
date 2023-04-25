@@ -620,3 +620,14 @@ def wait_for_unattended_mig(params):
     if remote_virsh_session and expected_event_target:
         dest_output = remote_virsh_session.get_stripped_output()
         check_output(dest_output, eval(expected_event_target), migration_obj.test)
+
+
+def destroy_dest_vm(params):
+    """
+    Destroy vm on dest
+
+    :param params: dict, get vm name and dest uri
+    """
+    dest_uri = params.get("virsh_migrate_desturi")
+    vm_name = params.get("main_vm")
+    virsh.destroy(vm_name, ignore_status=False, debug=True, uri=dest_uri)
