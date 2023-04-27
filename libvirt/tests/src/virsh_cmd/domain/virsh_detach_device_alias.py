@@ -69,17 +69,42 @@ def run(test, params, env):
 
     device_alias = "ua-" + str(uuid.uuid4())
 
+    def check_device_by_alias(dev_type, dev_alias, expect_exist=True):
+        """
+        Check the device's availability in vm xml
+
+        :param dev_type: str, device type, like 'watchdog'
+        :param dev_alias: str, device alias
+        :param expect_exist: boolean, True if the device is expected to exist
+                            Otherwise, False
+        """
+        domxml = vm_xml.VMXML.new_from_dumpxml(vm_name, options=dump_option)
+        devices = domxml.get_devices(device_type=dev_type)
+        existed = True if devices else False
+        if existed:
+            found = False
+            for one_dev in devices:
+                try:
+                    if one_dev.fetch_attrs()['alias']['name'] == dev_alias:
+                        test.log.debug("Found the device with alias '%s'", dev_alias)
+                        found = True
+                        break
+                except KeyError as details:
+                    test.log.warning("No key is found: %s", details)
+            existed = True if found else False
+        return existed == expect_exist
+
     def check_detached_xml_noexist():
         """
         Check detached xml does not exist in the guest dumpxml
 
         :return: True if it does not exist, False if still exists
         """
-        domxml_dt = virsh.dumpxml(vm_name, dump_option).stdout_text.strip()
-        if detach_check_xml not in domxml_dt:
-            return True
+        if watchdog_type:
+            return check_device_by_alias('watchdog', device_alias, expect_exist=False)
         else:
-            return False
+            domxml_dt = virsh.dumpxml(vm_name, dump_option).stdout_text.strip()
+            return detach_check_xml not in domxml_dt
 
     def get_usb_info():
         """
@@ -125,14 +150,14 @@ def run(test, params, env):
                                                        scsi_size="8")
                 pci_id = get_scsi_info(source_disk)
             elif hostdev_type == "pci":
-                libvirt_vmxml.modify_vm_device(vmxml=vmxml,
-                                               dev_type='controller',
-                                               dev_dict=controller_dict)
                 cmd = "virsh capabilities | grep iommu | awk -F \"'\" '{print $2}'"
                 cmd_result = process.run(cmd, ignore_status=True, shell=True).stdout_text.strip()
                 support_iommu = "yes" == cmd_result
                 if not support_iommu:
                     test.cancel("Host does not support iommu")
+                libvirt_vmxml.modify_vm_device(vmxml=vmxml,
+                                               dev_type='controller',
+                                               dev_dict=controller_dict)
 
                 pci_id = utils_misc.get_full_pci_id(
                     utils_misc.get_pci_id_using_filter(pci_filter)[-1])
@@ -271,10 +296,12 @@ def run(test, params, env):
                 test.cancel("The PCI device with xml '%s' does not support "
                             "attaching to the vm with errors:\n%s" % (device_xml,
                                                                       ret.stderr_text))
-
         domxml_at = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
-        if detach_check_xml not in domxml_at:
-            test.error("Can not find %s in domxml after attach" % detach_check_xml)
+        if watchdog_type:
+            check_device_by_alias('watchdog', device_alias)
+        else:
+            if detach_check_xml not in domxml_at:
+                test.error("Can not find %s in domxml after attach" % detach_check_xml)
 
         # Detach xml with alias
         result = virsh.detach_device_alias(vm_name, device_alias, detach_options,
@@ -286,7 +313,7 @@ def run(test, params, env):
                                    60,
                                    step=2,
                                    text="Repeatedly search guest dumpxml with detached xml"):
-            test.fail("Still can find %s in domxml" % detach_check_xml)
+            test.fail("Still can find device with alias '%s' in domxml" % device_alias)
     finally:
         backup_xml.sync()
         if hostdev_type == "scsi":
