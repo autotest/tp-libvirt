@@ -400,7 +400,7 @@ def run(test, params, env):
                               hugepage_info)
                 map_dict = {}
                 usage_dict = {}
-                node_pattern = r"\s(\S+):(\S+)\s.*ram-node(\d+).*\s"
+                node_pattern = r"\s(\S+)\s*.*:(\S+)\s.*ram-node(\d+).*\s"
                 node_pattern += "N(\d+)=(\d+)"
                 for map_info in hugepage_info:
                     for (mem_mode, mem_num, cell_num, host_node_num,
@@ -456,8 +456,13 @@ def run(test, params, env):
             if i == 0 and expect_cpus:
                 cpu_list = cpu.cpus_parser(expect_cpus)
             if vm_cpu_list != cpu_list:
-                test.fail("vm node %s cpu list %s not expected"
-                          % (i, vm_cpu_list))
+                test.fail("vm node %s cpu list is expected "
+                          "to be '%s', but "
+                          "found '%s'" % (i,
+                                          cpu_list,
+                                          vm_cpu_list))
+            else:
+                test.log.debug("vm node %s cpu list is %s", i, cpu_list)
         if topology:
             vm_topo_tuple = ("Socket(s)", "Core(s) per socket",
                              "Thread(s) per core")
