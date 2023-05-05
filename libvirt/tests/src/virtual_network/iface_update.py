@@ -34,7 +34,7 @@ def check_iface_link(session, mac, stat):
     stat_map = {'up': 'yes',
                 'down': 'no'}
     expect_str = 'Link detected: %s' % stat_map[stat]
-    iface_in_vm = utils_net.get_linux_iface_info(mac, session)
+    iface_in_vm = utils_net.get_linux_iface_info(mac=mac, session=session)
     iface_name = iface_in_vm.get('ifname')
     ethtool_cmd = 'ethtool %s' % iface_name
     ethtool_output = session.cmd_output(ethtool_cmd)
