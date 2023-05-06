@@ -124,6 +124,21 @@ Coding
 
   - focus on the problem to be solved now, not speculated one that might need to be solved in the future; the future problem should be solved once it arrives and you can see its actual shape and requirements in the physical universe
 
+- copyright and license template when submitting new python file
+
+  - For newly submitted PR, if there is new python file created from this PR,  please add below information at the beginning of python file:
+    #
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #
+    #   Copyright xx(company name)
+    #
+    #   SPDX-License-Identifier: GPL-2.0
+
+    #   Author: xx<xx@xx.com> (name + email addres)
+    #
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 ======================================================================
 Enhancement (best practice):
 ======================================================================
