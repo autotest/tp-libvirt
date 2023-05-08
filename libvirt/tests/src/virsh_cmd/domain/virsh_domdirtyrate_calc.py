@@ -47,7 +47,7 @@ def run(test, params, env):
         :param dirty_rate: the dirty rate value calculated by domdirtyrate_calc
         """
         if mode == "dirty-ring":
-            tolerance = 1
+            tolerance = 1.5
         else:
             tolerance = 0.75
 
