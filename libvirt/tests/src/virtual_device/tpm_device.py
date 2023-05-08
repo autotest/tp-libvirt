@@ -90,6 +90,7 @@ def run(test, params, env):
     statedir = params.get("statedir")
     audit_cmd = params.get("audit_cmd")
     ausearch_check = params.get("ausearch_check")
+    skip_start = ('yes' == params.get("skip_start", "no"))
     swtpm_setup_path = params.get("swtpm_setup_path")
     swtpm_path = params.get("swtpm_path")
     source_attrs_str = params.get("source_attrs")
@@ -736,7 +737,7 @@ def run(test, params, env):
                         backend.device_path = device_path
                 if backend_type == "external":
                     if source_attrs_str:
-                        if source_socket:
+                        if source_socket and not status_error:
                             launch_external_swtpm(skip_setup=False)
                         backend.source = source_attrs
                 if backend_type == "emulator":
@@ -789,13 +790,17 @@ def run(test, params, env):
             # Stop test when get expected failure
             return
         if vm_operate != "restart":
+            if not source_mode:
+                source_mode = 'connect'
             check_dumpxml(vm_name)
+        if skip_start:
+            return
         if tpm_model and backend_version != 'default':
             expect_fail = False
             try:
                 vm.start()
             except VMStartError as detail:
-                if secret_value == 'none' or secret_uuid == 'nonexist':
+                if secret_value == 'none' or secret_uuid == 'nonexist' or not source_socket:
                     logging.debug("Expected failure: %s", detail)
                     return
                 else:
@@ -968,7 +973,7 @@ def run(test, params, env):
             vm.define(vm_xml.xml)
         vm_xml_backup.sync(options="--nvram --managed-save")
         check_swtpmpidfile(vm_name, "test finished")
-        if backend_type == 'external':
+        if backend_type == 'external' and not status_error:
             process.run("restorecon %s" % swtpm_setup_path, ignore_status=False, shell=True)
             process.run("restorecon %s" % swtpm_path, ignore_status=False, shell=True)
             if os.path.exists(statedir):
