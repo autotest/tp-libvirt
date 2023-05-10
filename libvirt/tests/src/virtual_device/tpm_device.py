@@ -790,7 +790,7 @@ def run(test, params, env):
             # Stop test when get expected failure
             return
         if vm_operate != "restart":
-            if not source_mode:
+            if source_attrs_str and not source_mode:
                 source_mode = 'connect'
             check_dumpxml(vm_name)
         if skip_start:
