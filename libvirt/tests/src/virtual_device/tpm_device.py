@@ -286,7 +286,7 @@ def run(test, params, env):
         if active_pcr_banks and not remove_pcrbank:
             check_active_pcr_banks(xml_after_adding_device)
         if backend_type == "passthrough":
-            xpaths.append({'element_attrs': [".//device[@path='dev/tpm0']"]})
+            xpaths.append({'element_attrs': [".//device[@path='/dev/tpm0']"]})
         if prepare_secret:
             xpaths.append({'element_attrs': [".//encryption[@secret='%s']" % encryption_uuid]})
         if source_attrs_str:
@@ -343,13 +343,16 @@ def run(test, params, env):
         # Check tpm model
         pattern_list = ["-device.*%s" % tpm_model]
         # Check backend type
+        qemu_backend = backend_type
         if backend_type == "passthrough":
             dev_num = re.search(r"\d+", device_path).group()
             backend_segment = "id=tpm-tpm%s" % dev_num
         else:
+            if backend_type == "external":
+                qemu_backend = "emulator"
             # emulator or external backend
             backend_segment = "id=tpm-tpm0,chardev=chrtpm"
-        pattern_list.append("-tpmdev.*emulator,%s" % backend_segment)
+        pattern_list.append("-tpmdev.*%s,%s" % (qemu_backend, backend_segment))
         # Check chardev socket for vtpm
         if backend_type == "emulator":
             pattern_list.append("-chardev.*socket,id=chrtpm,"
