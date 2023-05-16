@@ -215,9 +215,10 @@ def check_coalesce(vm_name, mac, coalesce):
     ethtool_output = process.run(
         ethtool_cmd, verbose=True, ignore_status=True).stdout_text
 
-    expected_str = 'rx-frames: %s' % frames
+    ethtool_output = ethtool_output.replace("\t", "").replace(" ", "")
+    expected_str = 'rx-frames:%s' % frames
     if expected_str not in ethtool_output:
-        return 1, '%s not found in ethtool output' % expected_str
+        return 1, 'rx-frames value %s not found in ethtool output' % frames
 
     logging.info('Coalesce check PASS.')
     return 0, ''
