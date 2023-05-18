@@ -561,14 +561,20 @@ def run(test, params, env):
                     time.sleep(5)
                     session.close()
                     expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause")
-                    expected_events_list.append("'io-error-reason' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
+                    if libvirt_version.version_compare(9, 0, 0):
+                        expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
+                    else:
+                        expected_events_list.append("'io-error-reason' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
                     expected_events_list.append(suspend_event)
                     process.run("df -hT")
                     virsh.resume(dom.name, **virsh_dargs)
                     time.sleep(5)
                     expected_events_list.append(resume_event)
                     expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause")
-                    expected_events_list.append("'io-error-reason' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
+                    if libvirt_version.version_compare(9, 0, 0):
+                        expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
+                    else:
+                        expected_events_list.append("'io-error-reason' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
                     expected_events_list.append(suspend_event)
                     ret = virsh.domstate(dom.name, "--reason", **virsh_dargs)
                     if ret.stdout.strip() != "paused (I/O error)":
