@@ -16,7 +16,7 @@ from virttest.utils_test import libvirt
 from provider.migration import base_steps
 
 
-def check_tpm_security_context(params, vm, test, expected_contexts, remote=False):
+def check_tpm_security_context(params, vm, test, expected_contexts, remote_host=False):
     """
     Check TPM state file security contexts
 
@@ -24,12 +24,12 @@ def check_tpm_security_context(params, vm, test, expected_contexts, remote=False
     :param vm: VM object
     :param test: test object
     :param expected_contexts: expected tpm security context
-    :param remote: True to check context on remote
+    :param remote_host: True to check context on remote host
     """
     test.log.debug("Check tpm security context: %s (remote)", remote)
     domuuid = vm.get_uuid()
     cmd = "ls -hZR /var/lib/libvirt/swtpm/%s/tpm2/tpm2-00.permall" % domuuid
-    if remote:
+    if remote_host:
         cmd_result = remote.run_remote_cmd(cmd, params)
     else:
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
