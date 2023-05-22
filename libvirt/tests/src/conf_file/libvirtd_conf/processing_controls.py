@@ -1,5 +1,6 @@
 import os
 
+from virttest import libvirt_version
 from virttest import virt_admin
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
@@ -14,6 +15,7 @@ def run(test, params, env):
     4) check whether daemon can be started successfully
     """
 
+    libvirt_version.is_libvirt_feature_supported(params)
     nclients_max = params.get("nclients_maxi")
     nclients_unauth_max = params.get("nclients_unauth_maxi")
     status_error = params.get("status_error") == "yes"
