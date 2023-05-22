@@ -4,6 +4,7 @@ import shutil
 
 import aexpect
 from avocado.utils import process
+from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_net
 from virttest import utils_selinux
@@ -25,6 +26,7 @@ def run(test, params, env):
     """
     Test passt function
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     root = 'root_user' == params.get('user_type', '')
     if root:
         vm_name = params.get('main_vm')
