@@ -43,6 +43,7 @@ def run(test, params, env):
                       "during create file in guest after snap.")
         path_list = prepare_snap_path()
 
+        format_disk = True
         for index in range(0, snap_nums):
             test_obj.prepare_snapshot(snap_name="snap_%s" % index,
                                       snap_num=1, extra=extra_option,
@@ -50,7 +51,8 @@ def run(test, params, env):
                                       clean_snap_file=False)
 
             alloc_new_dict_1 = get_alloc_result()
-            write_file("/mnt/file_%s" % index)
+            write_file(format_disk, "/mnt/file_%s" % index)
+            format_disk = False
             alloc_new_dict_2 = get_alloc_result()
             if alloc_new_dict_1 == alloc_new_dict_2:
                 test.fail("block.x.allocation should keep changing during "
@@ -128,15 +130,17 @@ def run(test, params, env):
                 path.append(source_path)
         return path
 
-    def write_file(file_name):
+    def write_file(format_disk, file_name):
         """
         Write file to target disk
 
+        :param: format_disk: only format disk for one time in vm
         :param: file_name: file name
         """
         session = vm.wait_for_login()
-        cmd = "mkfs.ext4 /dev/%s;mount /dev/%s /mnt" % (target_disk, target_disk)
-        session.cmd_status_output(cmd)
+        if format_disk:
+            cmd = "mkfs.ext4 /dev/%s;mount /dev/%s /mnt" % (target_disk, target_disk)
+            session.cmd_status_output(cmd)
         utils_disk.dd_data_to_vm_disk(session, file_name, bs='1M',
                                       count='50')
         session.close()
