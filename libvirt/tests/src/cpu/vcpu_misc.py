@@ -36,6 +36,147 @@ def check_vm_cpu_model(vm_cpu_model, cmd_on_host, test):
         logging.debug("Host cpu model is same with vm cpu model as expected")
 
 
+def get_addr_size(params, test):
+    """
+    Get the host physical address size
+
+    :param params: dict, test parameters
+    :param test: test object
+    :return: str, the address size
+    """
+    pat = params.get('pattern_search')
+    cmd = params.get('cmd_in_guest')
+
+    output = process.run(cmd, shell=True).stdout_text.strip()
+    addr_size = re.findall(pat, output)
+
+    test.log.debug("The host physical address size is %s ", addr_size[0])
+    return addr_size[0]
+
+
+def check_maxphysaddr(params, address_size_output, test):
+    """
+    Check the maxphysaddr values in the vm
+
+    :param params: dict, test parameters
+    :param address_size_output: str, the content to be searched
+    :param test: test object
+    """
+    pat = params.get('pattern_search')
+    guest_addr_limit = params.get('addr_limit')
+    actural_guest_addr_size = re.findall(pat, address_size_output)
+    if not actural_guest_addr_size:
+        test.error("Can not get physical address size "
+                   "of guest in '%s'" % address_size_output)
+    if int(actural_guest_addr_size[0]) != int(guest_addr_limit):
+        test.fail("Expect the guest physical address "
+                  "size '%s', but found '%s'" % (guest_addr_limit,
+                                                 actural_guest_addr_size[0]))
+    else:
+        test.log.debug("Check guest physical address size PASS")
+
+
+def update_cpu_xml(vmxml, params, test):
+    """
+    Update cpu xml for test
+
+    :param vmxml: VMXML object
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    cpu_mode = params.get('cpu_mode')
+    cpu_vendor_id = params.get('cpu_vendor_id')
+    maxphysaddr = params.get('maxphysaddr')
+    vcpu_max = params.get('vcpu_max')
+    vm_name = params.get('main_vm')
+    with_topology = "yes" == params.get("with_topology", "no")
+    customize_cpu_features = "yes" == params.get("customize_cpu_features", "no")
+
+    # Create cpu xml for test
+    if vmxml.xmltreefile.find('cpu'):
+        cpu_xml = vmxml.cpu
+    else:
+        cpu_xml = vm_xml.VMCPUXML()
+
+    if customize_cpu_features:
+        for idx in range(len(cpu_xml.get_feature_list()) - 1, -1, -1):
+            cpu_xml.remove_feature(idx)
+        domcapa_xml = domcapability_xml.DomCapabilityXML()
+        features = domcapa_xml.get_additional_feature_list(
+            'host-model', ignore_features=None)
+        for feature in features:
+            for feature_name, feature_policy in feature.items():
+                # For host-passthrough mode, adding "invtsc" requires
+                # more settings, so it will be ignored.
+                if feature_name != "invtsc":
+                    cpu_xml.add_feature(feature_name, feature_policy)
+
+    if cpu_mode:
+        cpu_xml.mode = cpu_mode
+    if cpu_vendor_id:
+        cpu_xml.vendor_id = cpu_vendor_id
+    if maxphysaddr:
+        host_size = get_addr_size(params, test)
+        maxphysaddr = maxphysaddr % (int(host_size) - 8)
+        cpu_xml.maxphysaddr = eval(maxphysaddr)
+        params['addr_limit'] = int(host_size) - 8
+        params['host_addr_size'] = int(host_size)
+
+    # Update vm's cpu
+    vmxml.cpu = cpu_xml
+    vmxml.sync()
+
+    if vcpu_max:
+        if with_topology:
+            vm_xml.VMXML.set_vm_vcpus(vm_name,
+                                      int(vcpu_max),
+                                      cores=int(vcpu_max),
+                                      sockets=1,
+                                      threads=1,
+                                      add_topology=with_topology,
+                                      topology_correction=with_topology)
+        else:
+            vm_xml.VMXML.set_vm_vcpus(vm_name, int(vcpu_max))
+
+
+def check_feature_list(vm, original_dict, test):
+    """
+    Compare new cpu feature list and original cpu
+
+    :param vm: VM object
+    :param original_dict: Cpu feature dict , {"name1":"policy1","name2":"policy2"}
+    :param test: test object
+    """
+    new_cpu_xml = vm_xml.VMXML.new_from_dumpxml(vm.name).cpu
+    new_feature_dict = new_cpu_xml.get_dict_type_feature()
+    if new_feature_dict != original_dict:
+        test.fail('CPU feature lists are different, original is :%s,'
+                  ' new is %s:' % (original_dict, new_feature_dict))
+
+
+def check_test_operations(params, vm, test, feature_dict, test_operations):
+    """
+    Check the operations' results
+
+    :param params: dict, test parameters
+    :param vm: VM object
+    :param feature_dict: dict, the features' dict
+    :param test_operations: str, test operations separated by comma
+    """
+    cpu_mode = params.get('cpu_mode')
+    managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm.name
+    for item in test_operations.split(','):
+        if item == "managedsave_restore":
+            # (1)Domain Manage saved
+            virsh.managedsave(vm.name, ignore_status=False, debug=True)
+            check_feature_list(vm, feature_dict, test)
+            # (2)Domain Restore
+            virsh.restore(managed_save_file, ignore_status=False, debug=True)
+            # (5)Check mode and feature list here
+            libvirt.check_dumpxml(vm, cpu_mode)
+            check_feature_list(vm, feature_dict, test)
+
+
 def run(test, params, env):
     """
     Test misc tests of virtual cpu features
@@ -48,51 +189,6 @@ def run(test, params, env):
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment.
     """
-
-    def update_cpu_xml():
-        """
-        Update cpu xml for test
-        """
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-
-        # Create cpu xml for test
-        if vmxml.xmltreefile.find('cpu'):
-            cpu_xml = vmxml.cpu
-        else:
-            cpu_xml = vm_xml.VMCPUXML()
-
-        if customize_cpu_features:
-            for idx in range(len(cpu_xml.get_feature_list()) - 1, -1, -1):
-                cpu_xml.remove_feature(idx)
-            domcapa_xml = domcapability_xml.DomCapabilityXML()
-            features = domcapa_xml.get_additional_feature_list(
-                'host-model', ignore_features=None)
-            for feature in features:
-                for feature_name, feature_policy in feature.items():
-                    # For host-passthrough mode, adding "invtsc" requires
-                    # more settings, so it will be ignored.
-                    if feature_name != "invtsc":
-                        cpu_xml.add_feature(feature_name, feature_policy)
-
-        if cpu_mode:
-            cpu_xml.mode = cpu_mode
-        if cpu_vendor_id:
-            cpu_xml.vendor_id = cpu_vendor_id
-
-        # Update vm's cpu
-        vmxml.cpu = cpu_xml
-        vmxml.sync()
-
-        if vcpu_max:
-            if with_topology:
-                vm_xml.VMXML.set_vm_vcpus(vm_name, int(vcpu_max),
-                                          cores=int(vcpu_max),
-                                          sockets=1, threads=1,
-                                          add_topology=with_topology,
-                                          topology_correction=with_topology)
-            else:
-                vm_xml.VMXML.set_vm_vcpus(vm_name, int(vcpu_max))
-
     def do_snapshot(vm_name, expected_str):
         """
         Run snapshot related commands: snapshot-create-as, snapshot-list
@@ -124,42 +220,24 @@ def run(test, params, env):
                                            **virsh_dargs)
         libvirt.check_exit_status(cmd_result)
 
-    def check_feature_list(vm, original_dict):
-        """
-        Compare new cpu feature list and original cpu
-
-        :param vm: VM object
-        :original_dict: Cpu feature dict , {"name1":"policy1","name2":"policy2"}
-        """
-        new_cpu_xml = vm_xml.VMXML.new_from_dumpxml(vm.name).cpu
-        new_feature_dict = new_cpu_xml.get_dict_type_feature()
-        if new_feature_dict != original_dict:
-            test.fail('CPU feature lists are different, original is :%s,'
-                      ' new is %s:' % (original_dict, new_feature_dict))
-
     libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
-
     cpu_mode = params.get('cpu_mode')
-    vcpu_max = params.get('vcpu_max')
     expected_str_before_startup = params.get("expected_str_before_startup")
     expected_str_after_startup = params.get("expected_str_after_startup")
-
     test_operations = params.get("test_operations")
     check_vendor_id = "yes" == params.get("check_vendor_id", "no")
     virsh_edit_cmd = params.get("virsh_edit_cmd")
-    with_topology = "yes" == params.get("with_topology", "no")
-
     status_error = "yes" == params.get("status_error", "no")
-    err_msg = params.get("err_msg")
-
     cpu_vendor_id = None
-    expected_qemuline = None
+    expected_qemuline = params.get('expected_qemuline')
     cmd_in_guest = params.get("cmd_in_guest")
-    customize_cpu_features = "yes" == params.get("customize_cpu_features", "no")
-    bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    bkxml = vmxml.copy()
     managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
+    maxphysaddr = params.get('maxphysaddr')
 
     try:
         if check_vendor_id:
@@ -169,6 +247,7 @@ def run(test, params, env):
             cpu_vendor_id = 'GenuineIntel'
             if host_vendor != "Intel":
                 cpu_vendor_id = 'AuthenticAMD'
+            params['cpu_vendor_id'] = cpu_vendor_id
             logging.debug("Set cpu vendor_id to %s on this host.",
                           cpu_vendor_id)
 
@@ -177,7 +256,7 @@ def run(test, params, env):
                             .format(cpu_vendor_id))
 
         # Update xml for test
-        update_cpu_xml()
+        update_cpu_xml(vmxml, params, test)
 
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         logging.debug("Pre-test xml is %s", vmxml.xmltreefile)
@@ -206,6 +285,8 @@ def run(test, params, env):
                 libvirt.check_dumpxml(vm, expected_str_after_startup)
 
             if expected_qemuline:
+                if maxphysaddr:
+                    expected_qemuline = expected_qemuline % params.get('addr_limit')
                 libvirt.check_qemu_cmd_line(expected_qemuline)
 
             if cmd_in_guest:
@@ -218,19 +299,12 @@ def run(test, params, env):
                 vm_session.close()
                 if cpu_mode == 'maximum':
                     check_vm_cpu_model(output.strip(), cmd_in_guest, test)
+                if maxphysaddr:
+                    check_maxphysaddr(params, output.strip(), test)
 
             # Add case: Check cpu xml after domain Managedsaved and restored
             if test_operations:
-                for item in test_operations.split(','):
-                    if item == "managedsave_restore":
-                        # (1)Domain Manage saved
-                        virsh.managedsave(vm_name, ignore_status=False, debug=True)
-                        check_feature_list(vm, feature_dict)
-                        # (2)Domain Restore
-                        virsh.restore(managed_save_file, ignore_status=False, debug=True)
-                        # (5)Check mode and feature list here
-                        libvirt.check_dumpxml(vm, cpu_mode)
-                        check_feature_list(vm, feature_dict)
+                check_test_operations(params, vm, test, feature_dict, test_operations)
 
     finally:
         logging.debug("Recover test environment")
