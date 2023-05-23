@@ -493,8 +493,9 @@ def do_common_check(params):
         libvirt_domjobinfo.check_domjobinfo(migration_obj.vm, params)
 
     # check job info when migration is in paused status
-    expected_dict = {"Job type": "Unbounded", "Operation": "Outgoing migration"}
-    libvirt_monitor.check_domjobinfo(vm_name, expected_dict)
+    expected_domjobinfo = {"src_items": {"str_items": {"Job type": "Unbounded", "Operation": "Outgoing migration"}}}
+    params.update({"expected_domjobinfo": expected_domjobinfo})
+    libvirt_monitor.check_domjobinfo_output(params)
 
     # check domain state with reason
     check_vm_state(params)
