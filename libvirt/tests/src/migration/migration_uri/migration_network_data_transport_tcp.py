@@ -55,6 +55,23 @@ def run(test, params, env):
                 server_params, qemu_conf_dest, qemu_conf_path)
         migration_obj.setup_connection()
 
+    def run_again_for_migration_completion():
+        """
+        Run migration again for migration_completion case
+
+        """
+        dest_uri = params.get("virsh_migrate_desturi")
+
+        vm.connect_uri = dest_uri
+        if vm.is_alive():
+            vm.destroy()
+        vm.connect_uri = migration_obj.src_uri
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login().close()
+
+        migration_obj.run_migration_again()
+
     def cleanup_migration_host():
         """
         Cleanup for migration_host
@@ -80,17 +97,22 @@ def run(test, params, env):
 
     test_case = params.get('test_case', '')
     vm_name = params.get("migrate_main_vm")
+    migrate_again = "yes" == params.get("migrate_again", "no")
 
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
     setup_test = eval("setup_%s" % test_case) if "setup_%s" % test_case in \
         locals() else migration_obj.setup_connection
+    run_migration_again = eval("run_again_for_%s" % test_case) if "run_again_for_%s" % test_case in \
+        locals() else migration_obj.run_migration_again
     cleanup_test = eval("cleanup_%s" % test_case) if "cleanup_%s" % test_case in \
         locals() else migration_obj.cleanup_connection
 
     try:
         setup_test()
         migration_obj.run_migration()
+        if migrate_again:
+            run_migration_again()
         migration_obj.verify_default()
     finally:
         cleanup_test()
