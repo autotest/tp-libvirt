@@ -16,10 +16,11 @@ def pre_save_setup(vm):
     upsince = session.cmd_output('uptime --since').strip()
     LOG.debug(f'VM has been up since {upsince}')
     ping_cmd = 'ping 127.0.0.1'
+    # This session shouldn't be closed or it will kill ping
     session.sendline(ping_cmd + '&')
-    session.sendline()
-    pid_ping = session.cmd_output('pidof ping').strip().split()[-1]
-    # The session shouldn't be closed or it will kill ping
+    check_session = vm.wait_for_login()
+    pid_ping = check_session.cmd_output('pidof ping').strip().split()[-1]
+    check_session.close()
     LOG.debug(f'Pid of ping: {pid_ping}')
 
     return pid_ping, upsince
