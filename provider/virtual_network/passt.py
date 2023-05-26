@@ -288,7 +288,7 @@ def check_portforward_connetion(vm, check_list, test_user=None):
     :param test_user: unprivileged user if any, defaults to None
     """
     vm_sess = vm.wait_for_serial_login(timeout=60)
-    vm_sess.cmd_output('systemctl stop firewalld')
+    vm_sess.cmd('systemctl stop firewalld')
     vm_sess.close()
     cmd_create_sess = f'su - {test_user}' if test_user else 'su'
 
