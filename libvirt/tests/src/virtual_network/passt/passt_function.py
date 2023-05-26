@@ -7,6 +7,7 @@ from avocado.utils import process
 from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_net
+from virttest import utils_package
 from virttest import utils_selinux
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -76,7 +77,7 @@ def run(test, params, env):
     if selinux_status != 'enforcing':
         utils_selinux.set_status('enforcing')
 
-    if not os.path.exists('/usr/bin/socat'):
+    if not utils_package.package_install('socat'):
         test.error('This test requires to install socat')
 
     firewalld = service.Factory.create_service("firewalld")
