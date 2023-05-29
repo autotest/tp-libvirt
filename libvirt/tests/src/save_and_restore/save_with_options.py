@@ -5,6 +5,7 @@ import re
 from avocado.utils import process
 
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -32,7 +33,7 @@ def run(test, params, env):
     rand_id = utils_misc.generate_random_string(3)
     save_path = f'/var/tmp/{vm_name}_{rand_id}.save'
     check_cmd = params.get('check_cmd', '')
-    check_cmd = check_cmd.format(save_path) if check_cmd else check_cmd
+    check_cmd = check_cmd.format(save_path, save_path) if check_cmd else check_cmd
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -53,6 +54,9 @@ def run(test, params, env):
             options += ' ' + alter_xml.xml
 
         if scenario == 'bypass_cache_opt':
+            # Install lsof pkg if not installed
+            if not utils_package.package_install("lsof"):
+                test.cancel("Failed to install lsof in host\n")
             sp = process.SubProcess(check_cmd, shell=True)
             sp.start()
 
@@ -80,7 +84,11 @@ def run(test, params, env):
             output = sp.get_stdout().decode()
             LOG.debug(f'bypass-cache check output:\n{output}')
             sp.terminate()
-            if not re.search('flags:\s\d{2}4', output):
+            flags = os.O_DIRECT
+            lines = re.findall(r"flags:.(\d+)", output, re.M)
+            LOG.debug("Find all fdinfo flags: %s" % lines)
+            lines = [int(i, 8) & flags for i in lines]
+            if flags not in lines:
                 test.fail('bypass-cache check fail, please check log')
 
         if scenario == 'xml_opt':
