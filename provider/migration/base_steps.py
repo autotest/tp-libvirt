@@ -58,15 +58,19 @@ class MigrationBase(object):
 
         """
         set_remote_libvirtd_log = "yes" == self.params.get("set_remote_libvirtd_log", "no")
+        start_vm = self.params.get("start_vm", "yes")
 
         self.test.log.info("Setup steps by default.")
         if set_remote_libvirtd_log:
             self.set_remote_log()
 
         libvirt.set_vm_disk(self.vm, self.params)
-        if not self.vm.is_alive():
+        if start_vm == "no" and self.vm.is_alive():
+            self.vm.destroy()
+
+        if start_vm == "yes" and not self.vm.is_alive():
             self.vm.start()
-        self.vm.wait_for_login().close()
+            self.vm.wait_for_login().close()
 
     def run_migration(self):
         """
