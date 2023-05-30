@@ -138,7 +138,7 @@ def run(test, params, env):
                                               test_user=params.get('test_user'))
 
         vm_sess = vm.wait_for_serial_login(timeout=60)
-        vm_sess.cmd_output('systemctl start firewalld')
+        vm_sess.cmd('systemctl start firewalld')
         vm.destroy()
 
         pid_passt = process.run('pidof passt',
