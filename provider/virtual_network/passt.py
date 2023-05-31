@@ -1,4 +1,5 @@
 import logging
+import os
 from socket import socket
 
 import aexpect
@@ -6,11 +7,35 @@ from avocado.core import exceptions
 from avocado.utils import process
 from virttest import utils_misc
 from virttest import utils_net
+from virttest import utils_selinux
+from virttest.utils_libvirt import libvirt_vmxml
 
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 IPV6_LENGTH = 128
 
 LOG = logging.getLogger('avocado.' + __name__)
+
+
+def ensure_selinux_enforcing():
+    """
+    Ensure selinux is enforcing, set to enforcing if not
+
+    :return: current selinux status
+    """
+    selinux_status = utils_selinux.get_status()
+    if selinux_status != 'enforcing':
+        utils_selinux.set_status('enforcing')
+    return selinux_status
+
+
+def check_socat_installed():
+    """
+    Check whether socat is installed
+
+    :raises exceptions.TestError: if socat is not installed
+    """
+    if not os.path.exists('/usr/bin/socat'):
+        raise exceptions.TestError('This test requires to install socat')
 
 
 def get_user_id(user):
@@ -21,6 +46,33 @@ def get_user_id(user):
     :return: id of user, str type
     """
     return process.run(f'id -u {user}').stdout_text.strip()
+
+
+def make_log_dir(user_id, log_dir):
+    """
+    Make folder for log file with given user_id and log_dir
+
+    :param user_id: id of user
+    :param log_dir: path to create and prepare to put log
+    """
+    if not os.path.exists(log_dir):
+        os.mkdir(log_dir)
+    os.chown(log_dir, int(user_id), int(user_id))
+
+
+def vm_add_iface(vmxml, iface_attrs, virsh_ins):
+    """
+    Add interface to vmxml
+
+    :param vmxml: vmxml instance
+    :param iface_attrs: attributes of iface
+    :param virsh_ins: virsh instance
+    """
+    vmxml.del_device('interface', by_tag=True)
+    iface_device = libvirt_vmxml.create_vm_device_by_type('interface',
+                                                          iface_attrs)
+    vmxml.add_device(iface_device)
+    vmxml.sync(virsh_instance=virsh_ins)
 
 
 def get_free_port():
@@ -334,3 +386,43 @@ def check_port_listen(ports, protocol, host_ip=None):
         else:
             raise exceptions.TestFail(f'Address:Port {item} is NOT being '
                                       'listened to')
+
+
+def check_portforward(vm, host_ip, params):
+    """
+    Check function for portforward
+
+    :param vm: vm instance
+    :param host_ip: host ipv4 address
+    :param params: test params
+    """
+    host_ip_v6 = params.get('host_ip_v6')
+    tcp_port_list = eval(params.get('tcp_port_list', '[]'))
+    tcp_port_list = [f'{host_ip}:{port}' if str(port).isdigit()
+                     else port for port in tcp_port_list]
+    check_port_listen(tcp_port_list, 'TCP', host_ip=host_ip)
+
+    udp_port_list = eval(params.get('udp_port_list', '[]'))
+    check_port_listen(udp_port_list, 'UDP')
+
+    conn_check_list = []
+    for k, v in params.items():
+        if k.startswith('conn_check_args_'):
+            conn_check_list.append(eval(v))
+    LOG.debug(f'conn_check_list: {conn_check_list}')
+
+    check_portforward_connetion(vm, conn_check_list,
+                                test_user=params.get('test_user'))
+
+
+def check_passt_pid_not_exist():
+    """
+    Check whether pid of passt disappeared
+
+    :raises exceptions.TestFail: if Process of passt still exists
+    """
+    pid_passt = process.run('pidof passt',
+                            ignore_status=True).stdout_text.strip()
+    if pid_passt:
+        raise exceptions.TestFail(f'Process of passt still exists: '
+                                  f'{pid_passt}')
