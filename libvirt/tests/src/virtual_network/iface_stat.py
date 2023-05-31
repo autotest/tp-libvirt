@@ -7,6 +7,7 @@ from avocado.utils import process
 from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
+from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
@@ -110,6 +111,7 @@ def run(test, params, env):
     """
     Test iface stat
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     case = params.get('case', '')
     scenario = params.get('scenario', '')
