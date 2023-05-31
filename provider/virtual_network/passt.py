@@ -55,6 +55,23 @@ def get_iface_ip_and_prefix(iface, session=None, ip_ver='ipv4'):
                 if addr['family'] == 'inet6' and addr['scope'] == 'global']
 
 
+def get_proc_info(command):
+    """
+    Get info of process with given command
+
+    :param command: command of the process to check
+    :return: dict-type info of process
+    """
+    pid = process.run(f'pidof {command}').stdout_text.strip()
+    ps_output = process.run(f'ps -fp {pid} -Z', shell=True).stdout_text
+    title, content = ps_output.strip().split('\n')
+    title = title.split()
+    content = content.split(maxsplit=len(title) - 1)
+    proc_info = dict(zip(title, content))
+
+    return proc_info
+
+
 def check_proc_info(params, log_file, mac):
     """
     Check process info of passt
@@ -69,13 +86,7 @@ def check_proc_info(params, log_file, mac):
     host_iface = host_iface if host_iface else utils_net.get_net_if(
         state="UP")[0]
 
-    #  check the passt process cmd line
-    pid_passt = process.run('pidof passt').stdout_text.strip()
-    passt_proc = process.run(f'ps -fp {pid_passt} -Z', shell=True).stdout_text
-    title, content = passt_proc.strip().split('\n')
-    title = title.split()
-    content = content.split(maxsplit=len(title) - 1)
-    proc_info = dict(zip(title, content))
+    proc_info = get_proc_info('passt')
     LOG.debug(proc_info)
 
     # check the lable is passt_t
@@ -172,8 +183,8 @@ def check_default_gw(session):
 
     :param session: vm shell session instance
     """
-    host_gw = utils_net.get_default_gateway()
-    vm_gw = utils_net.get_default_gateway(session=session)
+    host_gw = utils_net.get_default_gateway(force_dhcp=True)
+    vm_gw = utils_net.get_default_gateway(session=session, force_dhcp=True)
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
     host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6')
     vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6')
@@ -264,7 +275,7 @@ def check_connection(vm, vm_iface, protocols):
     :param vm_iface: interface of vm
     :param protocols: protocols to check
     """
-    default_gw = utils_net.get_default_gateway()
+    default_gw = utils_net.get_default_gateway(force_dhcp=True)
     default_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6')
     for protocol in protocols:
         host_sess = aexpect.ShellSession('su')
