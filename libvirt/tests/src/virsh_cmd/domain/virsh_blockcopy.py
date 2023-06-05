@@ -185,7 +185,7 @@ def finish_job(vm_name, target, timeout):
         if utl.check_blockjob(vm_name, target, 'none', '0'):
             raise exceptions.TestFail("No blockjob find for '%s'" % target)
 
-        if utl.check_blockjob(vm_name, target, "progress", "100"):
+        if utl.check_blockjob(vm_name, target, "progress", "100(.00)?"):
             logging.debug("Block job progress up to 100%")
             break
         else:
