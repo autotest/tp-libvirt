@@ -53,7 +53,7 @@ def run(test, params, env):
         check_obj.check_mirror_exist(vm, target_disk, tmp_copy_path)
 
         if not utils_misc.wait_for(
-                lambda: libvirt.check_blockjob(vm_name, target_disk, "progress", "100"), 30):
+                lambda: libvirt.check_blockjob(vm_name, target_disk, "progress", "100(.00)?"), 30):
             test.fail("Blockcopy not finished for 30s")
         test.log.info("TEST_STEP3: Abort job with %s", execute_option)
         virsh.blockjob(vm_name, target_disk, execute_option,
