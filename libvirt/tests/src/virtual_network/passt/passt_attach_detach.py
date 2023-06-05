@@ -3,7 +3,6 @@ import os
 import shutil
 
 import aexpect
-from avocado.utils import process
 from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_net
@@ -30,13 +29,6 @@ def check_mac_in_domiflist(vm_name, mac, virsh_ins, test, expect=True):
           f'from output of domiflist'
     if found != expect:
         test.fail(msg)
-
-
-def check_passt_pid_not_exist(test):
-    pid_passt = process.run('pidof passt',
-                            ignore_status=True).stdout_text.strip()
-    if pid_passt:
-        test.fail(f'Process of passt still exists: {pid_passt}')
 
 
 def run(test, params, env):
@@ -92,19 +84,13 @@ def run(test, params, env):
                                                    virsh_instance=virsh_ins)
     bkxml = vmxml.copy()
 
-    selinux_status = utils_selinux.get_status()
-    if selinux_status != 'enforcing':
-        utils_selinux.set_status('enforcing')
-
-    if not os.path.exists('/usr/bin/socat'):
-        test.error('This test requires to install socat')
+    selinux_status = passt.ensure_selinux_enforcing()
+    passt.check_socat_installed()
 
     firewalld = service.Factory.create_service("firewalld")
     try:
         if root:
-            if not os.path.exists(log_dir):
-                os.mkdir(log_dir)
-            os.chown(log_dir, int(user_id), int(user_id))
+            passt.make_log_dir(user_id, log_dir)
 
         vmxml.del_device('interface', by_tag=True)
         iface_device = libvirt_vmxml.create_vm_device_by_type('interface',
@@ -155,26 +141,11 @@ def run(test, params, env):
                                    ['TCP4', 'TCP6', 'UDP4', 'UDP6'])
 
             if 'portForwards' in iface_attrs:
-                tcp_port_list = eval(params.get('tcp_port_list', '[]'))
-                tcp_port_list = [f'{host_ip}:{port}' if str(port).isdigit()
-                                 else port for port in tcp_port_list]
-                passt.check_port_listen(tcp_port_list, 'TCP', host_ip=host_ip)
+                passt.check_portforward(vm, host_ip, params)
 
-                udp_port_list = eval(params.get('udp_port_list', '[]'))
-                passt.check_port_listen(udp_port_list, 'UDP')
-
-                conn_check_list = []
-                for k, v in params.items():
-                    if k.startswith('conn_check_args_'):
-                        conn_check_list.append(eval(v))
-                LOG.debug(f'conn_check_list: {conn_check_list}')
-
-                passt.check_portforward_connetion(vm, conn_check_list,
-                                                  test_user=params.get(
-                                                      'test_user'))
         if 'detach' not in scenario:
             vm.destroy()
-            check_passt_pid_not_exist(test)
+            passt.check_passt_pid_not_exist()
             if os.listdir(socket_dir):
                 test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
         else:
@@ -197,7 +168,7 @@ def run(test, params, env):
                           'still be found in vmxml')
 
             check_mac_in_domiflist(vm_name, mac, virsh_ins, test, expect=False)
-            check_passt_pid_not_exist(test)
+            passt.check_passt_pid_not_exist()
 
     finally:
         firewalld.start()
