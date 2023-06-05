@@ -256,7 +256,7 @@ def check_nameserver(session):
 
     :param session: vm shell session instance
     """
-    get_cmd = 'cat /etc/resolv.conf'
+    get_cmd = 'cat /etc/resolv.conf|grep -vE "#|;"'
     on_host = process.run(get_cmd).stdout_text.strip()
     on_vm = session.cmd_output(get_cmd).strip()
     if on_host == on_vm:
