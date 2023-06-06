@@ -48,7 +48,7 @@ def run(test, params, env):
         4) Execute with --pivot and check raw option return empty
         """
         # Confirm blockcopy not finished.
-        if not libvirt.check_blockjob(vm_name, dev, "progress", "100"):
+        if not libvirt.check_blockjob(vm_name, dev, "progress", "100(.00)?"):
             res_1 = virsh.blockjob(vm_name, dev, options=test_option, debug=True,
                                    ignore_status=False)
             cur1 = libvirt_misc.convert_to_dict(res_1.stdout_text.strip(),

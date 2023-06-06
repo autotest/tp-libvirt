@@ -24,7 +24,7 @@ def finish_job(vm_name, target, timeout, test):
     """
     job_time = 0
     while job_time < timeout:
-        if utl.check_blockjob(vm_name, target, "progress", "100"):
+        if utl.check_blockjob(vm_name, target, "progress", "100(.00)?"):
             logging.debug("Block job progress up to 100%.")
             break
         else:

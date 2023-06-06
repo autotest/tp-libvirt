@@ -41,7 +41,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP2: Do blockjob with pivot")
         if not utils_misc.wait_for(
                 lambda: libvirt.check_blockjob(vm_name, target_disk,
-                                               "progress", "100"), 2):
+                                               "progress", "100(.00)?"), 2):
 
             result = virsh.blockjob(vm_name, target_disk,
                                     options=pivot_option, debug=True,

@@ -40,7 +40,7 @@ def run(test, params, env):
         2) Check cur value is changing.
         3) Execute with --pivot and check raw option return empty.
         """
-        if not libvirt.check_blockjob(vm_name, dev, "progress", "100"):
+        if not libvirt.check_blockjob(vm_name, dev, "progress", "100(.00)?"):
             _check_cur()
             _abort_job()
         else:

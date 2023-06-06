@@ -111,7 +111,7 @@ def run(test, params, env):
         2)Destroy guest
         3)Check the xattr of the destination file.
         """
-        if not libvirt.check_blockjob(vm_name, target_disk, "progress", "100"):
+        if not libvirt.check_blockjob(vm_name, target_disk, "progress", "100(.00)?"):
             _check_xattr(tmp_copy_path, msg_before_destroy)
 
             test.log.info("TEST_STEP3: Destroy guest and check image xattr "
