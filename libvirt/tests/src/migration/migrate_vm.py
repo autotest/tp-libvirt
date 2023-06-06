@@ -236,7 +236,7 @@ def migrate_vm(test, params):
     su_user = params.get("su_user", "")
     auth_user = params.get("server_user")
     auth_pwd = params.get("server_pwd")
-    virsh_patterns = params.get("patterns_virsh_cmd", r".*100\s%.*")
+    virsh_patterns = params.get("patterns_virsh_cmd", r".*100(.00)?\s%.*")
     status_error = params.get("status_error", "no")
     timeout = int(params.get("migration_timeout", 30))
     extra_opt = params.get("extra_opt", "")
