@@ -75,6 +75,7 @@ def run(test, params, env):
         test.log.debug("blockcommit cmd: %s", cmd)
 
         alloc_dict = {}
+        time.sleep(5)
         for i in range(0, 2):
             alloc_new_dict = get_alloc_result()
             test.log.debug('Current alloc dict is:%s, last alloc dict is :%s',
