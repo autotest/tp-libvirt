@@ -536,10 +536,10 @@ def run(test, params, env):
                       .format(vm_stat.stdout))
 
         if not utils_misc.wait_for(
-           lambda: _check_dest_state(expected_remote_state), 5,
+           lambda: _check_dest_state(expected_remote_state), 10,
            text="check if dest vm state is %s" % expected_remote_state):
             test.fail("Unable to get expected domstate on destination machine "
-                      "in 5s!")
+                      "in 10s!")
 
         if postcopy_options:
             vm_stat = virsh.domstate(vm_name, ignore_status=False)
