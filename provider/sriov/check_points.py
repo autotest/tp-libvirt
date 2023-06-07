@@ -124,7 +124,8 @@ def check_vlan(dev_name, iface_dict, status_error=False):
 
 
 def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
-                              tcpdump_iface=None, tcpdump_status_error=False):
+                              tcpdump_iface=None, tcpdump_status_error=False,
+                              ping_dest=None):
     """
     Test VM's network accessibility
 
@@ -134,9 +135,11 @@ def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
     :param tcpdump_iface: The interface to check
     :param tcpdump_status_error: Whether the tcpdump's output should include
         the string "ICMP echo request"
+    :param ping_dest: Ping destination address
     :raise: test.fail when ping fails.
     """
-    ping_dest = sriov_base.get_ping_dest(vm_session)
+    if not ping_dest:
+        ping_dest = sriov_base.get_ping_dest(vm_session)
     if tcpdump_iface:
         cmd = "tcpdump  -i %s icmp" % tcpdump_iface
         tcpdump_session = aexpect.ShellSession('bash')
@@ -181,3 +184,26 @@ def check_vm_iface_num(session, exp_num, timeout=10, first=0.0):
     if len(p_iface) != exp_num:
         exceptions.TestFail("%d interface(s) should be found on the vm."
                             % exp_num)
+
+
+def check_vm_iommu_group(vm_session, test_devices):
+    """
+    Check the devices with iommu enabled are located in a separate iommu group
+
+    :param vm_session: VM session
+    :param test_devices: test devices to check
+    """
+    for dev in test_devices:
+        s, o = vm_session.cmd_status_output(
+            "lspci | awk 'BEGIN{IGNORECASE=1} /%s/ {print $1}'" % dev)
+        if s:
+            exceptions.TestFail("Failed to get pci address!")
+
+        cmd = ("find /sys/kernel/iommu_groups/ -type l | xargs ls -l | awk -F "
+               "'/' '/%s / {print(\"\",$2,$3,$4,$5,$6)}' OFS='/' " % o.strip())
+        s, o = vm_session.cmd_status_output(cmd)
+        if s:
+            exceptions.TestFail("Failed to find iommu group!")
+        s, o = vm_session.cmd_status_output("ls %s" % o)
+        if s:
+            exceptions.TestFail("Failed to get the device in the iommu group!")
