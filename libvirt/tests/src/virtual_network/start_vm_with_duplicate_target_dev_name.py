@@ -5,6 +5,7 @@ from avocado.utils import process
 from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
+from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -79,6 +80,7 @@ def run(test, params, env):
     """
     Test start vm with duplicate target dev name - negative
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     status_error = 'yes' == params.get('status_error', 'no')

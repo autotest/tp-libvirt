@@ -399,6 +399,9 @@ def run(test, params, env):
         expected_list_after_mig_src[-2] = 'Total downtime'
         expected_list_after_mig_dest = copy.deepcopy(expected_list_after_mig_src)
 
+        if postcopy_options and libvirt_version.version_compare(9, 3, 0):
+            expected_list_during_mig.remove("Expected downtime")
+
         # Check version in remote
         if not expected_list_after_mig_dest.count("Postcopy requests"):
             remote_session = remote.remote_login("ssh", server_ip, "22", server_user,

@@ -7,6 +7,7 @@ from avocado.utils import process
 from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
+from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
@@ -110,6 +111,7 @@ def run(test, params, env):
     """
     Test iface stat
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     case = params.get('case', '')
     scenario = params.get('scenario', '')
@@ -135,9 +137,8 @@ def run(test, params, env):
         if case == 'compare':
 
             def _collect_and_compare_stat(vm_name, session, **virsh_args):
-                session.cmd('curl -O https://download.fedoraproject.org/pub'
-                            '/fedora/linux/releases/37/Cloud/x86_64/images'
-                            '/Fedora-Cloud-Base-37-1.7.x86_64.qcow2 -L',
+                session.cmd('curl -O https://avocado-project.org/data/'
+                            'assets/jeos/27/jeos-27-64.qcow2.xz -L',
                             timeout=240)
                 host_iface_stat = get_host_iface_stat(vm_name,
                                                       iface_target_dev,

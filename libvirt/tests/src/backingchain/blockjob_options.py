@@ -67,7 +67,7 @@ def run(test, params, env):
             # Abort job and check abort success.
             if utils_misc.wait_for(
                     lambda: libvirt.check_blockjob(vm_name,
-                                                   dev, "progress", "100"), 100):
+                                                   dev, "progress", "100(.00)?"), 100):
                 virsh.blockjob(vm_name, dev, options=' --pivot',
                                debug=True,
                                ignore_status=False)
