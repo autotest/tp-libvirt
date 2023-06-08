@@ -555,6 +555,7 @@ maxdowntime
 maximumvcpu
 maxmem
 Maxmem
+maxphysaddr
 maxvcpu
 maxvcpus
 mb
