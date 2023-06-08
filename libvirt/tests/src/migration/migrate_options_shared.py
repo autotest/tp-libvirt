@@ -1395,6 +1395,11 @@ def run(test, params, env):
         src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
             remove_dict)
 
+        if extra.count("xbzrle") and extra.count("parallel"):
+            if libvirt_version.version_compare(9, 4, 0):
+                asynch_migration = False
+                params.update({"status_error": "yes"})
+
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
