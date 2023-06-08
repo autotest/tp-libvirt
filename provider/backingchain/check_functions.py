@@ -198,7 +198,7 @@ class Checkfunction(object):
             if current_hash != hash_list[index]:
                 self.test.fail("File:%s hash :%s is different from hash before "
                                "blockcommit:%s" % (item, current_hash,
-                                                   item_list[index]))
+                                                   hash_list[index]))
 
     def check_mirror_exist(self, vm, device, image_path):
         """
