@@ -125,7 +125,7 @@ def coldplug_save_restore(test, params, env):
     file_descriptor_id = params.get("file_descriptor_id")
     save_file_path = params.get("save_file_path")
     flag = params.get("flag")
-    start_save_restore_cmd = "virsh \"dom-fd-associate %s %s %s %s ; start %s ; sleep 2; save %s %s ; sleep 2; restore %s\" %s<>%s" \
+    start_save_restore_cmd = "virsh \"dom-fd-associate %s %s %s %s ; start %s ; save %s %s ; restore %s\" %s<>%s" \
         % (vm_name, fdgroup_name, file_descriptor_id, flag, vm_name,
            vm_name, save_file_path, save_file_path, file_descriptor_id, file_path)
     associate_fd_with_domain(start_save_restore_cmd, test, params, env)
@@ -188,7 +188,7 @@ def hotplug_save_restore(test, params, env):
     save_file_path = params.get("save_file_path")
     flag = params.get("flag")
     attach_save_restore_cmd = "virsh \"dom-fd-associate %s %s %s %s; attach-disk %s %s %s; \
-        save %s %s ; sleep 2 ; restore %s\" %s<>%s" \
+        save %s %s ; restore %s\" %s<>%s" \
         % (vm_name, fdgroup_name, file_descriptor_id, flag, vm_name, file_path, target_device,
            vm_name, save_file_path, save_file_path, file_descriptor_id, file_path)
     associate_fd_with_domain(attach_save_restore_cmd, test, params, env)
