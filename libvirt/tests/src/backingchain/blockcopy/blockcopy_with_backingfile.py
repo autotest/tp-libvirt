@@ -52,7 +52,8 @@ def run(test, params, env):
         Do blockcopy and abort job ,than check hash and vmxml chain
         """
         session = vm.wait_for_login()
-        expected_hash = test_obj.get_hash_value(session, "/dev/"+device)
+        expected_hash = test_obj.get_hash_value(session, "/dev/"+device,
+                                                sleep_time=60)
         test.log.info("TEST_STEP3:Do blockcopy")
         virsh.blockcopy(vm_name, device, tmp_copy_path,
                         options=blockcopy_options, ignore_status=False,
@@ -68,7 +69,7 @@ def run(test, params, env):
             expected_chain = [tmp_copy_path, test_obj.copy_image]
         check_obj.check_backingchain_from_vmxml(disk_type, device, expected_chain)
         check_obj.check_hash_list(["/dev/" + test_obj.new_dev], [expected_hash],
-                                  session)
+                                  session, sleep_time=60)
         session.close()
 
     def teardown_blockcopy_shallow_and_reuse_external():

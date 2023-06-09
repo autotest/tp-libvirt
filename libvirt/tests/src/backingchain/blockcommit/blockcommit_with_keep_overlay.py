@@ -41,14 +41,16 @@ def run(test, params, env):
         test.log.info("TEST_STEP1: Get top or base option and hash value.")
         session = vm.wait_for_login()
         expected_hash = test_obj.get_hash_value(session,
-                                                check_item="/dev/"+test_obj.new_dev)
+                                                check_item="/dev/"+test_obj.new_dev,
+                                                sleep_time=20)
         top_option, base_option = _get_options()
 
         test.log.info("TEST_STEP2: Do bloccommit.")
         res = virsh.blockcommit(vm.name, target_disk,
                                 commit_options+top_option+base_option, debug=True)
         _check_blockcommit_result(res)
-        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash], session)
+        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash],
+                                  session, sleep_time=20)
 
         session.close()
 

@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 
 from avocado.utils import process
 
@@ -180,15 +181,17 @@ class Checkfunction(object):
                            'is not correct: %s' % img_info)
         return exist
 
-    def check_hash_list(self, item_list, hash_list, session=None):
+    def check_hash_list(self, item_list, hash_list, session=None, sleep_time=0):
         """
         Check the file list current hash value same as the hash value list
 
         :param item_list: file or dev need to check
         :param hash_list: hash value list
         :param session: The session object to the host
+        :param sleep_time: sleep time to wait for data come down
         """
-
+        if sleep_time:
+            time.sleep(sleep_time)
         for index, item in enumerate(item_list):
             if session:
                 ret, current_hash = session.cmd_status_output("sha256sum %s" % item)
@@ -198,7 +201,7 @@ class Checkfunction(object):
             if current_hash != hash_list[index]:
                 self.test.fail("File:%s hash :%s is different from hash before "
                                "blockcommit:%s" % (item, current_hash,
-                                                   item_list[index]))
+                                                   hash_list[index]))
 
     def check_mirror_exist(self, vm, device, image_path):
         """

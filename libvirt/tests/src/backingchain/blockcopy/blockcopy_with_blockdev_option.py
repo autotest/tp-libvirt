@@ -40,7 +40,8 @@ def run(test, params, env):
         """
         session = vm.wait_for_login()
         expected_hash = test_obj.get_hash_value(session,
-                                                check_item="/dev/"+test_obj.new_dev)
+                                                check_item="/dev/"+test_obj.new_dev,
+                                                sleep_time=20)
 
         test.log.info("TEST_STEP1: Do blockcopy.")
         virsh.blockcopy(vm_name, device, blockcopy_options % test_obj.lvm_list[1],
@@ -52,7 +53,7 @@ def run(test, params, env):
         check_obj.check_backingchain_from_vmxml(disk_type, device, expected_chain)
 
         check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash],
-                                  session)
+                                  session, sleep_time=20)
         session.close()
 
     def teardown_test():

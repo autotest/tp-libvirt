@@ -42,7 +42,8 @@ def run(test, params, env):
         """
         session = vm.wait_for_login()
         expected_hash = test_obj.get_hash_value(session,
-                                                "/dev/" + test_obj.new_dev)
+                                                "/dev/" + test_obj.new_dev,
+                                                sleep_time=20)
 
         test.log.info("TEST_STEP1: Do blockcopy and abort job")
         virsh.blockcopy(vm_name, target_disk, tmp_copy_path,
@@ -65,7 +66,7 @@ def run(test, params, env):
         check_obj.check_backingchain_from_vmxml(disk_type, target_disk, expected_chain)
 
         check_obj.check_hash_list(["/dev/" + test_obj.new_dev], [expected_hash],
-                                  session)
+                                  session, sleep_time=20)
         session.close()
 
     def teardown_test():

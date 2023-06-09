@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import json
+import time
 
 from avocado.utils import process
 
@@ -177,14 +178,17 @@ class BlockCommand(object):
 
         return relative_path
 
-    def get_hash_value(self, session=None, check_item=''):
+    def get_hash_value(self, session=None, check_item='', sleep_time=0):
         """
         Get the hash value
 
         :param session: virsh session
         :param check_item: a file or device
+        :param sleep_time: sleep time to wait for data come down
         :return hash value
         """
+        if sleep_time:
+            time.sleep(sleep_time)
         if session is None:
             session = self.vm.wait_for_login()
 

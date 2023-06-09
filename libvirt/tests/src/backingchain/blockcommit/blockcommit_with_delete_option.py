@@ -54,9 +54,9 @@ def run(test, params, env):
         else:
             # this scenario is from middle to base
             base_option = " "
-
         session = vm.wait_for_login()
-        expected_hash = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
+        expected_hash = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev,
+                                                sleep_time=30)
 
         test.log.info("TEST_STEP2: Do blockcommit ")
         virsh.blockcommit(vm.name, target_disk,
@@ -71,8 +71,8 @@ def run(test, params, env):
             if deleted_snap not in expected_chain and utils_misc.check_exists(deleted_snap):
                 test.fail("%s should be deleted after blockcommit with "
                           "delete option" % deleted_snap)
-
-        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash], session)
+        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash],
+                                  session, sleep_time=30)
         session.close()
 
     def teardown_test():
