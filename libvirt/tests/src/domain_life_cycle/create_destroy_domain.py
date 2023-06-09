@@ -18,6 +18,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import pool_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
 
@@ -190,7 +191,9 @@ def add_wiping_storage_disk(params):
     vm_name = params.get("main_vm")
     xml_dump = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
-    source_file_path = params.get("source_file_path")
+    p_xml = pool_xml.PoolXML.new_from_dumpxml("images")
+    source_file_path = os.path.join(p_xml.target_path, "wipe.img")
+    params.update({"source_file_path": source_file_path})
     libvirt.create_local_disk("file", source_file_path, 1,
                               disk_format="qcow2")
     virsh.pool_refresh("images")
