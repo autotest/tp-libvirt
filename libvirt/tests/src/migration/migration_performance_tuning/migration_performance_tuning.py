@@ -21,6 +21,19 @@ def run(test, params, env):
         virsh.migrate_setmaxdowntime(vm_name, "100", debug=True)
         migration_obj.setup_connection()
 
+    def setup_parallel_connections():
+        """
+        Setup for parallel connections
+
+        """
+        test.log.info("Setup for parallel connections.")
+        parallel_conn_options = params.get("parallel_conn_options")
+        if parallel_conn_options:
+            extra = params.get("virsh_migrate_extra")
+            extra = "%s %s" % (extra, parallel_conn_options)
+            params.update({"virsh_migrate_extra": extra})
+        migration_obj.setup_connection()
+
     def verify_memory_compression():
         """
         Verify for memory compression
