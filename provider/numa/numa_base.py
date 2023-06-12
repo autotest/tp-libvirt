@@ -9,6 +9,7 @@
 #
 import re
 
+from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import libvirt_version
@@ -43,10 +44,13 @@ class NumaTest(object):
                              "least, but found %d" % (expect_nodes_num,
                                                       len(self.all_usable_numa_nodes)))
 
-    def setup(self):
+    def setup(self, node_index=0):
         self.check_numa_nodes_availability()
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.params['backup_vmxml'] = vmxml.copy()
+        kernel_hp_file = self.params.get('kernel_hp_file')
+        if kernel_hp_file and kernel_hp_file.count('/sys/devices/system/node/'):
+            self.params['kernel_hp_file'] = kernel_hp_file % self.online_nodes_withmem[node_index]
 
     def teardown(self):
         if self.vm.is_alive():
@@ -55,6 +59,11 @@ class NumaTest(object):
         if backup_vmxml:
             self.test.log.debug("Teardown: recover the vm xml")
             backup_vmxml.sync()
+        hpc_2M = self.params.get('hp_config_2M')
+        hpc_1G = self.params.get('hp_config_1G')
+        for hpc in [hpc_2M, hpc_1G]:
+            if hpc:
+                hpc.cleanup()
 
     def prepare_vm_xml(self):
         """
@@ -142,19 +151,19 @@ class NumaTest(object):
         return numad_ret
 
 
-def get_host_numa_memory_alloc_info(mem_size, test):
+def get_host_numa_memory_alloc_info(mem_size):
     """
     Get the numa memory allocation result on the host
 
     :param mem_size: int, the vm memory size
-    :param test: avocado test object
     :return: str, the matched output in numa_maps
     """
     cmd = 'grep -B1 %s /proc/`pidof qemu-kvm`/smaps' % mem_size
     out = process.run(cmd, shell=True, verbose=True).stdout_text.strip()
     matches = re.findall('(\w+)-', out)
     if not matches:
-        test.error("No match found in the output of the command '%s'" % cmd)
+        raise exceptions.TestError("Fail to find the pattern '(\w+)-' "
+                                   "in smaps output '%s'" % out)
     cmd = 'grep %s /proc/`pidof qemu-kvm`/numa_maps' % matches[0]
     return process.run(cmd, shell=True, verbose=True).stdout_text.strip()
 
