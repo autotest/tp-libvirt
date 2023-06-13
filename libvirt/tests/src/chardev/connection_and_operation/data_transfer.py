@@ -94,6 +94,12 @@ def run(test, params, env):
             clean_pipe_file(file_path)
         clean_pipe_file(out_file)
 
+        if not vm.is_alive():
+            vm.start()
+        session = vm.wait_for_login()
+        session.cmd("rm -f %s" % guest_out)
+        session.close()
+
     def clean_pipe_file(file):
         """
         Clean pipe file
@@ -210,18 +216,25 @@ def run(test, params, env):
         chardev_port = get_chardev_port(chardev)
 
         vm_session = vm.wait_for_login(timeout=240)
-        cmd = "cat < %s" % target_path + chardev_port
+        cmd = "cat < %s > %s" % (target_path + chardev_port, guest_out)
         test.log.debug("Execute cmd:'%s' on guest ", cmd)
         vm_session.sendline(cmd)
+
         chardev_base.send_message(vm, "host", send_msg=host_msg,
                                   send_path=pipe_in)
-
-        output = vm_session.get_output()
         vm_session.close()
+
+        vm_session_new = vm.wait_for_login(timeout=240)
+        status, output = vm_session_new.cmd_status_output(
+            "grep -E '%s' %s" % (host_msg, guest_out))
+        vm_session_new.close()
+
+        if status != 0:
+            test.fail("Check host msg failed.")
         if not re.search(host_msg, output):
             test.fail("Not get %s in %s" % (host_msg, output))
         else:
-            test.log.debug("Check %s exist in %s" % (host_msg, output))
+            test.log.debug("Check '%s' exist in :%s" % (host_msg, output))
 
     def check_boot_info(session, file):
         """
@@ -265,6 +278,7 @@ def run(test, params, env):
     bkxml = vmxml.copy()
     device_alias = "ua-" + str(uuid.uuid4())
     out_file = "/tmp/output_content.txt"
+    guest_out = "/tmp/guest_out.txt"
 
     try:
         setup_test()
