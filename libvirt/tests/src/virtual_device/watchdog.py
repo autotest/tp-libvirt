@@ -8,6 +8,7 @@ import aexpect
 import shutil
 
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
@@ -184,6 +185,7 @@ def run(test, params, env):
     if machine_type == "q35" and model == "ib700":
         test.cancel("ib700wdt watchdog device is not supported "
                     "on guest with q35 machine type")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Backup xml file
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
