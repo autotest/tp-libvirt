@@ -115,7 +115,7 @@ class BlockCommand(object):
             self.snap_path_list.append(path)
             self.snap_name_list.append(name)
 
-            if not utils_misc.wait_for(lambda: os.path.exists(path), 10, first=2):
+            if not utils_misc.wait_for(lambda: os.path.exists(path), 10, first=5):
                 self.test.error("%s should be in snapshot list" % snap_name)
 
     def convert_expected_chain(self, expected_chain_index):
