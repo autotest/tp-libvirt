@@ -5,7 +5,9 @@ import signal                                        # pylint: disable=W0611
 import time
 
 from avocado.core import exceptions
+from avocado.utils import process
 
+from virttest import remote
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
@@ -19,6 +21,7 @@ from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 from virttest.utils_libvirt import libvirt_service   # pylint: disable=W0611
 from virttest.utils_test import libvirt_domjobinfo   # pylint: disable=W0611
 from virttest.utils_test import libvirt
+from virttest.staging import service
 
 from provider.migration import base_steps            # pylint: disable=W0611
 
@@ -630,3 +633,42 @@ def destroy_dest_vm(params):
     dest_uri = params.get("virsh_migrate_desturi")
     vm_name = params.get("main_vm")
     virsh.destroy(vm_name, ignore_status=False, debug=True, uri=dest_uri)
+
+
+def check_NM(params, remote_host=False):
+    """
+    Check NetworkManager service
+
+    :param params: dictionary with the test parameter
+    :param remote_host: if True, will check the NetworkManager service of target host
+    :return: if True, NetworkManager service exists already
+    """
+    cmd = "rpm -q NetworkManager"
+    if remote_host:
+        ret = remote.run_remote_cmd(cmd, params, ignore_status=False)
+    else:
+        ret = process.run(cmd, ignore_status=False, shell=True)
+    if ret.exit_status:
+        return False
+    return True
+
+
+def get_NM_service(params=None, remote_host=False):
+    """
+    Get NetworkManager service object
+
+    :param params: dictionary with the test parameter
+    :param remote_host: if True, will get the NetworkManager service of target host
+    :return: NetworkManager service object
+    """
+    if remote_host:
+        server_ip = params.get("server_ip")
+        server_user = params.get("server_user", "root")
+        server_pwd = params.get("server_pwd")
+        remote_runner = remote.RemoteRunner(host=server_ip,
+                                            username=server_user,
+                                            password=server_pwd)
+        runner = remote_runner.run
+    else:
+        runner = process.run
+    return service.Factory.create_service("NetworkManager", run=runner)
