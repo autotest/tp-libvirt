@@ -7,7 +7,7 @@ from virttest import utils_libvirtd
 from virttest import utils_selinux
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-
+from virttest.utils_libvirt import libvirt_vmxml
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -84,6 +84,10 @@ def run(test, params, env):
     restart_libvirtd = ("yes" == params.get("restart_libvirtd"))
     suspend_resume_guest = ("yes" == params.get("suspend_resume_guest"))
     hotunplug_ga = ("yes" == params.get("hotunplug_ga"))
+    hotplug_ga_without_tgt_type = "yes" == params.get("hotplug_ga_without_tgt_type")
+    loop_time = int(params.get("loop_time", '1'))
+    dev_type = params.get("dev_type", "channel")
+    dev_dict = eval(params.get("dev_dict", "{}"))
     label = params.get("con_label")
     vm = env.get_vm(vm_name)
 
@@ -125,6 +129,14 @@ def run(test, params, env):
         else:
             if start_ga != check_ga_state(vm, vm_name):
                 test.fail("guest agent device is not in correct state")
+
+        if hotplug_ga_without_tgt_type:
+            dev_obj = libvirt_vmxml.create_vm_device_by_type(dev_type, dev_dict)
+            for i in range(loop_time):
+                res = virsh.attach_device(vm.name, dev_obj.xml, debug=True)
+                libvirt.check_exit_status(res, status_error)
+            # Unsuccessful plugging of a device should not break the guest agent
+            status_error = False
 
         check_ga_function(vm_name, status_error, hotunplug_ga)
     finally:
