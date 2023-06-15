@@ -4,6 +4,7 @@ import pwd
 from avocado.utils import process
 
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.libvirt_xml import xcepts
@@ -59,6 +60,8 @@ def run(test, params, env):
     backup_xml = vmxml.copy()
 
     status_error = 'yes' == params.get("status_error", 'no')
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     dev_dict, seclabel_attr = get_dev_dict(test_device, params)
     test.log.debug(dev_dict)

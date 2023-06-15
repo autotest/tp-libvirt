@@ -3,6 +3,7 @@ import os
 from avocado.utils import process
 
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.libvirt_xml import xcepts
@@ -57,6 +58,8 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     dev_dict, seclabel_attr = get_dev_dict(test_device, params)
     test.log.debug("The device setting will be updated to %s.", dev_dict)
