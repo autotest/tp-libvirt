@@ -10,6 +10,7 @@ import shutil
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.watchdog import Watchdog
 from virttest.libvirt_xml.devices.controller import Controller
@@ -180,6 +181,8 @@ def run(test, params, env):
     hotplug_test = params.get("hotplug_test") == "yes"
     hotunplug_test = params.get("hotunplug_test") == "yes"
     machine_type = params.get("machine_type")
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     if machine_type == "q35" and model == "ib700":
         test.cancel("ib700wdt watchdog device is not supported "
