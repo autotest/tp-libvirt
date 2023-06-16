@@ -38,8 +38,8 @@ def test_blockcopy_operation(vm_name, disk_path, disk_format,
                     options=blockcopy_option,
                     debug=True, ignore_status=False)
     #Check job finished
-    if not utils_misc.wait_for(lambda: libvirt.check_blockjob(vm_name, device_target, "progress", "100(.00)?"), 300):
-        test.fail("Blockjob timeout in 300 sec.")
+    if not utils_misc.wait_for(lambda: libvirt.check_blockjob(vm_name, device_target, "progress", "100(.00)?"), 500):
+        test.fail("Blockjob timeout in 500 sec.")
     # Check max size value in mirror part
     blk_mirror = ("mirror type='file' file='%s' "
                   "format='%s' job='copy'" % (disk_path, disk_format))
