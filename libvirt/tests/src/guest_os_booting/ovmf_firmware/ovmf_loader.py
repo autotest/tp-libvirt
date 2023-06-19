@@ -25,7 +25,7 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     loader_dict = eval(params.get("loader_dict", "{}"))
-    loader_xpath = eval(params.get("loader_xpath", "{}"))
+    loader_xpath = eval(params.get("loader_xpath", "[]"))
     smm_state = params.get("smm_state", "off")
     error_msg = params.get("error_msg")
     incorrect_loader_path = params.get("incorrect_loader_path", "")
@@ -42,6 +42,7 @@ def run(test, params, env):
         # stateless='yes' only use for AMD test, so here we only check the dumpxml for it to avoid the machine issue
         if stateless:
             virsh.start(vm_name, debug=True)
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
             libvirt_vmxml.check_guest_xml_by_xpaths(vmxml, loader_xpath)
         else:
             if use_file:
