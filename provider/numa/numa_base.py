@@ -54,7 +54,7 @@ class NumaTest(object):
 
         :return: VMXML object
         """
-        single_host_node = self.params.get('single_host_node') == 'yes'
+        single_host_node = self.params.get('single_host_node')
         vm_attrs = eval(self.params.get('vm_attrs'))
         numa_memory = self.params.get('numa_memory')
         numa_memnode = self.params.get('numa_memnode')
@@ -65,16 +65,18 @@ class NumaTest(object):
         vmxml.setup_attrs(**vm_attrs)
 
         # Setup numa tune attributes
-        all_nodes = self.online_nodes_withmem
-        if not single_host_node:
-            # When memory bind to multiple numa nodes,
-            # the test only selects the first two numa nodes with memory on the host
-            nodeset = ','.join(['%d' % all_nodes[0], '%d' % all_nodes[1]])
-        else:
-            # When memory bind to single numa node, the test only selects
-            # the first host numa node.
-            nodeset = '%d' % all_nodes[0]
-        self.params['nodeset'] = nodeset
+        if single_host_node:
+            all_nodes = self.online_nodes_withmem
+            if single_host_node == 'no':
+                # When memory bind to multiple numa nodes,
+                # the test only selects the first two numa nodes with memory on the host
+                nodeset = ','.join(['%d' % all_nodes[0], '%d' % all_nodes[1]])
+            elif single_host_node == 'yes':
+                # When memory bind to single numa node, the test only selects
+                # the first host numa node.
+                nodeset = '%d' % all_nodes[0]
+            self.params['nodeset'] = nodeset
+
         numa_tune_dict = {}
         if numa_memory:
             numa_memory = eval(numa_memory % nodeset)
@@ -82,7 +84,8 @@ class NumaTest(object):
         if numa_memnode:
             numa_memnode = eval(numa_memnode % nodeset)
             numa_tune_dict.update({'numa_memnode': numa_memnode})
-        vmxml.setup_attrs(**numa_tune_dict)
+        if numa_tune_dict:
+            vmxml.setup_attrs(**numa_tune_dict)
 
         # Setup memory backing attributes
         if memory_backing:
