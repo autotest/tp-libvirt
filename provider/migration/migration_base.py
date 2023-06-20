@@ -672,3 +672,21 @@ def get_NM_service(params=None, remote_host=False):
     else:
         runner = process.run
     return service.Factory.create_service("NetworkManager", run=runner)
+
+
+def do_domjobabort(params):
+    """
+    Domain job abort during migration
+
+    :param params: dict, get vm name, dest uri, error message and postcopy option
+    """
+    dest_uri = params.get("virsh_migrate_desturi")
+    vm_name = params.get("main_vm")
+    domjobabort_err_msg = params.get("domjobabort_err_msg")
+    postcopy_options = params.get("postcopy_options")
+
+    if postcopy_options:
+        ret = virsh.domjobabort(vm_name, option="--postcopy", debug=True, uri=dest_uri)
+    else:
+        ret = virsh.domjobabort(vm_name, debug=True, uri=dest_uri)
+    libvirt.check_result(ret, expected_fails=domjobabort_err_msg, check_both_on_error=True)
