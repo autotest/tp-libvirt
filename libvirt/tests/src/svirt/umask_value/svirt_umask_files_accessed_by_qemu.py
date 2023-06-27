@@ -4,6 +4,7 @@ import shutil
 from avocado.utils import process
 
 from virttest import test_setup
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.vm_xml import VMXML
 
@@ -28,6 +29,7 @@ def run(test, params, env):
         test.log.info(f"TEST_STEP: Delete {hp_path} and create hugepages in the host.")
         if os.path.exists(hp_path):
             shutil.rmtree(hp_path)
+            utils_libvirtd.Libvirtd().restart()
         hp_cfg = test_setup.HugePageConfig(params)
         hp_cfg.set_hugepages()
 
