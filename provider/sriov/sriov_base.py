@@ -17,6 +17,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_virtio
 from virttest.utils_libvirt import libvirt_network
+from virttest.utils_libvirt import libvirt_pcicontr
 
 from provider.interface import interface_base
 
@@ -142,12 +143,34 @@ class SRIOVTest(object):
         self.default_vf_mac = utils_sriov.get_vf_mac(
             self.pf_name, session=self.session)
         self.vf_mac = ""
-
+        self.dev_slot = None
+        self.controller_dicts = eval(self.params.get("controller_dicts", "[]"))
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.orig_config_xml = new_xml.copy()
 
     def __del__(self):
         recover_vf(self.pf_pci, self.params, 0, session=self.session)
+
+    def update_disk_addr(self, disk_dict):
+        """
+        Update disk address
+
+        :param disk_dict: The original disk attrs
+        :return: The updated disk attrs
+        """
+        if self.controller_dicts:
+            dev_bus = self.controller_dicts[-1].get('index')
+            dev_attrs = {'bus': dev_bus}
+            if disk_dict['target']['bus'] != "scsi":
+                dev_attrs.update({'type': self.controller_dicts[-1].get('type')})
+                if self.controller_dicts[-1].get('model') == 'pcie-to-pci-bridge':
+                    self.dev_slot = 1
+                    dev_attrs.update({'slot': self.dev_slot})
+
+            disk_dict.update({"address": {'attrs': dev_attrs}})
+            if self.controller_dicts[-1]['model'] == 'pcie-root-port':
+                self.controller_dicts.pop()
+        return disk_dict
 
     def parse_iface_dict(self):
         """
@@ -172,6 +195,13 @@ class SRIOVTest(object):
                 del vf_pci_addr2['type']
             iface_dict = eval(self.params.get('hostdev_dict', '{}'))
 
+        if self.controller_dicts and iface_dict:
+            iface_bus = "%0#4x" % int(self.controller_dicts[-1].get('index'))
+            iface_attrs = {'bus': iface_bus}
+            if isinstance(self.dev_slot, int):
+                self.dev_slot += 1
+                iface_attrs.update({'slot': self.dev_slot})
+            iface_dict.update({"address": {'attrs': iface_attrs}})
         self.test.log.debug("iface_dict: %s.", iface_dict)
         return iface_dict
 
@@ -209,6 +239,40 @@ class SRIOVTest(object):
                         "test_scenario": test_scenario,
                         "br_dict": br_dict, "dev_type": dev_type}
         return iommu_params
+
+    def prepare_controller(self):
+        """
+        Prepare controller(s)
+
+        :return: Updated controller attrs
+        """
+        if not self.controller_dicts:
+            return
+
+        for contr_dict in self.controller_dicts:
+            pre_controller = contr_dict.get("pre_controller")
+            if pre_controller:
+                pre_contrs = list(
+                    filter(None, [c.get('index') for c in self.controller_dicts
+                                  if c['type'] == contr_dict['type'] and
+                                  c['model'] == pre_controller]))
+                if pre_contrs:
+                    pre_idx = pre_contrs[0]
+                else:
+                    pre_idx = libvirt_pcicontr.get_max_contr_indexes(
+                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                        contr_dict['type'], pre_controller)
+                if not pre_idx:
+                    self.test.error(
+                        f"Unable to get index of {pre_controller} controller!")
+                contr_dict.pop("pre_controller")
+            libvirt_vmxml.modify_vm_device(
+                vm_xml.VMXML.new_from_dumpxml(self.vm.name), 'controller',
+                contr_dict, 100)
+            contr_dict['index'] = libvirt_pcicontr.get_max_contr_indexes(
+                vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                contr_dict['type'], contr_dict['model'])[-1]
+        return self.controller_dicts
 
     def get_dev_name(self):
         """
@@ -270,10 +334,12 @@ class SRIOVTest(object):
         dev_name = dargs.get('dev_name')
         managed_disabled = dargs.get('managed_disabled', False)
         network_dict = dargs.get("network_dict", {})
+        cleanup_ifaces = "yes" == dargs.get("cleanup_ifaces", "yes")
         self.test.log.info("TEST_SETUP: Clear up the existing VM "
                            "interface(s) before testing.")
-        libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'interface')
-        libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'hostdev')
+        if cleanup_ifaces:
+            libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'interface')
+            libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'hostdev')
         if network_dict:
             self.test.log.info("TEST_SETUP: Create new network.")
             libvirt_network.create_or_del_network(network_dict)
