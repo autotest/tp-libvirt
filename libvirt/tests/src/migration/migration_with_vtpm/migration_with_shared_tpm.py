@@ -4,6 +4,7 @@ from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import ceph
+from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_package
 from virttest import virsh
@@ -268,6 +269,7 @@ def run(test, params, env):
     vm_name = params.get("migrate_main_vm")
     shared_storage_type = params.get('shared_storage_type', '')
 
+    libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
     setup_test = eval("setup_%s" % shared_storage_type) if "setup_%s" % shared_storage_type in \
