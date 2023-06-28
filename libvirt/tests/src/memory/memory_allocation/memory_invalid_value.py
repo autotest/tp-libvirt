@@ -1,5 +1,6 @@
 
 from virttest import virsh
+from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -65,11 +66,14 @@ def run(test, params, env):
     start_error_msg = params.get("start_error_msg", "")
 
     num = params.get("num")
+    mem_config = params.get("mem_config")
     xpaths_list = eval(params.get("xpaths_list", '{}'))
     vm_attrs = eval(params.get("vm_attrs"))
     start_vm_error = "yes" == params.get("start_vm_error", "no")
 
     try:
+        if num == "zero" and mem_config == "numa":
+            libvirt_version.is_libvirt_feature_supported(params)
         setup_test()
         run_test()
 
