@@ -13,6 +13,7 @@ import re
 
 from avocado.utils import process
 
+from virttest import libvirt_version
 from virttest import test_setup
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -23,6 +24,29 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_version import VersionInterval
+
+
+def check_supported_version(params, test, vm):
+    """
+    Check the supported version
+
+    :param params: Dictionary with the test parameters
+    :param test: Test object
+    :param vm: Vm object
+    """
+    guest_required_kernel = params.get('guest_required_kernel')
+    libvirt_version.is_libvirt_feature_supported(params)
+    utils_misc.is_qemu_function_supported(params)
+
+    if not vm.is_alive():
+        vm.start()
+    vm_session = vm.wait_for_login()
+    vm_kerv = vm_session.cmd_output('uname -r').strip().split('-')[0]
+    vm_session.close()
+    if vm_kerv not in VersionInterval(guest_required_kernel):
+        test.cancel("Got guest kernel version:%s, which is not in %s" %
+                    (vm_kerv, guest_required_kernel))
 
 
 def update_init_vm_attrs(params):
@@ -387,6 +411,7 @@ def run(test, params, env):
     del_tail = int(params.get("del_tail"))
 
     try:
+        check_supported_version(params, test, vm)
         setup_test()
         run_test()
 
