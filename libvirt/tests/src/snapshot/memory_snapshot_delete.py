@@ -14,6 +14,7 @@ Test cases about memory snapshot deletion
 import os
 
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
@@ -119,6 +120,7 @@ def run(test, params, env):
     """
     Deletion test for memory only snapshot
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
