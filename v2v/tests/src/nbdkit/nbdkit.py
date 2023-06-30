@@ -276,6 +276,46 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         if re.search('nbdkit command was killed by signal 11', cmd_3_result.stderr_text):
             test.fail('nbdkit was killed by signal 11')
 
+    def test_plugin_file_fd_fddir_option():
+        # set file descriptor < = 2
+        cmd_fd_1 = "nbdkit file fd=2  --run 'nbdinfo $uri'"
+        cmd_fddir_1 = 'nbdkit file dirfd=2'
+        # set a nonexistent file descriptor
+        cmd_fd_2 = "nbdkit file fd=7  --run 'nbdinfo $uri'"
+        cmd_fddir_2 = 'nbdkit file dirfd=7'
+        # Set a valid file descriptor for fd
+        cmd_fd_3 = "exec 6<> /tmp/hello ; echo hello >& 6 ; nbdkit file fd=6 --run 'nbdinfo $uri'"
+        # Set a valid file descriptor for fddir # pylint: disable=C0401
+        cmd_fddir_3 = "mkdir -p /tmp/fddir ; exec 6< /tmp/fddir; nbdkit file dirfd=6 --run 'nbdinfo --list $uri'"
+        # set fd and dirfd at the same time in command line # pylint: disable=C0401
+        cmd_fd_fddir = "nbdkit file fd=7 dirfd=6"
+        cmd_fd_1_r = process.run(cmd_fd_1, shell=True, ignore_status=True)
+        cmd_fddir_1_r = process.run(cmd_fddir_1, shell=True, ignore_status=True)
+        cmd_fd_2_r = process.run(cmd_fd_2, shell=True, ignore_status=True)
+        cmd_fddir_2_r = process.run(cmd_fddir_2, shell=True, ignore_status=True)
+        cmd_fd_3_r = process.run(cmd_fd_3, shell=True, ignore_status=True)
+        cmd_fddir_3_r = process.run(cmd_fddir_3, shell=True, ignore_status=True)
+        cmd_fd_fddir_r = process.run(cmd_fd_fddir, shell=True, ignore_status=True)
+        for result in [cmd_fd_1_r, cmd_fddir_1_r]:
+            if not re.search(r'file descriptor must be > 2', result.stderr_text):
+                test.fail('got unexpected result when set file descriptor <= 2 for fd and fddir option')
+        if not re.search(r'fd is not regular or block device', cmd_fd_2_r.stderr_text):
+            test.fail('got unexpected result when set a nonexistent file descriptorfor for fd option')
+        if not re.search(r'dirfd is not a directory', cmd_fddir_2_r.stderr_text):
+            test.fail('got unexpected result when set a nonexistent file descriptorfor for fddir option')
+        for result in [cmd_fd_3_r, cmd_fddir_3_r]:
+            if re.search('error', result.stdout_text):
+                test.fail('got unexpected result when set a valid file descriptor for fd and fddir option')
+        if not re.search(r'file|dir|fd|dirfd parameter can only appear once on the command line',
+                         cmd_fd_fddir_r.stderr_text):
+            test.fail('got unexpected result when set fd and dirfd at the same time in command line')
+
+    def check_assertion_failure():
+        cmd = 'nbdcopy -- [ nbdkit --exit-with-parent -v --filter=error pattern 5M error-pread-rate=0.5 ] null:'
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        if re.search(r'Assertion\s+\w+failed', cmd_result.stdout_text):
+            test.fail('nbdkit server crash with assertion failure')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -300,5 +340,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_curl_multi_conn()
     elif checkpoint == 'test_luks_filter':
         test_luks_filter()
+    elif checkpoint == 'plugin_file_fd_fddir_option':
+        test_plugin_file_fd_fddir_option()
+    elif checkpoint == 'check_assertion_failure':
+        check_assertion_failure()
     else:
         test.error('Not found testcase: %s' % checkpoint)
