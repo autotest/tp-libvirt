@@ -79,12 +79,12 @@ def prepare_host_for_test(params, test):
                   format(numa_memory['nodeset'], nodeset_size))
     logging.debug('Memory available on a neighbour node {} is {}'.
                   format(neighbour, nodeset_nb_size))
-    # Increase a size by 50% of neighbour node
-    oversize = int(nodeset_size + 0.5 * nodeset_nb_size)
+    # Increase a size by 25% of neighbour node
+    oversize = int(nodeset_size + 0.25 * nodeset_nb_size)
     # Decrease nodeset size by 25%
     undersize = int(nodeset_size * 0.25)
-    # Memory to eat is a whole nodeset + 10% of neighbour size
-    memory_to_eat = int(nodeset_size + 0.1 * nodeset_nb_size)
+    # Memory to eat is a whole nodeset + 5% of neighbour size
+    memory_to_eat = int(nodeset_size + 0.05 * nodeset_nb_size)
     nodeset_string = '{},{}'.format(online_nodes[0], neighbour)
     process.run("swapoff -a", shell=True)
 
@@ -246,6 +246,8 @@ def run(test, params, env):
         nodeset_string = constants[5]
         # Prepare VM XML
         prepare_vm_xml_for_test(vm_name, numa_memory, oversize, undersize)
+        # Drop caches first to make sure host has enough memory
+        utils_memory.drop_caches()
         # Start the VM
         virsh.start(vm_name, ignore_status=False, debug=True)
         session = vm.wait_for_login()
