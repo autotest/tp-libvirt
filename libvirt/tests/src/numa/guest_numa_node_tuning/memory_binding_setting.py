@@ -166,7 +166,8 @@ def verify_cgroup(test_obj):
     nodeset = numa_base.convert_to_string_with_dash(test_obj.params.get('nodeset'))
     vm_pid = test_obj.vm.get_pid()
     cg = libvirt_cgroup.CgroupTest(vm_pid)
-    cpuset_mems_cgroup_path = os.path.join(cg.get_cgroup_path(), 'emulator/cpuset.mems')
+    surfix = 'emulator/cpuset.mems' if cg.is_cgroup_v2_enabled() else 'cpuset.mems'
+    cpuset_mems_cgroup_path = os.path.join(cg.get_cgroup_path(controller='cpuset'), surfix)
     cmd = 'cat %s' % re.escape(cpuset_mems_cgroup_path)
     cpuset_mems = process.run(cmd, shell=True).stdout_text.strip()
     if mem_mode in ['strict', 'restrictive']:
