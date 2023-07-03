@@ -18,6 +18,7 @@ from virttest.utils_config import LibvirtQemuConfig
 from virttest.utils_test import libvirt_device_utils
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_pcicontr
+from virttest.utils_libvirt import libvirt_vmxml
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -187,6 +188,37 @@ def run(test, params, env):
             test.fail("Mount virtiofs should failed after hotunplug device. %s" % output)
         session.close()
 
+    def check_filesystem_hotplug_with_mem_setup():
+        """
+        Check libvirt can not identify shared memory after restarting
+        virtqemud.
+        Bug 2078693
+        """
+        vm_attrs = eval(params.get('vm_attrs', '{}'))
+        fs_dict = eval(params.get('fs_dict', '{}'))
+        source_dir = params.get('source_dir')
+        dev_type = params.get('dev_type')
+
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+            vm_names[int(guest_num) - 1])
+        vmxml.setup_attrs(**vm_attrs)
+        virsh.define(vmxml.xml, debug=True, ignore_status=False)
+
+        libvirtd = utils_libvirtd.Libvirtd()
+        libvirtd.restart()
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_names[int(guest_num) - 1])
+        vmxml.remove_all_device_by_type(dev_type)
+        vmxml.sync()
+        vm = env.get_vm(vm_names[int(guest_num) - 1])
+        vm.start()
+        vm.wait_for_login(timeout=120)
+        os.mkdir(source_dir)
+
+        fs = libvirt_vmxml.create_vm_device_by_type(dev_type, fs_dict)
+        virsh.attach_device(vm_names[int(guest_num) - 1], fs.xml,
+                            debug=True, ignore_status=False)
+
     start_vm = params.get("start_vm", "no")
     vm_names = params.get("vms", "avocado-vt-vm1").split()
     cache_mode = params.get("cache_mode", "none")
@@ -222,6 +254,7 @@ def run(test, params, env):
     bug_url = params.get("bug_url", "")
     script_content = params.get("stress_script", "")
     stdio_handler_file = "file" == params.get("stdio_handler")
+    setup_mem = params.get("setup_mem", False)
 
     fs_devs = []
     vms = []
@@ -245,6 +278,10 @@ def run(test, params, env):
         test.cancel("Bug %s is not fixed on current build" % bug_url)
 
     try:
+        if setup_mem:
+            libvirt_version.is_libvirt_feature_supported(params)
+            check_filesystem_hotplug_with_mem_setup()
+            return
         # Define filesystem device xml
         for index in range(fs_num):
             driver = {'type': driver_type, 'queue': queue_size}
