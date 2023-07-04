@@ -52,7 +52,7 @@ def check_vm_startup(vm, vm_name, error_msg):
     :params vm: vm object
     :params vm_name: the name of guest
     """
-    ret = virsh.start(vm_name, "--reset-nvram", timeout=30, debug=True)
+    ret = virsh.start(vm_name, timeout=30, debug=True)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     libvirt.check_result(ret, expected_fails=error_msg)
     if not error_msg:
