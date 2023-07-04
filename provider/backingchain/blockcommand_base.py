@@ -192,11 +192,19 @@ class BlockCommand(object):
         if status:
             self.test.error("Not find sha256sum command on guest.")
 
+        # If the target disk we tested changes to bootable disk in guest, then get another disk
+        if check_item in session.cmd_output("df -h"):
+            lsblk_cmd = "lsblk -l | grep -i disk | awk '{print $1}'"
+            disk_list = session.cmd_output(lsblk_cmd).split()
+            target_disk = check_item.split('/')[-1]
+            disk_list.remove(target_disk)
+            check_item = "/dev/" + disk_list[0]
+
         ret, expected_hash = session.cmd_status_output("sha256sum %s" % check_item)
         if ret:
             self.test.error("Get sha256sum value failed")
 
-        return expected_hash
+        return expected_hash, check_item
 
     def backingchain_common_teardown(self):
         """

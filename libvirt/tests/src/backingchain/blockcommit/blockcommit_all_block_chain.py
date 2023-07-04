@@ -59,7 +59,7 @@ def run(test, params, env):
         Do blockcommit and check backingchain result
         """
         session = vm.wait_for_login()
-        expected_md5 = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
+        expected_md5, check_disk = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
 
         options = ''
         for i in range(1, commit_times+1):
@@ -77,7 +77,7 @@ def run(test, params, env):
                 expected_chain_index)
             check_obj.check_backingchain_from_vmxml(disk_type, test_obj.new_dev,
                                                     expected_chain)
-        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_md5], session)
+        check_obj.check_hash_list([check_disk], [expected_md5], session)
         session.close()
 
     def teardown_test():

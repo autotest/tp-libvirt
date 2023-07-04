@@ -56,7 +56,7 @@ def run(test, params, env):
             base_option = " "
 
         session = vm.wait_for_login()
-        expected_hash = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
+        expected_hash, check_disk = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
 
         test.log.info("TEST_STEP2: Do blockcommit ")
         virsh.blockcommit(vm.name, target_disk,
@@ -72,7 +72,7 @@ def run(test, params, env):
                 test.fail("%s should be deleted after blockcommit with "
                           "delete option" % deleted_snap)
 
-        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash], session)
+        check_obj.check_hash_list([check_disk], [expected_hash], session)
         session.close()
 
     def teardown_test():
