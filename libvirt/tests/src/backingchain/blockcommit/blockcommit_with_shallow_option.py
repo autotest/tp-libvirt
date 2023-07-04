@@ -45,7 +45,7 @@ def run(test, params, env):
         """
         test.log.info("TEST_STEP1: Get hash value for %s", test_obj.new_dev)
         session = vm.wait_for_login()
-        expected_hash = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
+        expected_hash, check_disk = test_obj.get_hash_value(session, "/dev/"+test_obj.new_dev)
 
         test.log.info("TEST_STEP2: Do blockcommit with %s", commit_options)
         virsh.blockcommit(vm.name, target_disk, commit_options,
@@ -59,7 +59,7 @@ def run(test, params, env):
         expected_chain = test_obj.convert_expected_chain(expected_chain_index)
         check_obj.check_backingchain_from_vmxml(disk_type, test_obj.new_dev,
                                                 expected_chain)
-        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash], session)
+        check_obj.check_hash_list([check_disk], [expected_hash], session)
         session.close()
 
     def teardown_test():

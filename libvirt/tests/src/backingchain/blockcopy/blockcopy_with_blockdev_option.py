@@ -39,8 +39,8 @@ def run(test, params, env):
         Test blockcopy with --blockdev option.
         """
         session = vm.wait_for_login()
-        expected_hash = test_obj.get_hash_value(session,
-                                                check_item="/dev/"+test_obj.new_dev)
+        expected_hash, check_disk = test_obj.get_hash_value(session,
+                                                            check_item="/dev/"+test_obj.new_dev)
 
         test.log.info("TEST_STEP1: Do blockcopy.")
         virsh.blockcopy(vm_name, device, blockcopy_options % test_obj.lvm_list[1],
@@ -51,7 +51,7 @@ def run(test, params, env):
         expected_chain = test_obj.convert_expected_chain(expected_chain_index)
         check_obj.check_backingchain_from_vmxml(disk_type, device, expected_chain)
 
-        check_obj.check_hash_list(["/dev/"+test_obj.new_dev], [expected_hash],
+        check_obj.check_hash_list([check_disk], [expected_hash],
                                   session)
         session.close()
 
