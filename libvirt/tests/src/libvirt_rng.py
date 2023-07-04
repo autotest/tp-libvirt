@@ -161,6 +161,7 @@ def run(test, params, env):
                                           "").split()
         backend_protocol = dparams.get("backend_protocol")
         rng_alias = dparams.get("rng_alias")
+        device_address = dparams.get_dict("address", "")
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         rng_xml = rng.Rng()
         rng_xml.rng_model = rng_model
@@ -183,6 +184,8 @@ def run(test, params, env):
             rng_xml.alias = dict(name=rng_alias)
         if with_packed:
             rng_xml.driver = dict(packed=driver_packed)
+        if device_address:
+            rng_xml.address = rng_xml.new_rng_address(**{"attrs": device_address})
 
         logging.debug("Rng xml: %s", rng_xml)
         if get_xml:
@@ -481,6 +484,7 @@ def run(test, params, env):
                     sock.close()
 
     start_error = "yes" == params.get("start_error", "no")
+    expected_create_error = params.get("expected_create_error", "")
     status_error = "yes" == params.get("status_error", "no")
 
     test_host = "yes" == params.get("test_host", "no")
@@ -566,47 +570,47 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
-        # Build vm xml.
-        dparams = {}
-        if device_num > 1:
-            for i in xrange(device_num):
-                rng_model = params.get("rng_model_%s" % i, "virtio")
-                dparams[i] = {"rng_model": rng_model}
-                dparams[i].update({"backend_model": params.get(
-                    "backend_model_%s" % i, "random")})
-                dparams[i].update({"rng_device": get_rng_device(
-                    guest_arch, rng_model)})
-                bk_type = params.get("backend_type_%s" % i)
-                if bk_type:
-                    dparams[i].update({"backend_type": bk_type})
-                bk_dev = params.get("backend_dev_%s" % i)
-                if bk_dev:
-                    dparams[i].update({"backend_dev": bk_dev})
-                bk_src = params.get("backend_source_%s" % i)
-                if bk_src:
-                    dparams[i].update({"backend_source": bk_src})
-                bk_pro = params.get("backend_protocol_%s" % i)
-                if bk_pro:
-                    dparams[i].update({"backend_protocol": bk_pro})
-                modify_rng_xml(dparams[i], False)
-        else:
-            params.update({"rng_device": get_rng_device(
-                guest_arch, params.get("rng_model", "virtio"))})
-
-            if detach_alias:
-                device_alias = "ua-" + str(uuid.uuid4())
-                params.update({"rng_alias": device_alias})
-
-            rng_xml = modify_rng_xml(params, not test_snapshot, attach_rng)
-
-            if urandom:
-                device_alias = "ua-" + str(uuid.uuid4())
-                params.update({"rng_alias": device_alias})
-                rng_xml = modify_rng_xml(params, False, True)
-                vmxml.add_device(rng_xml)
-                vmxml.sync()
-
         try:
+            # Build vm xml.
+            dparams = {}
+            if device_num > 1:
+                for i in xrange(device_num):
+                    rng_model = params.get("rng_model_%s" % i, "virtio")
+                    dparams[i] = {"rng_model": rng_model}
+                    dparams[i].update({"backend_model": params.get(
+                        "backend_model_%s" % i, "random")})
+                    dparams[i].update({"rng_device": get_rng_device(
+                        guest_arch, rng_model)})
+                    bk_type = params.get("backend_type_%s" % i)
+                    if bk_type:
+                        dparams[i].update({"backend_type": bk_type})
+                    bk_dev = params.get("backend_dev_%s" % i)
+                    if bk_dev:
+                        dparams[i].update({"backend_dev": bk_dev})
+                    bk_src = params.get("backend_source_%s" % i)
+                    if bk_src:
+                        dparams[i].update({"backend_source": bk_src})
+                    bk_pro = params.get("backend_protocol_%s" % i)
+                    if bk_pro:
+                        dparams[i].update({"backend_protocol": bk_pro})
+                    modify_rng_xml(dparams[i], False)
+            else:
+                params.update({"rng_device": get_rng_device(
+                    guest_arch, params.get("rng_model", "virtio"))})
+
+                if detach_alias:
+                    device_alias = "ua-" + str(uuid.uuid4())
+                    params.update({"rng_alias": device_alias})
+
+                rng_xml = modify_rng_xml(params, not test_snapshot, attach_rng)
+
+                if urandom:
+                    device_alias = "ua-" + str(uuid.uuid4())
+                    params.update({"rng_alias": device_alias})
+                    rng_xml = modify_rng_xml(params, False, True)
+                    vmxml.add_device(rng_xml)
+                    vmxml.sync()
+
             # Add tcp random server
             if random_source and params.get("backend_type") == "tcp" and not test_guest_dump:
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
@@ -708,6 +712,11 @@ def run(test, params, env):
                           'please refer to https://bugzilla.'
                           'redhat.com/show_bug.cgi?id=1220252:'
                           '\n%s' % details)
+        except xcepts.LibvirtXMLError as details:
+            logging.info(str(details))
+            if expected_create_error not in str(details):
+                test.fail("Didn't find expected error:"
+                          " %s" % expected_create_error)
     finally:
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name, debug=True)
