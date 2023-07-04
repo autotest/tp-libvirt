@@ -480,11 +480,21 @@ def run(test, params, env):
                 finally:
                     sock.close()
 
+    def rotate_audit_log():
+        """
+        Rotates the audit log so that the current log only contains
+        entries that were written during the test execution
+        """
+        process.run("systemctl kill --signal SIGUSR1 auditd")
+
     start_error = "yes" == params.get("start_error", "no")
     status_error = "yes" == params.get("status_error", "no")
 
     test_host = "yes" == params.get("test_host", "no")
     test_guest = "yes" == params.get("test_guest", "no")
+    test_audit = "yes" == params.get("test_audit", "no")
+    audit_log_file = params.get("audit_log_file", "/var/log/audit/audit.log")
+    expected_audit_message = params.get("expected_audit_message", "VIRT_RESOURCE")
     set_virtio_current = "yes" == params.get("set_virtio_current", "no")
     test_guest_dump = "yes" == params.get("test_guest_dump", "no")
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
@@ -547,6 +557,9 @@ def run(test, params, env):
     try:
         bgjob = None
         bgjob2 = None
+
+        if test_audit:
+            rotate_audit_log()
 
         # Prepare xml, make sure no extra rng dev.
         vmxml = vmxml_backup.copy()
@@ -657,6 +670,9 @@ def run(test, params, env):
                     check_qemu_cmd(params)
             if test_host:
                 check_host()
+            if test_audit:
+                libvirt.check_logfile(expected_audit_message,
+                                      audit_log_file)
             session = vm.wait_for_login()
             if test_guest:
                 check_guest(session, set_virtio_current=set_virtio_current)
