@@ -137,6 +137,7 @@ def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
         the string "ICMP echo request"
     :param ping_dest: Ping destination address
     :raise: test.fail when ping fails.
+    :return: Output of ping command
     """
     if not ping_dest:
         ping_dest = sriov_base.get_ping_dest(vm_session)
@@ -163,6 +164,7 @@ def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
                 exceptions.TestFail("Get incorrect tcpdump output: {}, it "
                                     "should include '{}'."
                                     .format(output, pat_str))
+    return o
 
 
 def check_vm_iface_num(session, exp_num, timeout=10, first=0.0):
