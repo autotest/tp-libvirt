@@ -1,3 +1,8 @@
+import os
+import shutil
+
+from avocado.core import data_dir
+
 from virttest import libvirt_version
 from virttest import virsh
 
@@ -42,7 +47,9 @@ def run(test, params, env):
         migration_obj.setup_connection()
         tmp_xml = vm_xml.VMXML.new_from_dumpxml(vm_name, "--security-info --migratable")
         tmp_xml.title = update_xml_title
-        extra = "%s --xml=%s" % (extra, tmp_xml.xml)
+        new_xml = os.path.join(data_dir.get_tmp_dir(), "migration_xml_option_test.xml")
+        shutil.copyfile(tmp_xml.xml, new_xml)
+        extra = "%s --xml=%s" % (extra, new_xml)
         params.update({"virsh_migrate_extra": extra})
 
     def verify_test():
