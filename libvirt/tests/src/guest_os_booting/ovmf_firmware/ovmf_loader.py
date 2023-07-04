@@ -10,6 +10,7 @@
 
 import os
 
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
@@ -31,6 +32,7 @@ def run(test, params, env):
     incorrect_loader_path = params.get("incorrect_loader_path", "")
     use_file = "yes" == params.get("use_file", "no")
     stateless = "yes" == params.get("stateless", "no")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
