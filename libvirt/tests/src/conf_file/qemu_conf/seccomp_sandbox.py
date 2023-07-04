@@ -7,6 +7,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 
 from virttest import libvirt_version
+from virttest.utils_test import libvirt
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -71,6 +72,8 @@ def run(test, params, env):
                 test.fail('Libvirtd is expected to be started '
                           'with seccomp_sandbox = '
                           '%s' % seccomp_sandbox)
+            libvirt.check_logfile("syntax error",
+                                  params.get("libvirtd_debug_file", ""))
             return
         if expected_result == 'unbootable':
             test.fail('Libvirtd is not expected to be started '
