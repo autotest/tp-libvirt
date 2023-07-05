@@ -9,6 +9,7 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 import re
 
+from avocado.core import exceptions
 from avocado.utils import process
 
 
@@ -28,7 +29,12 @@ def send_message(vm, send_on="host", send_msg="Test message", send_path=""):
         if not vm.is_alive():
             vm.start()
         session = vm.wait_for_login()
-        session.cmd_status_output("echo %s > %s " % (send_msg, send_path))
+        cmd = "echo %s > %s " % (send_msg, send_path)
+        status, stdout = session.cmd_status_output(cmd)
+        if status != 0:
+            raise exceptions.TestError("Error happened when executing "
+                                       "command:\n'%s', due to:\n'%s'"
+                                       % (cmd, stdout))
         session.close()
 
 
