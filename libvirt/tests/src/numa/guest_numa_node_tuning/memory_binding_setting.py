@@ -11,6 +11,7 @@
 
 import os
 import re
+import platform
 
 from avocado.utils import process
 
@@ -35,8 +36,9 @@ def setup_default(test_obj):
         expected_hugepage_size = test_obj.params.get('expected_hugepage_size')
         hpc = test_setup.HugePageConfig(test_obj.params)
         all_nodes = test_obj.online_nodes_withmem
-        hpc.set_node_num_huge_pages('512', all_nodes[0], expected_hugepage_size)
-        hpc.set_node_num_huge_pages('512', all_nodes[1], expected_hugepage_size)
+        target_hugepages = test_obj.params.get('target_hugepages')
+        hpc.set_node_num_huge_pages(target_hugepages, all_nodes[0], expected_hugepage_size)
+        hpc.set_node_num_huge_pages(target_hugepages, all_nodes[1], expected_hugepage_size)
         test_obj.test.log.debug("Get first node hugepage is "
                                 "%d", hpc.get_node_num_huge_pages(all_nodes[0],
                                                                   expected_hugepage_size))
@@ -98,8 +100,9 @@ def verify_host_numa_memory_allocation(test_obj):
     has_huge = True if re.search('huge', out_numa_maps) else False
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
     N1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)
+    default_pagesize = test_obj.params.get('default_pagesize')
     expected_hugepage_size = test_obj.params.get('expected_hugepage_size')
-    psize = expected_hugepage_size if memory_backing else '4'
+    psize = expected_hugepage_size if memory_backing else default_pagesize
     has_kernelpage = True if re.search('kernelpagesize_kB=%s' % psize, out_numa_maps) else False
 
     def _check_values(expect_huge, expect_N0, expect_N1, expect_sum=None):
@@ -148,11 +151,20 @@ def verify_host_numa_memory_allocation(test_obj):
             mem_mode == 'prefered' and
                 not single_host_node) or \
              (mem_mode in ['interleave', 'preferred'] and single_host_node):
-            _check_values(True, 512, 500)
+            if platform.machine() == 'aarch64':
+                _check_values(True, 3, 1)
+            else:
+                _check_values(True, 512, 500)
         elif not single_host_node and mem_mode == 'interleave':
-            _check_values(True, 506, 506)
+            if platform.machine() == 'aarch64':
+                _check_values(True, 2, 2)
+            else:
+                _check_values(True, 506, 506)
         elif not single_host_node and mem_mode in ['strict', 'restrictive']:
-            _check_values(True, 0, 0, 1012)
+            if platform.machine() == 'aarch64':
+                _check_values(True, 0, 0, 4)
+            else:
+                _check_values(True, 0, 0, 1012)
     test_obj.test.log.debug("Step: verify host numa node memory allocation PASS")
 
 
