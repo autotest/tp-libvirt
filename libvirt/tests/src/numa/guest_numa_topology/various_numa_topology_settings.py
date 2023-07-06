@@ -10,6 +10,7 @@
 
 import re
 
+from virttest import libvirt_version
 from virttest import test_setup
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -166,6 +167,7 @@ def teardown_default(test_obj):
 
 
 def run(test, params, env):
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     numatest_obj = numa_base.NumaTest(vm, params, test)
