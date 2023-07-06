@@ -240,6 +240,7 @@ def run(test, params, env):
     """
     Test for numa memory binding with emulator thread pin
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     numatest_obj = numa_base.NumaTest(vm, params, test)
