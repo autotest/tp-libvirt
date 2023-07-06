@@ -690,3 +690,20 @@ def do_domjobabort(params):
     else:
         ret = virsh.domjobabort(vm_name, debug=True, uri=dest_uri)
     libvirt.check_result(ret, expected_fails=domjobabort_err_msg, check_both_on_error=True)
+
+
+def get_vm_serial_session_on_dest(params):
+    """
+    Get vm serial session on dest
+
+    :param params: dictionary with the test parameter, get dest uri and migration object
+    """
+    desturi = params.get("virsh_migrate_desturi")
+    migration_obj = params.get("migration_obj")
+
+    backup_uri, migration_obj.vm.connect_uri = migration_obj.vm.connect_uri, desturi
+    migration_obj.vm.cleanup_serial_console()
+    migration_obj.vm.create_serial_console()
+    vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
+    params.update({"vm_session": vm_session})
+    migration_obj.vm.connect_uri = backup_uri
