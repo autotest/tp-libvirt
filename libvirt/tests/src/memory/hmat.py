@@ -85,6 +85,7 @@ def run(test, params, env):
             for i in range(1, 5):
                 dmsg_list.extend(params.get('dmsg_checks%d' % i, '').split('`'))
             content = vm_session.cmd('dmesg').strip()
+            logging.debug('dmesg output: \n%s', content)
             check_list_in_content(dmsg_list, content)
 
         if chk_case == "cell_distances":
