@@ -9,15 +9,17 @@ from virttest.utils_test import libvirt
 LOG = log.getLogger('avocado.' + __name__)
 
 
-def prepare_os_xml(vm_name, os_dict):
+def prepare_os_xml(vm_name, os_dict, firmware_type=None):
     """
     Prepare a guest with related os loader xml.
 
     :params vm_name: the name of guest
     :params os_dict: the dict of os elements
+    :params firmware_type: seabios or ovmf
     """
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
+    if firmware_type == "ovmf":
+        vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
     LOG.debug("Set the os xml")
     vmxml.setup_attrs(os=os_dict)
     vmxml.sync()
@@ -45,7 +47,7 @@ def prepare_smm_xml(vm_name, smm_state, smm_size):
     return vmxml
 
 
-def check_vm_startup(vm, vm_name, error_msg):
+def check_vm_startup(vm, vm_name, error_msg=None):
     """
     Start and boot the guest
 
