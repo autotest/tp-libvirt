@@ -11,6 +11,7 @@
 import os
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest import utils_libvirtd
 
 from virttest.libvirt_xml import vm_xml
@@ -121,7 +122,10 @@ def run(test, params, env):
         """
         expected_str = ""
         if mem_config == "without_maxmemory":
-            expected_str = r"-m %s" % str(int(mem_value/1024))
+            if libvirt_version.version_compare(9, 5, 0):
+                expected_str = r"-m size=%sk" % mem_value
+            else:
+                expected_str = r"-m %s" % str(int(mem_value/1024))
         elif mem_config == "with_numa":
             expected_str = r"-m size=%dk,slots=%d,maxmem=%dk" % (
                 int(mem_value), max_mem_slots, int(max_mem))
