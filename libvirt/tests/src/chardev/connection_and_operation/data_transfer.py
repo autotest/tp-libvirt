@@ -7,6 +7,8 @@
 #   Author: Nan Li <nanli@redhat.com>
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+import time
+
 import aexpect
 import os
 import platform
@@ -163,7 +165,7 @@ def run(test, params, env):
         vmxml.remove_all_device_by_type("channel")
         dest_dict = eval(
             device_dict % (source_path, target_type, device_alias))
-        test.log.debug("Add chadev dict is: %s", dest_dict)
+        test.log.debug("Add chardev dict is: %s", dest_dict)
         libvirt_vmxml.modify_vm_device(
             vmxml=vmxml, dev_type=chardev, dev_dict=dest_dict)
 
@@ -216,23 +218,21 @@ def run(test, params, env):
         chardev_port = get_chardev_port(chardev)
 
         vm_session = vm.wait_for_login(timeout=240)
-        cmd = "cat < %s > %s" % (target_path + chardev_port, guest_out)
+        cmd = "cat %s > %s &" % (target_path + chardev_port, guest_out)
         test.log.debug("Execute cmd:'%s' on guest ", cmd)
         vm_session.sendline(cmd)
-
+        time.sleep(5)
         chardev_base.send_message(vm, "host", send_msg=host_msg,
                                   send_path=pipe_in)
-        vm_session.close()
 
         vm_session_new = vm.wait_for_login(timeout=240)
         status, output = vm_session_new.cmd_status_output(
-            "grep -E '%s' %s" % (host_msg, guest_out))
+            "cat %s | grep '%s' " % (guest_out, host_msg))
         vm_session_new.close()
+        vm_session.close()
 
-        if status != 0:
-            test.fail("Check host msg failed.")
         if not re.search(host_msg, output):
-            test.fail("Not get %s in %s" % (host_msg, output))
+            test.fail("Not get %s in '%s' " % (host_msg, output))
         else:
             test.log.debug("Check '%s' exist in :%s" % (host_msg, output))
 
