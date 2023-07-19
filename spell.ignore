@@ -570,6 +570,7 @@ mdev
 mdevctl
 mellanox
 mem
+mems
 memballoon
 memhog
 meminfo
@@ -977,6 +978,7 @@ systemctl
 systemd
 systemlink
 tach
+taskset
 targetdev
 targetiso
 tartget
@@ -1000,6 +1002,7 @@ tgtd
 there're
 thp
 threadcount
+threadid
 threadpool
 timedatectl
 timestamp
