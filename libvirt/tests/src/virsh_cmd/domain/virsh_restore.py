@@ -15,7 +15,7 @@ from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-
+from virttest.utils_package import package_install
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -33,6 +33,10 @@ def run(test, params, env):
     4.Recover test environment.
     5.Confirm the test result.
     """
+    # Install nfs-utils package.
+    if not package_install("nfs-utils"):
+        test.cancel("Need nfs-utils package for exportfs command, can't install it")
+
     def check_file_own(file_path, exp_uid, exp_gid):
         """
         Check the uid and gid of file_path
