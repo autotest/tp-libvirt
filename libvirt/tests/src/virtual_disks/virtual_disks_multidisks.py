@@ -1626,6 +1626,7 @@ def run(test, params, env):
                 if len(device_attach_error) > i:
                     disk_attach_error = "yes" == device_attach_error[i]
                 libvirt.check_exit_status(ret, disk_attach_error)
+                time.sleep(3)
             if attach_ccw_address_at_dt_disk:
                 attach_option = device_attach_option[0].replace('--live', '--config')
                 ret = virsh.attach_disk(vm_name, disks[0]["source"],
