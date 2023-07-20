@@ -8,6 +8,10 @@
 #   Author: Dan Zheng <dzheng@redhat.com>
 #
 
+import re
+
+from avocado.utils import process
+
 from virttest import libvirt_version
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
@@ -25,6 +29,10 @@ class NumaTest(object):
         self.params = params
         self.test = test
         self.vm = vm
+        cmd = "numactl --hardware"
+        status, self.host_numactl_info = utils_misc.cmd_status_output(cmd, shell=True)
+        if status != 0:
+            test.error("Failed to get information from %s", cmd)
         self.host_numa_info = utils_misc.NumaInfo()
         self.online_nodes_withmem = self.host_numa_info.get_online_nodes_withmem()
         self.virsh_dargs = {'ignore_status': False, 'debug': True}
@@ -65,6 +73,7 @@ class NumaTest(object):
         vmxml.setup_attrs(**vm_attrs)
 
         # Setup numa tune attributes
+        nodeset = None
         if single_host_node:
             all_nodes = self.online_nodes_withmem
             if single_host_node == 'no':
@@ -79,7 +88,13 @@ class NumaTest(object):
 
         numa_tune_dict = {}
         if numa_memory:
-            numa_memory = eval(numa_memory % nodeset)
+            if numa_memory.count('nodeset'):
+                if nodeset:
+                    numa_memory = eval(numa_memory % nodeset)
+            else:
+                numa_memory = eval(numa_memory)
+                if nodeset:
+                    numa_memory.update({'nodeset': nodeset})
             numa_tune_dict.update({'numa_memory': numa_memory})
         if numa_memnode:
             numa_memnode = eval(numa_memnode % nodeset)
@@ -102,13 +117,29 @@ class NumaTest(object):
         """
         err_msg = self.params.get('err_msg', '')
         mem_mode = self.params.get('mem_mode')
-        single_host_node = self.params.get('single_host_node') == 'yes'
+        single_host_node = self.params.get('single_host_node')
         if not libvirt_version.version_compare(9, 3, 0) and \
                 mem_mode == 'preferred' and \
-                not single_host_node:
+                single_host_node is not None and \
+                single_host_node != 'yes':
             new_err_msg = "NUMA memory tuning in 'preferred' mode only supports single node"
             err_msg = "%s|%s" % (err_msg, new_err_msg) if err_msg else new_err_msg
         return err_msg
+
+    def get_nodeset_from_numad_advisory(self):
+        """
+        Get the nodeset advised by numad
+
+        :return: str, the nodeset from numad advisory
+        """
+        log_file = self.params.get("libvirtd_debug_file")
+        cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
+        cmdRes = process.run(cmd, shell=True, ignore_status=False)
+        # Sample: Nodeset returned from numad: 0-1
+        match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
+        numad_ret = match_obj.group(1)
+        self.test.log.debug("Nodeset returned from numad: %s", numad_ret)
+        return numad_ret
 
 
 def convert_to_string_with_dash(nodeset):
