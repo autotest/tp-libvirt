@@ -84,6 +84,7 @@ def run(test, params, env):
                 test.fail("%s should keep changing during blockcommit %s." % (
                     disappear_alloc, virsh_session.get_stripped_output()))
             alloc_dict = alloc_new_dict
+            time.sleep(1)
 
         test.log.info("TEST_STEP3: Check %s should disappear" % disappear_alloc)
         if utils_misc.wait_for(lambda: commit_success_msg in
