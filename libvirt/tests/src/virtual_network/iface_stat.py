@@ -137,9 +137,10 @@ def run(test, params, env):
         if case == 'compare':
 
             def _collect_and_compare_stat(vm_name, session, **virsh_args):
-                session.cmd('curl -O https://avocado-project.org/data/'
-                            'assets/jeos/27/jeos-27-64.qcow2.xz -L',
-                            timeout=240)
+                for _ in range(3):
+                    session.cmd('curl -O https://avocado-project.org/data/'
+                                'assets/jeos/27/jeos-27-64.qcow2.xz -L',
+                                timeout=240)
                 host_iface_stat = get_host_iface_stat(vm_name,
                                                       iface_target_dev,
                                                       **virsh_args)
