@@ -118,21 +118,13 @@ def attach_all_memory_devices(vm, params, operate_flag):
     """
     set_value = eval(params.get("set_value"))
 
-    if not vm.is_alive():
-        vm.start()
-
     mem_list = []
     for value in set_value:
         if value[get_index(params, operate_flag)] != "":
             mem_list.append(value[-1])
-    if operate_flag == "init_seq":
-        for index, mem in enumerate(mem_list):
-            dev_dict = globals()[mem]
-            remove = True if index == 0 else False
-            attach_single_mem(vm.name, dev_dict, remove_devices=remove,
-                              index=index)
-
-    elif operate_flag == "hotplug_seq":
+    if operate_flag == "hotplug_seq":
+        if not vm.is_alive():
+            vm.start()
         for mem in mem_list:
             dev_dict = globals()[mem]
             mem_dev = memory.Memory()
@@ -239,8 +231,8 @@ def get_expected_xpath(params, operation):
         memory_affected, current_mem_affected = get_affected_mem(
             params, "hotunplug_seq")
         xpath = eval(xpath_after_detached % (
-            mem + sum(memory_affected),
-            current_mem + sum(current_mem_affected)))
+            mem - sum(memory_affected),
+            current_mem - sum(current_mem_affected)))
         # clean the hot plugged xpath
         del xpath[del_head:del_tail]
 
@@ -260,12 +252,34 @@ def get_affected_mem(params, operation):
     memory_affected = []
     current_mem_affected = []
     for value in set_value:
-        if value[get_index(params, operation)] is not None:
+        if value[get_index(params, operation)] != "":
             memory_affected.append(value[get_index(params, "memory_affected")])
             current_mem_affected.append(
                 value[get_index(params, "current_mem_affected")])
 
     return memory_affected, current_mem_affected
+
+
+def update_vm_devices(vmxml, params):
+    """
+    Update vm devices.
+
+    :param vmxml: vmxml need to be added memory devices.
+    :param params: Dictionary with the test parameters.
+    :return: devices, devices obj which has been added memory devices.
+    """
+    devices = vmxml.get_devices()
+    set_value = eval(params.get("set_value"))
+    mem_list = []
+    for value in set_value:
+        if value[get_index(params, 'init_seq')] != "":
+            mem_list.append(value[-1])
+    for index, mem in enumerate(mem_list):
+        dev_dict = globals()[mem]
+        new_mem = memory.Memory()
+        new_mem.setup_attrs(**dev_dict)
+        devices.append(new_mem)
+    return devices
 
 
 def run(test, params, env):
@@ -286,7 +300,6 @@ def run(test, params, env):
             test.fail("Hugepage set failed, should be %s instead of %s" % (
                 nr_hugepages, result))
 
-        vm.start()
         utils_test.update_boot_option(vm, args_removed=kernel_params_remove,
                                       args_added=kernel_params_add,
                                       need_reboot=True)
@@ -294,10 +307,11 @@ def run(test, params, env):
         vm_attrs_init = update_init_vm_attrs(params)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.setup_attrs(**vm_attrs_init)
+        devices = update_vm_devices(vmxml, params)
+        vmxml.set_devices(devices)
         vmxml.sync()
 
-        attach_all_memory_devices(vm, params, "init_seq")
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         test.log.debug("The init xml is:\n%s", vmxml)
 
     def run_test():
@@ -307,13 +321,14 @@ def run(test, params, env):
         test.log.info("TEST_STEP1: Start vm")
         if not vm.is_alive():
             vm.start()
-        session = vm.wait_for_login()
+        vm.wait_for_login().close()
 
         test.log.info("TEST_STEP2: Check xml")
         pattern = get_expected_xpath(params, operation="after_start")
         check_mem_config(vm.name, pattern)
 
         test.log.info("TEST_STEP3: Check guest memory value")
+        session = vm.wait_for_login()
         guest_mem = utils_misc.get_mem_info(session)
         session.close()
 
