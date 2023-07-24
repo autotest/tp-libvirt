@@ -310,6 +310,7 @@ def run(test, params, env):
             if os.path.exists(statedir):
                 shutil.rmtree(statedir)
             os.mkdir(statedir)
+            process.run("ls -lZd %s" % statedir)
             process.run('chcon -t virtd_exec_t %s' % swtpm_setup_path, ignore_status=False, shell=True)
             cmd1 = "systemd-run %s --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % (swtpm_setup_path, statedir)
             process.run('chcon -t virtd_exec_t %s' % swtpm_path, ignore_status=False, shell=True)
@@ -401,14 +402,18 @@ def run(test, params, env):
                 test.fail("Can not find the %s for tpm device "
                           "in swtpm cmd line." % pattern)
         # Check swtpm files
+        statedir = params.get("statedir", "")
         if backend_type == 'emulator':
             file_list = ["/var/run/libvirt/qemu/swtpm/%s-%s-swtpm.sock" % (domid, vm_name)]
-            file_list.append("/var/lib/libvirt/swtpm/%s/tpm2" % domuuid)
+            statedir = "/var/lib/libvirt/swtpm/%s/tpm2" % domuuid
+            file_list.append(statedir)
             file_list.append("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm_name)
             file_list.append("/var/run/libvirt/qemu/swtpm/%s-%s-swtpm.pid" % (domid, vm_name))
             for swtpm_file in file_list:
                 if not os.path.exists(swtpm_file):
                     test.fail("Swtpm file: %s does not exist" % swtpm_file)
+        process.run("ls -lZd %s" % statedir)
+        process.run("ls -lZ %s/tpm2-00.permall" % statedir)
         logging.info("------PASS on Swtpm cmdline and files check------")
 
     def get_tpm2_tools_cmd(session=None):
@@ -636,7 +641,7 @@ def run(test, params, env):
         virsh.create(vm_xml.xml, **virsh_dargs)
         domuuid = vm.get_uuid()
         state_file = "/var/lib/libvirt/swtpm/%s/tpm2/tpm2-00.permall" % domuuid
-        process.run("ls -Z %s" % state_file)
+        process.run("ls -lZ %s" % state_file)
         session = vm.wait_for_login()
         test_guest_tpm("2.0", session, False)
         session.close()
@@ -644,7 +649,7 @@ def run(test, params, env):
         vm.destroy()
         if not os.path.exists(state_file):
             test.fail("Swtpm state file: %s does not exist after destroy vm'" % state_file)
-        process.run("ls -Z %s" % state_file)
+        process.run("ls -lZ %s" % state_file)
 
     def test_undefine_tpmstate(vm):
         """
