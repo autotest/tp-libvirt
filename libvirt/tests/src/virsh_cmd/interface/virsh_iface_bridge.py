@@ -83,7 +83,7 @@ def run(test, params, env):
     NW_status = NW_service.status()
     if NW_status is None:
         logging.debug("network service not found")
-        if (not utils_package.package_install('network-scripts') or
+        if (not utils_package.package_install('network-scripts') and
                 not utils_package.package_install('initscripts')):
             test.cancel("Failed to install network service")
     if NW_status is not True:
