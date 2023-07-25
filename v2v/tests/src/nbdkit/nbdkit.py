@@ -91,7 +91,7 @@ EOF
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
   --filter=cacheextents --filter=retry vddk server=%s user=%s password=+%s vm=%s \
-  file='%s' libdir=%s --run 'qemu-img info $nbd' thumbprint=%s
+  file='%s' libdir=%s --run 'nbdinfo $nbd' thumbprint=%s
 """ % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_libdir, vddk_thumbprint)
             # get thumbprint by a trick
             cmd_result = process.run(
@@ -111,7 +111,11 @@ nbdkit -rfv -U - --exportname / \
             if checkpoint == 'backend_datapath_controlpath':
                 nbdkit_cmd = nbdkit_cmd + ' -D nbdkit.backend.datapath=0 -D nbdkit.backend.controlpath=0'
                 LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
-
+            if checkpoint == 'scan_readahead_blocksize':
+                nbdkit_cmd = nbdkit_cmd.replace('--filter=retry', '--filter=scan  --filter=blocksize '
+                                                                  '--filter=readahead') + \
+                             ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
+                LOG.info('nbdkit command with scan, readahead and blocksize filters:\n%s' % nbdkit_cmd)
             # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
@@ -127,6 +131,8 @@ nbdkit -rfv -U - --exportname / \
                 test.fail('failed to test has_run_againt_vddk7_0')
             if checkpoint == 'backend_datapath_controlpath' and re.search(r'vddk: (open|pread)', output):
                 test.fail('fail to test nbdkit.backend.datapath and nbdkit.backend.controlpath option')
+            if checkpoint == 'scan_readahead_blocksize' and re.search('error', output):
+                test.fail('fail to test scan, readahead and blocksize filters with vddk plugin')
 
     def test_memory_max_disk_size():
         """
@@ -316,13 +322,46 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         if re.search(r'Assertion\s+\w+failed', cmd_result.stdout_text):
             test.fail('nbdkit server crash with assertion failure')
 
+    def check_vddk_filters_thread_model():
+        filters_list = params.get('filters')
+        for filter in list(filters_list.split(' ')):
+            cmd_1 = "nbdkit vddk --filter=%s --dump-plugin | grep thread" % filter
+            cmd_2 = "nbdkit vddk --dump-plugin | grep thread"
+            for cmd in [cmd_1, cmd_2]:
+                cmd_result = process.run(cmd, shell=True, ignore_status=True)
+                if len(re.findall('parallel', cmd_result.stdout_text)) != 2:
+                    test.fail('thread mode of %s is not parallel in vddk plugin' % filter)
+
+    def check_vddk_create_options():
+        create_types = params.get('create_types')
+        create_adapter_types = params.get('create_adapter_types')
+        create_hwversions = params.get('create_hwversions')
+        vddk_libdir_src = params_get(params, "vddk_libdir_src")
+        with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
+            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            for create_type in list(create_types.split(' ')):
+                for create_adapter_type in list(create_adapter_types.split(' ')):
+                    for create_hwversion in list(create_hwversions.split(' ')):
+                        tmp_path = data_dir.get_tmp_dir()
+                        disk_path = os.path.join(tmp_path, 'vddk-create-options.vmdk')
+                        cmd = "nbdkit vddk file='%s' create=true create-type=%s " \
+                              "create-adapter-type=%s create-hwversion=%s create-size=100M libdir=%s --run " \
+                              "'nbdinfo $uri'; rm -rf %s/*" % (disk_path, create_type, create_adapter_type,
+                                                               create_hwversion, vddk_libdir, tmp_path)
+                        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+                        if re.search('error', cmd_result.stdout_text) or re.search('error', cmd_result.stderr_text):
+                            test.fail('fail to create vmdk with vddk create option %s, %s, %s' %
+                                      (create_type, create_adapter_type, create_hwversion))
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
-    elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats', 'backend_datapath_controlpath']:
+    elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats', 'backend_datapath_controlpath',
+                        'scan_readahead_blocksize']:
         test_has_run_againt_vddk7_0()
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
@@ -344,5 +383,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_plugin_file_fd_fddir_option()
     elif checkpoint == 'check_assertion_failure':
         check_assertion_failure()
+    elif checkpoint == 'check_vddk_filters_thread_model':
+        check_vddk_filters_thread_model()
+    elif checkpoint == 'check_vddk_create_options':
+        check_vddk_create_options()
     else:
         test.error('Not found testcase: %s' % checkpoint)
