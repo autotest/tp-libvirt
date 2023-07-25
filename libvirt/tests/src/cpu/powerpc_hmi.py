@@ -37,7 +37,7 @@ def run(test, params, env):
                 for i in range(cur_vcpu):
                     virsh.vcpupin(vm_name, i, hmi_cpu, "--live",
                                   ignore_status=False, debug=True)
-                    virsh.emulatorpin(vm_name,  hmi_cpu, "live",
+                    virsh.emulatorpin(vm_name,  hmi_cpu, "--live",
                                       ignore_status=False, debug=True)
             elif action == "filetrans":
                 utils_test.run_file_transfer(test, params, env)
