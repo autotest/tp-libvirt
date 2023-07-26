@@ -14,6 +14,7 @@ from virttest import utils_iptables
 from virttest import utils_misc
 
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -68,7 +69,14 @@ class MigrationBase(object):
         if set_remote_libvirtd_log:
             self.set_remote_log()
 
-        libvirt.set_vm_disk(self.vm, self.params)
+        disk_dict = {'source': {'attrs': {'file': os.path.join(
+            self.params.get("nfs_mount_dir"),
+            os.path.basename(
+                self.vm.get_first_disk_devices()['source']))}}}
+        libvirt_vmxml.modify_vm_device(
+                vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name),
+                'disk', disk_dict)
+
         if start_vm == "no" and self.vm.is_alive():
             self.vm.destroy()
 

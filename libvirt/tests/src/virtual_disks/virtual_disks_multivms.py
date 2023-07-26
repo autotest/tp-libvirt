@@ -9,6 +9,7 @@ from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
+from virttest import utils_disk
 from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -151,6 +152,8 @@ def run(test, params, env):
             # Format the disk and make the file system.
             libvirt.mk_label(disk_source)
             libvirt.mk_part(disk_source, size="10M")
+            if not utils_misc.wait_for(lambda: "%s1" % disk_source.split("/")[-1] in utils_disk.get_parts_list(), timeout=5):
+                test.fail("Partition %s1 can not be ready" % disk_source)
             libvirt.mkfs("%s1" % disk_source, "ext3")
             disk_source += "1"
             disks.append({"format": disk_format,

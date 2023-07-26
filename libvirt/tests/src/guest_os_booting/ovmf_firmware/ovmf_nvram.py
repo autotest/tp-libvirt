@@ -18,6 +18,7 @@ def run(test, params, env):
     2) Start and boot the guest.
     """
     vm_name = params.get("main_vm")
+    firmware_type = params.get("firmware_type")
     smm_state = params.get("smm_state", "off")
     error_msg = params.get("error_msg", "")
     template_path = params.get("template_path", "")
@@ -32,7 +33,7 @@ def run(test, params, env):
 
     try:
         guest_os.prepare_smm_xml(vm_name, smm_state, smm_size=None)
-        guest_os.prepare_os_xml(vm_name, nvram_dict)
+        guest_os.prepare_os_xml(vm_name, nvram_dict, firmware_type)
         guest_os.check_vm_startup(vm, vm_name, error_msg)
     finally:
         bkxml.sync()

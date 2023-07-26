@@ -25,6 +25,7 @@ def run(test, params, env):
     2) Start and boot the guest.
     """
     vm_name = params.get("main_vm")
+    firmware_type = params.get("firmware_type")
     loader_dict = eval(params.get("loader_dict", "{}"))
     loader_xpath = eval(params.get("loader_xpath", "[]"))
     smm_state = params.get("smm_state", "off")
@@ -40,7 +41,7 @@ def run(test, params, env):
 
     try:
         guest_os.prepare_smm_xml(vm_name, smm_state, "")
-        vmxml = guest_os.prepare_os_xml(vm_name, loader_dict)
+        vmxml = guest_os.prepare_os_xml(vm_name, loader_dict, firmware_type)
         # stateless='yes' only use for AMD test, so here we only check the dumpxml for it to avoid the machine issue
         if stateless:
             virsh.start(vm_name, debug=True)
