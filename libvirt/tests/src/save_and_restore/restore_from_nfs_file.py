@@ -2,12 +2,13 @@ import logging
 import os
 import shutil
 
-from avocado.utils import process
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
+
+from provider.save import save_base
 
 LOG = logging.getLogger('avocado.test.' + __name__)
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
@@ -41,23 +42,6 @@ def setup_nfs_file(vmxml, image_name, disk_seclabels, uid, gid):
     return save_path
 
 
-def check_ownership(path, uid, gid, test):
-    """
-    Check whether ownership of path meets expectation
-
-    :param path: path to check
-    :param uid: expected uid
-    :param gid: expected gid
-    :param test: test instance
-    """
-    process.run(f'ls -lZ {path}', shell=True)
-    stat = os.stat(path)
-    LOG.debug(f'Path stat info: {stat}')
-    if (stat.st_uid, stat.st_gid) != (uid, gid):
-        test.fail(f'File ownership not correct, should be {uid, gid}, '
-                  f'not {stat.st_uid, stat.st_gid}')
-
-
 def run(test, params, env):
     """
     Test virsh restore from file on nfs storage
@@ -86,10 +70,10 @@ def run(test, params, env):
         LOG.debug(f'VM state after restore: {vm.state()}')
         if vm.state() != 'running':
             test.fail(f'VM should be running after restore, not {vm.state()}')
-        check_ownership(save_path, uid, gid, test)
+        save_base.check_ownership(save_path, uid, gid)
 
         virsh.shutdown(vm_name, **VIRSH_ARGS)
-        check_ownership(save_path, uid, gid, test)
+        save_base.check_ownership(save_path, uid, gid)
 
     finally:
         bkxml.sync()

@@ -1,4 +1,8 @@
 import logging
+import os
+
+from avocado.core import exceptions
+from avocado.utils import process
 
 LOG = logging.getLogger('avocado.' + __name__)
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
@@ -51,3 +55,21 @@ def post_save_check(vm, pid_ping, upsince):
     if upsince_restore != upsince:
         raise Exception(f'Uptime since {upsince_restore} is incorrect,'
                         f'should be {upsince}')
+
+
+def check_ownership(path, uid, gid):
+    """
+    Check whether ownership of path meets expectation
+
+    :param path: path to check
+    :param uid: expected uid
+    :param gid: expected gid
+    :param test: test instance
+    """
+    process.run(f'ls -lZ {path}', shell=True)
+    stat = os.stat(path)
+    LOG.debug(f'Path stat info: {stat}')
+    if (stat.st_uid, stat.st_gid) != (uid, gid):
+        raise exceptions.TestFail(f'File ownership not correct, '
+                                  f'should be {uid, gid}, '
+                                  f'not {stat.st_uid, stat.st_gid}')
