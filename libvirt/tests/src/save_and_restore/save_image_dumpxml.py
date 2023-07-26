@@ -1,6 +1,7 @@
 import logging
 import os
 
+from virttest import libvirt_version
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import base
@@ -61,6 +62,7 @@ def run(test, params, env):
     """
     Test virsh save-image-dumpxml with options
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
 
