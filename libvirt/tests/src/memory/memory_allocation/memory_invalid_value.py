@@ -31,7 +31,12 @@ def run(test, params, env):
         if num == "minus":
             libvirt.check_result(cmd_result, minus_error_msg)
         elif num == "zero":
-            if error_msg:
+            if mem_config == "mam_memory":
+                if libvirt_version.version_compare(9, 5, 0):
+                    libvirt.check_result(cmd_result, error_msg_2)
+                else:
+                    libvirt.check_result(cmd_result, error_msg)
+            elif mem_config == "memory":
                 libvirt.check_result(cmd_result, error_msg)
             else:
                 test.log.info("TEST_STEP2: Check xml after define")
@@ -54,7 +59,6 @@ def run(test, params, env):
         Check current mem device config
         """
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        test.log.debug('111111111111111111111:%s', vmxml)
         libvirt_vmxml.check_guest_xml_by_xpaths(vmxml, xpaths_list)
 
     vm_name = params.get("main_vm")
@@ -62,6 +66,7 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     error_msg = params.get("error_msg", "")
+    error_msg_2 = params.get("error_msg_2", "")
     minus_error_msg = params.get("minus_error_msg", "")
     start_error_msg = params.get("start_error_msg", "")
 
