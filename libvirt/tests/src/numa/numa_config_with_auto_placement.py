@@ -26,9 +26,9 @@ def run_all_commands(vm_name, config_type, cpu_range):
     :param config_type: one of the value: 'default','config', ''
     commands with the command as a key and error message as a value
     """
-    commands = {virsh.numatune: [check_numatune, 'config'],
+    commands = {virsh.numatune: [check_numatune, '--config'],
                 virsh.vcpupin: [check_vcpupin, '--config'],
-                virsh.emulatorpin: [check_emulatorpin, 'config'],
+                virsh.emulatorpin: [check_emulatorpin, '--config'],
                 virsh.iothreadinfo: [check_iothreadinfo, '--config']}
     for command in commands:
         # Run commands prior test

@@ -178,7 +178,7 @@ def run(test, params, env):
                                        vm_sockets, vm_cores, vm_threads)
         if config_pin:
             cpustats = {}
-            result = virsh.emulatorpin(vm_name, cpus_list[-1], "config",
+            result = virsh.emulatorpin(vm_name, cpus_list[-1], "--config",
                                        debug=True)
             libvirt.check_exit_status(result)
             result = virsh.vcpupin(vm_name, "0", cpus_list[0], "--config",
