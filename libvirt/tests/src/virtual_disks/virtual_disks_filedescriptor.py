@@ -29,7 +29,6 @@ from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_test import libvirt
 
 LOG = logging.getLogger('avocado.' + __name__)
-
 cleanup_files = []
 
 
@@ -50,7 +49,8 @@ def get_added_disks(old_partitions, test, params, env):
         session = vm.wait_for_login()
         if platform.platform().count('ppc64'):
             time.sleep(10)
-        added_partitions = utils_disk.get_added_parts(session, old_partitions)
+        added_partitions = utils_disk.get_added_parts_by_path(session,
+                                                              old_partitions)
         LOG.debug("Newly added partition(s) is: %s", added_partitions)
         return added_partitions
     except Exception as err:
@@ -235,6 +235,7 @@ def run(test, params, env):
     hotplug = "yes" == params.get("virt_device_hotplug")
     pkgs_host = params.get("pkgs_host", "")
     disk_readonly = params.get("disk_readonly", "no") == "yes"
+    part_path = "/dev/disk/by-path/%s"
 
     # Skip test if version not match expected one
     libvirt_version.is_libvirt_feature_supported(params)
@@ -243,7 +244,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_partitions = utils_disk.get_parts_list(session)
+    old_partitions = utils_disk.get_parts_list_by_path(session)
     session.close()
     if not hotplug:
         vm.destroy(gracefully=False)
@@ -289,10 +290,10 @@ def run(test, params, env):
         if platform.platform().count('ppc64'):
             time.sleep(10)
         if disk_readonly:
-            if libvirt_disk.check_virtual_disk_io(vm, new_disk):
+            if libvirt_disk.check_virtual_disk_io(vm, new_disk, path=part_path):
                 test.fail("Expect the newly added disk is not writable, but actually it is")
         else:
-            if not libvirt_disk.check_virtual_disk_io(vm, new_disk):
+            if not libvirt_disk.check_virtual_disk_io(vm, new_disk, path=part_path):
                 test.fail("Cannot operate the newly added disk in vm.")
         virsh.detach_device(vm_name, device_obj.xml, flagstr="--live",
                             debug=True, ignore_status=False)
