@@ -41,7 +41,7 @@ def run(test, params, env):
             raise exceptions.TestFail("nodes memory usage not expected.")
 
     vm_name = params.get("main_vm")
-    options = params.get("options", "live")
+    options = params.get("options", "--live")
     vm = env.get_vm(vm_name)
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
 
