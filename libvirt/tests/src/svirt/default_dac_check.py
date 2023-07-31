@@ -73,7 +73,7 @@ def run(test, params, env):
         drop_caches()
         # Set umask
         process.run("umask %s" % umask, ignore_status=False, shell=True)
-        setup_hugepages(2048, 2000)
+        setup_hugepages(page_size, 2000)
         modify_domain_xml(vmxml)
         # Start guest
         vm.start()
@@ -105,6 +105,7 @@ def run(test, params, env):
     start_vm = ("yes" == params.get("start_vm", "no"))
     umask = params.get("umask", "022")
     huge_pages = ('yes' == params.get("huge_pages", "yes"))
+    page_size = int(params.get("page_size", "2048"))
     check_type = params.get("check_type")
 
     vm = env.get_vm(vm_name)
