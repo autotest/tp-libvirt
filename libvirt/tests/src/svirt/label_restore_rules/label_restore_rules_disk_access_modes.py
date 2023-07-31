@@ -51,7 +51,7 @@ def run(test, params, env):
         disk_path = vm.get_first_disk_devices()['source']
         if disk_attrs.get("share"):
             disk_path = data_dir.get_data_dir() + '/test.img'
-            libvirt_disk.create_disk("file", disk_path, disk_format="qcow2")
+            libvirt_disk.create_disk("file", disk_path, disk_format="raw")
             disk_attrs.update({'source': {'attrs': {'file': disk_path}}})
             disk_index = 1
         org_label = process.run("ls -lZ %s | awk '{print $3,$4,$5}'"
