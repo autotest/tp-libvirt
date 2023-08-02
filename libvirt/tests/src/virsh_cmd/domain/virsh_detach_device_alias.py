@@ -268,7 +268,6 @@ def run(test, params, env):
             event = process.run("ls /dev/input/event*", shell=True).stdout
             input_dict.update({"source_evdev": event.decode('utf-8').split()[0]})
 
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         input_obj = Input(type_name=input_type)
         input_obj.setup_attrs(**input_dict)
         libvirt.add_vm_device(vmxml, input_obj)
