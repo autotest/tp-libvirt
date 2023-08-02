@@ -941,7 +941,7 @@ def compare_opts(opts, exp_opts, test):
         test.fail("Expect qemu spice options is %s, but get %s"
                   % (exp_opts, opts))
     else:
-        if type(opts) == dict:
+        if isinstance(opts, dict):
             for key in opts:
                 if isinstance(exp_opts[key], list):
                     if not all(re.match(opt, opts[key])

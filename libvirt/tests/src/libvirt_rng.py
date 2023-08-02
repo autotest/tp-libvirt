@@ -161,7 +161,7 @@ def run(test, params, env):
                                           "").split()
         backend_protocol = dparams.get("backend_protocol")
         rng_alias = dparams.get("rng_alias")
-        device_address = dparams.get_dict("address", "")
+        device_address = dparams.get("address")
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         rng_xml = rng.Rng()
         rng_xml.rng_model = rng_model
@@ -185,7 +185,7 @@ def run(test, params, env):
         if with_packed:
             rng_xml.driver = dict(packed=driver_packed)
         if device_address:
-            rng_xml.address = rng_xml.new_rng_address(**{"attrs": device_address})
+            rng_xml.address = rng_xml.new_rng_address(**{"attrs": ast.literal_eval(device_address)})
 
         logging.debug("Rng xml: %s", rng_xml)
         if get_xml:
