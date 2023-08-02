@@ -10,6 +10,7 @@ from virttest import utils_misc
 from virttest import virsh
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices import disk
 from virttest.utils_test import libvirt
 
 
@@ -93,15 +94,21 @@ def run(test, params, env):
                     source_img = qemu_storage.QemuImg(source_img_params, tmp_dir, '')
                     source_img_path, _ = source_img.create(source_img_params)
                     file_to_del.append(source_img_path)
-                    source_img_params['disk_source_name'] = source_img_path
-                    libvirt.set_vm_disk(vm, source_img_params)
+                    source_img_params['source_file'] = source_img_path
+                    new_disk = disk.Disk(type_name='file')
+                    new_disk.new_disk_source(attrs={'file': source_img_path})
+                    disk_xml = libvirt.create_disk_xml(source_img_params)
+                    new_disk.xml = disk_xml
+                    vmxml.add_device(new_disk)
+                    vmxml.sync()
+                    vm.start()
                     return source_img_params
 
                 source_img_params = update_vm_with_cluster_disk()
                 all_disks = vmxml.get_disk_source(vm_name)
-                if not all_disks:
+                if len(all_disks) < 2:
                     test.error('Not found any disk file in vm.')
-                disk_dev = all_disks[0].find('target').get('dev')
+                disk_dev = all_disks[1].find('target').get('dev')
 
                 # Blockcopy the source image to the target image path
                 target_img_params = source_img_params.copy()
