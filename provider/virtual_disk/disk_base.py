@@ -120,8 +120,8 @@ class DiskBase(object):
                 size = kwargs.get("size", "50M")
                 if kwargs.get("size"):
                     kwargs.pop("size")
-                libvirt.create_local_disk("file", path=new_image_path,
-                                          size=size, disk_format="qcow2",
+                libvirt.create_local_disk("file", path=new_image_path, size=size,
+                                          disk_format=self.params.get("disk_image_format", 'qcow2'),
                                           **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
