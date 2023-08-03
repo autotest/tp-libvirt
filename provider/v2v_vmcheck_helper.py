@@ -702,7 +702,8 @@ class VMChecker(object):
             virtio_devs.append("Virtio socket")
         LOG.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
-            if not re.search(dev, pci_devs, re.IGNORECASE):
+            dev_pattern = r'Virtio.*%s' % dev.replace('Virtio', '')
+            if not re.search(dev_pattern, pci_devs, re.IGNORECASE):
                 # Some devices may not be recognized by old guests.
                 # Then lspci will display as 'Unclassifed device' with
                 # device ID.
