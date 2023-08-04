@@ -83,8 +83,10 @@ def run(test, params, env):
     NW_status = NW_service.status()
     if NW_status is None:
         logging.debug("network service not found")
-        if (not utils_package.package_install('network-scripts') and
+        if (not utils_package.package_install('network-scripts') or
                 not utils_package.package_install('initscripts')):
+            if NM_is_running:
+                NM_service.start()
             test.cancel("Failed to install network service")
     if NW_status is not True:
         logging.debug("network service is not running")
@@ -170,6 +172,6 @@ def run(test, params, env):
                 pass
             # Reload network configuration
             NW_service.restart()
-            # Recover NetworkManager
-            if NM_is_running:
-                NM_service.start()
+        # Recover NetworkManager
+        if NM_is_running:
+            NM_service.start()
