@@ -91,7 +91,7 @@ EOF
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
   --filter=cacheextents --filter=retry vddk server=%s user=%s password=+%s vm=%s \
-  file='%s' libdir=%s --run 'nbdinfo $nbd' thumbprint=%s
+  file='%s' libdir=%s --run 'nbdinfo $uri' thumbprint=%s
 """ % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_libdir, vddk_thumbprint)
             # get thumbprint by a trick
             cmd_result = process.run(
@@ -127,7 +127,7 @@ nbdkit -rfv -U - --exportname / \
                         r'VDDK function stats', output):
                     test.fail('failed to test vddk_stats')
             if checkpoint == 'has_run_againt_vddk7_0' and not re.search(
-                    r'virtual size', output):
+                    r'export-size', output):
                 test.fail('failed to test has_run_againt_vddk7_0')
             if checkpoint == 'backend_datapath_controlpath' and re.search(r'vddk: (open|pread)', output):
                 test.fail('fail to test nbdkit.backend.datapath and nbdkit.backend.controlpath option')
@@ -354,6 +354,51 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                                       (create_type, create_adapter_type, create_hwversion))
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
 
+    def annocheck_test_nbdkit():
+        lines = """
+[rhel9-debug]
+baseurl = pattern
+enabled = 1
+gpgcheck = 0
+name = rhel9-debug
+        """
+        rhel9_debug_repo = os.path.join('/etc/yum.repos.d', 'rhel9-debug.repo')
+        with open(rhel9_debug_repo, "w") as f:
+            f.write(lines)
+        rhel9_debug_repo_url = params.get('rhel9_debug_repo_url')
+        process.run("sed -i 's/pattern/%s/' /etc/yum.repos.d/rhel9-debug.repo" % rhel9_debug_repo_url,
+                    shell=True, ignore_status=True)
+        tmp_path = data_dir.get_tmp_dir()
+        process.run('yum download nbdkit-server nbdkit-server-debuginfo --destdir=%s' % tmp_path, shell=True,
+                    ignore_status=True)
+        cmd_3 = 'annocheck -v --skip-cf-protection --skip-glibcxx-assertions --skip-glibcxx-assertions ' \
+                '--skip-stack-realign --section-size=.gnu.build.attributes --ignore-gaps ' \
+                '%s/%s --debug-rpm=%s/%s' % (tmp_path, (process.run('ls %s/nbdkit-server-1*' % tmp_path,
+                                                                    shell=True, ignore_status=True).
+                                                        stdout_text.split('/'))[-1].strip('\n'), tmp_path,
+                                             (process.run('ls %s/nbdkit-server-debuginfo*' % tmp_path,  shell=True,
+                                                          ignore_status=True).stdout_text.split('/'))[-1].strip('\n'))
+        cmd_3_result = process.run(cmd_3, shell=True, ignore_status=True)
+        if re.search('FAIL', cmd_3_result.stdout_text) and len(cmd_3_result.stdout_text) == 0:
+            test.fail('fail to test ndbkit-server rpm package with annocheck tool')
+        process.run('rm -rf /etc/yum.repos.d/rhel9-debug.repo', shell=True, ignore_status=True)
+
+    def statsfile_option():
+        tmp_path = data_dir.get_tmp_dir()
+        process.run('nbdkit --filter=exitlast --filter=stats memory 2G statsfile=%s/example.txt' % tmp_path,
+                    shell=True, ignore_status=True)
+        process.run('qemu-img create -f qcow2 data.img 2G ; nbdcopy data.img nbd://localhost', shell=True,
+                    ignore_status=True)
+        cmd_3 = process.run('cat %s/example.txt' % tmp_path, shell=True, ignore_status=True)
+        if not re.search('Request size and alignment breakdown', cmd_3.stdout_text):
+            test.fail('fail to test statfile option')
+
+    def test_rate_filter():
+        cmd = process.run("nbdkit --filter=rate memory 64M rate=1M connection-rate=500K burstiness=20 "
+                          "--run 'nbdinfo $uri'", shell=True, ignore_status=True)
+        if re.search('error', cmd.stdout_text):
+            test.fail('fail to test rate filter')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -387,5 +432,11 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         check_vddk_filters_thread_model()
     elif checkpoint == 'check_vddk_create_options':
         check_vddk_create_options()
+    elif checkpoint == 'annocheck_test_nbdkit':
+        annocheck_test_nbdkit()
+    elif checkpoint == 'statsfile_option':
+        statsfile_option()
+    elif checkpoint == 'test_rate_filter':
+        test_rate_filter()
     else:
         test.error('Not found testcase: %s' % checkpoint)
