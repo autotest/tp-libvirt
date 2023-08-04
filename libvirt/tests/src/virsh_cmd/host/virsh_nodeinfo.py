@@ -22,6 +22,18 @@ from virttest.staging import utils_memory
 logging = log.getLogger('avocado.' + __name__)
 
 
+def check_skip_case(params, test):
+    """
+    Check if the case should be run
+
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    test_case = params.get('test_case')
+    if test_case == 'no_option' and cputils.get_vendor() == 'amd':
+        test.cancel("The case does not support AMD machine")
+
+
 def run(test, params, env):
     """
     Test the command virsh nodeinfo
@@ -236,6 +248,7 @@ def run(test, params, env):
                       "but found '%s'" % (int(cpus_nodeinfo_before),
                                           cpus_nodeinfo_after))
 
+    check_skip_case(params, test)
     # Prepare libvirtd service
 
     libvirtd = params.get("libvirtd", "on")
