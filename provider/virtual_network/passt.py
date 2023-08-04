@@ -177,7 +177,8 @@ def check_vm_ip(iface_attrs, session, host_iface):
     :param session: shell session instance of vm
     :param host_iface: host interface
     """
-    vm_ip, prefix = get_iface_ip_and_prefix('eno1', session=session)
+    vm_iface = 'eno' + iface_attrs.get('acpi', {'index': '1'})['index']
+    vm_ip, prefix = get_iface_ip_and_prefix(vm_iface, session=session)
     LOG.debug(f'VM ip and prefix: {vm_ip}, {prefix}')
     if 'ips' in iface_attrs:
         vm_ip_info = [ip for ip in iface_attrs['ips']
@@ -196,14 +197,14 @@ def check_vm_ip(iface_attrs, session, host_iface):
             raise exceptions.TestFail('vm ip and prefix should be '
                                       'the same as host')
 
-    set_ipv6_info = get_iface_ip_and_prefix('eno1', ip_ver='ipv6')[0]
+    set_ipv6_info = get_iface_ip_and_prefix(host_iface, ip_ver='ipv6')[0]
     if 'ips' in iface_attrs:
         iface_ipv6_info = [ip for ip in iface_attrs['ips']
                            if ip['family'] == 'ipv6'][0]
         set_ipv6_info = iface_ipv6_info['address'], set_ipv6_info[1]
 
     LOG.debug(f'Host ipv6 addr and prefix: {set_ipv6_info}')
-    vm_ipv6_info = get_iface_ip_and_prefix('eno1', session, ip_ver='ipv6')
+    vm_ipv6_info = get_iface_ip_and_prefix(vm_iface, session, ip_ver='ipv6')
     LOG.debug(f'VM ipv6 addr and prefix: {vm_ipv6_info}')
     vm_ipv6_dhcp = set_ipv6_info[0], IPV6_LENGTH
     if vm_ipv6_dhcp not in vm_ipv6_info:
