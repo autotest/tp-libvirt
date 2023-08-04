@@ -12,6 +12,8 @@
 import logging
 import os
 
+from avocado.utils import process
+
 from virttest import virt_vm
 from virttest import virsh
 
@@ -438,6 +440,138 @@ def check_scsi_controller(test, params, env):
             test.fail("Get index=0 scsi controller although detached")
 
 
+def test_hotplug_scsi_hostdev_shared_by_two_guests(test, params, env):
+    """
+    Test hotplug scsi device into two guests
+
+    :param test: one test object instance
+    :param params: dict wrapped with params
+    :param env: environment instance
+    """
+    block_device1 = setup_iscsi_block_device()
+    hostdev_xml = create_host_dev(params, block_device1)
+    hostdev_xml.shareable = True
+    vm_names = params.get("vms").split()
+    for vm_name in vm_names:
+        vm = env.get_vm(vm_name)
+        if vm.is_dead():
+            vm.start()
+        vm.wait_for_login().close()
+        virsh.attach_device(vm_name, hostdev_xml.xml, flagstr="--live",
+                            ignore_status=False)
+
+
+def check_hostdev_shareable_attr(test, params):
+    """
+    check scsi shareable attribute
+
+    :param test: one test object instance
+    :param params: dict wrapped with params
+    """
+    vm_names = params.get("vms").split()
+    for vm_name in vm_names:
+        vmxml_checked = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        hostdev_xml = vmxml_checked.get_devices('hostdev')[0]
+        shareable_attr = hostdev_xml.shareable
+        if shareable_attr is not True:
+            test.fail("VM: % failed to find shareable attribute in output: %s" % (vm_name, str(hostdev_xml)))
+
+
+def test_coldplug_scsi_hostdev_qemu_pr_helper(test, params):
+    """
+    Test coldplug scsi hostdev and check qemu-pr-helper status
+
+    :param test: one test object instance
+    :param params: dict wrapped with params
+    """
+    vm_name = params.get("main_vm")
+    block_device = setup_scsi_debug_block_device()
+
+    disk_src_dict = {"attrs": {"dev": block_device}}
+    target_device = params.get("target_device")
+
+    customized_disk = libvirt_disk.create_primitive_disk_xml(
+        "block", "lun",
+        target_device, 'scsi',
+        'raw', disk_src_dict, None)
+
+    # update reservation attributes
+    reservations_dict = {"reservations_managed": "yes"}
+    disk_source = customized_disk.source
+    disk_source.reservations = customized_disk.new_reservations(**reservations_dict)
+    customized_disk.source = disk_source
+
+    LOG.info("disk xml is: %s", customized_disk)
+    xml_dump = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    xml_dump.add_device(customized_disk)
+    xml_dump.sync()
+
+
+def check_qemu_pr_helper(test, params, env):
+    """
+    check qemu_qr_helper process can be restarted when VM issue pr cmds
+
+    :param test: one test object instance
+    :param params: dict wrapped with params
+    :param env: environment instance
+    """
+    old_qr_pid = process.run("pidof qemu-pr-helper",
+                             ignore_status=True, shell=True).stdout_text.strip()
+    if old_qr_pid is None:
+        test.fail("qemu-pr-helper is not started after VM is started")
+    process.system("killall qemu-pr-helper && sleep 2",
+                   ignore_status=True, shell=True)
+
+    vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
+    session = vm.wait_for_login()
+    _, cmd_o = session.cmd_status_output("lsscsi|grep scsi_debug|awk '{print $6}'")
+    # send series of pr commands to VM
+    sg_cmd_list = ["sg_persist --no-inquiry -v --out --register-ignore --param-sark 123aaa %s && sleep 1" % cmd_o,
+                   "sg_persist --no-inquiry --in -k  %s && sleep 1" % cmd_o,
+                   "sg_persist --no-inquiry -v --out --reserve --param-rk 123aaa --prout-type 5 %s && sleep 1" % cmd_o,
+                   "sg_persist --no-inquiry --in -r %s && sleep 1" % cmd_o,
+                   "sg_persist --no-inquiry -v --out --release --param-rk 123aaa --prout-type 5 %s && sleep 1" % cmd_o,
+                   "sg_persist --no-inquiry --in -r %s && sleep 1" % cmd_o,
+                   "sg_persist --no-inquiry -v --out --register --param-rk 123aaa --prout-type 5 %s && sleep 1" % cmd_o,
+                   "sg_persist --no-inquiry --in -k %s && sleep 1" % cmd_o]
+    for sg_cmd in sg_cmd_list:
+        session.cmd_status_output(sg_cmd)
+    new_qr_pid = process.run("pidof qemu-pr-helper",
+                             ignore_status=True, shell=True).stdout_text.strip()
+    if new_qr_pid is None:
+        test.fail("qemu-pr-helper is not restarted after issuing pr commands to VM")
+
+
+def test_coldplug_scsi_hostdev_duplicated_addresses_generate(test, params, env):
+    """
+    Test coldplug scsi hostdev with specific address, and then add one more scsi disk
+
+    :param test: one test object instance
+    :param params: dict wrapped with params
+    :param env: environment instance
+    """
+    vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
+
+    block_device = setup_iscsi_block_device()
+    hostdev_xml = create_host_dev(params, block_device)
+    addr_dict = {'controller': '0', 'bus': '0', 'target': '0', 'unit': '0'}
+
+    # Specify address for host device
+    new_one = hostdev_xml.Address(type_name='drive')
+    for key, value in list({"attrs": addr_dict}.items()):
+        setattr(new_one, key, value)
+    hostdev_xml.address = new_one
+
+    LOG.info("disk xml is: %s", hostdev_xml)
+    xml_dump = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    xml_dump.add_device(hostdev_xml)
+    xml_dump.sync()
+    # add one more scsi disk, failure due to conflicts with SCSI host device address
+    add_one_disk(params)
+
+
 def run(test, params, env):
     """
     Test manipulate scsi device.
@@ -451,13 +585,21 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Back up xml file
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
+    vm_names = params.get("vms").split()
+    if len(vm_names) < 2:
+        test.cancel("No multi vms provided.")
+
+    # Backup vm xml files.
+    vms_backup = []
+    # it need use 2 VMs for testing.
+    for i in list(range(2)):
+        if virsh.is_alive(vm_name[i]):
+            virsh.destroy(vm_name[i], gracefully=False)
+        vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[i])
+        vms_backup.append(vmxml_backup)
 
     coldplug = "yes" == params.get("coldplug")
     define_error = "yes" == params.get("define_error", "no")
-    xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     plug_mode = params.get("plug_mode")
     scsi_type = params.get("scsi_type")
@@ -480,7 +622,7 @@ def run(test, params, env):
             test.fail("Failed to define VM:\n%s" % str(xml_error))
         else:
             if params.get('error_msg') not in str(xml_error):
-                test.fail("Can unexpected error message from: %s" % str(xml_error))
+                test.fail("Get unexpected error message from: %s" % str(xml_error))
     else:
         if test_scenario == "alias":
             libvirt.check_qemu_cmd_line(params.get("alias_name"))
@@ -494,15 +636,22 @@ def run(test, params, env):
             check_vdisk_hostdev_address_unit(test, params, env)
         elif test_scenario == "unplug_scsi_controller":
             check_scsi_controller(test, params, env)
+        elif test_scenario == "shared_by_two_guests":
+            check_hostdev_shareable_attr(test, params)
+        elif test_scenario == "qemu_pr_helper":
+            check_qemu_pr_helper(test, params, env)
     finally:
-        # Recover VM.
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-        LOG.info("Restoring vm...")
-        xml_backup.sync()
+        # Recover VMs.
+        for i in list(range(2)):
+            if virsh.is_alive(vm_name[i]):
+                virsh.destroy(vm_name[i], gracefully=False)
+        LOG.info("Restoring vms...")
+        for vmxml_backup in vms_backup:
+            vmxml_backup.sync()
         # Delete the tmp files.
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        if test_scenario == "boot_order":
+        if test_scenario in ["boot_order", "same_hostdev_address", "tap_library", "qemu_pr_helper",
+                             "duplicated_addresses_generate"]:
             try:
                 libvirt.delete_scsi_disk()
             except Exception as e:
