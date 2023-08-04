@@ -199,7 +199,7 @@ def run(test, params, env):
             utils_package.package_install(new_pkg)
         if 'openvswitch' in add_pkg:
             br = 'ovsbr0' + utils_misc.generate_random_string(3)
-            process.run('systemctl start openvswitch.service', shell=True, verbose=True)
+            process.run('systemctl restart openvswitch.service', shell=True, verbose=True)
             process.run('ovs-vsctl add-br %s' % br, shell=True, verbose=True)
             process.run('ovs-vsctl show', shell=True, verbose=True)
 

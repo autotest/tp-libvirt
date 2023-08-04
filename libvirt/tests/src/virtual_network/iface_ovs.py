@@ -49,9 +49,8 @@ def run(test, params, env):
     if not shutil.which('ovs-vsctl') and not utils_package.package_install(pkg):
         test.cancel("Failed to install dependency package %s"
                     " on host" % pkg)
-    if not ovs_service.status():
-        logging.debug("Restart %s service.." % pkg)
-        ovs_service.restart()
+    logging.debug("Restart %s service.." % pkg)
+    ovs_service.restart()
 
     def check_ovs_port(ifname, brname):
         """
