@@ -1,4 +1,7 @@
-import logging as log
+import logging
+
+from avocado.core import exceptions
+from avocado.utils import distro
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -6,7 +9,38 @@ from virttest.utils_libvirt import libvirt_bios
 from virttest.utils_test import libvirt
 
 
-LOG = log.getLogger('avocado.' + __name__)
+LOG = logging.getLogger('avocado.' + __name__)
+
+
+def get_vm(params):
+    """
+    Get VM by given test parameters
+
+    :param params: Dictionary with the test parameters
+    :return: Name of VM
+    """
+    vms = params.get('vms').split()
+    firmware_type = params.get('firmware_type')
+    detected_distro = distro.detect()
+    os_type_dict = {
+        ('ovmf' if any([vm_xml.VMXML.new_from_dumpxml(v).os.fetch_attrs().
+                        get('os_firmware') == "efi", vm_xml.VMXML.
+                        new_from_dumpxml(v).os.fetch_attrs().get('nvram')])
+            else 'seabios'): v for v in vms}
+    if not firmware_type:
+        LOG.debug("Get default vm")
+        if detected_distro.name == 'rhel':
+            if int(detected_distro.version) < 9:
+                firmware_type = 'seabios'
+            else:
+                firmware_type = 'ovmf'
+        else:
+            return vms[0]
+
+    vm_res = os_type_dict.get(firmware_type)
+    if not vm_res:
+        raise exceptions.TestError("Unable to get vm!")
+    return vm_res
 
 
 def prepare_os_xml(vm_name, os_dict, firmware_type=None):
