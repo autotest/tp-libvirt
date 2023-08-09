@@ -3,6 +3,7 @@ import time
 
 from six import itervalues
 
+from virttest import data_dir
 from virttest import migration
 from virttest import libvirt_remote
 from virttest import libvirt_vm
@@ -64,15 +65,20 @@ class MigrationBase(object):
         """
         set_remote_libvirtd_log = "yes" == self.params.get("set_remote_libvirtd_log", "no")
         start_vm = self.params.get("start_vm", "yes")
+        nfs_mount_dir = self.params.get("nfs_mount_dir")
 
         self.test.log.info("Setup steps by default.")
         if set_remote_libvirtd_log:
             self.set_remote_log()
 
-        disk_dict = {'source': {'attrs': {'file': os.path.join(
-            self.params.get("nfs_mount_dir"),
-            os.path.basename(
-                self.vm.get_first_disk_devices()['source']))}}}
+        if nfs_mount_dir:
+            disk_dict = {'source': {'attrs': {'file': os.path.join(nfs_mount_dir,
+                         os.path.basename(self.vm.get_first_disk_devices()['source']))}}}
+        else:
+            default_image_path = os.path.join(data_dir.get_data_dir(), 'images')
+            disk_dict = {'source': {'attrs': {'file': os.path.join(default_image_path,
+                         os.path.basename(self.vm.get_first_disk_devices()['source']))}}}
+
         libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name),
                 'disk', disk_dict)
