@@ -21,7 +21,7 @@ def run(test, params, env):
     1) Prepare a guest with related os loader xml.
     2) Start and boot the guest.
     """
-    vm_name = params.get("main_vm")
+    vm_name = guest_os.get_vm(params)
     loader_type = params.get("loader_type", "rom")
     loader_path = params.get("loader_path")
     loader_dict = eval(params.get("loader_dict", "{}") % (loader_type, loader_path))

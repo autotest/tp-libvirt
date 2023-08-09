@@ -7,6 +7,7 @@
 
 #   Author: Meina Li <meili@redhat.com>
 #
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_libvirt import libvirt_bios
@@ -21,13 +22,14 @@ def run(test, params, env):
     1) Prepare a guest with related smm elements.
     2) Start and boot the guest.
     """
-    vm_name = params.get("main_vm")
+    vm_name = guest_os.get_vm(params)
     smm_state = params.get("smm_state")
     smm_tseg_size = params.get("smm_tseg_size", "")
     smm_xpath = eval(params.get("smm_xpath", "{}"))
     error_msg = params.get("error_msg")
     firmware_type = params.get("firmware_type")
     loader_dict = eval(params.get("loader_dict", "{}"))
+    libvirt_version.is_libvirt_feature_supported(params)
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)

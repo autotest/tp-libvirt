@@ -17,7 +17,7 @@ def run(test, params, env):
     1) Prepare a guest with related nvram elements.
     2) Start and boot the guest.
     """
-    vm_name = params.get("main_vm")
+    vm_name = guest_os.get_vm(params)
     firmware_type = params.get("firmware_type")
     smm_state = params.get("smm_state", "off")
     error_msg = params.get("error_msg", "")
