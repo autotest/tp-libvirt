@@ -327,6 +327,11 @@ def run(test, params, env):
             vmxml.sync()
             numa_no = None
             if with_numa:
+                vm_cpu = vmxml.cpu
+                vm_cpu.remove_numa_cells()
+                vmxml['cpu'] = vm_cpu
+                vmxml.sync()
+
                 numa_no = vmxml.vcpu // vcpus_per_cell if vmxml.vcpu != 1 else 1
             vm_xml.VMXML.set_vm_vcpus(vmxml.vm_name, vmxml.vcpu, numa_number=numa_no)
             vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name, access_mode="shared",
