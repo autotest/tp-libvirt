@@ -233,9 +233,17 @@ def check_scsi_device_boot_order(test, params, env):
     """
     vm_name = params.get("main_vm")
 
-    match_alias_plus_boot_order1 = '"%s","bootindex":%s' % (params.get("alias_name_1"), params.get("boot_order_1"))
+    match_alias_plus_boot_order1 = '("%s","bootindex":%s)|(%s,bootindex=%s)'\
+                                   % (params.get("alias_name_1"),
+                                      params.get("boot_order_1"),
+                                      params.get("alias_name_1"),
+                                      params.get("boot_order_1"))
     libvirt.check_qemu_cmd_line(match_alias_plus_boot_order1)
-    match_alias_plus_boot_order2 = '"%s","bootindex":%s' % (params.get("alias_name_2"), params.get("boot_order_2"))
+    match_alias_plus_boot_order2 = '("%s","bootindex":%s)|(%s,bootindex=%s)'\
+                                   % (params.get("alias_name_2"),
+                                      params.get("boot_order_2"),
+                                      params.get("alias_name_2"),
+                                      params.get("boot_order_2"))
     libvirt.check_qemu_cmd_line(match_alias_plus_boot_order2)
     LOG.debug('boot order dumpxml:\n')
     LOG.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
