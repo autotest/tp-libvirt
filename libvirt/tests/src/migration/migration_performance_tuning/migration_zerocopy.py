@@ -1,4 +1,5 @@
 from virttest import libvirt_version
+from virttest import utils_misc
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -15,6 +16,22 @@ def run(test, params, env):
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment.
     """
+    def setup_params():
+        """
+        According to bug 2169733, multifd and postcopy migration will fail
+        on RHEL 8. So update some parameters for postcopy cases.
+
+        """
+        postcopy_options = params.get("postcopy_options")
+
+        if not utils_misc.compare_qemu_version(8, 0, 0, is_rhev=False):
+            if postcopy_options:
+                params.update({'action_during_mig': ''})
+                params.update({'status_error': 'yes'})
+                params.update({'err_msg': 'Postcopy is not yet compatible with multifd'})
+                params.update({'check_str_local_log': ''})
+                params.update({'migrate_again_status_error': 'yes'})
+
     def setup_with_memtune():
         """
         Setup with memtune
@@ -84,6 +101,7 @@ def run(test, params, env):
         locals() else migration_obj.setup_connection
 
     try:
+        setup_params()
         setup_test()
         migration_obj.run_migration()
         if migrate_again:
