@@ -1081,6 +1081,10 @@ def run(test, params, env):
             # Ignore errors here
             session.cmd("dracut --force --add-drivers '%s'"
                         % add_disk_driver, timeout=360)
+            # In terms of s390x, additional step is needed for normal guest
+            # boot, see https://bugzilla.redhat.com/show_bug.cgi?id=2214147
+            if arch == 's390x':
+                session.cmd("zipl")
         session.close()
         vm.shutdown()
 
