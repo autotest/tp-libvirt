@@ -41,10 +41,10 @@ def setup_default(test_obj):
     """
     test_obj.setup()
     params_2M = {'hugepage_size': '2048',
-                 'hugepage_path': test_obj.params.get('hugepage_path_2M'),
+                 'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_2M'),
                  'target_hugepages': test_obj.params.get('target_hugepages_2M')}
     params_1G = {'hugepage_size': '1048576',
-                 'hugepage_path': test_obj.params.get('hugepage_path_1G'),
+                 'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_1G'),
                  'target_hugepages': test_obj.params.get('target_hugepages_1G'),
                  'kernel_hp_file': '/sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'}
     hp_size = test_obj.params.get('hp_size')
