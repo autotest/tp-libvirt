@@ -255,17 +255,17 @@ def teardown_default(test_obj):
     if test_obj.params.get('memory_backing'):
         expected_hugepage_size = test_obj.params.get('expected_hugepage_size')
         hpc = test_obj.params.get('hp_config_obj')
-        all_nodes = test_obj.online_nodes_withmem
-        hpc.set_node_num_huge_pages('0', all_nodes[0], expected_hugepage_size)
-        test_obj.test.log.debug("Get first node hugepage is "
-                                "%d", hpc.get_node_num_huge_pages(all_nodes[0],
-                                                                  expected_hugepage_size))
-        hpc.set_node_num_huge_pages('0', all_nodes[1], expected_hugepage_size)
-        test_obj.test.log.debug("Get second node hugepage is "
-                                "%d", hpc.get_node_num_huge_pages(all_nodes[1],
-                                                                  expected_hugepage_size))
-
-        test_obj.test.log.debug("Step: hugepage is deallocated")
+        if hpc:
+            all_nodes = test_obj.online_nodes_withmem
+            hpc.set_node_num_huge_pages('0', all_nodes[0], expected_hugepage_size)
+            test_obj.test.log.debug("Get first node hugepage is "
+                                    "%d", hpc.get_node_num_huge_pages(all_nodes[0],
+                                                                      expected_hugepage_size))
+            hpc.set_node_num_huge_pages('0', all_nodes[1], expected_hugepage_size)
+            test_obj.test.log.debug("Get second node hugepage is "
+                                    "%d", hpc.get_node_num_huge_pages(all_nodes[1],
+                                                                      expected_hugepage_size))
+            test_obj.test.log.debug("Step: hugepage is deallocated")
 
     test_obj.test.log.debug("Step: teardown is done")
 
