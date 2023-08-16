@@ -9,9 +9,14 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 import re
 
+from virttest import libvirt_version
+from virttest import virsh
 from virttest import virt_vm
 
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
+
+from provider.numa import numa_base
 
 
 def run(test, params, env):
@@ -24,12 +29,22 @@ def run(test, params, env):
         """
         Prepare init xml
         """
-        test.log.info("TEST_SETUP: Set hugepage and guest boot ")
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        vmxml.setup_attrs(**vm_attrs)
-        vmxml.sync()
+        test.log.info("TEST_SETUP: Set hugepage and guest boot")
+        numa_obj = numa_base.NumaTest(vm, params, test)
+        numa_obj.check_numa_nodes_availability()
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vmxml.setup_attrs(**vm_attrs)
+
+        result = virsh.define(vmxml.xml, debug=True, ignore_status=True)
+        if libvirt_version.version_compare(9, 4, 0) and \
+                tuning == "restrictive":
+            libvirt.check_result(result, expected_fails=define_err,
+                                 check_both_on_error=True)
+            return
+        else:
+            libvirt.check_exit_status(result)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         test.log.debug("The init xml is:\n%s", vmxml)
 
     def run_test():
@@ -60,7 +75,9 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     vm_attrs = eval(params.get("vm_attrs"))
+    tuning = params.get("tuning")
     error_msg = params.get("error_msg")
+    define_err = params.get("define_err")
 
     try:
         setup_test()
