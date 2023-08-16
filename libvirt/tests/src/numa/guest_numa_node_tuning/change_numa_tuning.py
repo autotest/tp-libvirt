@@ -52,7 +52,7 @@ def prepare_vm_xml(test_obj):
         test_obj.test.error("Expect Total memory in node %s bigger than %s, "
                             "but found %s" % (all_nodes[0], offset, int(mem_total)))
     vmxml.memory = int(mem_total) + offset
-    vmxml.current_mem = int(mem_total) - offset if int(mem_total) - offset > 1536 else 1536
+    vmxml.current_mem = max(int(mem_total) - offset, 1536)
     test_obj.test.log.debug("Step: vm xml before defining:\n%s", vmxml)
     vmxml.sync()
     return vmxml
