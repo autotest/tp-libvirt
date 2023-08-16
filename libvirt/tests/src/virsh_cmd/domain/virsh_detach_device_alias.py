@@ -157,7 +157,8 @@ def run(test, params, env):
                     test.cancel("Host does not support iommu")
                 libvirt_vmxml.modify_vm_device(vmxml=vmxml,
                                                dev_type='controller',
-                                               dev_dict=controller_dict)
+                                               dev_dict=controller_dict,
+                                               index=int(params.get("index")))
 
                 pci_id = utils_misc.get_full_pci_id(
                     utils_misc.get_pci_id_using_filter(pci_filter)[-1])
