@@ -7,7 +7,6 @@
 
 #   Author: Dan Zheng <dzheng@redhat.com>
 #
-
 import re
 
 from avocado.utils import process
@@ -35,13 +34,14 @@ class NumaTest(object):
             test.error("Failed to get information from %s", cmd)
         self.host_numa_info = utils_misc.NumaInfo()
         self.online_nodes_withmem = self.host_numa_info.get_online_nodes_withmem()
+        self.all_usable_numa_nodes = self.online_nodes_withmem.copy()
         self.virsh_dargs = {'ignore_status': False, 'debug': True}
 
     def check_numa_nodes_availability(self, expect_nodes_num=2):
-        if len(self.online_nodes_withmem) < expect_nodes_num:
+        if len(self.all_usable_numa_nodes) < expect_nodes_num:
             self.test.cancel("Expect %d numa nodes at "
                              "least, but found %d" % (expect_nodes_num,
-                                                      len(self.online_nodes_withmem)))
+                                                      len(self.all_usable_numa_nodes)))
 
     def setup(self):
         self.check_numa_nodes_availability()
@@ -75,7 +75,7 @@ class NumaTest(object):
         # Setup numa tune attributes
         nodeset = None
         if single_host_node:
-            all_nodes = self.online_nodes_withmem
+            all_nodes = self.all_usable_numa_nodes
             if single_host_node == 'no':
                 # When memory bind to multiple numa nodes,
                 # the test only selects the first two numa nodes with memory on the host
@@ -140,6 +140,23 @@ class NumaTest(object):
         numad_ret = match_obj.group(1)
         self.test.log.debug("Nodeset returned from numad: %s", numad_ret)
         return numad_ret
+
+
+def get_host_numa_memory_alloc_info(mem_size, test):
+    """
+    Get the numa memory allocation result on the host
+
+    :param mem_size: int, the vm memory size
+    :param test: avocado test object
+    :return: str, the matched output in numa_maps
+    """
+    cmd = 'grep -B1 %s /proc/`pidof qemu-kvm`/smaps' % mem_size
+    out = process.run(cmd, shell=True, verbose=True).stdout_text.strip()
+    matches = re.findall('(\w+)-', out)
+    if not matches:
+        test.error("No match found in the output of the command '%s'" % cmd)
+    cmd = 'grep %s /proc/`pidof qemu-kvm`/numa_maps' % matches[0]
+    return process.run(cmd, shell=True, verbose=True).stdout_text.strip()
 
 
 def convert_to_string_with_dash(nodeset):
