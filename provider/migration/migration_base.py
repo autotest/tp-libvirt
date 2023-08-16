@@ -417,18 +417,37 @@ def check_domjobinfo_during_mig(params):
     libvirt_domjobinfo.check_domjobinfo(vm, params)
 
 
-def set_bandwidth_during_mig(params):
+def check_domjobinfo_precopy(params):
     """
-    Set bandwidth during migration
+    During precopy phase of live migration, check domjobinfo
 
-    :param params: dict, get vm name and compared value
+    :param params: dict, get vm object
+    """
+    vm = params.get("vm_obj")
+    precopy_bandwidth = params.get("precopy_bandwidth")
+    compare_to_value = params.get("compare_to_value")
+
+    params.update({"compare_to_value": precopy_bandwidth})
+    libvirt_domjobinfo.check_domjobinfo(vm, params)
+
+
+def set_bandwidth(params):
+    """
+    Set bandwidth
+
+    :param params: dict, get vm name, postcopy bandwidth and precopy bandwidth
     """
     vm_name = params.get("migrate_main_vm")
-    compared_value = params.get("compared_value")
+    postcopy_bandwidth = params.get("postcopy_bandwidth")
+    precopy_bandwidth = params.get("precopy_bandwidth")
 
     virsh_args = {"debug": True, "ignore_status": False}
-    virsh.migrate_setspeed(vm_name, compared_value, **virsh_args)
-    virsh.migrate_getspeed(vm_name, debug=True)
+    if postcopy_bandwidth:
+        virsh.migrate_setspeed(vm_name, postcopy_bandwidth, extra="--postcopy", **virsh_args)
+        virsh.migrate_getspeed(vm_name, extra="--postcopy", debug=True)
+    if precopy_bandwidth:
+        virsh.migrate_setspeed(vm_name, precopy_bandwidth, **virsh_args)
+        virsh.migrate_getspeed(vm_name, debug=True)
 
 
 def check_vm_status_during_mig(params):

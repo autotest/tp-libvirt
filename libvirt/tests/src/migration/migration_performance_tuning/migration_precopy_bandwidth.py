@@ -22,7 +22,7 @@ def run(test, params, env):
         test.log.debug("Setup bandwidth when vm shutoff.")
         migrate_desturi_port = params.get("migrate_desturi_port")
         migrate_desturi_type = params.get("migrate_desturi_type", "tcp")
-        compared_value = params.get("compared_value")
+        precopy_bandwidth = params.get("precopy_bandwidth")
 
         migration_obj.conn_list.append(migration_base.setup_conn_obj(migrate_desturi_type, params, test))
         migration_obj.remote_add_or_remove_port(migrate_desturi_port)
@@ -30,7 +30,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         virsh_args = {"debug": True, "ignore_status": False}
-        virsh.migrate_setspeed(vm_name, compared_value, **virsh_args)
+        virsh.migrate_setspeed(vm_name, precopy_bandwidth, **virsh_args)
         virsh.migrate_getspeed(vm_name, debug=True)
         vm.start()
         vm.wait_for_login().close()
