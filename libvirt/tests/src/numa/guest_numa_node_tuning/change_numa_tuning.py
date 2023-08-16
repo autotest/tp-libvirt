@@ -81,7 +81,7 @@ def verify_host_numa_memory_allocation(test_obj, check_N0=False):
     all_nodes = test_obj.all_usable_numa_nodes
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
     N1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)
-    has_kernelpage = True if re.search('kernelpagesize_kB=4', out_numa_maps) else False
+    has_kernelpage = bool(re.search('kernelpagesize_kB=4', out_numa_maps))
     if not has_kernelpage:
         test_obj.test.fail("The numa_maps should "
                            "include 'kernelpagesize_kB=4'， but not found")
