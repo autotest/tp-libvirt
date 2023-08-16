@@ -10,6 +10,7 @@ from virttest import utils_misc
 from virttest.utils_conn import build_server_key, build_CA
 from virttest.utils_v2v import multiple_versions_compare
 from virttest.utils_v2v import params_get
+from virttest import utils_v2v
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -116,6 +117,9 @@ nbdkit -rfv -U - --exportname / \
                                                                   '--filter=readahead') + \
                              ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
                 LOG.info('nbdkit command with scan, readahead and blocksize filters:\n%s' % nbdkit_cmd)
+            if checkpoint == 'vddk_with_delay_close_open_option':
+                nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=40000ms delay-open=40000ms'
+                LOG.info('nbdkit command with delay-close and delay-open options:\n%s' % nbdkit_cmd)
             # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
@@ -133,6 +137,8 @@ nbdkit -rfv -U - --exportname / \
                 test.fail('fail to test nbdkit.backend.datapath and nbdkit.backend.controlpath option')
             if checkpoint == 'scan_readahead_blocksize' and re.search('error', output):
                 test.fail('fail to test scan, readahead and blocksize filters with vddk plugin')
+            if checkpoint == 'vddk_with_delay_close_open_option' and re.search(r'nbdkit.*failed', output):
+                test.fail('fail to test delay-close and delay-open options with vddk plugin')
 
     def test_memory_max_disk_size():
         """
@@ -271,15 +277,15 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             test.fail('curl plugin does not support multi_conn')
 
     def test_luks_filter():
-        cmd_1 = "qemu-img create -f luks --object secret,data=LETMEPASS,id=sec0 -o key-secret=sec0 encrypted.img 100M"
-        cmd_2 = "nbdkit file encrypted.img --filter=luks passphrase=LETMEPASS --run 'nbdcopy $nbd data.img'"
-        cmd_3 = "nbdkit file data.img --filter=luks passphrase=LETMEPASS --run 'nbdcopy $nbd data-b.img'"
-        cmd_1_result = process.run(cmd_1, shell=True, ignore_status=True)
-        cmd_2_result = process.run(cmd_2, shell=True, ignore_status=True)
-        cmd_3_result = process.run(cmd_3, shell=True, ignore_status=True)
-        if len(cmd_2_result.stdout_text) > 0:
+        process.run("qemu-img create -f luks --object secret,data=LETMEPASS,id=sec0 -o key-secret=sec0 "
+                    "encrypted.img 100M", shell=True)
+        cmd_2 = process.run("nbdkit file encrypted.img --filter=luks passphrase=LETMEPASS "
+                            "--run 'nbdcopy $nbd data.img'", shell=True, ignore_status=True)
+        cmd_3 = process.run("nbdkit file data.img --filter=luks passphrase=LETMEPASS --run 'nbdcopy $nbd data-b.img'",
+                            shell=True, ignore_status=True)
+        if re.search('error', cmd_2.stderr_text):
             test.fail('failed to use luks filter to read luks image which is created by qemu-img')
-        if re.search('nbdkit command was killed by signal 11', cmd_3_result.stderr_text):
+        if re.search('nbdkit command was killed by signal 11', cmd_3.stderr_text):
             test.fail('nbdkit was killed by signal 11')
 
     def test_plugin_file_fd_fddir_option():
@@ -399,6 +405,84 @@ name = rhel9-debug
         if re.search('error', cmd.stdout_text):
             test.fail('fail to test rate filter')
 
+    def test_ssh_create_option():
+        xen_host_user = params_get(params, "xen_host_user")
+        xen_host_passwd = params_get(params, "xen_host_passwd")
+        xen_host = params_get(params, "xen_host")
+        # Setup ssh-agent access to xen hypervisor
+        LOG.info('set up ssh-agent access ')
+        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
+            xen_host, xen_host_user, xen_host_passwd, auto_close=False)
+        utils_misc.add_identities_into_ssh_agent()
+        cmd = process.run("nbdkit ssh host=%s /tmp/disk.img user=%s password=%s create=true "
+                          "create-mode=0644 create-size=10M --run 'nbdinfo --can connect $uri'" %
+                          (xen_host, xen_host_user, xen_host_passwd), shell=True)
+        if re.search('error', (cmd.stdout_text + cmd.stderr_text)):
+            test.fail('fail to test create options of ssh plugin')
+        utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
+        process.run('ssh-agent -k')
+
+    def delay_close_delay_open_options():
+        #Check options when clients use NBD_CMD_DISC (libnbd nbd_shutdown) or clients which drop the connection
+        nbdsh_s = 'time nbdsh -u $uri -c "h.shutdown()"'
+        cmd_down = process.run("nbdkit --filter=delay null delay-close=3 --run '%s'" % nbdsh_s,
+                               shell=True, ignore_status=True)
+        #Check options when clients do not use NBD_CMD_DISC (libnbd nbd_shutdown)
+        nbdsh_p = 'time nbdsh -u $uri -c "pass"'
+        cmd_pass = process.run("nbdkit --filter=delay null delay-close=3 --run '%s'" % nbdsh_p,
+                               shell=True, ignore_status=True)
+        if not re.search('0m3', cmd_down.stderr_text):
+            test.fail('fail to test delay-close option when nbdkit clients shutdown')
+        if not re.search('0m0', cmd_pass.stderr_text):
+            test.fail('fail to test delay-close option when nbdkit clients are not shutdown')
+        #Set invalid number for delay option
+        values = ['10secs', '40SECS', '10s', '10MS', '1:']
+        for value in values:
+            cmd_num = process.run("nbdkit null --filter=delay delay-open=%s --run 'nbdinfo $uri'" % value,
+                                  shell=True, ignore_status=True)
+            if not re.search('could not parse number', cmd_num.stderr_text):
+                test.fail('get unexpected result when set invalid value for nbdkit delay options)')
+        #Check error when nbdkit aborts early
+        cmd_aborts = process.run("nbdkit --filter=delay null delay-close=3 --run 'nbdinfo --size $uri; "
+                                 "nbdinfo --size $uri'", shell=True)
+        if re.search('error', cmd_aborts.stdout_text):
+            test.fail('get unexpected error when test delay option and nbdkit aborts early')
+
+    def cow_on_read_true():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.qcow2')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        process.run('nbdkit file %s --filter=cow cow-on-read=true' % image_path, shell=True)
+        cmd_proc = process.run('ls -l /proc/`pidof nbdkit`/fd', shell=True)
+        if re.search(r'3 -> /var/tmp/.*(deleted)', cmd_proc.stdout_text):
+            output_1 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/3", shell=True)
+            if re.search(r"0 512 4096", output_1.stdout_text):
+                process.run("nbdsh -u nbd://localhost -c 'h.pread(8*1024*1024, 0)'", shell=True)
+                output_2 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/3", shell=True)
+                if not re.search(r"16384 512 4096", output_2.stdout_text):
+                    test.fail('cow-on-read=true option does not work')
+        else:
+            test.fail('cannot find nbdkit fd process when test cow_on_read=true option')
+        cmd_kill = "ps ax | grep 'nbdkit ' | grep -v grep | awk '{print $1}'"
+        cmd_kill_result = process.run(cmd_kill, shell=True, ignore_status=True).stdout_text.split()
+        os.kill(int(cmd_kill_result[0]), signal.SIGKILL)
+
+    def cow_on_read_path():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.qcow2')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
+        time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=%s "
+                             "--run '%s' > time1.log" % (image_path, tmp_path, cmd_inspect),
+                             shell=True, ignore_status=True)
+        time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms --run '%s' > time2.log"
+                             % (image_path, cmd_inspect), shell=True, ignore_status=True)
+        if not (int(''.join(filter(str.isdigit, re.search(r'real.*m', time_1.stderr_text).group(0)))) <
+                int(''.join(filter(str.isdigit, re.search(r'real.*m', time_2.stderr_text).group(0))))):
+            test.fail('fail to test cow-on-read=/path option')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -406,7 +490,7 @@ name = rhel9-debug
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
     elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats', 'backend_datapath_controlpath',
-                        'scan_readahead_blocksize']:
+                        'scan_readahead_blocksize', 'vddk_with_delay_close_open_option']:
         test_has_run_againt_vddk7_0()
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
@@ -438,5 +522,13 @@ name = rhel9-debug
         statsfile_option()
     elif checkpoint == 'test_rate_filter':
         test_rate_filter()
+    elif checkpoint == 'test_ssh_create_option':
+        test_ssh_create_option()
+    elif checkpoint == 'delay_close_delay_open_options':
+        delay_close_delay_open_options()
+    elif checkpoint == 'cow_on_read_true':
+        cow_on_read_true()
+    elif checkpoint == 'cow_on_read_path':
+        cow_on_read_path()
     else:
         test.error('Not found testcase: %s' % checkpoint)
