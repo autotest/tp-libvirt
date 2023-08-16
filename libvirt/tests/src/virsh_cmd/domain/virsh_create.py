@@ -24,7 +24,7 @@ def run(test, params, env):
     3. --paused itself
     """
 
-    def xmlfile_with_extra_attibute(xml):
+    def xmlfile_with_extra_attribute(xml):
         """
         Prepare an invalid xml using the disk element
         """
@@ -68,7 +68,7 @@ def run(test, params, env):
                 xmlfile = change_xml_name(xml_backup, new_name)
                 vm.name = new_name
             else:
-                xmlfile = xmlfile_with_extra_attibute(xml_backup)
+                xmlfile = xmlfile_with_extra_attribute(xml_backup)
         else:
             virsh.undefine(vm_name, options='--nvram')
 
