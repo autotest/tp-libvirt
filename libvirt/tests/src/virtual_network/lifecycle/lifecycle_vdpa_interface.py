@@ -1,77 +1,24 @@
-import logging as log
 import os
 
 from virttest import data_dir
 from virttest import libvirt_version
 from virttest import utils_misc
-from virttest import utils_vdpa
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-from virttest.staging import service
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
-from provider.interface import interface_base
 from provider.interface import check_points
+from provider.interface import interface_base
+from provider.interface import vdpa_base
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
-
-
-# Using as lower capital is not the best way to do, but this is just a
-# workaround to avoid changing the entire file.
-logging = log.getLogger('avocado.' + __name__)
 
 
 def run(test, params, env):
     """
     Test domain lifecycle
     """
-
-    def setup_default():
-        """
-        Default setup
-        """
-        logging.debug("Remove VM's interface devices.")
-        libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
-        vm_attrs = eval(params.get('vm_attrs', '{}'))
-        if vm_attrs:
-            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            vmxml.setup_attrs(**vm_attrs)
-            vmxml.sync()
-
-    def teardown_default():
-        """
-        Default cleanup
-        """
-        pass
-
-    def setup_vdpa():
-        """
-        Setup vDPA environment
-        """
-        setup_default()
-        test_env_obj = None
-        if test_target == "simulator":
-            test_env_obj = utils_vdpa.VDPASimulatorTest()
-            test_env_obj.setup()
-        else:
-            vdpa_mgmt_tool_extra = params.get("vdpa_mgmt_tool_extra", "")
-            pf_pci = utils_vdpa.get_vdpa_pci()
-            test_env_obj = utils_vdpa.VDPAOvsTest(pf_pci, mgmt_tool_extra=vdpa_mgmt_tool_extra)
-            test_env_obj.setup()
-            params['mac_addr'] = test_env_obj.vdpa_mac.get(params.get("vdpa_dev", "vdpa0"))
-
-        return test_env_obj
-
-    def teardown_vdpa():
-        """
-        Cleanup vDPA environment
-        """
-        if test_target != "simulator":
-            service.Factory.create_service("NetworkManager").restart()
-        if test_obj:
-            test_obj.cleanup()
-
     def run_test(dev_type, params, test_obj=None):
         """
         Test domain lifecycle
@@ -81,36 +28,45 @@ def run(test, params, env):
         3) Save and restore, and check network
         4) Suspend and resume, and check network
         5) Reboot the VM and check the network
+
+        :param dev_type: Device type
+        :param params: Dictionary with the test parameters
+        :test_obj: Object of vDPA test
         """
         # Setup Iface device
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         iface_dict = interface_base.parse_iface_dict(params)
         iface_dev = interface_base.create_iface(dev_type, iface_dict)
         libvirt.add_vm_device(vmxml, iface_dev)
+        iface_dict2 = eval(params.get("iface_dict2", "{}"))
+        if iface_dict2:
+            libvirt_vmxml.modify_vm_device(
+                vm_xml.VMXML.new_from_dumpxml(vm_name),
+                "interface", iface_dict2, 2)
 
-        logging.info("Start a VM with a '%s' type interface.", dev_type)
+        test.log.info("Start a VM with a '%s' type interface.", dev_type)
         vm.start()
         vm.wait_for_serial_login(timeout=240).close()
         check_points.check_network_accessibility(vm, test_obj=test_obj, **params)
 
-        logging.info("Destroy and start the VM.")
+        test.log.info("Destroy and start the VM.")
         virsh.destroy(vm.name, **VIRSH_ARGS)
         virsh.start(vm.name, **VIRSH_ARGS)
         check_points.check_network_accessibility(
             vm, test_obj=test_obj, config_vdpa=True, **params)
 
-        logging.info("Save the VM.")
+        test.log.info("Save the VM.")
         save_error = "yes" == params.get("save_error", "no")
         save_path = os.path.join(data_dir.get_tmp_dir(), vm.name + '.save')
         res = virsh.save(vm.name, 'sss', debug=True)
         libvirt.check_exit_status(res, expect_error=save_error)
         if not save_error:
-            logging.info("Restore vm.")
+            test.log.info("Restore vm.")
             virsh.restore(save_path, **VIRSH_ARGS)
             check_points.check_network_accessibility(
                 vm, test_obj=test_obj, config_vdpa=False, **params)
 
-        logging.info("Suspend and resume the vm.")
+        test.log.info("Suspend and resume the vm.")
         virsh.suspend(vm.name, **VIRSH_ARGS)
         if not libvirt.check_vm_state(vm_name, "paused"):
             test.fail("VM should be paused!")
@@ -120,7 +76,7 @@ def run(test, params, env):
         check_points.check_network_accessibility(
             vm, test_obj=test_obj, config_vdpa=False, **params)
 
-        logging.debug("Reboot VM and check network.")
+        test.log.debug("Reboot VM and check network.")
         virsh.reboot(vm.name, **VIRSH_ARGS)
         check_points.check_network_accessibility(
             vm, test_obj=test_obj, config_vdpa=False, **params)
@@ -130,7 +86,7 @@ def run(test, params, env):
 
     # Variable assignment
     test_target = params.get('test_target', '')
-    dev_type = params.get('dev_type', '')
+    dev_type = params.get('dev_type', 'vdpa')
 
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
@@ -138,17 +94,12 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     backup_vmxml = vmxml.copy()
 
-    setup_test = eval("setup_%s" % dev_type) if "setup_%s" % dev_type in \
-        locals() else setup_default
-    teardown_test = eval("teardown_%s" % dev_type) if "teardown_%s" % \
-        dev_type in locals() else teardown_default
-
     test_obj = None
     try:
         # Execute test
-        test_obj = setup_test()
-        run_test(dev_type, params, test_obj=test_obj)
+        test_obj, test_dict = vdpa_base.setup_vdpa(vm, params)
+        run_test(dev_type, test_dict, test_obj=test_obj)
 
     finally:
         backup_vmxml.sync()
-        teardown_test()
+        vdpa_base.cleanup_vdpa(test_target, test_obj)
