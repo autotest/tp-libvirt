@@ -104,7 +104,8 @@ def attach_iface_device(vm_name, dev_type, params):
         iface = create_hostdev(iface_dict)
     else:
         iface = create_iface(dev_type, iface_dict)
-    res = virsh.attach_device(vm_name, iface.xml, debug=True)
+    res = virsh.attach_device(vm_name, iface.xml, flagstr=params.get("flagstr"),
+                              debug=True)
     libvirt.check_exit_status(res, status_error)
     device_type = "hostdev" if dev_type == 'hostdev_device' else dev_type
     libvirt_vmxml.check_guest_xml(vm_name, device_type)
