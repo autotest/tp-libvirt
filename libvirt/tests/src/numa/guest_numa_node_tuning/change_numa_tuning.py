@@ -77,7 +77,7 @@ def verify_host_numa_memory_allocation(test_obj, check_N0=False):
     :param test_obj: NumaTest object
     """
     mem_size = get_memory_in_vmxml(test_obj)
-    out_numa_maps = numa_base.get_host_numa_memory_alloc_info(mem_size, test_obj.test)
+    out_numa_maps = numa_base.get_host_numa_memory_alloc_info(mem_size)
     all_nodes = test_obj.all_usable_numa_nodes
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
     N1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)

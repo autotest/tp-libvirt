@@ -7,8 +7,8 @@
 #   Author: Dan Zheng <dzheng@redhat.com>
 #
 
-
 from virttest import libvirt_version
+from virttest import utils_libvirtd
 from virttest import virsh
 from virttest import test_setup
 from virttest.libvirt_xml import vm_xml
@@ -26,11 +26,12 @@ def setup_default(test_obj):
 
     :param test_obj: NumaTest object
     """
-    test_obj.setup()
+    test_obj.setup(node_index=1)
     if test_obj.params.get('memory_backing'):
         hpc = test_setup.HugePageConfig(test_obj.params)
         hpc.setup()
-        test_obj.params['hp_config_obj'] = hpc
+        utils_libvirtd.Libvirtd().restart()
+        test_obj.params['hp_config_2M'] = hpc
     test_obj.test.log.debug("Step: setup is done")
 
 
@@ -230,9 +231,6 @@ def teardown_default(test_obj):
     :param test_obj: NumaTest object
     """
     test_obj.teardown()
-    if test_obj.params.get('memory_backing'):
-        hpc = test_obj.params.get('hp_config_obj')
-        hpc.cleanup()
     test_obj.test.log.debug("Step: teardown is done")
 
 
