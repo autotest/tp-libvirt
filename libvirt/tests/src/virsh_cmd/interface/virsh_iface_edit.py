@@ -5,6 +5,7 @@ import logging as log
 import aexpect
 
 from avocado.utils import process
+from avocado.utils import distro
 
 from virttest import remote
 from virttest import data_dir
@@ -58,6 +59,11 @@ def run(test, params, env):
 
     Edit interface start mode in this case.
     """
+    """Cancelling testcase if distro version is rhel 9 and above"""
+    detected_distro = distro.detect()
+    if detected_distro.name == "rhel" and int(detected_distro.version) >= 9:
+        test.cancel("virsh iface-* commands are unsupported in rhel 9")
+
     iface_name = params.get("iface_name", "lo")
     status_error = "yes" == params.get("status_error", "no")
     if not libvirt.check_iface(iface_name, "exists", "--all"):

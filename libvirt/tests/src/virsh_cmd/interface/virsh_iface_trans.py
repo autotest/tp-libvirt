@@ -5,6 +5,7 @@ import logging as log
 from avocado.utils import process
 from avocado.utils import path as utils_path
 from avocado.core import exceptions
+from avocado.utils import distro
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -195,6 +196,12 @@ def run(test, params, env):
            2.3.1 begin and commit testing with libvirtd restart
            2.3.2 begin and rollback testing with libvirtd restart
     """
+    """
+    Cancelling testcase if distro version is rhel 9 and above
+    """
+    detected_distro = distro.detect()
+    if detected_distro.name == "rhel" and int(detected_distro.version) >= 9:
+        test.cancel("virsh iface-* commands are unsupported in rhel 9")
 
     if not utils_package.package_install(["mlocate"]):
         test.cancel("Failed to install dependency package mlocate"
