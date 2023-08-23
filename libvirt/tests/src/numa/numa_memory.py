@@ -1,5 +1,4 @@
 import logging as log
-import platform
 import random
 import re
 
@@ -186,21 +185,6 @@ def run(test, params, env):
         value = params.get(mem_param)
         if value:
             numa_memory[mem_param.split('_')[1]] = value
-    arch = platform.machine()
-    if 'ppc64' in arch:
-        try:
-            ppc_memory_nodeset = ""
-            nodes = numa_memory["nodeset"]
-            if '-' in nodes:
-                for nnode in range(int(nodes.split('-')[0]), int(nodes.split('-')[1]) + 1):
-                    ppc_memory_nodeset += str(node_list[nnode]) + ','
-            else:
-                node_lst = nodes.split(',')
-                for nnode in range(len(node_lst)):
-                    ppc_memory_nodeset += str(node_list[int(node_lst[nnode])]) + ','
-            numa_memory["nodeset"] = ppc_memory_nodeset[:-1]
-        except (KeyError, IndexError):
-            pass
 
     try:
         # Get host cpu list
