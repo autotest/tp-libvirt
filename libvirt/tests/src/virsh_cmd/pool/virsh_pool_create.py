@@ -66,9 +66,9 @@ def run(test, params, env):
                 logging.debug("Try to update device path")
                 new_device_name = utlv.setup_or_cleanup_iscsi(True)
                 p_xml = pool_xml.PoolXML.new_from_dumpxml(pool_name)
-                s_xml = pool_xml.SourceXML()
+                s_xml = p_xml.source
                 s_xml.device_path = new_device_name
-                p_xml.set_source(s_xml)
+                p_xml.source = s_xml
                 pool_xml_f = p_xml.xml
             if duplicate_element == "name":
                 pass

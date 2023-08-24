@@ -59,7 +59,7 @@ def run(test, params, env):
         pool_src_xml.device_path = iscsi_target
         poolxml = pool_xml.PoolXML(pool_type=pool_type)
         poolxml.name = pool_name
-        poolxml.set_source(pool_src_xml)
+        poolxml.source = pool_src_xml
         poolxml.target_path = "/dev/disk/by-path"
 
         # Create iSCSI pool.

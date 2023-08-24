@@ -124,7 +124,7 @@ def run(test, params, env):
         return iscsi_target
 
     def check_auth_in_xml(dparams):
-        sourcexml = pool_xml.PoolXML.new_from_dumpxml(pool_name).get_source()
+        sourcexml = pool_xml.PoolXML.new_from_dumpxml(pool_name).source
         with open(sourcexml.xml) as xml_f:
             logging.debug("Source XML is: \n%s", xml_f.read())
 
