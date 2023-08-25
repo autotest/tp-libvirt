@@ -450,7 +450,7 @@ name = rhel9-debug
 
     def cow_on_read_true():
         tmp_path = data_dir.get_tmp_dir()
-        image_path = os.path.join(tmp_path, 'latest-rhel9.qcow2')
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
         process.run('nbdkit file %s --filter=cow cow-on-read=true' % image_path, shell=True)
@@ -470,18 +470,75 @@ name = rhel9-debug
 
     def cow_on_read_path():
         tmp_path = data_dir.get_tmp_dir()
-        image_path = os.path.join(tmp_path, 'latest-rhel9.qcow2')
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
         cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
-        time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=%s "
-                             "--run '%s' > time1.log" % (image_path, tmp_path, cmd_inspect),
+        time_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-on-read=%s "
+                             "--run '%s' > %s/time1.log" % (image_path, tmp_path, cmd_inspect, tmp_path),
                              shell=True, ignore_status=True)
-        time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms --run '%s' > time2.log"
-                             % (image_path, cmd_inspect), shell=True, ignore_status=True)
+        time_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms --run '%s' > %s/time2.log"
+                             % (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
         if not (int(''.join(filter(str.isdigit, re.search(r'real.*m', time_1.stderr_text).group(0)))) <
                 int(''.join(filter(str.isdigit, re.search(r'real.*m', time_2.stderr_text).group(0))))):
             test.fail('fail to test cow-on-read=/path option')
+
+    def cow_block_size():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        cmd_inspect = 'virt-inspector --format=raw -a "$uri"'
+        output_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4096 "
+                               "--run '%s'" % (image_path, cmd_inspect), shell=True, ignore_status=True)
+        output_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4K "
+                               "--run '%s'" % (image_path, cmd_inspect), shell=True, ignore_status=True)
+        for output in [output_1.stderr_text, output_2.stderr_text]:
+            if re.search('nbdkit: error: cow-block-size is out of range.*not a power of 2', output):
+                test.fail('fail to test cow-block-size option')
+
+    def reduce_verbosity_debugging():
+        cmd_nbdsh = 'nbdsh -u $uri -c "h.pwrite(bytearray(1024), 0)"'
+        cmd = process.run("nbdkit -fv --filter=cow memory 10k --run '%s' |& grep 'debug: cow: blk'" % cmd_nbdsh,
+                          shell=True, ignore_status=True)
+        output = cmd.stdout_text + cmd.stderr_text
+        if len(output) != 0:
+            test.fail('nbdkit does not reduce verbosity of debugging')
+
+    def cache_on_read():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
+        time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+                             "--run '%s' > %s/time1.log" % (image_path, cmd_inspect, tmp_path),
+                             shell=True, ignore_status=True)
+        time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms "
+                             "cache-on-read=%s --run '%s' > %s/time2.log" %
+                             (image_path, tmp_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
+        time_3 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms --run '%s' > %s/time3.log"
+                             % (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
+        for time in [int(''.join(filter(str.isdigit, re.search(r'real.*m', time_1.stderr_text).group(0)))),
+                     int(''.join(filter(str.isdigit, re.search(r'real.*m', time_2.stderr_text).group(0))))]:
+            if time > int(''.join(filter(str.isdigit, re.search(r'real.*m', time_3.stderr_text).group(0)))):
+                test.fail('fail to test cache-on-read option')
+
+    def cache_min_block_size():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
+        output_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+                               "cache-min-block-size=4k --run '%s' > %s/time1.log" %
+                               (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
+        output_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+                               "cache-min-block-size=64K --run '%s' > %s/time2.log" %
+                               (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
+        for output in [output_1.stderr_text, output_2.stderr_text]:
+            if re.search('nbdkit: error: cache-min-block-size.*is too small or too large', output):
+                test.fail('fail to test cache-min-block-size option')
 
     if version_required and not multiple_versions_compare(
             version_required):
@@ -530,5 +587,13 @@ name = rhel9-debug
         cow_on_read_true()
     elif checkpoint == 'cow_on_read_path':
         cow_on_read_path()
+    elif checkpoint == 'cow_block_size':
+        cow_block_size()
+    elif checkpoint == 'reduce_verbosity_debugging':
+        reduce_verbosity_debugging()
+    elif checkpoint == 'cache_on_read':
+        cache_on_read()
+    elif checkpoint == 'cache_min_block_size':
+        cache_min_block_size()
     else:
         test.error('Not found testcase: %s' % checkpoint)
