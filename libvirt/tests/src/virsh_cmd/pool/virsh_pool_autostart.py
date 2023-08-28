@@ -102,10 +102,10 @@ def run(test, params, env):
     def change_source_path(new_path, update_policy="set"):
         n_poolxml = pool_xml.PoolXML()
         n_poolxml = n_poolxml.new_from_dumpxml(pool_name)
-        s_xml = n_poolxml.get_source()
+        s_xml = n_poolxml.source
         s_xml.device_path = new_path
         if update_policy == "set":
-            n_poolxml.set_source(s_xml)
+            n_poolxml.source = s_xml
         elif update_policy == "add":
             n_poolxml.add_source("device", {"path": new_path})
         else:
