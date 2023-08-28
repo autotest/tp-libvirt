@@ -3,11 +3,14 @@ from avocado.utils import process
 from virttest import libvirt_remote
 from virttest import libvirt_version
 from virttest import remote
+from virttest import utils_conn
 
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_config
 
 from provider.migration import base_steps
+
+tls_obj = None
 
 
 def update_qemu_conf(params, test, remote_obj, local_obj):
@@ -100,6 +103,24 @@ def run(test, params, env):
             process.run(cmd, shell=True)
         elif cert_configuration == "no_server_cert_on_target":
             remote.run_remote_cmd(cmd, params, ignore_status=False)
+        elif cert_configuration == "signed_by_diff_cert":
+            global tls_obj
+            tls_obj = utils_conn.TLSConnection(params)
+            tls_obj.ca_cn = params.get("new_ca_cn")
+            tls_obj.scp_new_cacert = "no"
+            tls_obj.conn_setup(True, False)
+
+    def cleanup_wrong_cert_configuration():
+        """
+        Cleanup steps for wrong cert configuration
+
+        """
+        test.log.info("Cleanup steps for wrong cert configuration.")
+        migration_obj.cleanup_connection()
+        if tls_obj:
+            tls_obj.auto_recover = True
+            tls_obj.__del__()
+            tls_obj.auto_recover = False
 
     libvirt_version.is_libvirt_feature_supported(params)
 
