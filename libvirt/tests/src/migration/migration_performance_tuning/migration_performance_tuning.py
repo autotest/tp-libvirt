@@ -34,6 +34,18 @@ def run(test, params, env):
             params.update({"virsh_migrate_extra": extra})
         migration_obj.setup_connection()
 
+    def setup_memory_compression():
+        """
+        Setup for memory compression
+
+        """
+        test.log.info("Setup for memory compression.")
+        setting_method = params.get("setting_method")
+        cache_size = params.get("cache_size")
+        migration_obj.setup_connection()
+        if setting_method == "set_by_migrate_compcache_and_then_do_migration":
+            virsh.migrate_compcache(vm_name, cache_size, debug=True, ignore_status=False)
+
     def verify_memory_compression():
         """
         Verify for memory compression
