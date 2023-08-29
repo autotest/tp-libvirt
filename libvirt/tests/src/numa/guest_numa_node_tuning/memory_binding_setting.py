@@ -13,6 +13,7 @@ import os
 import re
 import platform
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import libvirt_cgroup
@@ -182,6 +183,8 @@ def verify_cgroup(test_obj):
     cpuset_mems_cgroup_path = os.path.join(cg.get_cgroup_path(controller='cpuset'), surfix)
     cmd = 'cat %s' % re.escape(cpuset_mems_cgroup_path)
     cpuset_mems = process.run(cmd, shell=True).stdout_text.strip()
+    numa_info = process.run("numactl -H", ignore_status=True, shell=True).stdout_text.strip()
+    available_nodes = re.search(r'available: \d+ nodes \(([^\)]+)\)', numa_info).group(1)
     if mem_mode in ['strict', 'restrictive']:
         if cpuset_mems != nodeset:
             test_obj.test.fail("Expect cpuset.mems in "
@@ -190,10 +193,13 @@ def verify_cgroup(test_obj):
                                                nodeset,
                                                cpuset_mems))
     else:
-        if cpuset_mems:
+        expected_nodeset = '' if distro.detect().name == 'rhel' and int(distro.detect().version) >= 9 \
+                              else available_nodes
+        if cpuset_mems != expected_nodeset:
             test_obj.test.fail("Expect cpuset.mems in "
-                               "path '%s' to be '', but "
+                               "path '%s' to be '%s', but "
                                "found '%s'" % (cpuset_mems_cgroup_path,
+                                               expected_nodeset,
                                                cpuset_mems))
     test_obj.test.log.debug("Step: verify cgroup information PASS")
 

@@ -13,7 +13,7 @@ import json
 import os
 import re
 
-
+from avocado.utils import distro
 from avocado.utils import cpu as cpu_utils
 from avocado.utils import process
 
@@ -125,6 +125,9 @@ def verify_cgroup_mem_binding(test_obj):
                                                  surfix_vcpu0)
     cmd_emulator = 'cat %s' % re.escape(emulator_cpuset_mems_cgroup_path)
     cmd_vcpu0 = 'cat %s' % re.escape(vcpu0_cpuset_mems_cgroup_path)
+    numa_info = process.run("numactl -H", ignore_status=True, shell=True).stdout_text.strip()
+    available_nodes = re.search(r'available: \d+ nodes \(([^\)]+)\)', numa_info).group(1)
+
     for cmd in [cmd_emulator, cmd_vcpu0]:
         cpuset_mems = process.run(cmd, shell=True).stdout_text.strip()
         if (vcpu_placement == 'auto' and
@@ -134,15 +137,18 @@ def verify_cgroup_mem_binding(test_obj):
         elif (vcpu_placement == 'auto' and
                 mem_mode in ['interleave', 'preferred'] and
                 not nodeset):
-            expected_nodeset = ''
+            expected_nodeset = '' if distro.detect().name == 'rhel' and int(distro.detect().version) >= 9 \
+                                  else available_nodes
         elif vcpu_placement != 'auto' and mem_mode == 'none':
-            expected_nodeset = ''
+            expected_nodeset = '' if distro.detect().name == 'rhel' and int(distro.detect().version) >= 9 \
+                                  else available_nodes
         elif vcpu_placement == 'auto' and mem_mode == 'none':
             expected_nodeset = test_obj.params['nodeset_numad']
         elif mem_mode in ['strict', 'restrictive'] and nodeset:
             expected_nodeset = nodeset
         elif mem_mode in ['interleave', 'preferred'] and nodeset:
-            expected_nodeset = ''
+            expected_nodeset = '' if distro.detect().name == 'rhel' and int(distro.detect().version) >= 9 \
+                                  else available_nodes
         if cpuset_mems != expected_nodeset:
             test_obj.test.fail("Expect cpuset.mems=%s, but "
                                "found %s" % (expected_nodeset, cpuset_mems))
