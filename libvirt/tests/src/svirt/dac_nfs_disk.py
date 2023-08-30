@@ -157,7 +157,8 @@ def run(test, params, env):
             if vmxml.devices.by_device_tag('tpm') is not None:
                 qemu_conf.swtpm_user = qemu_user
                 qemu_conf.swtpm_group = qemu_group
-                set_tpm_perms(swtpm_lib)
+                if os.path.exists(swtpm_lib):
+                    set_tpm_perms(swtpm_lib)
         logging.debug("the qemu.conf content is: %s", qemu_conf)
         libvirtd.restart()
 
