@@ -540,6 +540,54 @@ name = rhel9-debug
             if re.search('nbdkit: error: cache-min-block-size.*is too small or too large', output):
                 test.fail('fail to test cache-min-block-size option')
 
+    def cve_starttls():
+        lines = """
+[rhel9-appsource]
+baseurl = pattern
+enabled = 1
+gpgcheck = 0
+name = rhel9-appsource
+        """
+        rhel9_appsource_repo = os.path.join('/etc/yum.repos.d', 'rhel9-appsource.repo')
+        with open(rhel9_appsource_repo, "w") as f:
+            f.write(lines)
+        rhel9_appsource_repo_url = params.get('rhel9_appsource_repo_url')
+        process.run("sed -i 's/pattern/%s/' /etc/yum.repos.d/rhel9-appsource.repo" % rhel9_appsource_repo_url,
+                    shell=True, ignore_status=True)
+        tmp_path = data_dir.get_tmp_dir()
+        process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
+                    ignore_status=True)
+        process.run('yum install libtool -y', shell=True, ignore_status=True)
+        process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
+                                                            stdout_text.split('/'))[-1].strip('\n')), shell=True)
+        check_file = process.run('ls /root/rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
+                                 shell=True).stdout_text.strip('\n')
+        count = 0
+        with open(check_file, "r") as ff:
+            lines = ff.readlines()
+            for line in lines:
+                if line.strip() == 'free (conn->exportname_from_set_meta_context);':
+                    count += 1
+        if count == 0:
+            test.fail('fail to test nbdkit cve starttls')
+
+    def test_protect_filter():
+        from subprocess import Popen, PIPE, STDOUT
+        protect_data = '"AB" * 32768'
+        p1 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u nbd://localhost'" %
+                   protect_data, shell=True, stdout=PIPE, stdin=PIPE, stderr=STDOUT)
+
+        grep_stdout_1 = p1.communicate(input=b"buf=b'01'*256\nh.pwrite(buf,32768)\nprint(h.pread(512,32768))\n")[0]
+        if re.search('AB', grep_stdout_1.decode()):
+            test.fail('the data is incorrect when write data with protect filter')
+        p2 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u nbd://localhost'" %
+                   protect_data, shell=True, stdout=PIPE, stdin=PIPE, stderr=STDOUT)
+
+        grep_stdout_2 = p2.communicate(input=b"buf=b'01'*256\nh.pwrite(buf,32768)\nprint(h.pread(512,32768))\n"
+                                             b"h.pwrite(buf,0)\n")[0]
+        if not re.search('Operation not permitted ', grep_stdout_2.decode()):
+            test.fail('fail to test protect filter')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -595,5 +643,9 @@ name = rhel9-debug
         cache_on_read()
     elif checkpoint == 'cache_min_block_size':
         cache_min_block_size()
+    elif checkpoint == 'cve_starttls':
+        cve_starttls()
+    elif checkpoint == 'test_protect_filter':
+        test_protect_filter()
     else:
         test.error('Not found testcase: %s' % checkpoint)
