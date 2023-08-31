@@ -58,7 +58,7 @@ def run(test, params, env):
         test.log.info("Save the VM.")
         save_error = "yes" == params.get("save_error", "no")
         save_path = os.path.join(data_dir.get_tmp_dir(), vm.name + '.save')
-        res = virsh.save(vm.name, 'sss', debug=True)
+        res = virsh.save(vm.name, save_path, debug=True)
         libvirt.check_exit_status(res, expect_error=save_error)
         if not save_error:
             test.log.info("Restore vm.")
