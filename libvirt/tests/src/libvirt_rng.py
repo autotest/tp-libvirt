@@ -629,7 +629,7 @@ def run(test, params, env):
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
                 bgjob = utils_misc.AsyncJob(cmd)
 
-            if all([guest_arch == 'x86_64', random_source, params.get("backend_type") == "udp", test_guest_dump]):
+            if all([random_source, params.get("backend_type") == "udp", test_guest_dump]):
                 if not utils_package.package_install("socat"):
                     test.error("Failed to install socat on host")
                 cmd1 = "cat /dev/urandom|nc -l 127.0.0.1 1235"
