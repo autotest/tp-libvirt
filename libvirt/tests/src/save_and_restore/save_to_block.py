@@ -58,7 +58,7 @@ def run(test, params, env):
         if vm.state() != 'running':
             test.fail(f'VM should be running after restore, not {vm.state()}')
 
-        avc_denied = process.run('grep avc -i /var/log/audit/audit.log',
+        avc_denied = process.run("grep -E 'avc:.*denied' /var/log/audit/audit.log",
                                  ignore_status=True).stdout_text.strip()
         if avc_denied:
             test.fail(f'Got avc denied:\n{avc_denied}')
