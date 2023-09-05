@@ -83,7 +83,8 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(dom.name)
         vmxml_backup.append(vmxml.copy())
     tmpdir = data_dir.get_tmp_dir()
-    mount_point = tmpdir
+    mount_point = tmpdir + "/smalldiskmountpoint"
+    os.mkdir(mount_point)
     small_part = os.path.join(tmpdir, params.get("part_name", "io-error_part"))
 
     def create_iface_xml():
@@ -553,6 +554,7 @@ def run(test, params, env):
                     process.run("truncate -s %s %s" % (part_size, small_part), shell=True)
                     utlv.mkfs(small_part, part_format)
                     utils_misc.mount(small_part, mount_point, None)
+                    new_disk = mount_point + "/%s_new_disk.img" % dom.name
                     add_disk(dom.name, new_disk, 'vdb', '--subdriver qcow2 --config', 'qcow2')
                     dom.start()
                     session = dom.wait_for_login()
@@ -712,3 +714,5 @@ def run(test, params, env):
             utils_misc.umount("/dev/loop0", mount_point, part_format)
         if os.path.exists(small_part):
             os.unlink(small_part)
+        if os.path.exists(mount_point):
+            shutil.rmtree(mount_point)
