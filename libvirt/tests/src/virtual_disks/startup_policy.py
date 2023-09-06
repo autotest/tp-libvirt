@@ -165,31 +165,30 @@ def run(test, params, env):
         shutil.copyfile(disk_xml, disk_xml_file)
         return disk_xml
 
-    def check_in_vm(old_parts):
+    def check_in_vm(old_parts, device_type):
         """
         Check mount/read/write disk in VM.
 
         :param old_parts: pre-operated partitions in VM.
+        :param device_type: test parameter, e.g. 'cdrom', 'floppy'
         :return: True if check successfully.
         """
         try:
             session = vm.wait_for_login()
-            new_parts = utils_disk.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list_by_path(session)
             logging.debug("new parted:%s", new_parts)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
-            if len(added_parts) != 1:
-                logging.error("The number of new partitions is invalid in VM")
-                return False
-            added_part = added_parts[0]
-            if not added_part:
+            if len(added_parts) == 0:
                 logging.error("Can't see added partition in VM")
                 return False
-            if 'sr' not in added_part and 'fd' not in added_part:
-                cmd = ("fdisk -l /dev/{0} && mkfs.ext4 -F /dev/{0} && "
-                       "mkdir -p test && mount /dev/{0} test && echo"
+            added_part = added_parts[0]
+            if device_type not in ["cdrom", "floppy"]:
+
+                cmd = ("fdisk -l {0} && mkfs.ext4 -F {0} && "
+                       "mkdir -p test && mount {0} test && echo"
                        " teststring > test/testfile && umount test"
-                       .format(added_part))
+                       .format("/dev/disk/by-path/%s" % added_part))
                 status, output = session.cmd_status_output(cmd)
                 logging.info("Check disk operation in VM:\n%s", output)
                 if status != 0:
@@ -342,7 +341,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = utils_disk.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list_by_path(session)
     session.close()
     vm.destroy(gracefully=False)
 
@@ -459,7 +458,7 @@ def run(test, params, env):
             # Step 1. Start domain and destroy it normally.
             vm.start()
             # Step 1 Start VM successfully.
-            if not check_in_vm(old_parts):
+            if not check_in_vm(old_parts, device_type):
                 test.fail("Check disk partitions in VM failed")
 
             # Step 2 Destroy VM, move the volume to other place, refresh the pool, then start the guest.
