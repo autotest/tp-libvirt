@@ -110,6 +110,7 @@ chardev
 chardevs
 checksum
 checksums
+Cheng
 chipset
 chmod
 chnaged
@@ -487,6 +488,7 @@ kvm
 KVM
 kwargs
 lan
+lcheng
 lchown
 libexec
 libguestfs
@@ -505,6 +507,7 @@ libvrtd
 lifecycle
 Lifecycle
 linux
+Liping
 localhost
 localvm
 lockspace
