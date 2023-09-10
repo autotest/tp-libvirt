@@ -116,7 +116,7 @@ def run(test, params, env):
         status, stdout = session.cmd_status_output("swapoff -a; memhog %s" % (
                 mem_free - 204800))
         if status:
-            raise test.fail("Failed to consume memory:%s", stdout)
+            raise test.fail("Failed to consume memory:%s" % stdout)
 
         virsh.destroy(vm.name, **VIRSH_ARGS)
 
