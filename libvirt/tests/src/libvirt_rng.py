@@ -641,11 +641,6 @@ def run(test, params, env):
             # Wait guest to enter boot stage
             time.sleep(3)
 
-            # Feed the tcp random device some data
-            if test_guest_dump and params.get("backend_type") == "tcp":
-                cmd = "cat /dev/random | nc -4 localhost 1024"
-                bgjob = utils_misc.AsyncJob(cmd)
-
             if attach_rng:
                 ret = virsh.attach_device(vm_name, rng_xml.xml,
                                           flagstr=attach_options,
@@ -660,6 +655,11 @@ def run(test, params, env):
                 # Start the VM.
                 if start_error:
                     test.fail("VM started unexpectedly")
+
+            # Feed the tcp random device some data
+            if test_guest_dump and params.get("backend_type") == "tcp":
+                cmd = "cat /dev/random | nc -4 localhost 1024"
+                bgjob = utils_misc.AsyncJob(cmd)
 
             # Add udp random server to feed aarch64 guest to speed up boot
             # https://bugzilla.redhat.com/show_bug.cgi?id=1983544
