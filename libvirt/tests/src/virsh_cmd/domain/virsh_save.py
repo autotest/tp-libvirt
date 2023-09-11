@@ -155,3 +155,5 @@ def run(test, params, env):
     finally:
         if vm.is_paused():
             virsh.resume(vm_name)
+        if os.path.exists(savefile):
+            os.remove(savefile)
