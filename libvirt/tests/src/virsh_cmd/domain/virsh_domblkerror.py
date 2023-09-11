@@ -14,6 +14,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.staging.service import Factory
+from virttest.utils_package import package_install
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -27,6 +28,9 @@ def run(test, params, env):
     1. unspecified error
     2. no space
     """
+    # Install nfs-utils package.
+    if not package_install("nfs-utils"):
+        test.cancel("Need nfs-utils package for exportfs command, can't install it")
 
     if not virsh.has_help_command('domblkerror'):
         test.cancel("This version of libvirt does not support domblkerror "
