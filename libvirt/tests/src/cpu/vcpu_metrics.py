@@ -126,6 +126,8 @@ def setup_with_unprivileged_user(vm, params, test):
     interface_attrs = eval(params.get('interface_attrs', '{}'))
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
     params['backup_vmxml'] = vmxml.copy()
+    test.log.debug("Remove 'dac' security driver for unprivileged user")
+    vmxml.del_seclabel(by_attr=[('model', 'dac')])
     libvirt_vmxml.modify_vm_device(vmxml, 'interface', interface_attrs)
     boot_disk = vmxml.devices.by_device_tag('disk')[0]
     first_disk_source = boot_disk.fetch_attrs()['source']['attrs']['file']
