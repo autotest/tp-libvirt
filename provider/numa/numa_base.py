@@ -12,6 +12,7 @@ import re
 from avocado.core import exceptions
 from avocado.utils import process
 
+from virttest import cpu
 from virttest import libvirt_version
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
@@ -179,3 +180,15 @@ def convert_to_string_with_dash(nodeset):
     if len(nodes) > 1 and int(nodes[1]) == int(nodes[0]) + 1:
         return "%s-%s" % (nodes[0], nodes[1])
     return nodeset
+
+
+def convert_to_list_of_int(cpus_in_short, cpu_num):
+    """
+    Convert cpu string to a list of integer
+
+    :param cpus_in_short: str, like '0-3', '0-4,^2'
+    :param cpu_num: str, number of cpus
+    :return: list, the list of cpu id, like [0, 1]
+    """
+    cpu_list = cpu.cpus_string_to_affinity_list(cpus_in_short, cpu_num)
+    return [index for index in range(0, len(cpu_list)) if cpu_list[index] == 'y']
