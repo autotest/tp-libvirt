@@ -54,7 +54,7 @@ def run(test, params, env):
         set_ga_status(vm_name, start=True)
 
         virsh.reboot(vm.name, options="--mode agent", wait_for_event=True,
-                     event_type="disconnected.*\n.*reboot.*(\n.*)*connected",
+                     event_type="disconnected.*\n.*reboot.*(\n.*)*connected", event_timeout=60,
                      debug=True, ignore_status=False)
         virsh.shutdown(
             vm.name, options="--mode agent", wait_for_event=True,
