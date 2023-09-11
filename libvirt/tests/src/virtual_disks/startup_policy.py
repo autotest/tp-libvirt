@@ -23,6 +23,7 @@ from virttest import libvirt_version
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+new_source_file = ""
 
 
 def run(test, params, env):
@@ -282,8 +283,10 @@ def run(test, params, env):
             :param update: update value or not
             :param policy: policy value
             :return: flag_option and boolean value
+                     and new_source_file path
             """
             source_file = policy_item.get('file')
+            global new_source_file
             if update:
                 new_source_file = source_file+".empty"
             else:
@@ -518,5 +521,9 @@ def run(test, params, env):
             os.remove(disk_xml_file)
         if os.path.exists(media_file):
             os.remove(media_file)
+        if os.path.exists(media_file_new):
+            os.remove(media_file_new)
+        if os.path.exists(new_source_file):
+            os.remove(new_source_file)
         if os.path.exists(disk_xml_policy_file):
             os.remove(disk_xml_policy_file)
