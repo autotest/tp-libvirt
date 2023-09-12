@@ -534,7 +534,8 @@ def run(test, params, env):
             make_relative_path_backing_files(pre_set_root_dir)
             blk_source_folder = create_reuse_external_snapshots(pre_set_root_dir)
         else:
-            make_disk_snapshot(postfix_n, snapshot_take, check_snapshot_tree, check_image_file_in_vm)
+            is_create_image_file_in_vm = True if status_error else check_image_file_in_vm
+            make_disk_snapshot(postfix_n, snapshot_take, check_snapshot_tree, is_create_image_file_in_vm)
 
         basename = os.path.basename(blk_source)
         diskname = basename.split(".")[0]
