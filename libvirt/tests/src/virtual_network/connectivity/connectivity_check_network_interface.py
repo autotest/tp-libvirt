@@ -31,7 +31,7 @@ def run(test, params, env):
         LOG.info('TEST_SETUP: confirm the firewalld is running, '
                  'if not, start firewalld and then '
                  'restart libvirtd or virtqemud)')
-        if not libvirt_service.ensure_service_started('firewalld'):
+        if not libvirt_service.ensure_service_status('firewalld'):
             utils_libvirtd.libvirtd_restart()
 
         LOG.info('TEST_SETUP: define and start a virtual network with forward '

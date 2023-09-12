@@ -191,17 +191,17 @@ def run(test, params, env):
             pool_src_xml.device_path = iscsi_target
             poolxml = pool_xml.PoolXML(pool_type=pool_type)
             poolxml.name = disk_src_pool
-            poolxml.set_source(pool_src_xml)
+            poolxml.source = pool_src_xml
             poolxml.target_path = pool_target
             if chap_auth:
                 pool_src_xml.auth_type = "chap"
                 pool_src_xml.auth_username = chap_user
                 pool_src_xml.secret_usage = secret_usage_target
-                poolxml.set_source(pool_src_xml)
+                poolxml.source = pool_src_xml
             if pool_type == "iscsi-direct":
                 iscsi_initiator = params.get('iscsi_initiator')
                 pool_src_xml.iqn_name = iscsi_initiator
-                poolxml.set_source(pool_src_xml)
+                poolxml.source = pool_src_xml
             # Create iscsi/iscsi-direct pool
             cmd_result = virsh.pool_create(poolxml.xml, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)

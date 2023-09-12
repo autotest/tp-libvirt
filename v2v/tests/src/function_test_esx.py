@@ -808,6 +808,9 @@ def run(test, params, env):
                 fd.write(res.lower())
                 fd.flush()
 
+        if 'invalid_os_storage' in checkpoint:
+            v2v_params['os_storage_name'] = v2v_params['os_storage_name'].replace('_', '*')
+
         if 'without_default_net' in checkpoint:
             net_name = find_net('virbr0')
             if net_name:

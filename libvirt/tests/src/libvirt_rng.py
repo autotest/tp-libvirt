@@ -629,7 +629,7 @@ def run(test, params, env):
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
                 bgjob = utils_misc.AsyncJob(cmd)
 
-            if all([guest_arch == 'x86_64', random_source, params.get("backend_type") == "udp", test_guest_dump]):
+            if all([random_source, params.get("backend_type") == "udp", test_guest_dump]):
                 if not utils_package.package_install("socat"):
                     test.error("Failed to install socat on host")
                 cmd1 = "cat /dev/urandom|nc -l 127.0.0.1 1235"
@@ -640,11 +640,6 @@ def run(test, params, env):
             vm.start()
             # Wait guest to enter boot stage
             time.sleep(3)
-
-            # Feed the tcp random device some data
-            if test_guest_dump and params.get("backend_type") == "tcp":
-                cmd = "cat /dev/random | nc -4 localhost 1024"
-                bgjob = utils_misc.AsyncJob(cmd)
 
             if attach_rng:
                 ret = virsh.attach_device(vm_name, rng_xml.xml,
@@ -660,6 +655,11 @@ def run(test, params, env):
                 # Start the VM.
                 if start_error:
                     test.fail("VM started unexpectedly")
+
+            # Feed the tcp random device some data
+            if test_guest_dump and params.get("backend_type") == "tcp":
+                cmd = "cat /dev/random | nc -4 localhost 1024"
+                bgjob = utils_misc.AsyncJob(cmd)
 
             # Add udp random server to feed aarch64 guest to speed up boot
             # https://bugzilla.redhat.com/show_bug.cgi?id=1983544

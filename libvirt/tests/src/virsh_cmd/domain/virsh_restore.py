@@ -216,3 +216,5 @@ def run(test, params, env):
                 export_dir=params.get("export_dir"), rm_export_dir=False)
         if setup_iscsi:
             libvirt.setup_or_cleanup_iscsi(False)
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)

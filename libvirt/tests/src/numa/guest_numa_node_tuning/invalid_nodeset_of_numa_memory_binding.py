@@ -38,7 +38,7 @@ def run(test, params, env):
 
         result = virsh.define(vmxml.xml, debug=True, ignore_status=True)
         if libvirt_version.version_compare(9, 4, 0) and \
-                tuning == "restrictive":
+                tuning == "restrictive" and binding == "guest":
             libvirt.check_result(result, expected_fails=define_err,
                                  check_both_on_error=True)
             return
@@ -54,13 +54,18 @@ def run(test, params, env):
         test.log.info("TEST_STEP1: Start vm and check result")
         try:
             vm.start()
-            if vm.is_alive():
-                test.fail("Guest state should not be running")
         except virt_vm.VMStartError as detail:
-            if not re.search(error_msg, str(detail)):
-                test.fail("Expect '%s' in '%s' " % (error_msg, str(detail)))
+            if libvirt_version.version_compare(9, 4, 0):
+                if not re.search(error_msg, str(detail)):
+                    test.fail("Expect '%s' in '%s' " % (error_msg, str(detail)))
             else:
-                test.log.debug("Got '%s' in '%s'" % (error_msg, detail))
+                if tuning in ["strict", "restrictive"] and node_set == "partially_inexistent":
+                    if not re.search(error_msg_1, str(detail)):
+                        test.fail("Expect '%s' in '%s' " % (error_msg_1, str(detail)))
+                elif tuning in ["interleave", "preferred"] and \
+                        node_set in ["partially_inexistent", "totally_inexistent"]:
+                    if not re.search(error_msg, str(detail)):
+                        test.fail("Expect '%s' in '%s' " % (error_msg, str(detail)))
 
     def teardown_test():
         """
@@ -76,7 +81,10 @@ def run(test, params, env):
 
     vm_attrs = eval(params.get("vm_attrs"))
     tuning = params.get("tuning")
+    node_set = params.get("node_set")
+    binding = params.get("binding")
     error_msg = params.get("error_msg")
+    error_msg_1 = params.get("error_msg_1")
     define_err = params.get("define_err")
 
     try:

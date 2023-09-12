@@ -7,6 +7,7 @@ from virttest import remote
 from virttest import utils_package
 from virttest import utils_misc
 from virttest import virsh
+from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
@@ -224,6 +225,7 @@ def run(test, params, env):
 
     vm_name = params.get("migrate_main_vm")
 
+    libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 

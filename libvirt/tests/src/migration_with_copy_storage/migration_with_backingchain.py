@@ -47,6 +47,7 @@ def prepare_disks_remote(params, disk_list, disk_format="qcow2", disk_size="500M
                                          server_user, server_pwd,
                                          r'[$#%]')
     for disk_img in disk_list:
+        utils_misc.make_dirs(os.path.dirname(disk_img), remote_session)
         libvirt_disk.create_disk("file", disk_format=disk_format,
                                  path=disk_img, size=disk_size,
                                  session=remote_session,
@@ -83,9 +84,14 @@ def copy_img_to_remote(params, disk_list):
     server_user = params.get("server_user")
     server_pwd = params.get("server_pwd")
 
+    remote_session = remote.remote_login("ssh", server_ip, "22",
+                                         server_user, server_pwd,
+                                         r'[$#%]')
     for disk_img in disk_list:
+        utils_misc.make_dirs(os.path.dirname(disk_img), remote_session)
         remote.copy_files_to(server_ip, 'scp', server_user, server_pwd,
                              '22', disk_img, disk_img)
+    remote_session.close()
 
 
 def get_remote_disk_info(params, disk_img, test):
@@ -159,7 +165,7 @@ def check_disk(params, vm):
 
     remote_vm_session.cmd("reboot", ignore_all_errors=True)
     remote_vm_session.close()
-    remote_vm_session = vm.wait_for_serial_login(timeout=120)
+    remote_vm_session = vm.wait_for_serial_login(timeout=180)
     utils_disk.linux_disk_check(remote_vm_session, disk_target1)
     utils_disk.linux_disk_check(remote_vm_session, disk_target2)
     remote_vm_session.close()

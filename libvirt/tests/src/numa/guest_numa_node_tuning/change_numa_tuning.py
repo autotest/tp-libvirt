@@ -77,14 +77,15 @@ def verify_host_numa_memory_allocation(test_obj, check_N0=False):
     :param test_obj: NumaTest object
     """
     mem_size = get_memory_in_vmxml(test_obj)
+    kernelpagesize_kB = test_obj.params.get('kernelpagesize_kB')
     out_numa_maps = numa_base.get_host_numa_memory_alloc_info(mem_size)
     all_nodes = test_obj.all_usable_numa_nodes
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
     N1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)
-    has_kernelpage = bool(re.search('kernelpagesize_kB=4', out_numa_maps))
+    has_kernelpage = bool(re.search('kernelpagesize_kB=%s' % kernelpagesize_kB, out_numa_maps))
     if not has_kernelpage:
         test_obj.test.fail("The numa_maps should "
-                           "include 'kernelpagesize_kB=4'， but not found")
+                           "include 'kernelpagesize_kB=%s'， but not found" % kernelpagesize_kB)
     if not N1_value:
         test_obj.test.fail("The numa_maps should "
                            "include 'N%s=', but not found" % all_nodes[1])

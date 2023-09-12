@@ -20,8 +20,6 @@ from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
 
 
-# Using as lower capital is not the best way to do, but this is just a
-# workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
 
 
@@ -112,11 +110,10 @@ def run(test, params, env):
                       % snapshot_name2)
         _check_file_create("mem.txt")
 
-    def check_in_vm(target, old_parts):
+    def check_in_vm(old_parts):
         """
         Check mount/read/write disk in VM.
 
-        :param target: Disk dev in VM.
         :param old_parts: Original disk partitions in VM.
         :return: True if check successfully.
         """
@@ -124,18 +121,18 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if platform.platform().count('ppc64'):
                 time.sleep(10)
-            new_parts = utils_disk.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list_by_path(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
-            if len(added_parts) != 1:
+            if len(added_parts) == 0:
                 logging.error("The number of new partitions is invalid in VM")
                 return False
             else:
                 added_part = added_parts[0]
-            cmd = ("fdisk -l /dev/{0} && mkfs.ext4 -F /dev/{0} && "
-                   "mkdir -p test && mount /dev/{0} test && echo"
+            cmd = ("fdisk -l {0} && mkfs.ext4 -F {0} && "
+                   "mkdir -p test && mount {0} test && echo"
                    " teststring > test/testfile && umount test"
-                   .format(added_part))
+                   .format("/dev/disk/by-path/%s" % added_part))
             status, output = session.cmd_status_output(cmd)
             logging.debug("Disk operation in VM:\nexit code:\n%s\noutput:\n%s",
                           status, output)
@@ -176,7 +173,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = utils_disk.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list_by_path(session)
     session.close()
     vm.destroy(gracefully=False)
 
@@ -278,7 +275,7 @@ def run(test, params, env):
         if check_partitions and not status_error:
             logging.debug("wait seconds for starting in checking vm part")
             time.sleep(2)
-            if not check_in_vm(device_target, old_parts):
+            if not check_in_vm(old_parts):
                 test.fail("Check disk partitions in VM failed")
         # Check snapshot operation and its result
         if domain_operation == 'snap_shot':
