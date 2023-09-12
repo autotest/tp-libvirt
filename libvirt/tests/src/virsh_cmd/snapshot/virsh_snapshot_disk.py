@@ -422,7 +422,7 @@ def run(test, params, env):
             session.close()
 
         # Test delete snapshot without "--metadata", delete external disk
-        # snapshot will fail for now.
+        # snapshot deletion with external disk unsupported in libvirt version lower than 9.0.0
         # Only do this when snapshot create succeed which filtered in cfg file.
         if snapshot_del_test:
             if snapshot_name:
@@ -439,7 +439,7 @@ def run(test, params, env):
                             test.fail("Snapshot xml file %s missing"
                                       % snap_xml_path)
                 else:
-                    if status_error:
+                    if (not libvirt_version.version_compare(9,0,0)) and status_error:
                         err_msg = "Snapshot delete succeed but expect fail."
                         test.fail(err_msg)
                     else:
