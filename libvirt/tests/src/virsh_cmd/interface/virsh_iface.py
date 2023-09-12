@@ -3,6 +3,7 @@ import logging as log
 
 from avocado.utils import process
 from avocado.utils import path as utils_path
+from avocado.utils import distro
 
 from virttest import utils_net
 from virttest import virsh
@@ -127,6 +128,12 @@ def run(test, params, env):
     device by default. You can specify the interface which you want, but be
     careful.
     """
+    """
+    Cancelling testcase if distro version is rhel 9 and above
+    """
+    detected_distro = distro.detect()
+    if detected_distro.name == "rhel" and int(detected_distro.version) >= 9:
+        test.cancel("virsh iface-* commands are unsupported in rhel 9")
 
     iface_name = params.get("iface_name", "ENTER.BRIDGE.NAME")
     iface_xml = params.get("iface_xml")

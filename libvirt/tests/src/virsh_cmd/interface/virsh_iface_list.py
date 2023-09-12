@@ -8,6 +8,7 @@ import logging as log
 import re
 
 from avocado.utils import process, astring
+from avocado.utils import distro
 from virttest import virsh
 
 
@@ -33,6 +34,11 @@ def run(test, params, env):
     (3) Get interface MAC address by interface name
     (4) Get interface name by interface MAC address
     """
+    """Cancelling testcase if distro version is rhel 9 and above"""
+    detected_distro = distro.detect()
+    if detected_distro.name == "rhel" and int(detected_distro.version) >= 9:
+        test.cancel("virsh iface-* commands are unsupported in rhel 9")
+
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     opt = params.get('opt', '')

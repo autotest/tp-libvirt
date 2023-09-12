@@ -2,7 +2,7 @@ import os
 import logging as log
 
 from avocado.utils import process
-
+from avocado.utils import distro
 from avocado.utils import path as utils_path
 
 from virttest import utils_net
@@ -27,6 +27,12 @@ def run(test, params, env):
     (1) Bridge an existing network device(iface-bridge).
     (2) Unbridge a network device(iface-unbridge).
     """
+    """
+    Cancelling the testcase if distro version is rhel 9 and above
+    """
+    detected_distro = distro.detect()
+    if detected_distro.name == "rhel" and int(detected_distro.version) >= 9:
+        test.cancel("virsh iface-* commands are unsupported in rhel 9")
 
     bridge_name = params.get("bridge_name")
     ping_ip = params.get("ping_ip", "")
