@@ -3,6 +3,7 @@ import os
 import shutil
 import logging as log
 import platform
+import time
 import signal
 
 from aexpect import ShellTimeoutError
@@ -202,7 +203,9 @@ def run(test, params, env):
             elif vm_action == "kill":
                 if kill_action == "stop_libvirtd":
                     libvirtd.stop()
+                    time.sleep(1)
                     utils_misc.kill_process_by_pattern(vm_name)
+                    time.sleep(1)
                     libvirtd.restart()
                 elif kill_action == "reboot_vm":
                     virsh.reboot(vm_name, ignore_status=False)
