@@ -1,4 +1,5 @@
 import os
+import time
 import logging as log
 
 from avocado.utils import download
@@ -108,6 +109,7 @@ def run(test, params, env):
         """
         check_cmd = params['check_cmd']
         lspci_output = session.cmd_output(check_cmd)
+        time.sleep(10)
         session.cmd_output('pkill -9 hexdump')
         if 'No such file or directory' in lspci_output and device_exists:
             test.fail('Can not detect device by %s.' % check_cmd)
