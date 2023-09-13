@@ -84,7 +84,7 @@ def run(test, params, env):
         logging.info("hostdev xml is: %s", hostdev_xml)
         return hostdev_xml
 
-    def prepare_iscsi_lun(emulated_img="emulated-iscsi", img_size='1G'):
+    def prepare_iscsi_lun(emulated_img="emulated-iscsi", img_size='100M'):
         """
         Prepare iscsi lun
 
@@ -108,7 +108,7 @@ def run(test, params, env):
                                                                portal_ip="127.0.0.1")
         return iscsi_target, lun_num
 
-    def prepare_local_scsi(emulated_img="emulated-iscsi", img_size='1G'):
+    def prepare_local_scsi(emulated_img="emulated-iscsi", img_size='100M'):
         """
         Prepare a local scsi device
 
