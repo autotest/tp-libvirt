@@ -131,6 +131,11 @@ def run(test, params, env):
         hp_cfg = test_setup.HugePageConfig(params)
         hp_cfg.cleanup()
 
+    conf_pagesize = params.get("conf_pagesize")
+    kernel_pagesize = process.run("getconf PAGESIZE", shell=True).stdout_text.strip()
+    if kernel_pagesize != conf_pagesize:
+        test.cancel("The current test does not work with this kernel pagesize.")
+
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
