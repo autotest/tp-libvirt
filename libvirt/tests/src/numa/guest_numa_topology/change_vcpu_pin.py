@@ -143,19 +143,18 @@ def run_default(test_obj):
     """
     test_obj.test.log.info("Step: prepare vm xml")
     vmxml = prepare_vm_xml(test_obj)
-    test_obj.virsh_dargs.update({'ignore_status': True})
-    test_obj.test.log.info("Step: define vm and check result")
+    test_obj.test.log.info("Step: define vm")
     ret = virsh.define(vmxml.xml, **test_obj.virsh_dargs)
-    test_obj.virsh_dargs.update({'ignore_status': False})
+    test_obj.virsh_dargs.update({'ignore_status': True})
+    test_obj.test.log.info("Step: start vm and check result")
+    ret = virsh.start(test_obj.vm.name, **test_obj.virsh_dargs)
     err_msg_expected = produce_expected_error(test_obj)
     libvirt.check_result(ret, expected_fails=err_msg_expected)
-    #  Some negative cases will fail to define the vm, so they will return
+    #  Some negative cases will fail to start the vm, so they will return
     #  to skip following steps
     if err_msg_expected:
         return
-
-    test_obj.test.log.info("Step: start vm")
-    test_obj.vm.start()
+    test_obj.virsh_dargs.update({'ignore_status': False})
     test_obj.test.log.debug("After vm is started, vm xml:\n"
                             "%s", vm_xml.VMXML.new_from_dumpxml(test_obj.vm.name))
     test_obj.vm.wait_for_login().close()
