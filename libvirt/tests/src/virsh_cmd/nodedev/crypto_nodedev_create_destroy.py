@@ -4,11 +4,13 @@ import os
 
 from uuid import uuid1
 
+from avocado.utils import process
 from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_misc
 from virttest.utils_zcrypt import CryptoDeviceInfoBuilder, \
     APMaskHelper, load_vfio_ap, unload_vfio_ap
+from virttest.libvirt_xml import nodedev_xml
 from tempfile import mktemp
 
 # minimal supported hwtype
@@ -94,7 +96,7 @@ def destroy_nodedev(dev_name):
     time.sleep(10)
 
 
-def check_device_was_destroyed(test):
+def check_device_was_destroyed(test, dev_name):
     """
     Check if the device was created successfully
 
@@ -103,6 +105,37 @@ def check_device_was_destroyed(test):
     if find_devices_by_cap(test, 'mdev'):
         test.fail("The mdev device is still found after destroyed which is "
                   "not expected")
+    else:
+        dev_name = None
+
+
+def check_device_attributes_are_dumped(test, dev_name, adapter, domain):
+    """
+    Check if the attributes are listed in the dump
+
+    :param test: test object
+    :param dev_name: libvirt's name for the node device
+    :param adapter: adapter number in base 16
+    :param domain: domain number in base 16
+    """
+
+    process.run("udevadm settle")
+    nodedevice_xml = nodedev_xml.NodedevXML.new_from_dumpxml(dev_name)
+    mdev_cap_xml = nodedevice_xml.get_cap()
+    logging.debug("MdevXML: %s", mdev_cap_xml)
+    attrs = mdev_cap_xml['attrs']
+
+    is_correct_length = len(attrs) == 2
+    is_correct_adapter = False
+    is_correct_domain = False
+    if is_correct_length:
+        adapter_value = [x['value'] for x in attrs if x['name'] == 'assign_adapter'][0]
+        domain_value = [x['value'] for x in attrs if x['name'] == 'assign_domain'][0]
+        is_correct_adapter = int(adapter, 16) == int(adapter_value)
+        is_correct_domain = int(domain, 16) == int(domain_value)
+    if not (is_correct_length and is_correct_adapter and is_correct_domain):
+        test.fail('The mediated device attributes are incorrect: '
+                  '%s' % mdev_cap_xml)
 
 
 def run(test, params, env):
@@ -111,9 +144,10 @@ def run(test, params, env):
     2. Passthrough the crypto device
     2. Create the mdev
     3. Confirm the mdev was created successfully
-    4. Confirm device availability in guest
-    5. Destroy the mdev
-    6. Confirm the mdev was destroyed successfully
+    4. Confirm attributes are dumped
+    5. Confirm device availability in guest
+    6. Destroy the mdev
+    7. Confirm the mdev was destroyed successfully
 
     NOTE: It can take a while after loading vfio_ap for the
           matrix device to become available due to current
@@ -132,6 +166,7 @@ def run(test, params, env):
     matrix_cap = 'ap_matrix'
     device_file = None
     mask_helper = None
+    dev_name = None
 
     info = CryptoDeviceInfoBuilder.get()
     if int(info.entries[0].hwtype) < HWTYPE:
@@ -152,9 +187,15 @@ def run(test, params, env):
         check_device_was_created(test, uuid, adapter, domain)
         # the test assumes there's no other mdev
         dev_name = find_devices_by_cap(test, 'mdev')[0]
+        check_device_attributes_are_dumped(test, dev_name, adapter, domain)
         destroy_nodedev(dev_name)
-        check_device_was_destroyed(test)
+        check_device_was_destroyed(test, dev_name)
     finally:
+        if dev_name:
+            try:
+                destroy_nodedev(dev_name)
+            except:
+                pass
         if mask_helper:
             mask_helper.return_to_host_all()
         unload_vfio_ap()
