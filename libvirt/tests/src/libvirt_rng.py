@@ -5,7 +5,6 @@ import shutil
 import logging as log
 import uuid
 import aexpect
-import socket
 import time
 
 from six.moves import xrange
@@ -453,36 +452,6 @@ def run(test, params, env):
         else:
             test.fail("Unknown rng model %s" % rng_model)
 
-    def add_udp_random_server():
-        """
-        Feed the udp rng device some data.
-        It's prepared for aarch64 due to below issue.
-        https://bugzilla.redhat.com/show_bug.cgi?id=1983544
-        """
-        backend_source_list = params.get("backend_source", "").split()
-        backend_type = params.get("backend_type", "tcp")
-        if backend_source_list:
-            source_list = [ast.literal_eval(source) for source in
-                           backend_source_list]
-
-        for udp_info in source_list:
-            if udp_info["mode"] == "connect":
-                udp_ip = udp_info["host"]
-                udp_port = int(udp_info["service"])
-                logging.debug("UDP_IP is %s, UDP_PORT is %s" % (udp_ip, udp_port))
-
-                try:
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    sock.bind((udp_ip, udp_port))
-                    for i in range(5):
-                        data, addr = sock.recvfrom(1024)
-                        logging.debug("SEND DATA")
-                        sock.sendto(b"AB" * 1024, addr)
-                except Exception as e:
-                    test.fail("Guest failed to connect udp server: %s" % str(e))
-                finally:
-                    sock.close()
-
     def rotate_audit_log():
         """
         Rotates the audit log so that the current log only contains
@@ -660,11 +629,6 @@ def run(test, params, env):
             if test_guest_dump and params.get("backend_type") == "tcp":
                 cmd = "cat /dev/random | nc -4 localhost 1024"
                 bgjob = utils_misc.AsyncJob(cmd)
-
-            # Add udp random server to feed aarch64 guest to speed up boot
-            # https://bugzilla.redhat.com/show_bug.cgi?id=1983544
-            if guest_arch == 'aarch64' and params.get("backend_type") == "udp":
-                add_udp_random_server()
 
             if test_qemu_cmd and not attach_rng:
                 if device_num > 1:
