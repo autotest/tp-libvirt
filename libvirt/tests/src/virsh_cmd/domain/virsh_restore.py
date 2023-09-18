@@ -69,6 +69,7 @@ def run(test, params, env):
     vm_ref_uid = None
     vm_ref_gid = None
     qemu_conf = None
+    tmp_file = ""
 
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
