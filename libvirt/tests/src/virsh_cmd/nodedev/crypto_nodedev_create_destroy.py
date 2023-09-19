@@ -144,7 +144,7 @@ def run(test, params, env):
     2. Passthrough the crypto device
     2. Create the mdev
     3. Confirm the mdev was created successfully
-    4. Confirm attributes are dumped
+    4. Confirm attributes are dumped if supported
     5. Confirm device availability in guest
     6. Destroy the mdev
     7. Confirm the mdev was destroyed successfully
@@ -187,7 +187,8 @@ def run(test, params, env):
         check_device_was_created(test, uuid, adapter, domain)
         # the test assumes there's no other mdev
         dev_name = find_devices_by_cap(test, 'mdev')[0]
-        check_device_attributes_are_dumped(test, dev_name, adapter, domain)
+        if params.get('check_device_attributes', 'yes') == 'yes':
+            check_device_attributes_are_dumped(test, dev_name, adapter, domain)
         destroy_nodedev(dev_name)
         check_device_was_destroyed(test, dev_name)
     finally:
