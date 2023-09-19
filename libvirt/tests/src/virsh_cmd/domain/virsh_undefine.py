@@ -7,6 +7,7 @@ import platform
 import aexpect
 
 from avocado.utils import process
+from avocado.utils import distro
 
 from virttest import libvirt_vm
 from virttest import data_dir
@@ -71,7 +72,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vm_id = vm.get_id()
     vm_uuid = vm.get_uuid()
-
+    detected_distro = distro.detect()
     # polkit acl related params
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
@@ -83,6 +84,11 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
+
+    #After RHEL8.2 polkit rules expanded,default domain name is avocado-vt-vm1
+    if unprivileged_user == 'testacl' and vm_name != "avocado-vt-vm1":
+        if detected_distro.name == "rhel" and int(detected_distro.version) > 8.2:
+            test.cancel("Domain name expected in polkit rules is avocado-vt-vm1")
 
     # Back up xml file.Xen host has no guest xml file to define a guset.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
