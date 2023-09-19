@@ -332,6 +332,7 @@ genid
 getconf
 getlink
 Getlink
+getmaxdowntime
 getrandom
 getspeed
 gfxcard
