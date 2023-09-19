@@ -2,6 +2,7 @@ import logging as log
 import os
 import re
 import signal
+import time
 
 from avocado.utils import process
 
@@ -362,6 +363,7 @@ def run(test, params, env):
                 if tls_enabled:
                     nbd_params["tls_dir"] = pki_path
                     nbd_params["tls_server_ip"] = tls_server_ip
+            time.sleep(10)
             if not is_incremental:
                 # Do full backup
                 try:
