@@ -68,6 +68,7 @@ def run(test, params, env):
 
     test_case = params.get('test_case', '')
     vm_name = params.get("migrate_main_vm")
+    migrate_again = "yes" == params.get("migrate_again", "no")
 
     vm = env.get_vm(vm_name)
     params.update({'vm_obj': vm})
@@ -80,6 +81,8 @@ def run(test, params, env):
     try:
         setup_test()
         migration_obj.run_migration()
+        if migrate_again:
+            migration_obj.run_migration_again()
         verify_test()
     finally:
         migration_obj.cleanup_connection()
