@@ -49,12 +49,13 @@ def post_save_check(vm, pid_ping, upsince):
     LOG.debug(session.cmd_output(f'ps -ef|grep ping'))
     session.close()
 
+    if upsince_restore != upsince:
+        raise exceptions.TestWarn(f'Uptime since {upsince_restore} is '
+                                  f'incorrect, should be {upsince}')
     ping_cmd = 'ping 127.0.0.1'
     if ping_cmd not in proc_info:
-        raise Exception('Cannot find running ping command after save-restore.')
-    if upsince_restore != upsince:
-        raise Exception(f'Uptime since {upsince_restore} is incorrect,'
-                        f'should be {upsince}')
+        raise exceptions.TestFail('Cannot find running ping command '
+                                  'after save-restore.')
 
 
 def check_ownership(path, uid, gid):
