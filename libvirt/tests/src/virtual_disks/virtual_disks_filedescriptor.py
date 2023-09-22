@@ -49,8 +49,7 @@ def get_added_disks(old_partitions, test, params, env):
         session = vm.wait_for_login()
         if platform.platform().count('ppc64'):
             time.sleep(10)
-        added_partitions = utils_disk.get_added_parts_by_path(session,
-                                                              old_partitions)
+        added_partitions = utils_disk.get_added_parts(session, old_partitions)
         LOG.debug("Newly added partition(s) is: %s", added_partitions)
         return added_partitions
     except Exception as err:
@@ -235,7 +234,7 @@ def run(test, params, env):
     hotplug = "yes" == params.get("virt_device_hotplug")
     pkgs_host = params.get("pkgs_host", "")
     disk_readonly = params.get("disk_readonly", "no") == "yes"
-    part_path = "/dev/disk/by-path/%s"
+    part_path = "/dev/%s"
 
     # Skip test if version not match expected one
     libvirt_version.is_libvirt_feature_supported(params)
@@ -244,7 +243,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_partitions = utils_disk.get_parts_list_by_path(session)
+    old_partitions = utils_disk.get_parts_list(session)
     session.close()
     if not hotplug:
         vm.destroy(gracefully=False)
