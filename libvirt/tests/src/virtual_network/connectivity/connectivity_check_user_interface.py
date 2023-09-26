@@ -2,7 +2,6 @@ import logging
 import re
 
 import aexpect
-from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_net
 from virttest import virsh
@@ -45,8 +44,6 @@ def run(test, params, env):
     """
     Connectivity check of user type interface
     """
-    libvirt_version.is_libvirt_feature_supported(params)
-
     expect_error = 'yes' == params.get('expect_error', 'no')
     err_msg = params.get('err_msg')
     virsh_uri = params.get('virsh_uri')
