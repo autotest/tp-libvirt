@@ -35,6 +35,8 @@ class NumaTest(object):
         if status != 0:
             test.error("Failed to get information from %s", cmd)
         self.host_numa_info = utils_misc.NumaInfo()
+        self.online_nodes = self.host_numa_info.get_online_nodes().copy()
+        self.params['online_nodes'] = self.online_nodes
         self.online_nodes_withmem = self.host_numa_info.get_online_nodes_withmem()
         self.all_usable_numa_nodes = self.online_nodes_withmem.copy()
         self.virsh_dargs = {'ignore_status': False, 'debug': True}
