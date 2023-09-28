@@ -27,6 +27,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_misc
+from virttest.utils_libvirt import libvirt_numa
 
 from provider.numa import numa_base
 
@@ -113,6 +114,7 @@ def verify_cgroup_mem_binding(test_obj):
     """
     mem_mode = test_obj.params.get('mem_mode')
     nodeset = test_obj.params.get('nodeset')
+    online_nodes = libvirt_numa.parse_numa_nodeset_to_str('x-y', test_obj.online_nodes)
     vcpu_placement = eval(test_obj.params.get('vm_attrs')).get('placement')
     vm_pid = test_obj.vm.get_pid()
     cg = libvirt_cgroup.CgroupTest(vm_pid)
@@ -134,15 +136,15 @@ def verify_cgroup_mem_binding(test_obj):
         elif (vcpu_placement == 'auto' and
                 mem_mode in ['interleave', 'preferred'] and
                 not nodeset):
-            expected_nodeset = ''
+            expected_nodeset = '' if is_cgroup2 else online_nodes
         elif vcpu_placement != 'auto' and mem_mode == 'none':
-            expected_nodeset = ''
+            expected_nodeset = '' if is_cgroup2 else online_nodes
         elif vcpu_placement == 'auto' and mem_mode == 'none':
             expected_nodeset = test_obj.params['nodeset_numad']
         elif mem_mode in ['strict', 'restrictive'] and nodeset:
             expected_nodeset = nodeset
         elif mem_mode in ['interleave', 'preferred'] and nodeset:
-            expected_nodeset = ''
+            expected_nodeset = '' if is_cgroup2 else online_nodes
         if cpuset_mems != expected_nodeset:
             test_obj.test.fail("Expect cpuset.mems=%s, but "
                                "found %s" % (expected_nodeset, cpuset_mems))
