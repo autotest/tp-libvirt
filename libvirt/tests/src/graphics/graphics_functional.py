@@ -1568,8 +1568,9 @@ def cleanup(params):
             logging.debug("Delete the hook directory '%s' now", os.path.dirname(hook_path))
             os.rmdir(os.path.dirname(hook_path))
 
-    net_type = params.get("vnc_network_type")
-    if net_type == 'bridge':
+    spice_net_type = params.get("spice_network_type")
+    vnc_net_type = params.get("vnc_network_type")
+    if spice_net_type == 'bridge' or vnc_net_type == 'bridge':
         iface = utils_net.get_net_if(state="UP")[0]
         utils_net.delete_linux_bridge_tmux(params.get('os_bridge_name'), iface)
 
