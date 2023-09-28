@@ -4,7 +4,7 @@ from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import virsh
-from virttest.libvirt_xml import pool_capability_xml
+from virttest.libvirt_xml import pool_xml
 
 from virttest import libvirt_version
 
@@ -28,7 +28,7 @@ def run(test, params, env):
         (1) Dict the new pool capability XML
         (2) Compare with the standard XML dict
         """
-        cap_xml = pool_capability_xml.PoolcapabilityXML()
+        cap_xml = pool_xml.PoolcapabilityXML()
         cap_xml.xml = source
         connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri", 'default'))
 
