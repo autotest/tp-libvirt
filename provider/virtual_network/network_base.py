@@ -233,3 +233,16 @@ def unprivileged_user_login(unpr_vm_name, unpr_user, username, password,
     remote.handle_prompts(session, username, password, r'[\#\$]\s*$', timeout)
 
     return session
+
+
+def set_static_ip(iface, ip, netmask, session):
+    """
+    Set static ip addr/netmask for given iface of given session
+
+    :param iface: iface name
+    :param ip: ip to set
+    :param netmask: netmask to set
+    :param session: session to operate on
+    """
+    session.cmd('systemctl stop NetworkManager'),
+    session.cmd(f'ifconfig {iface} {ip}/{netmask}')
