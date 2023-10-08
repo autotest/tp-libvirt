@@ -275,7 +275,6 @@ class MigrationBase(object):
         dest_uri = self.params.get("virsh_migrate_desturi")
         vm_name = self.params.get("migrate_main_vm")
 
-        time.sleep(25)
         func_returns = dict(self.migration_test.func_ret)
         self.migration_test.func_ret.clear()
         self.test.log.debug("Migration returns function results:%s", func_returns)
