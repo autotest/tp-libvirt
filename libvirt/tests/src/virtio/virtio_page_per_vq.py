@@ -1,4 +1,5 @@
 import os
+from virttest import libvirt_version
 from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -122,6 +123,7 @@ def run(test, params, env):
     disk_image = params.get("disk_image", "")
     input_type = params.get("input_type")
     controller_type = params.get("controller_type")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
