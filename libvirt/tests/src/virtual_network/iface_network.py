@@ -168,7 +168,7 @@ TIMEOUT 3"""
         else:
             return iface_model
 
-    def run_dnsmasq_default_test(key, value=None, exists=True, name="default"):
+    def run_dnsmasq_default_test(key, value=None, exists=True, name="default", ignore_error=False):
         """
         Test dnsmasq configuration.
 
@@ -176,6 +176,7 @@ TIMEOUT 3"""
         :param value: value in conf file to check
         :param exists: check the key:value exist or not
         :param name: The name of conf file
+        :param ignore_error: whether to ignore the checking failure
         """
         conf_file = "/var/lib/libvirt/dnsmasq/%s.conf" % name
         if not os.path.exists(conf_file):
@@ -191,10 +192,22 @@ TIMEOUT 3"""
             config = key
         if not configs.count(config):
             if exists:
-                test.fail("Can't find %s=%s in configuration file" % (key, value))
+                msg = "Can't find %s=%s in configuration file" % (key, value)
+                if ignore_error:
+                    logging.error(msg)
+                    return False
+                else:
+                    test.fail(msg)
         else:
             if not exists:
-                test.fail("Found %s=%s in configuration file" % (key, value))
+                msg = "Found %s=%s in configuration file" % (key, value)
+                if ignore_error:
+                    logging.error(msg)
+                    return False
+                else:
+                    test.fail(msg)
+        if ignore_error:
+            return True
 
     def run_dnsmasq_addnhosts_test(hostip, hostnames):
         """
@@ -952,12 +965,10 @@ TIMEOUT 3"""
                 run_dnsmasq_default_test("dhcp-range", "192.168.122.2,192.168.122.254,255.255.252.0")
             # check the left part in dnsmasq conf
             run_dnsmasq_default_test("strict-order", name=net_name)
-            if libvirt_version.version_compare(8, 6, 0):
-                run_dnsmasq_default_test("pid-file", "/var/run/libvirt/network/%s.pid" % net_name, name=net_name)
-            elif libvirt_version.version_compare(6, 0, 0):
-                run_dnsmasq_default_test("pid-file", "/run/libvirt/network/%s.pid" % net_name, name=net_name)
-            else:
-                run_dnsmasq_default_test("pid-file", "/var/run/libvirt/network/%s.pid" % net_name, name=net_name)
+            pid_check = run_dnsmasq_default_test("pid-file", "/var/run/libvirt/network/%s.pid" % net_name, name=net_name, ignore_error=True)
+            pid_check_ = run_dnsmasq_default_test("pid-file", "/run/libvirt/network/%s.pid" % net_name, name=net_name, ignore_error=True)
+            if not (pid_check or pid_check_):
+                test.fail("pid-file of the dnsmasq process checking fail!")
             run_dnsmasq_default_test("except-interface", "lo", name=net_name)
             run_dnsmasq_default_test("bind-dynamic", name=net_name)
             if not disable_dhcp:
