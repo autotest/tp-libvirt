@@ -10,6 +10,7 @@
 import re
 
 from virttest import libvirt_version
+from virttest import utils_misc
 from virttest import virsh
 from virttest import virt_vm
 
@@ -24,6 +25,23 @@ def run(test, params, env):
     Verify that error msg prompts when starting a guest vm with
     invalid nodeset of numa memory binding
     """
+    def get_nodeset_value():
+        """
+        Get nodeset value and format according cfg
+
+        :return nodeset value
+        """
+        set_value = ''
+        node_list = utils_misc.NumaInfo().online_nodes
+        if node_set == "partially_inexistent":
+            set_value = "%s-%s" % (node_list[-1], str(node_list[-1] + 1))
+        elif node_set == "totally_inexistent":
+            set_value = "%s-%s" % (str(node_list[-1] + 1), str(node_list[-1] + 2))
+
+        params.update({'node_list': node_list})
+        params.update({'set_value': set_value})
+
+        return set_value
 
     def setup_test():
         """
@@ -34,7 +52,8 @@ def run(test, params, env):
         numa_obj.check_numa_nodes_availability()
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        vmxml.setup_attrs(**vm_attrs)
+        set_value = get_nodeset_value()
+        vmxml.setup_attrs(**eval(vm_attrs % set_value))
 
         result = virsh.define(vmxml.xml, debug=True, ignore_status=True)
         if libvirt_version.version_compare(9, 4, 0) and \
@@ -52,20 +71,19 @@ def run(test, params, env):
         Start vm and check result
         """
         test.log.info("TEST_STEP1: Start vm and check result")
+        error = error_msg % (str(params['node_list'][-1] + 1))
+        error_1 = error_msg_1 % (str(params['set_value']))
+
         try:
             vm.start()
         except virt_vm.VMStartError as detail:
-            if libvirt_version.version_compare(9, 4, 0):
-                if not re.search(error_msg, str(detail)):
-                    test.fail("Expect '%s' in '%s' " % (error_msg, str(detail)))
+            if (not libvirt_version.version_compare(9, 4, 0)) and \
+                    tuning in ["strict", "restrictive"] and binding == "host":
+                if not re.search(error_1, str(detail)):
+                    test.fail("Expect '%s' in '%s' " % (error_1, str(detail)))
             else:
-                if tuning in ["strict", "restrictive"] and node_set == "partially_inexistent":
-                    if not re.search(error_msg_1, str(detail)):
-                        test.fail("Expect '%s' in '%s' " % (error_msg_1, str(detail)))
-                elif tuning in ["interleave", "preferred"] and \
-                        node_set in ["partially_inexistent", "totally_inexistent"]:
-                    if not re.search(error_msg, str(detail)):
-                        test.fail("Expect '%s' in '%s' " % (error_msg, str(detail)))
+                if not re.search(error, str(detail)):
+                    test.fail("Expect '%s' in '%s' " % (error, str(detail)))
 
     def teardown_test():
         """
@@ -79,13 +97,14 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
 
-    vm_attrs = eval(params.get("vm_attrs"))
+    vm_attrs = params.get("vm_attrs")
     tuning = params.get("tuning")
     node_set = params.get("node_set")
     binding = params.get("binding")
     error_msg = params.get("error_msg")
     error_msg_1 = params.get("error_msg_1")
     define_err = params.get("define_err")
+    node_set = params.get("node_set")
 
     try:
         setup_test()
