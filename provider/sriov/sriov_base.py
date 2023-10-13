@@ -168,6 +168,9 @@ class SRIOVTest(object):
                     dev_attrs.update({'slot': self.dev_slot})
 
             disk_dict.update({"address": {'attrs': dev_attrs}})
+            if disk_dict['target']['bus'] == "scsi":
+                disk_dict['address']['attrs'].update({'type': 'drive'})
+
             if self.controller_dicts[-1]['model'] == 'pcie-root-port':
                 self.controller_dicts.pop()
         return disk_dict
