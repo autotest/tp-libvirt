@@ -65,17 +65,18 @@ def run(test, params, env):
     scenario = params.get('scenario')
     virsh_uri = params.get('virsh_uri')
     add_iface = 'yes' == params.get('add_iface', 'no')
-    host_ip = utils_net.get_host_ip_address(ip_ver='ipv4')
-    host_ip_v6 = utils_net.get_host_ip_address(ip_ver='ipv6')
+    host_iface = params.get('host_iface')
+    host_iface = host_iface if host_iface else utils_net.get_net_if(
+        state="UP")[0]
+    host_iface_index = int(params.get('host_iface_index', 0))
+    host_ip = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv4')
+    host_ip_v6 = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv6')
     iface_attrs = eval(params.get('iface_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
     vm_iface = params.get('vm_iface', 'eno1')
     mtu = params.get('mtu')
     outside_ip = params.get('outside_ip')
-    host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
@@ -124,9 +125,9 @@ def run(test, params, env):
                 test.fail(f'Logfile of passt "{log_file}" not created')
 
             session = vm.wait_for_serial_login(timeout=60)
-            passt.check_vm_ip(iface_attrs, session, host_iface)
+            passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
             passt.check_vm_mtu(session, vm_iface, mtu)
-            passt.check_default_gw(session)
+            passt.check_default_gw(session, host_iface_index)
             passt.check_nameserver(session)
 
             ips = {
@@ -138,7 +139,8 @@ def run(test, params, env):
             firewalld.stop()
             LOG.debug(f'Service status of firewalld: {firewalld.status()}')
             passt.check_connection(vm, vm_iface,
-                                   ['TCP4', 'TCP6', 'UDP4', 'UDP6'])
+                                   ['TCP4', 'TCP6', 'UDP4', 'UDP6'],
+                                   host_iface_index)
 
             if 'portForwards' in iface_attrs:
                 passt.check_portforward(vm, host_ip, params)

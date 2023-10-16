@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from socket import socket
 
 import aexpect
@@ -169,15 +170,17 @@ def check_proc_info(params, log_file, mac):
         raise exceptions.TestFail(';'.join(failed_check))
 
 
-def check_vm_ip(iface_attrs, session, host_iface):
+def check_vm_ip(iface_attrs, session, host_iface, vm_iface=None):
     """
     Check if vm ip and prefix meet expectation
 
     :param iface_attrs: attributes of interface
     :param session: shell session instance of vm
     :param host_iface: host interface
+    :param vm_iface: vm interface, will be constructed for x86_64 if None
     """
-    vm_iface = 'eno' + iface_attrs.get('acpi', {'index': '1'})['index']
+    if not vm_iface:
+        vm_iface = 'eno' + iface_attrs.get('acpi', {'index': '1'})['index']
     vm_ip, prefix = get_iface_ip_and_prefix(vm_iface, session=session)
     LOG.debug(f'VM ip and prefix: {vm_ip}, {prefix}')
     if 'ips' in iface_attrs:
@@ -230,16 +233,20 @@ def check_vm_mtu(session, iface, mtu):
         raise exceptions.TestFail(f'Wrong vm mtu: {vm_mtu}, should be {mtu}')
 
 
-def check_default_gw(session):
+def check_default_gw(session, host_iface_index=0):
     """
     Check whether default host gateways of host and guest are consistent
 
     :param session: vm shell session instance
+    :param host_iface_index: in case, there's more than one default gateway on
+                             the host, which one to select
     """
     host_gw = utils_net.get_default_gateway(force_dhcp=True)
+    host_gw = host_gw.split('\n')[host_iface_index]
     vm_gw = utils_net.get_default_gateway(session=session, force_dhcp=True)
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
     host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6')
+    host_gw_v6 = host_gw_v6.split('\n')[host_iface_index]
     vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6')
     LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
 
@@ -258,8 +265,11 @@ def check_nameserver(session):
     :param session: vm shell session instance
     """
     get_cmd = 'cat /etc/resolv.conf|grep -vE "#|;"'
-    on_host = process.run(get_cmd, shell=True).stdout_text.strip()
-    on_vm = session.cmd_output(get_cmd).strip()
+    on_host = process.run(get_cmd, shell=True).stdout_text.strip().split('\n')
+    on_vm = session.cmd_output(get_cmd).strip().split('\n')
+    if cleanup:
+        on_host = [re.sub(r'%.*', '', x) for x in on_host]
+        on_vm = [re.sub(r'%.*', '', x) for x in on_vm]
     if on_host == on_vm:
         LOG.debug(f'Nameserver on vm is consistent with host:\n{on_host}')
     else:
@@ -320,16 +330,20 @@ def check_protocol_connection(src_sess, tar_sess, protocol, addr,
                                   f'actually is {conneted}')
 
 
-def check_connection(vm, vm_iface, protocols):
+def check_connection(vm, vm_iface, protocols, host_iface_index=0):
     """
     Check connection of vm and host
 
     :param vm: vm instance
     :param vm_iface: interface of vm
     :param protocols: protocols to check
+    :param host_iface_index: in case, there's more than one default gateway on
+                             the host, which one to select
     """
     default_gw = utils_net.get_default_gateway(force_dhcp=True)
+    default_gw = default_gw.split('\n')[host_iface_index]
     default_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6')
+    default_gw_v6 = default_gw_v6.split('\n')[host_iface_index]
     for protocol in protocols:
         host_sess = aexpect.ShellSession('su')
         vm_sess = vm.wait_for_serial_login(timeout=60)
@@ -379,7 +393,7 @@ def check_port_listen(ports, protocol, host_ip=None):
     """
     if protocol.lower() not in ('tcp', 'udp'):
         raise exceptions.TestError(f'Unsupported protocol: {protocol}')
-    cmd_listen = process.run(f"ss -{protocol[0].lower()}lpn|egrep 'passt.avx2'",
+    cmd_listen = process.run(f"ss -{protocol[0].lower()}lpn|egrep 'passt'",
                              shell=True).stdout_text
     for item in ports:
         if item in cmd_listen:

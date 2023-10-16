@@ -27,6 +27,10 @@ def run(test, params, env):
     """
     libvirt_version.is_libvirt_feature_supported(params)
     root = 'root_user' == params.get('user_type', '')
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
+                                                   virsh_instance=virsh_ins)
+    bkxml = vmxml.copy()
+
     if root:
         vm_name = params.get('main_vm')
         vm = env.get_vm(vm_name)
@@ -42,6 +46,8 @@ def run(test, params, env):
             'username': params.get('username'),
             'password': params.get('password'),
         }
+        LOG.debug("Remove 'dac' security driver for unprivileged user")
+        vmxml.del_seclabel(by_attr=[('model', 'dac')])
         vm = libvirt_unprivileged.get_unprivileged_vm(vm_name, test_user,
                                                       test_passwd,
                                                       **unpr_vm_args)
@@ -67,10 +73,6 @@ def run(test, params, env):
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
-
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
-                                                   virsh_instance=virsh_ins)
-    bkxml = vmxml.copy()
 
     selinux_status = passt.ensure_selinux_enforcing()
     passt.check_socat_installed()
@@ -98,7 +100,7 @@ def run(test, params, env):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
         session = vm.wait_for_serial_login(timeout=60)
-        passt.check_vm_ip(iface_attrs, session, host_iface)
+        passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
         passt.check_default_gw(session)
         passt.check_nameserver(session)

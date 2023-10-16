@@ -27,31 +27,46 @@ def run(test, params, env):
     root = 'root_user' == params.get('user_type', '')
     if root:
         vm_name = params.get('main_vm')
-        vm = env.get_vm(vm_name)
-        vm_c = env.get_vm(params.get('vm_c_name'))
+        vm_c_name = params.get('vm_c_name')
         virsh_ins = virsh
+    else:
+        test_user = params.get('test_user', '')
+        test_passwd = params.get('test_passwd', '')
+        vm_name = params.get('unpr_vm_name')
+        uri = f'qemu+ssh://{test_user}@localhost/session'
+        virsh_ins = virsh.VirshPersistent(uri=uri)
+        vm_c_name = params.get('unpr_vm_c_name')
+
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
+                                                   virsh_instance=virsh_ins)
+    vmxml_c = vm_xml.VMXML.new_from_inactive_dumpxml(vm_c_name,
+                                                     virsh_instance=virsh_ins)
+    bkxml = vmxml.copy()
+    bkxml_c = vmxml_c.copy()
+
+    if root:
+        vm = env.get_vm(vm_name)
+        vm_c = env.get_vm(vm_c_name)
         log_dir = params.get('log_dir')
         user_id = params.get('user_id')
         log_file = f'/run/user/{user_id}/passt.log'
         log_file_c = f'/run/user/{user_id}/passt_c.log'
     else:
-        vm_name = params.get('unpr_vm_name')
-        test_user = params.get('test_user', '')
-        test_passwd = params.get('test_passwd', '')
         user_id = passt.get_user_id(test_user)
         unpr_vm_args = {
             'username': params.get('username'),
             'password': params.get('password'),
         }
+        LOG.debug("Remove 'dac' security driver for unprivileged users")
+        vmxml.del_seclabel(by_attr=[('model', 'dac')])
+        vmxml_c.del_seclabel(by_attr=[('model', 'dac')])
         vm = libvirt_unprivileged.get_unprivileged_vm(vm_name, test_user,
                                                       test_passwd,
                                                       **unpr_vm_args)
-        vm_c = libvirt_unprivileged.get_unprivileged_vm(params.get('unpr_vm_c_name'),
+        vm_c = libvirt_unprivileged.get_unprivileged_vm(vm_c_name,
                                                         test_user,
                                                         test_passwd,
                                                         **unpr_vm_args)
-        uri = f'qemu+ssh://{test_user}@localhost/session'
-        virsh_ins = virsh.VirshPersistent(uri=uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
@@ -72,13 +87,6 @@ def run(test, params, env):
     iface_c_attrs['backend']['logFile'] = log_file_c
     iface_attrs['source']['dev'] = host_iface
     iface_c_attrs['source']['dev'] = host_iface
-
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
-                                                   virsh_instance=virsh_ins)
-    vmxml_c = vm_xml.VMXML.new_from_inactive_dumpxml(vm_c.name,
-                                                     virsh_instance=virsh_ins)
-    bkxml = vmxml.copy()
-    bkxml_c = vmxml_c.copy()
 
     selinux_status = passt.ensure_selinux_enforcing()
     passt.check_socat_installed()
