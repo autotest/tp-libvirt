@@ -28,7 +28,7 @@ def parse_attrs(target, params):
     """
     attrs = {k.replace(target + '_', ''): int(v) if v.isdigit()
              else eval(v) if v[0] in '{[' else v
-             for k, v in params.items() if k.startswith(target)}
+             for k, v in params.items() if v and k.startswith(target)}
     LOG.debug(f'{target}: {attrs}')
     return attrs
 
@@ -49,6 +49,7 @@ def run(test, params, env):
     iface_attrs['source']['bridge'] = bridge_name
     vm_attrs = eval(params.get('vm_attrs', '{}'))
     nwfilter_attrs = parse_attrs('nwfilter_attrs', params)
+    iface_in_vm = params.get('iface_in_vm', 'eno')
 
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_net_if(
@@ -95,7 +96,6 @@ def run(test, params, env):
 
         network_base.ping_check(params, ips_v4, session, force_ipv4=True)
 
-        iface_in_vm = 'eno'
         if 'acpi' in iface_attrs:
             iface_in_vm += iface_attrs['acpi']['index']
             check_cmd = 'ip l'

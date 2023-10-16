@@ -35,6 +35,8 @@ def run(test, params, env):
     unpr_user = params.get('unpr_user', 'test_unpr') + rand_id
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    LOG.debug("Remove 'dac' security driver for unprivileged user")
+    vmxml.del_seclabel(by_attr=[('model', 'dac')])
 
     try:
         utils_net.create_linux_bridge_tmux(linux_bridge, host_iface)
