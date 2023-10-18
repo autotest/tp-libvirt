@@ -1,15 +1,16 @@
+import time
+
 from virttest import libvirt_version
 from virttest import utils_misc
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.memory import Memory
-from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_version import VersionInterval
 
+
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
-ORG_HP = utils_memory.get_num_huge_pages()
 
 
 def run(test, params, env):
@@ -56,9 +57,6 @@ def run(test, params, env):
         """
         Setup vmxml for test
         """
-        set_num_huge_pages = params.get("set_num_huge_pages")
-        if set_num_huge_pages:
-            utils_memory.set_num_huge_pages(int(set_num_huge_pages))
 
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'memory')
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -83,6 +81,7 @@ def run(test, params, env):
         virsh.attach_device(vm_name, mem_device.xml, flagstr=options,
                             debug=True, ignore_status=False)
 
+        time.sleep(10)
         if not vm.is_alive():
             vm.start()
             vm.wait_for_login().close()
@@ -111,8 +110,6 @@ def run(test, params, env):
         """
         Clean up environment
         """
-        if utils_memory.get_num_huge_pages() != ORG_HP:
-            utils_memory.set_num_huge_pages(ORG_HP)
 
     # Variable assignment
     test_case = params.get('test_case', '')

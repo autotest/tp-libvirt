@@ -6,13 +6,11 @@ from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.memory import Memory
-from virttest.staging import utils_memory
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_version import VersionInterval
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
-ORG_HP = utils_memory.get_num_huge_pages()
 
 
 def run(test, params, env):
@@ -59,10 +57,6 @@ def run(test, params, env):
         """
         Setup vmxml for test
         """
-        set_num_huge_pages = params.get("set_num_huge_pages")
-        if set_num_huge_pages:
-            utils_memory.set_num_huge_pages(int(set_num_huge_pages))
-
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'memory')
         vm_attrs = eval(params.get('vm_attrs', '{}'))
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -89,7 +83,8 @@ def run(test, params, env):
         test.log.debug("VM's memory before updating requested size: %s",
                        vm_mem_before)
 
-        test.log.info("TEST_STEP1: Update requested size for virtio-mem device.")
+        test.log.info(
+            "TEST_STEP1: Update requested size for virtio-mem device.")
         vmxml_cur = vm_xml.VMXML.new_from_dumpxml(vm_name)
         mem_dev = vmxml_cur.devices.by_device_tag("memory")[0]
         mem_dev_alias = mem_dev.fetch_attrs()['alias']['name']
@@ -114,7 +109,8 @@ def run(test, params, env):
         test.log.info("TEST_STEP3: Check 'MEMORY_DEVICE_SIZE_CHANGE' in "
                       "libvirtd/virtqemud log")
         log_file = utils_misc.get_path(test.debugdir, "libvirtd.log")
-        check_log_str = params.get("check_log_str", "MEMORY_DEVICE_SIZE_CHANGE")
+        check_log_str = params.get(
+            "check_log_str", "MEMORY_DEVICE_SIZE_CHANGE")
         libvirt.check_logfile(check_log_str, log_file)
 
         test.log.info("TEST STEP4: Check memory in the VM.")
@@ -131,9 +127,6 @@ def run(test, params, env):
         """
         Clean up environment
         """
-        if utils_memory.get_num_huge_pages() != ORG_HP:
-            utils_memory.set_num_huge_pages(ORG_HP)
-
     # Variable assignment
     test_case = params.get('test_case', '')
 
