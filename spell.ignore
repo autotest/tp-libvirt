@@ -909,6 +909,7 @@ SMT
 snaplist
 snapname
 snapshotname
+sndbuf
 socat
 socketscount
 sourse
