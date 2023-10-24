@@ -401,6 +401,8 @@ class MigrationBase(object):
             firewall_cmd.add_port(port, 'tcp', permanent=True)
         else:
             firewall_cmd.remove_port(port, 'tcp', permanent=True)
+        # Wait for 2 seconds to make the firewall take effect
+        time.sleep(2)
         remote_session.close()
 
 
