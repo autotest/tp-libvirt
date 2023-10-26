@@ -56,15 +56,12 @@ def run(test, params, env):
             vm, test_obj=test_obj, config_vdpa=True, **params)
 
         test.log.info("Save the VM.")
-        save_error = "yes" == params.get("save_error", "no")
         save_path = os.path.join(data_dir.get_tmp_dir(), vm.name + '.save')
-        res = virsh.save(vm.name, save_path, debug=True)
-        libvirt.check_exit_status(res, expect_error=save_error)
-        if not save_error:
-            test.log.info("Restore vm.")
-            virsh.restore(save_path, **VIRSH_ARGS)
-            check_points.check_network_accessibility(
-                vm, test_obj=test_obj, config_vdpa=False, **params)
+        virsh.save(vm.name, save_path, **VIRSH_ARGS)
+        test.log.info("Restore vm.")
+        virsh.restore(save_path, **VIRSH_ARGS)
+        check_points.check_network_accessibility(
+            vm, test_obj=test_obj, config_vdpa=False, **params)
 
         test.log.info("Suspend and resume the vm.")
         virsh.suspend(vm.name, **VIRSH_ARGS)
