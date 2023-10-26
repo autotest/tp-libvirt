@@ -15,6 +15,7 @@ from virttest import utils_conn
 
 from virttest.libvirt_xml import vm_xml
 from virttest.migration import MigrationTest
+from virttest.utils_libvirt import libvirt_disk      # pylint: disable=W0611
 from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_libvirt import libvirt_monitor
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
@@ -71,6 +72,8 @@ def parse_funcs(action_during_mig, test, params):
                              'before_pause': one_action.get('before_pause'),
                              'need_sleep_time': one_action.get('need_sleep_time'),
                              'func_param': func_param})
+            if one_action.get('wait_for_after_event_timeout'):
+                act_dict.update({'wait_for_after_event_timeout': one_action.get('wait_for_after_event_timeout')})
             action_during_mig.append(act_dict)
         return action_during_mig
     else:
