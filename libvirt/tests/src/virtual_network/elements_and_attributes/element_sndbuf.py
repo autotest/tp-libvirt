@@ -33,7 +33,7 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_serial_login()
 
-        libvirt.check_qemu_cmd_line(f'"sndbuf":{sndbuf}')
+        libvirt.check_qemu_cmd_line(f'"sndbuf":{sndbuf}|sndbuf={sndbuf}')
 
         ips = {'outside_ip': outside_ip}
         network_base.ping_check(params, ips, session, force_ipv4=True)
