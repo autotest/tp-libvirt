@@ -45,7 +45,7 @@ def prepare_vm_xml(test_obj):
     :return: VMXML object updated
     """
     vmxml = test_obj.prepare_vm_xml()
-    all_nodes = test_obj.all_usable_numa_nodes
+    all_nodes = test_obj.online_nodes_withmem
     mem_total = test_obj.host_numa_info.read_from_node_meminfo(all_nodes[0], 'MemTotal')
     offset = 1000000
     if int(mem_total) < offset:
@@ -79,7 +79,7 @@ def verify_host_numa_memory_allocation(test_obj, check_N0=False):
     mem_size = get_memory_in_vmxml(test_obj)
     kernelpagesize_kB = test_obj.params.get('kernelpagesize_kB')
     out_numa_maps = numa_base.get_host_numa_memory_alloc_info(mem_size)
-    all_nodes = test_obj.all_usable_numa_nodes
+    all_nodes = test_obj.online_nodes_withmem
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
     N1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)
     has_kernelpage = bool(re.search('kernelpagesize_kB=%s' % kernelpagesize_kB, out_numa_maps))
@@ -173,10 +173,10 @@ def run_default(test_obj):
     another_mem_mode = select_different_mem_mode(mem_mode)
     verify_numatune(test_obj,
                     mem_mode=another_mem_mode,
-                    nodeset=str(test_obj.all_usable_numa_nodes[1]))
+                    nodeset=str(test_obj.online_nodes_withmem[1]))
     numatune_result = virsh.numatune(test_obj.vm.name,
                                      mode=mem_mode,
-                                     nodeset=str(test_obj.all_usable_numa_nodes[0]),
+                                     nodeset=str(test_obj.online_nodes_withmem[0]),
                                      **test_obj.virsh_dargs).stdout_text.strip()
     test_obj.test.log.debug("Step: start vm")
     ret = virsh.start(test_obj.vm.name, **test_obj.virsh_dargs)
@@ -187,7 +187,7 @@ def run_default(test_obj):
     error_expected = produce_expected_error(test_obj)
     verify_numatune(test_obj,
                     mem_mode=another_mem_mode,
-                    nodeset=test_obj.all_usable_numa_nodes[0],
+                    nodeset=test_obj.online_nodes_withmem[0],
                     error_expected=error_expected)
 
 
@@ -211,9 +211,9 @@ def run_mem_mode_restrictive(test_obj):
     mem_mode = test_obj.params.get('mem_mode')
     run_default(test_obj)
     test_obj.test.log.debug("Step: change numatune nodeset on running vm when mode is restrictive")
-    verify_numatune(test_obj, mem_mode=mem_mode, nodeset=test_obj.all_usable_numa_nodes[1])
+    verify_numatune(test_obj, mem_mode=mem_mode, nodeset=test_obj.online_nodes_withmem[1])
     verify_host_numa_memory_allocation(test_obj)
-    nodeset = "%s,%s" % (test_obj.all_usable_numa_nodes[0], test_obj.all_usable_numa_nodes[1])
+    nodeset = "%s,%s" % (test_obj.online_nodes_withmem[0], test_obj.online_nodes_withmem[1])
     nodeset = numa_base.convert_to_string_with_dash(nodeset)
     test_obj.test.log.debug("Step: change numatune nodeset in range on running vm when mode is restrictive")
     verify_numatune(test_obj, mem_mode=mem_mode, nodeset=nodeset)
