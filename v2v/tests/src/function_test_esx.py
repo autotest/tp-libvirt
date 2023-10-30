@@ -620,6 +620,12 @@ def run(test, params, env):
             V2V_FSTRIM_SUCESS_VER = "[virt-v2v-1.45.1-1.el9,)"
             if utils_v2v.multiple_versions_compare(V2V_FSTRIM_SUCESS_VER):
                 params.update({'expect_msg': None})
+        if 'large_disk' in checkpoint:
+            time_info = re.search(r'.*\d.*Finishing.*off', output).group(0)
+            usetime = re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0]
+            LOG.info('use time is %s' % usetime)
+            if int(usetime) > 300:
+                test.fail("conversion time is too long, please check v2v performance")
         # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
