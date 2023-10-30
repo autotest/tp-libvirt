@@ -93,7 +93,8 @@ def run(test, params, env):
             global remove_key_remote
             remove_key_remote = libvirt_config.remove_key_in_conf(qemu_conf_list,
                                                                   "qemu",
-                                                                  remote_params=server_params)
+                                                                  remote_params=server_params,
+                                                                  restart_libvirt=True)
             # backup /etc/hosts
             backup_hosts = "cp -f /etc/hosts /etc/hosts.bak"
             process.run(backup_hosts, shell=True)
@@ -124,7 +125,8 @@ def run(test, params, env):
             global remove_key_remote
             remove_key_remote = libvirt_config.remove_key_in_conf(["migration_address"],
                                                                   "qemu",
-                                                                  remote_params=server_params)
+                                                                  remote_params=server_params,
+                                                                  restart_libvirt=True)
         else:
             global qemu_conf_remote
             qemu_conf_remote = libvirt_remote.update_remote_file(params,

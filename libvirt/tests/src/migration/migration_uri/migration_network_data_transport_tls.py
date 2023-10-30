@@ -33,9 +33,10 @@ def update_qemu_conf(params, test, remote_obj, local_obj):
         params['file_path'] = qemu_conf_path
         remote_obj.append(libvirt_config.remove_key_in_conf(value_list,
                                                             "qemu",
-                                                            remote_params=params))
+                                                            remote_params=params,
+                                                            restart_libvirt=True))
         # Setup migrate_tls_force default value on local
-        local_obj.append(libvirt_config.remove_key_in_conf(value_list, "qemu"))
+        local_obj.append(libvirt_config.remove_key_in_conf(value_list, "qemu", restart_libvirt=True))
     else:
         # Update remote qemu conf
         if qemu_conf_dest:

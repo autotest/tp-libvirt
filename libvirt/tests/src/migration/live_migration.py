@@ -244,17 +244,20 @@ def run(test, params, env):
             server_params['file_path'] = qemu_conf_path
             remove_key_remote = libvirt_config.remove_key_in_conf(value_list,
                                                                   "qemu",
-                                                                  remote_params=server_params)
+                                                                  remote_params=server_params,
+                                                                  restart_libvirt=True)
             # Setup migrate_tls_force default value on local
             remove_key_local = libvirt_config.remove_key_in_conf(value_list,
-                                                                 "qemu")
+                                                                 "qemu",
+                                                                 restart_libvirt=True)
 
         if set_migration_host:
             value_list = ["migration_host"]
             server_params['file_path'] = qemu_conf_path
             remove_key_remote = libvirt_config.remove_key_in_conf(value_list,
                                                                   "qemu",
-                                                                  remote_params=server_params)
+                                                                  remote_params=server_params,
+                                                                  restart_libvirt=True)
             # backup /etc/hosts
             backup_hosts = "cp -f /etc/hosts /etc/hosts.bak"
             process.run(backup_hosts, shell=True)
@@ -266,7 +269,8 @@ def run(test, params, env):
             server_params['file_path'] = qemu_conf_path
             remove_key_remote = libvirt_config.remove_key_in_conf(qemu_conf_list,
                                                                   "qemu",
-                                                                  remote_params=server_params)
+                                                                  remote_params=server_params,
+                                                                  restart_libvirt=True)
 
         # Update only remote qemu conf
         if qemu_conf_dest:
