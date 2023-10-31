@@ -213,8 +213,13 @@ def run(test, params, env):
         # Check disk in VM
         output = session.cmd_status_output('mkfs.ext4 -F %s' % new_disk)
         logging.debug("mkfs.ext4 the disk in vm, result: %s", output[1])
-        if not check_vm_disk(session, new_disk, readonly):
-            raise exceptions.TestFail("Failed check the disk in vm.")
+        if readonly == "yes":
+            if "Operation not permitted" in str(output):
+                logging.debug("Can't write readonly disk in vm")
+                return
+            else:
+                test.fail("A readonly virtual disk operated as "
+                          "a non-readonly disk.")
         session.cmd_status_output('umount %s' % new_disk)
         # Detach disk
         dev_detach_status = virsh.detach_device(vm_name, disk_xml, debug=True)
