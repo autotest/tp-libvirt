@@ -85,8 +85,8 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
                                    force_ipv4=force_ipv4,
                                    **ping_args)
         msg = f'Expect ping from {source} to {destination} should ' \
-              f'{expect_result}, actual result is ' \
-              f'{"pass" if status == 0 else "fail"}'
+              f'{expect_result.upper()}, actual result is ' \
+              f'{"PASS" if status == 0 else "FAIL"}'
         ping_result = (status == 0) == (expect_result == 'pass')
         if ping_result:
             LOG.debug(msg)
@@ -134,6 +134,16 @@ def create_macvtap(macvtap_name, iface, user):
     process.run('ls -l %s' % device_path, shell=True)
 
     return mac_addr
+
+
+def set_tap_mtu(tap, mtu_size):
+    """
+    Set mtu for tap/macvtap device
+
+    :param tap: tap/macvtap device name
+    :param mtu_size: mtu size to set
+    """
+    process.run(f'ip link set dev {tap} mtu {mtu_size}')
 
 
 def delete_tap(tap_name):
