@@ -23,28 +23,6 @@ def run(test, params, env):
         libvirt_version.is_libvirt_feature_supported(params)
         utils_misc.is_qemu_function_supported(params)
 
-    def setup_test(dev_type):
-        """
-        Setup test environment for a specific interface if needed
-
-        :param dev_type: interface type
-        :return: An object of special test environment
-        """
-        test_env_obj = None
-        if dev_type == 'vdpa':
-            test_env_obj = setup_vdpa()
-
-        return test_env_obj
-
-    def teardown_test(dev_type):
-        """
-        Default cleanup
-
-        :param dev_type: interface type
-        """
-        if dev_type == 'vdpa':
-            teardown_vdpa()
-
     def setup_vdpa():
         """
         Setup vDPA environment
@@ -84,7 +62,8 @@ def run(test, params, env):
         if dev_name not in result.stdout_text:
             test.fail("Failed to list %s device!" % dev_name)
 
-        test.log.info("TEST_STEP2: Check device info using virsh nodedev-dumpxml.")
+        test.log.info("TEST_STEP2: Check device info using virsh "
+                      "nodedev-dumpxml.")
         dev_xml = nodedev_xml.NodedevXML.new_from_dumpxml(dev_name)
         test.log.debug("Nodedev xml: {}".format(dev_xml))
         if not all([getattr(dev_xml, attr).endswith(value) for attr, value in
@@ -96,16 +75,17 @@ def run(test, params, env):
             test.fail("Failed to validate node device xml!")
 
     check_environment(params)
+
     # Variable assignment
-    dev_type = params.get('dev_type', '')
     dev_dict = eval(params.get('dev_dict', '{}'))
 
     test_obj = None
     try:
         # Execute test
-        test.log.info("TEST_CASE: %s", check_nodedev_info.__doc__.split('\n')[0])
-        test_obj = setup_test(dev_type)
+        test.log.info("TEST_CASE: %s",
+                      check_nodedev_info.__doc__.split('\n')[0])
+        test_obj = setup_vdpa()
         check_nodedev_info(dev_dict)
 
     finally:
-        teardown_test(dev_type)
+        teardown_vdpa()
