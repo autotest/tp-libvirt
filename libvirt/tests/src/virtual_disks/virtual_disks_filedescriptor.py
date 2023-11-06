@@ -218,6 +218,27 @@ def check_disk_file_selinux_label(test, params, check_phase):
                   % (utils_selinux.get_context_of_file(source_file_path, selinux_force=True), label))
 
 
+def hotplug_device(test, params, env):
+    """
+    Hot plug one device in one session
+
+    :param test: test object
+    :param params: one dictionary wrapping parameters
+    :param env: environment representing running context
+    """
+    # associate file descriptor to domain is very special, and need all actions in one session
+    vm_name = params.get("main_vm")
+    fdgroup_name = params.get("fdgroup_name")
+    file_path = params.get("source_file_path")
+    file_descriptor_id = params.get("file_descriptor_id")
+    device_xml = params.get("device_xml")
+    flag = params.get("flag")
+    attach_device_cmd = "virsh \"dom-fd-associate %s %s %s %s ; attach-device %s %s;\" %s<>%s" \
+        % (vm_name, fdgroup_name, file_descriptor_id, flag, vm_name,
+           device_xml, file_descriptor_id, file_path)
+    associate_fd_with_domain(attach_device_cmd, test, params, env)
+
+
 def run(test, params, env):
     """
     Test file descriptor disk.
@@ -273,6 +294,9 @@ def run(test, params, env):
                 hotplug_disk(test, params, env)
             elif test_scenario == "save_restore":
                 hotplug_save_restore(test, params, env)
+            elif test_scenario == "attach_device":
+                params.update({'device_xml': device_obj.xml})
+                hotplug_device(test, params, env)
     except virt_vm.VMStartError as details:
         test.fail("VM failed to start."
                   "Error: %s" % str(details))
