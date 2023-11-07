@@ -26,6 +26,23 @@ def get_xmlinfo(vm_name, options):
     return xml_info.iothreadids.iothread
 
 
+def check_iothread_id(iothread_list, search_iothread_id, test):
+    """
+    Check if the specified iothread id exists
+
+    :param iothread_list: list, iothread id information
+    :param search_iothread_id: str, the iothread id to be searched
+    :param test: test object
+    """
+    found = False
+    for a_iothread in iothread_list:
+        if search_iothread_id == a_iothread['id']:
+            found = True
+    if found:
+        test.fail("Can find iothread '%s' in "
+                  "domain xml" % search_iothread_id)
+
+
 def run(test, params, env):
     """
     Test command: virsh iothreaddel.
@@ -115,15 +132,13 @@ def run(test, params, env):
             # Check domainxml
             iothread_info = get_xmlinfo(vm_name, options)
             logging.debug("iothreadinfo: %s", iothread_info)
-            if iothread_id in iothread_info:
-                raise exceptions.TestFail("Failed to add iothread %s in domain xml",
-                                          iothread_id)
+            check_iothread_id(iothread_info, iothread_id, test)
 
             # Check iothreadinfo by virsh command
             iothread_info = libvirt.get_iothreadsinfo(dom_option, options)
             logging.debug("iothreadinfo: %s", iothread_info)
             if iothread_id in iothread_info:
-                raise exceptions.TestFail("Failed to add iothread %s", iothread_id)
+                raise exceptions.TestFail("Failed to delete iothread %s", iothread_id)
 
     finally:
         # Cleanup
