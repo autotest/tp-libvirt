@@ -364,11 +364,12 @@ class MigrationBase(object):
         :param remote_str_in_log: True if the remote file should include the given string,
                                   otherwise, False
         """
-        check_str_local_log = self.params.get("check_str_local_log", "")
+        check_str_local_log = eval(self.params.get("check_str_local_log", "[]"))
         check_str_remote_log = self.params.get("check_str_remote_log", "")
         log_file = self.params.get("libvirtd_debug_file")
         if check_str_local_log:
-            libvirt.check_logfile(check_str_local_log, log_file, str_in_log=local_str_in_log)
+            for check_log in check_str_local_log:
+                libvirt.check_logfile(check_log, log_file, str_in_log=local_str_in_log)
         if check_str_remote_log:
             runner_on_target = None
             server_ip = self.params.get("server_ip")
