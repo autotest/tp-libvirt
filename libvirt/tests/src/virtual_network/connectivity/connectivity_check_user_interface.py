@@ -10,6 +10,7 @@ from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
+from provider.interface import interface_base
 from provider.virtual_network import network_base
 from provider.virtual_network import passt
 
@@ -73,7 +74,6 @@ def run(test, params, env):
     params['host_ip_v6'] = host_ip_v6 = utils_net.get_host_ip_address(
         ip_ver='ipv6')
     iface_attrs = eval(params.get('iface_attrs'))
-    vm_iface = params.get('vm_iface', 'eno1')
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_net_if(
@@ -108,6 +108,7 @@ def run(test, params, env):
 
         session = vm.wait_for_serial_login(timeout=60)
         LOG.debug(session.cmd_output('ip addr'))
+        vm_iface = interface_base.get_vm_iface(session)
         vm_ipv4, vm_ipv4_pfx = passt.get_iface_ip_and_prefix(vm_iface, session)
         LOG.debug(f'vm ipv4 address and prefix: {vm_ipv4} {vm_ipv4_pfx}')
         check_val(ipv4_addr, vm_ipv4, 'vm ipv4', test)
