@@ -498,6 +498,17 @@ def run(test, params, env):
             else:
                 test.fail('%s of rhsrvany.exe is not correct' % key)
 
+    def verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vcenter_ip):
+        process.run('yum install ca-certificates -y | update-ca-trust enable',  shell=True)
+        mount_cert_dir = utils_v2v.v2v_mount(certs_src_dir, 'certs_src_dir')
+        if not os.path.exists(certs_dest_dir):
+            os.makedirs(certs_dest_dir)
+        process.run('scp -r %s/* %s' % (mount_cert_dir, certs_dest_dir), shell=True)
+        process.run('umount %s' % mount_cert_dir, shell=True)
+        process.run('update-ca-trust extract', shell=True)
+        with open('/etc/hosts', "w") as f:
+            f.write('%s %s' % (vcenter_ip, vcenter_fdqn))
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -884,6 +895,7 @@ def run(test, params, env):
             if 'exist_uuid' in checkpoint:
                 auto_clean = False
             if checkpoint[0] in [
+                'verify_certificate',
                 'mismatched_uuid',
                 'no_uuid',
                 'invalid_source',
@@ -928,8 +940,15 @@ def run(test, params, env):
             if params.get('invalid_esx_hostname'):
                 new_cmd = v2v_result.replace(
                     esxi_host, params.get('invalid_esx_hostname'))
+        if 'verify_certificate' in checkpoint:
+            certs_src_dir = params.get('certs_src_dir')
+            certs_dest_dir = params.get('certs_dest_dir')
+            vcenter_fdqn = params.get('vcenter_fdqn')
+            verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vpx_hostname)
+            new_cmd = v2v_result.replace('/?no_verify=1', '').replace(vpx_hostname, vcenter_fdqn)
 
         if checkpoint[0] in [
+            'verify_certificate',
             'mismatched_uuid',
             'no_uuid',
             'invalid_source',
