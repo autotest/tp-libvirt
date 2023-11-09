@@ -10,7 +10,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest.utils_libvirtd import LibvirtdSession
 from virttest.utils_libvirtd import Libvirtd
-from virttest.libvirt_xml.xcepts import LibvirtXMLError
+from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML, VMCPUXML, VMPMXML
 from virttest.libvirt_xml.network_xml import NetworkXML, IPXML
 from virttest.libvirt_xml.devices import interface
@@ -98,7 +98,7 @@ def run_mix_boot_order_os_boot(params, libvirtd, vm):
 
         try:
             vm_xml.sync()
-        except LibvirtXMLError:
+        except xcepts.LibvirtXMLError:
             pass
     finally:
         vm_xml_backup.sync()
@@ -158,7 +158,7 @@ def run_invalid_interface(params, libvirtd, vm):
 
         try:
             vm_xml.sync()
-        except LibvirtXMLError:
+        except xcepts.LibvirtXMLError:
             pass
     finally:
         vm_xml_backup.sync()
