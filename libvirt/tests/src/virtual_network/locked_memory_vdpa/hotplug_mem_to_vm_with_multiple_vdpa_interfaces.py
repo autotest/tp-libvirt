@@ -13,16 +13,16 @@ from provider.interface import interface_base
 
 
 def run(test, params, env):
-    """Hotplug memory with interface."""
-    def setup_test(dev_type):
+    """
+    Check mem_lock limit for vm with multiple vDPA interfaces.
+    """
+    def setup_test():
         """
         Set up test.
 
         1) Remove interface devices
         2) Set VM attrs
         3) Add an interface
-
-        :param dev_type: interface type
         """
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
 
@@ -33,13 +33,14 @@ def run(test, params, env):
         test.log.debug("Updated VM xml: %s.",
                        vm_xml.VMXML.new_from_dumpxml(vm_name))
 
-        iface_dict = eval(params.get('iface_dict', "{'source': {'dev':'/dev/vhost-vdpa-0'}}"))
+        iface_dict = eval(params.get(
+            'iface_dict', "{'source': {'dev':'/dev/vhost-vdpa-0'}}"))
         iface_dev = interface_base.create_iface(dev_type, iface_dict)
         libvirt.add_vm_device(vm_xml.VMXML.new_from_dumpxml(vm_name), iface_dev)
         test.log.debug("VM xml afater updating ifaces: %s.",
                        vm_xml.VMXML.new_from_dumpxml(vm_name))
 
-    def run_test(dev_type):
+    def run_test():
         """
         Check the locked memory for the vm with multiple vDPA interfaces.
 
@@ -78,7 +79,9 @@ def run(test, params, env):
                       "device!")
 
         test.log.info("TEST_STEP3: Add one more vDPA interface.")
-        iface2 = interface_base.create_iface(dev_type, eval(params.get('iface_dict2', "{'source': {'dev':'/dev/vhost-vdpa-1'}}")))
+        iface2 = interface_base.create_iface(
+            dev_type, eval(params.get(
+                'iface_dict2', "{'source': {'dev':'/dev/vhost-vdpa-1'}}")))
         virsh.attach_device(vm_name, iface2.xml, **virsh_args)
 
         new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -103,25 +106,31 @@ def run(test, params, env):
                       "interface device!")
 
         test.log.info("TEST_STEP5: Detach a memory device and vDPA interface.")
-        memxml = vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices('memory')[-1]
+        memxml = vm_xml.VMXML.new_from_dumpxml(
+            vm_name).get_devices('memory')[-1]
         virsh.detach_device(vm_name, memxml.xml, debug=True)
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after detaching a memory device!")
+            test.fail("Unalbe to get correct MEMLOCK after detaching a memory "
+                      "device!")
 
-        iface = vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices('interface')[-1]
+        iface = vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices(
+            'interface')[-1]
         virsh.detach_device(vm_name, iface.xml,
                             wait_for_event=True,
                             **virsh_args)
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after detaching a vDPA interface!")
+            test.fail("Unalbe to get correct MEMLOCK after detaching a vDPA "
+                      "interface!")
 
         test.log.info("TEST_STEP6: Hotplug a vDPA interface.")
         virsh.attach_device(vm_name, iface.xml, **virsh_args)
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after re-attaching a vDPA interface!")
+            test.fail("Unalbe to get correct MEMLOCK after re-attaching a vDPA "
+                      "interface!")
 
         test.log.info("TEST_STEP7: Hotplug one more vDPA interface.")
-        iface3 = interface_base.create_iface(dev_type, eval(params.get('iface_dict3', "{'source': {'dev':'/dev/vhost-vdpa-2'}}")))
+        iface3 = interface_base.create_iface(dev_type, eval(params.get(
+            'iface_dict3', "{'source': {'dev':'/dev/vhost-vdpa-2'}}")))
         virsh.attach_device(vm_name, iface3.xml, **virsh_args)
 
         new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -149,8 +158,8 @@ def run(test, params, env):
         pf_pci = utils_vdpa.get_vdpa_pci()
         test_env_obj = utils_vdpa.VDPAOvsTest(pf_pci)
         test_env_obj.setup()
-        setup_test(dev_type)
-        run_test(dev_type)
+        setup_test()
+        run_test()
 
     finally:
         backup_vmxml.sync()
