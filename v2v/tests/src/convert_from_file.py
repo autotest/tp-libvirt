@@ -1,3 +1,4 @@
+import glob
 import os
 import pwd
 import logging
@@ -233,6 +234,22 @@ def run(test, params, env):
                  'skip_virsh_pre_conn': skip_virsh_pre_conn})
             if checkpoint == 'regular_user_sudo':
                 v2v_params.update({'pub_key': pub_key})
+            if checkpoint == 'cpu_topology':
+                mount_point = utils_v2v.v2v_mount(vmx_nfs_src, 'v2v_tmp_mp')
+                vmxfile = glob.glob(os.path.join(mount_point, vm_name, '*.vmx'))[0]
+                with open(vmxfile) as fd:
+                    buf = fd.read()
+                res = re.search('numvcpus = "(\d+)"', buf)
+                if not res:
+                    test.error('Not found numvcpus in vmx file')
+                numvcpus = int(res.group(1))
+                res = re.search('cpuid.coresPerSocket = "(\d+)"', buf)
+                if not res:
+                    test.error('Not found cpuid.coresPerSocket in vmx file')
+                corespersocket = int(res.group(1))
+                params['msg_content_yes'] += '<rasd:num_of_sockets>' + str(numvcpus//corespersocket) + '%'
+                params['msg_content_yes'] += '<rasd:cpu_per_socket>' + str(corespersocket) + '%'
+                params['msg_content_yes'] += '<rasd:threads_per_cpu>' + '1'
         # copy ova from nfs storage before v2v conversion
         if input_mode == 'ova':
             src_dir = params.get('ova_dir')
