@@ -155,7 +155,7 @@ class DiskBase(object):
             if no_update_dict:
                 pass
             else:
-                mon_host, auth_username, new_image_path = \
+                mon_host, auth_username, new_image_path, _ = \
                     self.create_rbd_disk_path(self.params)
                 disk_dict.update({'source': {
                     'attrs': {'protocol': "rbd", "name": new_image_path},
@@ -220,16 +220,8 @@ class DiskBase(object):
             libvirt.setup_or_cleanup_nfs(is_setup=False)
 
         elif disk_type == "rbd_with_auth":
-            mon_host = self.params.get("mon_host")
-            new_image_path = self.params.get("image_path")
+            self.cleanup_rbd_disk_path(self.params)
 
-            libvirt_secret.clean_up_secrets()
-            ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
-                              new_image_path.split("/")[1])
-            if os.path.exists(self.params.get('keyfile')):
-                os.remove(self.params.get('keyfile'))
-            if os.path.exists(self.params.get('configfile')):
-                os.remove(self.params.get('configfile'))
         elif disk_type == "nbd":
             try:
                 self.disk_backend.cleanup()
@@ -301,12 +293,31 @@ class DiskBase(object):
         return path
 
     @staticmethod
+    def cleanup_rbd_disk_path(params):
+        """
+        Clean up rbd disk image
+
+        :params params: dict, test parameters
+        """
+        mon_host = params.get("mon_host")
+        new_image_path = params.get("image_path")
+
+        libvirt_secret.clean_up_secrets()
+        ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
+                          new_image_path.split("/")[1])
+        if os.path.exists(params.get('keyfile')):
+            os.remove(params.get('keyfile'))
+        if os.path.exists(params.get('configfile')):
+            os.remove(params.get('configfile'))
+
+    @staticmethod
     def create_rbd_disk_path(params):
         """
         Prepare rbd type disk image path
 
         :params params: Dict with the test parameters.
-        :return new_image_path: path for disk image
+        :return: tuple, include monitor host, auth username,
+                        new image path and secret uuid
         """
         sec_dict = eval(params.get("sec_dict", '{}'))
         auth_key = params.get("auth_key")
@@ -331,7 +342,7 @@ class DiskBase(object):
         ceph.rbd_image_create(mon_host, new_image_path.split("/")[0],
                               new_image_path.split("/")[1], rbd_image_size)
 
-        return mon_host, auth_username, new_image_path
+        return mon_host, auth_username, new_image_path, sec_uuid
 
     def prepare_relative_path(self, disk_type, **kwargs):
         """

@@ -1,25 +1,112 @@
-import re
-import os
 import logging as log
+import os
+import re
+import shutil
 
 from xml.etree import ElementTree as ET
 
 from avocado.core import exceptions
+from avocado.utils import distro
+from avocado.utils import process
 
-from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import libvirt_storage
-from virttest import virsh
-from virttest.utils_test import libvirt as utlv
-from virttest.staging import service
-from virttest.libvirt_xml import pool_xml
 from virttest import libvirt_version
-from virttest import data_dir
+from virttest import utils_libvirtd
+from virttest import virsh
+from virttest.libvirt_xml import pool_xml
+from virttest.staging import service
+from virttest.utils_test import libvirt as utlv
 
+from provider.virtual_disk import disk_base
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+
+
+def prepare_rbd_pool(params, test):
+    """
+    Prepare rbd pool on ceph server and local libvirt pool
+
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    image_path = params.get('image_path')
+    version_release = "%s.%s" % (distro.detect().version, distro.detect().release)
+    image_path = image_path % version_release
+    params['image_path'] = image_path
+    _, _, _, sec_uuid = disk_base.DiskBase.create_rbd_disk_path(params)
+    test.log.debug("Step: rbd image is created.")
+    pool_dict = eval(params.get('pool_dict') % sec_uuid)
+    rbd_pool_obj = pool_xml.PoolXML()
+    rbd_pool_obj.setup_attrs(**pool_dict)
+    virsh.pool_define(rbd_pool_obj.xml, debug=True, ignore_status=False)
+    test.log.debug("Step: libvirt pool is created")
+
+
+def clean_rbd_pool(params, test):
+    """
+    Clean up image in rbd pool on ceph server and related resources
+
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    disk_base.DiskBase.cleanup_rbd_disk_path(params)
+    test.log.debug("Step: rbd image is removed.")
+    virsh.pool_destroy(params.get('pool_name'), debug=True, ignore_status=True)
+    virsh.pool_undefine(params.get('pool_name'), debug=True, ignore_status=False)
+    test.log.debug("Step: libvirt pool is undefined")
+
+
+def verify_coredump():
+    """
+    Verify if a coredump file is produced which is unexpected
+    """
+    res = process.run("coredumpctl list",
+                      shell=True,
+                      verbose=True,
+                      ignore_status=True)
+    utlv.check_result(res,
+                      expected_fails='No coredumps found',
+                      check_both_on_error=True)
+
+
+def skip_case(params, test):
+    """
+    Skip the case if matched
+
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    pool_type = params.get("pool_type")
+    if pool_type == 'rbd':
+        required_commands = eval(params.get('required_commands', '[]'))
+        if required_commands:
+            for cmd in required_commands:
+                if not shutil.which(cmd):
+                    test.error("This case requires the command '%s'" % cmd)
+
+
+def execute_parallel_workload(params, test):
+    """
+    Run virsh commands in parallel
+
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    parallel_executable_path = params.get('parallel_executable_path')
+    image_path = params.get('image_path')
+    pool_name = params.get('pool_name')
+
+    parallel_executable_path = os.path.join(os.path.dirname(__file__),
+                                            parallel_executable_path)
+    process.run("bash %s %s %s" % (parallel_executable_path,
+                                   pool_name,
+                                   os.path.basename(image_path)),
+                shell=True,
+                ignore_status=False)
+    test.log.debug("Parallel workload was executed successfully")
 
 
 def run(test, params, env):
@@ -80,19 +167,8 @@ def run(test, params, env):
     ip_protocal = params.get('ip_protocal', 'ipv4')
     source_protocol_ver = params.get('source_protocol_ver', "no")
 
-    if not libvirt_version.version_compare(1, 0, 0):
-        if pool_type == "gluster":
-            test.cancel("Gluster pool is not supported in current"
-                        " libvirt version.")
-    if not libvirt_version.version_compare(4, 7, 0):
-        if pool_type == "iscsi-direct":
-            test.cancel("iSCSI-direct pool is not supported in current"
-                        "libvirt version.")
-    if source_initiator and not libvirt_version.version_compare(6, 10, 0):
-        test.cancel("Source_initiator option is not supported in current"
-                    " libvirt_version.")
-    if source_protocol_ver == "yes" and not libvirt_version.version_compare(4, 5, 0):
-        test.cancel("source-protocol-ver is not supported on current version.")
+    libvirt_version.is_libvirt_feature_supported(params)
+    skip_case(params, test)
 
     def check_pool_list(pool_name, option="--all", expect_error=False):
         """
@@ -192,7 +268,6 @@ def run(test, params, env):
     multipathd_status = multipathd.status()
     if multipathd_status:
         multipathd.stop()
-
     # Run Testcase
     pvt = utlv.PoolVolumeTest(test, params)
     kwargs = {'image_size': '1G', 'pre_disk_vol': ['100M'],
@@ -202,12 +277,16 @@ def run(test, params, env):
               'pool_target': pool_target, 'source_initiator': source_initiator,
               'source_protocol_ver': source_protocol_ver}
     params.update(kwargs)
+    _pool = None
 
     try:
-        _pool = libvirt_storage.StoragePool()
         # Step (1)
         # Pool define
-        pvt.pre_pool(**params)
+        _pool = libvirt_storage.StoragePool()
+        if pool_type == 'rbd':
+            prepare_rbd_pool(params, test)
+        else:
+            pvt.pre_pool(**params)
 
         # Step (2)
         # Pool list
@@ -232,9 +311,9 @@ def run(test, params, env):
 
         # Update host name
         if same_source_test:
-            s_xml = p_xml.get_source()
-            s_xml.host_name = "192.168.1.1"
-            p_xml.set_source(s_xml)
+            pool_source = p_xml.source
+            pool_source.host_name = "192.168.1.1"
+            p_xml.source = pool_source
             poolxml = p_xml.xml
             logging.debug("XML after update host name:\n%s" % p_xml)
 
@@ -282,7 +361,7 @@ def run(test, params, env):
             # logical_pool: build pool will fail if VG already exist, BZ#1373711
             if new_pool_name:
                 pool_name = new_pool_name
-            if pool_type != "logical":
+            if pool_type not in ["logical", 'rbd']:
                 result = virsh.pool_build(pool_name, build_option, ignore_status=True)
                 utlv.check_exit_status(result)
 
@@ -291,6 +370,10 @@ def run(test, params, env):
             result = virsh.pool_start(pool_name, debug=True, ignore_status=True)
             utlv.check_exit_status(result)
 
+            # Step for checking CVE-2023-3750
+            if pool_type == 'rbd':
+                execute_parallel_workload(params, test)
+                verify_coredump()
             # Step (8)
             # Pool list
             option = "--persistent --type %s" % pool_type
@@ -376,7 +459,7 @@ def run(test, params, env):
             # 'Capacity', 'Allocation' and 'Available'
             # For NFS type pool, there's a bug(BZ#1077068) about allocate volume,
             # and glusterfs pool not support create volume, so not test them
-            if pool_type != "netfs":
+            if pool_type not in ['netfs', 'rbd']:
                 vol_capacity = "10000G"
                 vol_allocation = "10000G"
                 result = virsh.vol_create_as("oversize_vol", pool_name,
@@ -427,8 +510,11 @@ def run(test, params, env):
     finally:
         # Clean up
         try:
-            pvt.cleanup_pool(**params)
-            utlv.setup_or_cleanup_iscsi(False)
+            if pool_type == 'rbd':
+                clean_rbd_pool(params, test)
+            else:
+                pvt.cleanup_pool(**params)
+                utlv.setup_or_cleanup_iscsi(False)
         except exceptions.TestFail as detail:
             logging.error(str(detail))
         if multipathd_status:
