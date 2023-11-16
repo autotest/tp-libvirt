@@ -9,7 +9,6 @@ from avocado.utils import path as utils_path
 from avocado.utils import process
 
 from virttest import utils_libguestfs
-from virttest import data_dir
 from virttest import utils_misc
 from virttest import virsh
 from virttest import utils_config
@@ -39,10 +38,9 @@ def run(test, params, env):
 
         :returns: the appended data tailed from /var/log/messages
         """
-        tailed_log_file = os.path.join(data_dir.get_tmp_dir(), 'tail_log')
-        tailed_messages = aexpect.Tail(command='tail -f /var/log/messages',
-                                       output_func=utils_misc.log_line,
-                                       output_params=(tailed_log_file))
+        tailed_messages = aexpect.Tail(command='tail -f /var/log/messages')
+        logging.debug("Tail of log messages are logged in %s",
+                      tailed_messages.output_filename)
         return tailed_messages
 
     def chk_on_shutdown(status_error, on_shutdown, parallel_shutdown, output):
@@ -265,8 +263,10 @@ def run(test, params, env):
 
     config = utils_config.LibvirtGuestsConfig()
     libvirt_guests_service = service.Factory.create_service("libvirt-guests")
-    if not libvirt_guests_service.status():
-        libvirt_guests_service.start()
+    if (not libvirt_guests_service.status()
+            and not libvirt_guests_service.start()):
+        process.run("journalctl -u libvirt-guests", ignore_status=True)
+        test.error("libvirt-guests service failed to start. Please check logs")
 
     vms = [main_vm]
     if main_vm.is_alive:
@@ -319,7 +319,9 @@ def run(test, params, env):
         # Even though libvirt-guests was designed to operate guests when
         # host shutdown. The purpose can also be fulfilled by restart the
         # libvirt-guests service.
-        libvirt_guests_service.restart()
+        if not libvirt_guests_service.restart():
+            process.run("journalctl -u libvirt-guests", ignore_status=True)
+            test.error("libvirt-guests failed to restart. Please check logs.")
         time.sleep(30)
         output = tail_messages.get_output()
         logging.debug("Get messages in /var/log/messages: %s" % output)
