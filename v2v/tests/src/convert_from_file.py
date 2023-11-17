@@ -264,6 +264,22 @@ def run(test, params, env):
             else:
                 shutil.copy(src_dir, dest_dir)
             LOG.info('Copy ova from %s to %s', src_dir, dest_dir)
+            if checkpoint == 'cpu_topology':
+                dest_ova = os.path.join(dest_dir, input_file)
+                process.run('tar xvf %s -C %s' % (dest_ova, dest_dir), shell=True)
+                with open(dest_ova[:-1] + 'f') as fd:
+                    buf = fd.read()
+                res = re.search('<rasd:ElementName>(\d+) virtual CPU', buf)
+                if not res:
+                    test.error('Not found vCPU numbers in ovf file')
+                numvcpus = int(res.group(1))
+                res = re.search('<vmw:CoresPerSocket.*>(\d+)</vmw:CoresPerSocket>', buf)
+                if not res:
+                    test.error('Not found CoresPerSocket in ovf file')
+                corespersocket = int(res.group(1))
+                params['msg_content_yes'] += '<rasd:num_of_sockets>' + str(numvcpus//corespersocket) + '%'
+                params['msg_content_yes'] += '<rasd:cpu_per_socket>' + str(corespersocket) + '%'
+                params['msg_content_yes'] += '<rasd:threads_per_cpu>' + '1'
         if input_mode == 'disk':
             tmp_path = data_dir.get_tmp_dir()
             image_path = 'cd %s ; curl -O %s --insecure' % (tmp_path, params.get('image_url'))
