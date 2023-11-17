@@ -1,9 +1,9 @@
 import re
 import platform
 
+from avocado.core import exceptions
 from avocado.utils import cpu
 from avocado.utils import memory as avocado_mem
-from avocado.core import exceptions
 
 from virttest import libvirt_version
 from virttest import utils_misc
@@ -137,6 +137,7 @@ def create_file_within_nvdimm_disk(test, vm_session, test_device, test_file,
 def adjust_memory_size(params):
     """
     Adjust the memory device size for different arch hugepage size
+
     :param params: a dict for parameters
     eg: In arm, we need to consider:
        2M on 4k kernel package.
