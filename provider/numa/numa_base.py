@@ -74,14 +74,15 @@ class NumaTest(object):
         :return: VMXML object
         """
         single_host_node = self.params.get('single_host_node')
-        vm_attrs = eval(self.params.get('vm_attrs'))
+        vm_attrs = eval(self.params.get('vm_attrs', '{}'))
         numa_memory = self.params.get('numa_memory')
         numa_memnode = self.params.get('numa_memnode')
         memory_backing = eval(self.params.get('memory_backing', '{}'))
 
         # Setup vm basic attributes
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
-        vmxml.setup_attrs(**vm_attrs)
+        if vm_attrs:
+            vmxml.setup_attrs(**vm_attrs)
 
         # Setup numa tune attributes
         nodeset = None
