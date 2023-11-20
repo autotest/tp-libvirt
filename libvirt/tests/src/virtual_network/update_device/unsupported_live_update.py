@@ -48,7 +48,7 @@ def run(test, params, env):
         vm.start()
         vm.wait_for_serial_login().close()
 
-        iface = network_base.get_iface_xml_inst(vmxml, 'on VM')
+        iface = network_base.get_iface_xml_inst(vm_name, 'on VM')
         iface_original = iface.copy()
         if del_attr:
             if del_attr == 'boot':
@@ -64,7 +64,7 @@ def run(test, params, env):
         if err_msg:
             libvirt.check_result(up_result, err_msg)
 
-        iface_update = network_base.get_iface_xml_inst(vmxml,
+        iface_update = network_base.get_iface_xml_inst(vm_name,
                                                        'after update-device')
         if iface_update != iface_original:
             test.fail(f'Interface xml changed after unsuccessful update.\n'
