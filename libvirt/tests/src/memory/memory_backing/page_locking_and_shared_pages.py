@@ -97,9 +97,9 @@ def run(test, params, env):
             return
         else:
             if page_config == "page_default":
-                if (nr_unevictable_2 - nr_unevictable)*4 < mem_value:
+                if (nr_unevictable_2 - nr_unevictable)*kernel_pagesize < mem_value:
                     test.fail("Unevictable memory pages should less than %d" % mem_value)
-                if (lock_pages_2 - lock_pages)*4 < mem_value:
+                if (lock_pages_2 - lock_pages)*kernel_pagesize < mem_value:
                     test.fail("Locked memory pages should less than %d" % mem_value)
             elif page_config == "hugepage":
                 if (nr_unevictable_2 - nr_unevictable) < 0:
@@ -139,6 +139,7 @@ def run(test, params, env):
     qemu_line = eval(params.get("qemu_line"))
     hard_limit = int(params.get("hard_limit", 0))
     mem_value = int(params.get("mem_value", ''))
+    kernel_pagesize = int(params.get("kernel_pagesize", 0))
 
     lock_dict = params.get("lock_dict", "")
     tune_dict = eval(params.get("tune_dict", "{}"))
