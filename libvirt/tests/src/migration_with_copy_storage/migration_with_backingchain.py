@@ -1,4 +1,3 @@
-import math
 import os
 import time
 
@@ -123,7 +122,7 @@ def get_remote_disk_info(params, disk_img, test):
     return disk_info_dict
 
 
-def check_disk_info(params, old_disk_info, disk_img, test, disk_diff_rate=None):
+def check_disk_info(params, old_disk_info, disk_img, test):
     """
     Check disk information
 
@@ -131,18 +130,10 @@ def check_disk_info(params, old_disk_info, disk_img, test, disk_diff_rate=None):
     :param old_disk_info: disk information on source host
     :param disk_img: disk image path
     :param test: test object
-    :param disk_diff_rate: the different rate for disk image
     """
     new_disk_info = get_remote_disk_info(params, disk_img, test)
     if old_disk_info['vsize'] != new_disk_info['vsize']:
         test.fail("Check virtual size failed: old: %s, new: %s." % (old_disk_info['vsize'], new_disk_info['vsize']))
-    if disk_diff_rate:
-        if (math.fabs(float(new_disk_info['dsize']) - float(old_disk_info['dsize'])) //
-                float(old_disk_info['dsize']) > disk_diff_rate):
-            test.fail("Check disk size failed: old: %s, new: %s." % (old_disk_info['dsize'], new_disk_info['dsize']))
-    else:
-        if old_disk_info['dsize'] != new_disk_info['dsize']:
-            test.fail("Check disk size failed: old: %s, new: %s." % (old_disk_info['dsize'], new_disk_info['dsize']))
 
 
 def check_disk(params, vm):
@@ -284,13 +275,12 @@ def run(test, params, env):
         top_img = params.get("top_img")
         top1_img = params.get("top1_img")
         top2_img = params.get("top2_img")
-        disk_diff_rate = float(params.get("disk_diff_rate"))
 
         test.log.debug("Verify step for backing chain case.")
         migration_obj.verify_default()
-        check_disk_info(params, old_disk_info["old_vda_info"], top_img, test, disk_diff_rate)
-        check_disk_info(params, old_disk_info["old_vdb_info"], top1_img, test, disk_diff_rate)
-        check_disk_info(params, old_disk_info["old_vdc_info"], top2_img, test, disk_diff_rate)
+        check_disk_info(params, old_disk_info["old_vda_info"], top_img, test)
+        check_disk_info(params, old_disk_info["old_vdb_info"], top1_img, test)
+        check_disk_info(params, old_disk_info["old_vdc_info"], top2_img, test)
         check_disk(params, vm)
 
     def verify_without_backing_chain():
@@ -299,14 +289,13 @@ def run(test, params, env):
         """
         mig_disk1 = params.get("mig_disk1")
         mig_disk2 = params.get("mig_disk2")
-        disk_diff_rate = float(params.get("disk_diff_rate"))
 
         test.log.debug("Verify step for without backing chain case.")
         migration_obj.verify_default()
         source_file = vm.get_first_disk_devices()['source']
-        check_disk_info(params, old_disk_info["old_vda_info"], source_file, test, disk_diff_rate=disk_diff_rate)
-        check_disk_info(params, old_disk_info["old_vdb_info"], mig_disk1, test, disk_diff_rate)
-        check_disk_info(params, old_disk_info["old_vdc_info"], mig_disk2, test, disk_diff_rate)
+        check_disk_info(params, old_disk_info["old_vda_info"], source_file, test)
+        check_disk_info(params, old_disk_info["old_vdb_info"], mig_disk1, test)
+        check_disk_info(params, old_disk_info["old_vdc_info"], mig_disk2, test)
         check_disk(params, vm)
 
     def cleanup_with_backing_chain():
