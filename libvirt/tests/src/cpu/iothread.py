@@ -45,6 +45,7 @@ def run(test, params, env):
         """
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         vm_attrs = eval(params.get("vm_attrs", "{}"))
+        iothread_config = eval(params.get("iothread_config", "{}"))
         del vmxml.cputune
         del vmxml.iothreadids
         del vmxml.iothreads
@@ -55,6 +56,9 @@ def run(test, params, env):
         if iothread_ids:
             ids_xml = vm_xml.VMIothreadidsXML()
             ids_xml.iothread = [{'id': id} for id in iothread_ids.split()]
+            if iothread_config:
+                ids_xml.iothread = iothread_config['iothread']
+
             vmxml.iothreadids = ids_xml
         # Set cputune
         if any([iothreadpins, iothreadscheds, iothread_quota, iothread_period]):
@@ -226,9 +230,13 @@ def run(test, params, env):
                                      iothreadadd, "add")
         # Check xml
         xml_info = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        if {'id': iothreadadd} not in xml_info.iothreadids.iothread:
-            test.fail("The iothread id {} is not added into xml"
-                      .format(iothreadadd))
+        found = False
+        for a_iothread in xml_info.iothreadids.iothread:
+            if iothreadadd == a_iothread['id']:
+                found = True
+        if not found:
+            test.fail("The iothread id {} is not "
+                      "added into xml".format(iothreadadd))
 
     def exec_iothreadpin():
         """
@@ -236,7 +244,6 @@ def run(test, params, env):
 
         :raise: test.fail if virsh command failed
         """
-
         thread_id, cpuset = iothreadpin.split()
         virsh.iothreadpin(vm_name, thread_id, cpuset, debug=True)
         update_expected_iothreadinfo(exp_iothread_info,
@@ -246,6 +253,73 @@ def run(test, params, env):
         item = {'cpuset': cpuset, 'iothread': thread_id}
         if item not in xml_info.cputune.iothreadpins:
             test.fail("Unable to get {} from xml".format(item))
+
+    def _reassemble_iothread_config(mapping):
+        """
+        Reassemble iothreads using configuration
+
+        :param mapping: dict, mapping from command line option to object key
+        :return: dict, the assembled iothreads
+        """
+        iothread_config = eval(params.get('iothread_config', '{}'))
+        iothreadset_val = params.get('iothreadset_val')
+        iothread1 = {'id': params.get('iothreadset_id')}
+        tmp_poll = {}
+        lst = iothreadset_val.split('--')
+        for item in lst:
+            if not item:
+                continue
+            if item.split()[0] in mapping:
+                tmp_poll.update({mapping[item.split()[0]]: item.split()[1]})
+            else:
+                iothread1.update({re.sub('-', '_', item.split()[0]): item.split()[1]})
+            iothread1.update({'poll': tmp_poll})
+        iothread_config['iothread'].append(iothread1)
+        logging.debug("Configured iothreads:%s", iothread_config['iothread'])
+        return iothread_config
+
+    def _verify_iothreadids_by_domstats(iothread_id, mapping, iothread_attrs):
+        """
+        Verify domstats output for iothreads
+
+        :param iothread_id: str, iothread id
+        :param mapping: dict, mapping from command line option to object key
+        :param iothread_attrs: dict, attributes for iothread
+        """
+        current_poll_info = get_iothread_pool(vm_name, iothread_id)
+        converted_poll_dict = {}
+        for key, value in current_poll_info.items():
+            key_iothread = mapping[key[key.rindex('.') + 1: len(key)]]
+            converted_poll_dict.update({key_iothread: value})
+
+        if converted_poll_dict != iothread_attrs['poll']:
+            test.fail("Expect iothread poll info to be '%s',"
+                      " but found '%s'" % (iothread_attrs['poll'],
+                                           converted_poll_dict))
+        logging.debug("Verify domstats output for iothread %s - PASS", iothread_id)
+
+    def verify_iothread_by_vm_xml():
+        """
+        Verify iothreads by checking dump vm xml
+        """
+        mapping = {'poll-max-ns': 'max', 'poll-grow': 'grow', 'poll-shrink': 'shrink'}
+        iothread_config = _reassemble_iothread_config(mapping)
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        iothreadid_list = vmxml.iothreadids.iothread
+        for one_iothread in iothreadid_list:
+            iothread_attrs = one_iothread.fetch_attrs()
+            iothread_id = iothread_attrs['id']
+            iothread_id_found = False
+            for iothread_cfg in iothread_config['iothread']:
+                if iothread_id == iothread_cfg['id']:
+                    iothread_id_found = True
+                    if iothread_attrs != iothread_cfg:
+                        test.fail("Expect iothread to be '%s', "
+                                  "but found '%s'" % (iothread_cfg, iothread_attrs))
+            if not iothread_id_found:
+                test.fail("The iothread '%s' is not expected in vm xml" % iothread_id)
+            _verify_iothreadids_by_domstats(iothread_id, mapping, iothread_attrs)
+        logging.debug("Verify iothread attributes by vm xml - PASS")
 
     def verify_thread_pool():
         """
@@ -298,14 +372,16 @@ def run(test, params, env):
             check_iothread_pool(UPDATE_IOTHREAD_POOL, exp_pool, True)
         logging.debug("Verify iothread poll: PASS")
 
-    def exec_iothreadset():
+    def exec_iothreadset(need_verify=True):
         """
         Run "virsh iothreadset" and do checking according to the parameters
 
+        :param need_verify: boolean, True to verify more,
+                            False to only execute iothreadset
         """
         test_poll = True if '--poll' in params.get('iothreadset_val') else False
         test_thread_pool = True if '--thread-pool' in params.get('iothreadset_val') else False
-        if test_poll:
+        if test_poll and need_verify:
             # Check domstats before run virsh iothreadset
             global ORG_IOTHREAD_POOL
             ORG_IOTHREAD_POOL = get_iothread_pool(vm_name, iothreadset_id)
@@ -316,9 +392,9 @@ def run(test, params, env):
         if err_msg:
             libvirt.check_result(result, expected_fails=err_msg)
 
-        if test_poll:
+        if test_poll and need_verify:
             verify_poll()
-        if test_thread_pool:
+        if test_thread_pool and need_verify:
             verify_thread_pool()
 
     def exec_attach_disk(vm_name, source, target, thread_id,
@@ -468,9 +544,11 @@ def run(test, params, env):
     pre_vm_stats = params.get("pre_vm_stats")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
     restart_vm = "yes" == params.get("restart_vm", "no")
-    start_vm = "yes" == params.get("start_vm", "no")
+    need_start_vm = "yes" == params.get("need_start_vm", "no")
     test_operations = params.get("test_operations")
     cmd_options = params.get("cmd_options", '')
+
+    check_iotheadids_inactive = params.get("check_iotheadids_inactive")
 
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -517,7 +595,8 @@ def run(test, params, env):
                     elif action == "iothreadpin":
                         exec_iothreadpin()
                     elif action == "iothreadset":
-                        exec_iothreadset()
+                        need_verify = False if check_iotheadids_inactive else True
+                        exec_iothreadset(need_verify)
                     elif action == "checkschedinfo":
                         check_schedinfo()
                     elif action == "attachdisk":
@@ -542,7 +621,7 @@ def run(test, params, env):
                                         after_restart_domstas, True)
 
             # Check if vm could start successfully
-            if start_vm:
+            if need_start_vm:
                 if vm.is_alive():
                     vm.destroy()
                 result = virsh.start(vm_name, debug=True)
@@ -550,6 +629,8 @@ def run(test, params, env):
                 libvirt.check_exit_status(result, status_error)
                 if err_msg:
                     libvirt.check_result(result, expected_fails=err_msg)
+                if check_iotheadids_inactive:
+                    verify_iothread_by_vm_xml()
 
             if not status_error:
                 iothread_info = libvirt.get_iothreadsinfo(vm_name)
