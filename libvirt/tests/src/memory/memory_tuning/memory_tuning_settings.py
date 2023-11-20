@@ -109,7 +109,7 @@ def run(test, params, env):
         Test steps
         """
 
-        test.log.info("TEST_SETUP1: Define the guest")
+        test.log.info("TEST_STEP1: Define the guest")
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.setup_attrs(**vm_attrs)
         virsh.define(vmxml.xml, ignore_status=False, debug=True)
