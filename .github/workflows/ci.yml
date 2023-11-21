@@ -37,4 +37,4 @@ jobs:
         run: inspekt checkall --disable-style E501,E265,W601,W605,E402,E722,E741 --no-license-check
       - run: echo "This job's status is ${{ job.status }}."
       - name: Run spellchecker
-        run: pylint --errors-only --disable=all --enable=spelling --spelling-dict=en_US --spelling-private-dict-file=spell.ignore *
+        run: pylint --disable=all --enable=spelling --spelling-dict=en_US --spelling-private-dict-file=spell.ignore *
