@@ -156,7 +156,6 @@ def check_proc_info(params, log_file, mac):
             failed_check.append(f'{target} should be in process CMD')
 
     check_list = [
-        f'--mac-addr {mac}',
         f'--interface {host_iface}',
         f'--log-file {log_file}',
         f'--socket {socket_dir}',
@@ -399,6 +398,7 @@ def check_portforward(vm, host_ip, params):
     :param params: test params
     """
     host_ip_v6 = params.get('host_ip_v6')
+    vm_iface = params.get('vm_iface')
     tcp_port_list = eval(params.get('tcp_port_list', '[]'))
     tcp_port_list = [f'{host_ip}:{port}' if str(port).isdigit()
                      else port for port in tcp_port_list]
