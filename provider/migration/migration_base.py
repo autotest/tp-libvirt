@@ -220,7 +220,7 @@ def check_output(output, expected_value_list, test):
     logging.debug("Actual output is %s", output)
     for item in expected_value_list:
         if not re.findall(item, output):
-            test.fail("Unalbe to find {}".format(item))
+            test.fail("Unable to find {}".format(item))
 
 
 def check_event_output(params, test, virsh_session=None, remote_virsh_session=None):

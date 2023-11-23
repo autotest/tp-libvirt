@@ -37,7 +37,7 @@ def run(test, params, env):
             'iface_dict', "{'source': {'dev':'/dev/vhost-vdpa-0'}}"))
         iface_dev = interface_base.create_iface(dev_type, iface_dict)
         libvirt.add_vm_device(vm_xml.VMXML.new_from_dumpxml(vm_name), iface_dev)
-        test.log.debug("VM xml afater updating ifaces: %s.",
+        test.log.debug("VM xml after updating ifaces: %s.",
                        vm_xml.VMXML.new_from_dumpxml(vm_name))
 
     def run_test():
@@ -63,7 +63,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after VM startup!")
+            test.fail("Unable to get correct MEMLOCK after VM startup!")
 
         test.log.info("TEST_STEP2: Hotplug memory device.")
         mem_dict1 = eval(params.get('mem_dict1', '{}'))
@@ -75,7 +75,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching a memory "
+            test.fail("Unable to get correct MEMLOCK after attaching a memory "
                       "device!")
 
         test.log.info("TEST_STEP3: Add one more vDPA interface.")
@@ -89,7 +89,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) * 2 + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching the 2nd "
+            test.fail("Unable to get correct MEMLOCK after attaching the 2nd "
                       "interface device!")
 
         test.log.info("TEST_STEP4: Hotplut one more memory device.")
@@ -102,7 +102,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) * 2 + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching the 2nd "
+            test.fail("Unable to get correct MEMLOCK after attaching the 2nd "
                       "interface device!")
 
         test.log.info("TEST_STEP5: Detach a memory device and vDPA interface.")
@@ -110,7 +110,7 @@ def run(test, params, env):
             vm_name).get_devices('memory')[-1]
         virsh.detach_device(vm_name, memxml.xml, debug=True)
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after detaching a memory "
+            test.fail("Unable to get correct MEMLOCK after detaching a memory "
                       "device!")
 
         iface = vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices(
@@ -119,13 +119,13 @@ def run(test, params, env):
                             wait_for_event=True,
                             **virsh_args)
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after detaching a vDPA "
+            test.fail("Unable to get correct MEMLOCK after detaching a vDPA "
                       "interface!")
 
         test.log.info("TEST_STEP6: Hotplug a vDPA interface.")
         virsh.attach_device(vm_name, iface.xml, **virsh_args)
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after re-attaching a vDPA "
+            test.fail("Unable to get correct MEMLOCK after re-attaching a vDPA "
                       "interface!")
 
         test.log.info("TEST_STEP7: Hotplug one more vDPA interface.")
@@ -138,7 +138,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) * 3 + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching the 3rd "
+            test.fail("Unable to get correct MEMLOCK after attaching the 3rd "
                       "interface device!")
 
         test.log.info("TEST_STEP8: Check qemu log.")

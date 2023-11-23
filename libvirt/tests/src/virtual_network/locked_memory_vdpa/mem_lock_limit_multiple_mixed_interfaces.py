@@ -40,7 +40,7 @@ def run(test, params, env):
         iface_dict = eval(params.get('iface_dict', "{'source': {'dev':'/dev/vhost-vdpa-0'}}"))
         iface_dev = interface_base.create_iface(dev_type, iface_dict)
         libvirt.add_vm_device(vm_xml.VMXML.new_from_dumpxml(vm_name), iface_dev)
-        test.log.debug("VM xml afater updating ifaces: %s.",
+        test.log.debug("VM xml after updating ifaces: %s.",
                        vm_xml.VMXML.new_from_dumpxml(vm_name))
 
         if test_scenario == "cold_plug":
@@ -71,7 +71,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) * iface_no + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after VM startup!")
+            test.fail("Unable to get correct MEMLOCK after VM startup!")
 
         if test_scenario == "cold_plug":
             return
@@ -83,14 +83,14 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) * 2 + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching a hostdev "
+            test.fail("Unable to get correct MEMLOCK after attaching a hostdev "
                       "interface!")
 
         test.log.info("TEST_STEP: Hotplug another hostdev interface.")
         virsh.attach_interface(vm.name, "hostdev --managed %s" % sriov_test_obj.vf_pci2,
                                debug=True, ignore_status=False)
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching a hostdev "
+            test.fail("Unable to get correct MEMLOCK after attaching a hostdev "
                       "interface!")
 
         test.log.info("TEST_STEP: Add one more vDPA interface.")
@@ -104,7 +104,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) * 3 + 1073741824
         if not libvirt_memory.comp_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching the 2nd "
+            test.fail("Unable to get correct MEMLOCK after attaching the 2nd "
                       "vDPA interface device!")
 
     # Variable assignment
