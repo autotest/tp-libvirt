@@ -188,7 +188,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) + 1073741824
         if not check_soft_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after VM startup!")
+            test.fail("Unable to get correct MEMLOCK after VM startup!")
 
         logging.info("Hotplug memory device.")
         mem_dict = eval(params.get('mem_dict', '{}'))
@@ -198,7 +198,7 @@ def run(test, params, env):
         expr_memlock += normalize_mem_size(
             mem_dict['target']['size'], mem_dict['target']['size_unit'])
         if not check_soft_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after attaching a memory "
+            test.fail("Unable to get correct MEMLOCK after attaching a memory "
                       "device!")
 
     def test_at_iface_and_memory(dev_type):
@@ -216,7 +216,7 @@ def run(test, params, env):
         vm.wait_for_serial_login(timeout=240).close()
         expr_memlock = 67108864
         if not check_soft_memlock(expr_memlock):
-            test.fail("Unalbe to get correct default!")
+            test.fail("Unable to get correct default!")
 
         interface_base.attach_iface_device(vm_name, dev_type, params)
 
@@ -226,7 +226,7 @@ def run(test, params, env):
             new_vmxml.get_current_mem(),
             new_vmxml.get_current_mem_unit()) + 1073741824
         if not check_soft_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after VM startup!")
+            test.fail("Unable to get correct MEMLOCK after VM startup!")
 
         logging.info("Hotplug memory devices.")
         for mem_attrs in ['mem_dict1', 'mem_dict2']:
@@ -237,7 +237,7 @@ def run(test, params, env):
             expr_memlock += normalize_mem_size(
                 mem_dict['target']['size'], mem_dict['target']['size_unit'])
             if not check_soft_memlock(expr_memlock):
-                test.fail("Unalbe to get correct MEMLOCK after attaching a "
+                test.fail("Unable to get correct MEMLOCK after attaching a "
                           "memory device!")
 
         logging.info("Detach a memory device and check memlock.")
@@ -251,7 +251,7 @@ def run(test, params, env):
                 test.fail("Detaching mem failed, MEMLOCK should not change!")
         else:
             if not check_soft_memlock(expr_memlock):
-                test.fail("Unalbe to get correct MEMLOCK after detaching a "
+                test.fail("Unable to get correct MEMLOCK after detaching a "
                           "memory device!")
 
     def setup_at_memory_to_vm_with_iface_and_locked_mem(dev_type):
@@ -278,7 +278,7 @@ def run(test, params, env):
         expr_memlock = normalize_mem_size(
             new_vmxml.memtune.hard_limit, new_vmxml.memtune.hard_limit_unit)
         if not check_soft_memlock(expr_memlock):
-            test.fail("Unalbe to get correct MEMLOCK after VM startup!")
+            test.fail("Unable to get correct MEMLOCK after VM startup!")
 
     check_environment(params)
     # Variable assignment

@@ -39,7 +39,7 @@ def run(test, params, env):
             src_output = event_session.get_stripped_output()
             test.log.debug("Event output on source: %s", src_output)
             if not re.findall(expected_event_src, src_output):
-                test.fail("Unalbe to find event {}".format(expected_event_src))
+                test.fail("Unable to find event {}".format(expected_event_src))
         migration_obj.verify_default()
 
     libvirt_version.is_libvirt_feature_supported(params)

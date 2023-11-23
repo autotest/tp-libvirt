@@ -18,7 +18,7 @@ def run(test, params, env):
         cur_iommu = vm_xml.VMXML.new_from_dumpxml(vm.name)\
             .devices.by_device_tag("iommu")
         if not cur_iommu:
-            test.fail("Unalbe to get iommu device!")
+            test.fail("Unable to get iommu device!")
         iommu_attrs = cur_iommu[0].fetch_attrs()
         test.log.debug("iommu_attrs: %s", iommu_attrs)
 

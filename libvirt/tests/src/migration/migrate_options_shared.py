@@ -235,7 +235,7 @@ def run(test, params, env):
         logging.debug("Actual output is %s", output)
         for item in expected_value_list:
             if not re.findall(item, output):
-                test.fail("Unalbe to find {}".format(item))
+                test.fail("Unable to find {}".format(item))
 
     def check_interval_not_fixed(search_str, log_file, interval=0.05,
                                  session=None):
@@ -255,7 +255,7 @@ def run(test, params, env):
                                                          session=session)
 
         if cmdStd:
-            test.fail("Unalbe to get {} from {}.".format(search_str, log_file))
+            test.fail("Unable to get {} from {}.".format(search_str, log_file))
         date_list = []
         for line in cmdStdout.splitlines():
             if line:
