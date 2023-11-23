@@ -11,6 +11,7 @@
 
 import logging
 import os
+import re
 
 from avocado.utils import process
 
@@ -60,7 +61,7 @@ def check_log_outputs(params, test):
     log_output = params.get("log_outputs")
     vp = virt_admin.VirtadminPersistent()
     virt_admin_log = vp.daemon_log_outputs(ignore_status=True, debug=True).stdout_text.strip()
-    if log_output not in virt_admin_log:
+    if not re.search(r'%s' % log_output, virt_admin_log):
         test.fail("Can not find expected log output: %s from virt admin command output: %s" % (log_output, virt_admin_log))
 
 
