@@ -11,6 +11,7 @@ from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
+from provider.interface import interface_base
 from provider.virtual_network import network_base
 
 LOG = logging.getLogger('avocado.' + __name__)
@@ -50,10 +51,8 @@ def run(test, params, env):
     tap_name = tap_type + '_' + rand_id
     tap_mtu = params.get('tap_mtu')
     iface_mtu = params.get('iface_mtu')
-    vm_iface = params.get('vm_iface')
     host_ip = utils_net.get_host_ip_address(ip_ver='ipv4')
     iface_attrs = eval(params.get('iface_attrs'))
-    vm_iface = params.get('vm_iface', 'eno1')
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_net_if(
@@ -113,6 +112,7 @@ def run(test, params, env):
                 LOG.info('MTU check of vmxml PASS')
 
             # Check mtu inside vm
+            vm_iface = interface_base.get_vm_iface(session)
             vm_iface_info = utils_net.get_linux_iface_info(iface=vm_iface,
                                                            session=session)
             vm_mtu = vm_iface_info['mtu']
