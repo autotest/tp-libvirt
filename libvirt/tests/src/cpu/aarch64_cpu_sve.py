@@ -36,6 +36,7 @@ def run(test, params, env):
 
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
+    host_without_sve = "yes" == params.get("host_without_sve", "no")
     expect_sve = "yes" == params.get("expect_sve", "yes")
     expect_msg = params.get("expect_msg", "")
     vector_length = params.get("vector_length", "sve")
@@ -57,10 +58,17 @@ def run(test, params, env):
             if (not utils_package.package_install("util-linux")
                     or not utils_package.package_install("util-linux", session)):
                 test.error("Failed to install util-linux")
-            # Cancel test if host doesn't support SVE
-            if process.run(check_sve,
-                           ignore_status=True, shell=True).exit_status:
-                test.cancel("Host doesn't support SVE")
+
+            # Cancel test if the Host doesn't support or supports SVE based on configuration
+            if process.run(check_sve, ignore_status=True, shell=True).exit_status:
+                if not host_without_sve:
+                    test.cancel("Host doesn't support SVE")
+                else:
+                    return
+            else:
+                if host_without_sve:
+                    test.cancel("Host supports SVE")
+
             # To enable SVE: Hardware support && enable kconfig
             # CONFIG_ARM64_SVE
             if session.cmd_status(check_sve_config % current_boot):
@@ -86,7 +94,7 @@ def run(test, params, env):
             session = vm.wait_for_login(timeout=120)
             ret = session.cmd(get_maxium_sve_length).strip()
             # dmesg record maximum sve length in bytes
-            sve_length_byte = re.search("length (\d+) bytes", ret).groups()[0]
+            sve_length_byte = re.search(r"length (\d+) bytes", ret).groups()[0]
             # Change max_length into sve + length(bit) E.g. sve512
             sve_length_bit = "sve" + str(int(sve_length_byte) * 8)
             logging.debug("guest sve_length_bit is %s" % sve_length_bit)
@@ -155,7 +163,8 @@ def run(test, params, env):
         except LibvirtXMLError as e:
             if define_error:
                 if not re.search(expect_msg, str(e)):
-                    test.fail("Expect definition failure: %s but got %s" % (expect_msg, str(e)))
+                    test.fail("Expect definition failure: %s but got %s" %
+                              (expect_msg, str(e)))
                 return True
             else:
                 test.error("Failed to define guest: %s" % str(e))
