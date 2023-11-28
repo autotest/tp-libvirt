@@ -364,7 +364,7 @@ def run(test, params, env):
             test.fail("Failed to check rng file on guest."
                       " The virtio device is not available.")
         if set_virtio_current:
-            virtio_dev = [x for x in rng_avail.split('\n') if 'virtio' in x][0]
+            virtio_dev = re.findall('virtio_rng.\d+', rng_avail)[0]
             _ = session.cmd_output(("echo -n %s > %s" %
                                     (virtio_dev, rng_files[1])),
                                    timeout=timeout)
