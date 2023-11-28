@@ -1400,6 +1400,14 @@ def run(test, params, env):
                 asynch_migration = False
                 params.update({"status_error": "yes"})
 
+        # Disable postcopy + multifd migration in qemu-kvm-8.1.0.
+        if extra.count("postcopy") and extra.count("parallel"):
+            if utils_misc.compare_qemu_version(8, 1, 0, is_rhev=False):
+                asynch_migration = False
+                params.update({"status_error": "yes"})
+                params.update({"err_msg": "Postcopy is not yet compatible with multifd"})
+                params.update({"action_during_mig": ""})
+
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
