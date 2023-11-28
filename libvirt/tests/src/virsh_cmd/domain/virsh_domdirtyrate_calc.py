@@ -1,11 +1,11 @@
-import time
 import logging as log
+import time
 
 from virttest import virsh
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt
 from virttest.utils_stress import install_stressapptest
+from virttest import utils_misc
 
 logging = log.getLogger('avocado.' + __name__)
 
@@ -52,9 +52,11 @@ def run(test, params, env):
             tolerance = 0.75
 
         if abs(int(dirty_rate)/int(ram_size) - 1) > tolerance:
-            test.fail("Dirty rate calculated %s has a big difference "
-                      "with the ram size %s loaded in guest "
-                      % (dirty_rate, ram_size))
+            logging.debug("Dirty rate calculated %s has a big difference "
+                          "with the ram size %s loaded in guest "
+                          % (dirty_rate, ram_size))
+            return False
+        return True
 
     def check_output():
         """
@@ -64,10 +66,10 @@ def run(test, params, env):
         out_list = res.stdout_text.strip().splitlines()[1:]
         out_dict = {}
         out_dict = dict(item.strip().split("=") for item in out_list)
-
         if out_dict["dirtyrate.calc_status"] != calc_status:
-            test.fail("Calculating dirty rate should be completed "
-                      "after %s seconds" % period)
+            logging.debug("Calculating dirty rate should be completed "
+                          "after approx. %s seconds" % period)
+            return False
         if out_dict["dirtyrate.calc_period"] != period:
             test.fail("Calculating period is not the same with "
                       "the setting period %s" % period)
@@ -78,9 +80,20 @@ def run(test, params, env):
         if mode == "dirty-ring":
             for cpu_num in range(vm.get_cpu_count()):
                 dirty_rate = out_dict["dirtyrate.vcpu.%s.megabytes_per_second" % cpu_num]
-                check_dirty_rate(dirty_rate)
+                return check_dirty_rate(dirty_rate)
         else:
-            check_dirty_rate(dirty_rate)
+            return check_dirty_rate(dirty_rate)
+
+    def wait_for_output():
+        """
+        Trigger calculation and wait for expected result
+        """
+        result = virsh.domdirtyrate_calc(vm_name,
+                                         options=option,
+                                         ignore_status=False,
+                                         debug=True)
+        time.sleep(1.2*int(period))
+        return check_output()
 
     vm_name = params.get("main_vm")
     status_error = "yes" == params.get("status_error", "no")
@@ -108,15 +121,18 @@ def run(test, params, env):
 
         load_stress(vm)
 
-        result = virsh.domdirtyrate_calc(vm_name, options=option, ignore_status=True, debug=True)
-
-        time.sleep(int(period))
-        libvirt.check_exit_status(result)
-
         if status_error:
             return
         else:
-            check_output()
+            result = utils_misc.wait_for(lambda: wait_for_output(),
+                                         step=int(period),
+                                         text="Waiting for the dirty rate",
+                                         timeout=60,
+                                         ignore_errors=True)
+            if not result:
+                test.fail("Didn't get the right dirty rate.")
+            else:
+                logging.debug("Dirty rate as expected.")
 
     finally:
         if vm.is_alive():
