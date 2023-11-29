@@ -42,16 +42,25 @@ def setup_default(test_obj):
     test_obj.setup()
     params_2M = {'hugepage_size': '2048',
                  'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_2M'),
-                 'target_hugepages': test_obj.params.get('target_hugepages_2M')}
+                 'target_hugepages': test_obj.params.get('target_hugepages_2M'),
+                 'kernel_hp_file': '/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'}
+    params_512M = {'hugepage_size': '524288',
+                   'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_512M'),
+                   'target_hugepages': test_obj.params.get('target_hugepages_512M'),
+                   'kernel_hp_file': '/sys/kernel/mm/hugepages/hugepages-524288kB/nr_hugepages'}
     params_1G = {'hugepage_size': '1048576',
                  'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_1G'),
                  'target_hugepages': test_obj.params.get('target_hugepages_1G'),
                  'kernel_hp_file': '/sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'}
     hp_size = test_obj.params.get('hp_size')
-    if hp_size in ['2M', '2M_1G', 'scarce_mem']:
+    if hp_size in ['2M', '2M_1G', '2M_512M', 'scarce_mem']:
         test_obj.params.update(params_2M)
         hpconfig_2M = setup_hugepage(test_obj.params)
         test_obj.params['hp_config_2M'] = hpconfig_2M
+    if hp_size in ['512M', '2M_512M']:
+        test_obj.params.update(params_512M)
+        hpconfig_512M = setup_hugepage(test_obj.params)
+        test_obj.params['hp_config_512M'] = hpconfig_512M
     if hp_size in ['1G', '2M_1G']:
         test_obj.params.update(params_1G)
         hpconfig_1G = setup_hugepage(test_obj.params)
@@ -110,12 +119,18 @@ def verify_hugepage_memory_in_numa_maps(test_obj):
                                "numa_maps output '%s'" % (pat,
                                                           out_numa_maps))
     hp_size = test_obj.params.get('hp_size')
-    if hp_size in ['2M', '2M_1G']:
+    if hp_size in ['2M', '2M_512M', '2M_1G']:
         _check_numa_maps(test_obj.params.get('vm_numa_node0_mem'),
                          test_obj.params.get('target_hugepages_2M'), '2048')
+    if hp_size == '512M':
+        _check_numa_maps(test_obj.params.get('vm_numa_node0_mem'),
+                         test_obj.params.get('target_hugepages_512M'), '524288')
     if hp_size == '1G':
         _check_numa_maps(test_obj.params.get('vm_numa_node0_mem'),
                          test_obj.params.get('target_hugepages_1G'), '1048576')
+    if hp_size == '2M_512M':
+        _check_numa_maps(test_obj.params.get('vm_numa_node1_mem'),
+                         test_obj.params.get('target_hugepages_512M'), '524288')
     if hp_size == '2M_1G':
         _check_numa_maps(test_obj.params.get('vm_numa_node1_mem'),
                          test_obj.params.get('target_hugepages_1G'), '1048576')
@@ -131,13 +146,21 @@ def check_qemu_cmdline(test_obj):
     pat_in_qemu_cmdline = test_obj.params.get('pat_in_qemu_cmdline')
     hp_size = test_obj.params.get('hp_size')
     hugepage_path_1G = test_obj.params.get('hugepage_path_1G')
+    hugepage_path_512M = test_obj.params.get('hugepage_path_512M')
     hugepage_path_2M = test_obj.params.get('hugepage_path_2M')
-    node0_mem_path = '%s/libvirt/qemu/.*' % hugepage_path_2M \
-        if hp_size in ['2M', '2M_1G'] else '%s/libvirt/qemu/.*' % hugepage_path_1G
+    if hp_size in ['2M', '2M_512M', '2M_1G']:
+        node0_mem_path = '%s/libvirt/qemu/.*' % hugepage_path_2M
+    if hp_size == "512M":
+        node0_mem_path = '%s/libvirt/qemu/.*' % hugepage_path_512M
+    if hp_size == "1G":
+        node0_mem_path = '%s/libvirt/qemu/.*' % hugepage_path_1G
+    node1_mem_path = ''
+    if hp_size == "2M_512M":
+        node1_mem_path = '"mem-path":"%s/libvirt/qemu/.*",' % hugepage_path_512M
+    if hp_size == "2M_1G":
+        node1_mem_path = '"mem-path":"%s/libvirt/qemu/.*",' % hugepage_path_1G
     node0_mem_size = int(test_obj.params.get('vm_numa_node0_mem')) * 1024
-    node1_mem_path = '"mem-path":"%s/libvirt/qemu/.*",' % hugepage_path_1G \
-        if hp_size == '2M_1G' else ''
-    node1_prealloc = '"prealloc":true,' if hp_size == '2M_1G' else ''
+    node1_prealloc = '"prealloc":true,' if hp_size == '2M_1G' or hp_size == '2M_512M' else ''
     node1_mem_size = int(test_obj.params.get('vm_numa_node1_mem')) * 1024
     pat_in_qemu_cmdline = pat_in_qemu_cmdline % (node0_mem_path,
                                                  node0_mem_size,
@@ -182,8 +205,9 @@ def teardown_default(test_obj):
     """
     test_obj.teardown()
     hpconfig_2M = test_obj.params.get('hp_config_2M')
+    hpconfig_512M = test_obj.params.get('hp_config_512M')
     hpconfig_1G = test_obj.params.get('hp_config_1G')
-    for hpconfig in [hpconfig_2M, hpconfig_1G]:
+    for hpconfig in [hpconfig_2M, hpconfig_512M, hpconfig_1G]:
         if hpconfig:
             hpconfig.cleanup()
     test_obj.test.log.debug("Step: hugepage is deallocated")
@@ -194,9 +218,15 @@ def run(test, params, env):
     """
     Test for numa memory binding with emulator thread pin
     """
+    conf_pagesize = params.get("conf_pagesize")
+    kernel_pagesize = process.run("getconf PAGESIZE", shell=True).stdout_text.strip()
+    if kernel_pagesize != conf_pagesize:
+        test.cancel("The current test does not work with this kernel pagesize.")
+
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     numatest_obj = numa_base.NumaTest(vm, params, test)
+
     try:
         setup_default(numatest_obj)
         run_default(numatest_obj)
