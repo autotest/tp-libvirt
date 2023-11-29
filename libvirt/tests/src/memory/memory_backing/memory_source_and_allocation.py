@@ -7,8 +7,8 @@
 #   Author: Nannan Li <nanli@redhat.com>
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-import re
 import json
+import re
 
 from avocado.utils import process
 
