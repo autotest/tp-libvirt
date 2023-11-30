@@ -486,6 +486,7 @@ def test_coldplug_scsi_hostdev_qemu_pr_helper(test, params, env):
     :param env: environment instance
     """
     vm_name = params.get("main_vm")
+    _ = env.get_vm(vm_name)
     block_device = setup_scsi_debug_block_device()
 
     disk_src_dict = {"attrs": {"dev": block_device}}
