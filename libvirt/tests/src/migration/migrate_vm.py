@@ -1871,12 +1871,8 @@ def run(test, params, env):
             local_image_list.append(new_disk_source)
 
         if restart_libvirtd_remotely:
-            cmd = "service libvirtd restart"
-            status, output = run_remote_cmd(cmd, server_ip, server_user,
-                                            server_pwd)
-            if status:
-                test.fail("Failed to run '%s' on remote: %s"
-                          % (cmd, output))
+            libvirt.remotely_control_libvirtd(server_ip, server_user,
+                                              server_pwd, "restart", status_error)
 
         if remote_hugetlbfs_path:
             cmd = "ls %s" % remote_hugetlbfs_path
@@ -2965,14 +2961,15 @@ def run(test, params, env):
 
         if HUGETLBFS_MOUNT:
             cmds = ["umount -l %s" % remote_hugetlbfs_path,
-                    "sysctl vm.nr_hugepages=0",
-                    "service libvirtd restart"]
+                    "sysctl vm.nr_hugepages=0"]
             for cmd in cmds:
                 status, output = run_remote_cmd(cmd, server_ip, server_user,
                                                 server_pwd)
                 if status:
                     test.fail("Failed to run '%s' on remote: %s"
                               % (cmd, output))
+            libvirt.remotely_control_libvirtd(server_ip, server_user,
+                                              server_pwd, "restart", status_error)
         if pool_created:
             pool_destroyed = create_destroy_pool_on_remote(test, "destroy", test_dict)
             if not pool_destroyed:
