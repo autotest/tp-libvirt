@@ -786,8 +786,12 @@ class VMChecker(object):
         LOG.info("Checking VirtIO drivers and display adapter")
         expect_video = self.get_expect_video_model()
         has_virtio_win, has_qxldod = self.get_virtio_win_config()
+        cpu_drivers = ['Intel Processor', 'AMD Processor']
         expect_drivers = ["Red Hat VirtIO SCSI",
-                          "Red Hat VirtIO Ethernet Adapte"]
+                          "Red Hat VirtIO Ethernet Adapte",
+                          "VirtIO RNG",
+                          "VirtIO Serial",
+                          "VirtIO Balloon"]
         expect_adapter = 'Microsoft Basic Display Driver'
         virtio_win_qxl_os = ['win2008r2', 'win7']
         virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
@@ -830,7 +834,15 @@ class VMChecker(object):
         if expect_drivers:
             for driver in expect_drivers:
                 self.log_err("Not find driver: %s" % driver)
-
+        if re.search(r"(Intel|AMD) Processor", win_dirvers):
+            if re.search(r"(Intel|AMD) Processor", win_dirvers).group(0) in cpu_drivers:
+                LOG.info("CPU driver '%s' is found" % re.search(r"(Intel|AMD) Processor", win_dirvers).group(0))
+        else:
+            err_msg = "CPU driver is not found"
+            self.log_err(err_msg)
+        cpu_status = self.checker.get_cpu_status()
+        if not re.search(r'OK', cpu_status):
+            self.log_err("cpu status is abnormal")
         # Check graphic and video type in VM XML
         self.check_vm_xml()
 
