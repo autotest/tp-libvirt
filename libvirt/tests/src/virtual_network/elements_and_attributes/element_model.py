@@ -6,6 +6,7 @@ from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 from provider.virtual_network import network_base
+from provider.interface import interface_base
 
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 
@@ -23,7 +24,6 @@ def run(test, params, env):
     err_msg = params.get('err_msg')
     pci_model = params.get('pci_model')
     iface_attrs = eval(params.get('iface_attrs', '{}'))
-    vm_iface = params.get('vm_iface')
     iface_driver = params.get('iface_driver')
     model_type = params.get('model_type')
     if model_type == 'default':
@@ -58,6 +58,7 @@ def run(test, params, env):
                       f'but got {iface_info["model"]}')
 
         session = vm.wait_for_serial_login()
+        vm_iface = interface_base.get_vm_iface(session)
 
         eth_output = session.cmd_output(f'ethtool -i {vm_iface} | grep driver')
         LOG.debug(eth_output)
