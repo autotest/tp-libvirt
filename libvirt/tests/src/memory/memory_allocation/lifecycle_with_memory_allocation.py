@@ -9,6 +9,7 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 import os
+import re
 
 from virttest import virsh
 from virttest import libvirt_version
@@ -30,7 +31,7 @@ def run(test, params, env):
     3:with numa topology
     """
 
-    def run_positive_test():
+    def run_test():
         """
         Start guest
         Check the qemu cmd line
@@ -39,7 +40,16 @@ def run(test, params, env):
         test.log.info("TEST_STEP1: Define and start vm")
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.setup_attrs(**vm_attrs)
-        vmxml.sync()
+
+        try:
+            vmxml.sync()
+        except Exception as e:
+            if not libvirt_version.version_compare(9, 6, 0) and mem_config == "with_maxmemory":
+                if not re.search(error_msg, str(e)):
+                    test.fail("Expected to get '%s', but got '%s'" % (error_msg, e))
+                return
+            else:
+                test.fail("Expect define successfully, but failed with '%s'" % e)
 
         if not vm.is_alive():
             vm.start()
@@ -51,18 +61,21 @@ def run(test, params, env):
         check_dominfo()
         check_qemu_cmdline()
 
-        test.log.info("TEST_STEP3:Check vm reboot and memory config")
+        test.log.info("TEST_STEP3:Check vm memory config")
+        check_mem_config()
+
+        test.log.info("TEST_STEP4:Check vm reboot and memory config")
         virsh.reboot(vm_name, ignore_status=False, debug=True)
         vm.wait_for_login().close()
         check_mem_config()
 
-        test.log.info("TEST_STEP4:Check vm suspend & resume and memory config")
+        test.log.info("TEST_STEP5:Check vm suspend & resume and memory config")
         virsh.suspend(vm_name, ignore_status=False, debug=True)
         virsh.resume(vm_name, ignore_status=False, debug=True)
         vm.wait_for_login().close()
         check_mem_config()
 
-        test.log.info("TEST_STEP5:Check vm save & restore and memory config")
+        test.log.info("TEST_STEP6:Check vm save & restore and memory config")
         if os.path.exists(save_file):
             os.remove(save_file)
         virsh.save(vm_name, save_file, ignore_status=False, debug=True)
@@ -70,22 +83,22 @@ def run(test, params, env):
         vm.wait_for_login().close()
         check_mem_config()
 
-        test.log.info("TEST_STEP6:Check vm managedsave,start and memory config")
+        test.log.info("TEST_STEP7:Check vm managedsave,start and memory config")
         virsh.managedsave(vm_name, ignore_status=False, debug=True)
         vm.start()
         vm.wait_for_login().close()
         check_mem_config()
 
-        test.log.info("TEST_STEP7:Check libvirtd restart and memory config")
+        test.log.info("TEST_STEP8:Check libvirtd restart and memory config")
         libvirtd = utils_libvirtd.Libvirtd()
         libvirtd.restart()
         vm.wait_for_login().close()
         check_mem_config()
 
-        test.log.info("TEST_STEP8: Destroy vm ")
+        test.log.info("TEST_STEP9: Destroy vm ")
         virsh.destroy(vm_name, ignore_status=False, debug=True)
 
-    def teardown_positive_test():
+    def teardown_test():
         """
         Clean data.
         """
@@ -93,27 +106,6 @@ def run(test, params, env):
         if os.path.exists(save_file):
             os.remove(save_file)
         vm.undefine(options='--nvram --managed-save')
-        bkxml.sync()
-
-    def run_negative_test():
-        """
-        Define vm and check result.
-        """
-        test.log.info("TEST_STEP1: Define vm with maxMemory and no numa")
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        vmxml.setup_attrs(**vm_attrs)
-        test.log.debug("Define vm with %s.", vmxml)
-
-        cmd_result = virsh.define(vmxml.xml, debug=True)
-
-        test.log.info("TEST_STEP2: Check error message")
-        libvirt.check_result(cmd_result, error_msg)
-
-    def teardown_negative_test():
-        """
-        Clean data.
-        """
-        test.log.info("TEST_TEARDOWN: Clean up env.")
         bkxml.sync()
 
     def check_qemu_cmdline():
@@ -126,7 +118,8 @@ def run(test, params, env):
                 expected_str = r"-m size=%sk" % mem_value
             else:
                 expected_str = r"-m %s" % str(int(mem_value/1024))
-        elif mem_config == "with_numa":
+        elif mem_config == "with_numa" or \
+                mem_config == "with_maxmemory" and libvirt_version.version_compare(9, 6, 0):
             expected_str = r"-m size=%dk,slots=%d,maxmem=%dk" % (
                 int(mem_value), max_mem_slots, int(max_mem))
 
@@ -160,7 +153,6 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
 
-    case = params.get("case")
     error_msg = params.get("error_msg")
     mem_value = int(params.get("mem_value"))
     current_mem = int(params.get("current_mem"))
@@ -170,9 +162,6 @@ def run(test, params, env):
     expect_xpath = eval(params.get("expect_xpath", '{}'))
     vm_attrs = eval(params.get("vm_attrs"))
     save_file = "/tmp/%s.save" % vm_name
-
-    run_test = eval("run_%s" % case)
-    teardown_test = eval("teardown_%s" % case)
 
     try:
         run_test()
