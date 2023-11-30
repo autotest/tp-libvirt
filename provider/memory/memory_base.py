@@ -6,7 +6,6 @@ from avocado.core import exceptions
 def convert_data_size(current_size, dest_unit="KiB"):
     """
     Convert source value to expected value
-
     :param current_size: current size str, eg: 1024MB
     :param dest_unit: dest size unit, eg: KiB, MiB
     :return: dest_size: The size is converted, eg: 1(the dest unit is given,
