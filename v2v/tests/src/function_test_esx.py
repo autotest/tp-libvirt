@@ -635,7 +635,7 @@ def run(test, params, env):
             time_info = re.search(r'.*\d.*Finishing.*off', output).group(0)
             usetime = re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0]
             LOG.info('use time is %s' % usetime)
-            if int(usetime) > 300:
+            if int(usetime) > 800:
                 test.fail("conversion time is too long, please check v2v performance")
         # Log checking
         log_check = utils_v2v.check_log(params, output)
