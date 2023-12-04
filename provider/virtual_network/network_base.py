@@ -127,6 +127,8 @@ def create_macvtap(macvtap_name, iface, user):
     tap_index = process.run(cmd_get_tap, shell=True).stdout_text.strip()
     device_path = f'/dev/tap{tap_index}'
     logging.debug(f'device_path: {device_path}')
+    # Check the current permissions
+    process.run('ls -l %s' % device_path, shell=True)
     # Change owner and group for device
     process.run(f'chown {user} {device_path};chgrp {user} {device_path}',
                 shell=True)
