@@ -94,8 +94,9 @@ def run(test, params, env):
                 if hasattr(guest_xml, "memtune"):
                     test.fail("memtune should not appear in config xml, "
                               "but found memtune XML:\n%s" % guest_xml.memtune)
-            except xcepts.LibvirtXMLNotFoundError:
-                pass
+            except xcepts.LibvirtXMLNotFoundError as detail:
+                test.log.debug(
+                    "Did not find the memtune xml, error is:%s" % detail)
         else:
             memtune_element = guest_xml.memtune
             for key, value in limit_dict.items():
@@ -103,6 +104,17 @@ def run(test, params, env):
                     test.fail("memtune limit %s should be %s "
                               "in config xml, but found value:%s"
                               % (key, value, getattr(memtune_element, key)))
+
+    def check_guest_memtune_related_values(limit_dict):
+        """
+        check memtune by cmd virsh memtune, cgroup value and guest config xml
+        """
+        test.log.info("Check the memtune value by virsh memtune")
+        check_limit_by_virsh_memtune(limit_dict)
+        test.log.info("Check the memtune value by cgroup")
+        check_limit_by_cgroup(limit_dict)
+        test.log.info("Check the memtune value by guest config xml")
+        check_limit_by_virsh_dump(limit_dict)
 
     def run_test():
         """
@@ -138,59 +150,41 @@ def run(test, params, env):
         if 'zero' == test_target:
             expected_state = "shut off (crashed)" if cg.is_cgroup_v2_enabled(
             ) else "running (booted)"
-            if expected_state != actual_state:
-                test.fail("Guest state should be '%s', "
-                          "but get %s instead" % (expected_state, actual_state))
-            return
         else:
-            if "running (booted)" != actual_state:
-                test.fail("Guest state should be 'running (booted)', "
-                          "but get %s instead" % actual_state)
+            expected_state = "running (booted)"
+        if expected_state != actual_state:
+            test.fail("Guest state should be '%s', "
+                      "but get %s instead" % (expected_state, actual_state))
 
-        test.log.info("TEST_STEP6: For scenarios with running guest, "
-                      "check the memtune values")
-        check_limit_by_virsh_memtune(target_limit_dict)
+        if 'zero' != test_target:
+            test.log.info("TEST_STEP6: For scenarios with running guest, "
+                          "check the memtune values")
+            check_limit_by_virsh_memtune(target_limit_dict)
 
-        test.log.info("TEST_STEP7: For scenarios with running guest, "
-                      "check the cgroup settings")
-        check_limit_by_cgroup(target_limit_dict)
+            test.log.info("TEST_STEP7: For scenarios with running guest, "
+                          "check the cgroup settings")
+            check_limit_by_cgroup(target_limit_dict)
 
-        test.log.info("TEST_STEP8: For scenarios with running guest, "
-                      "destroy and start the guest")
-        vm.destroy()
-        vm.start()
+            test.log.info("TEST_STEP8: For scenarios with running guest, "
+                          "destroy and start the guest")
+            vm.destroy()
+            vm.start()
 
-        test.log.info("TEST_STEP9: For scenarios with running guest, "
-                      "change the memtune setting all together")
-        set_limit_by_virsh_memtune_once(target_limit_dict)
+            test.log.info("TEST_STEP9: For scenarios with running guest, "
+                          "change the memtune setting all together")
+            set_limit_by_virsh_memtune_once(target_limit_dict)
 
-        test.log.info("TEST_STEP10: For scenarios with running guest, "
-                      "check the memtune values")
-        check_limit_by_virsh_memtune(target_limit_dict)
+            test.log.info("TEST_STEP10-12: For scenarios with running guest, "
+                          "check the memtune values")
+            check_guest_memtune_related_values(target_limit_dict)
 
-        test.log.info("TEST_STEP11: For scenarios with running guest, "
-                      "check the cgroup settings")
-        check_limit_by_cgroup(target_limit_dict)
+            test.log.info("TEST_STEP13: For scenarios with running guest, "
+                          "restart the libvirt daemon")
+            utils_libvirtd.libvirtd_restart()
 
-        test.log.info("TEST_STEP12: For scenarios with running guest, "
-                      "check the memtune config xml")
-        check_limit_by_virsh_dump(target_limit_dict)
-
-        test.log.info("TEST_STEP13: For scenarios with running guest, "
-                      "restart the libvirt daemon")
-        utils_libvirtd.libvirtd_restart()
-
-        test.log.info("TEST_STEP14-1: For scenarios with running guest, "
-                      "check the memtune values")
-        check_limit_by_virsh_memtune(target_limit_dict)
-
-        test.log.info("TEST_STEP14-2: For scenarios with running guest, "
-                      "check the cgroup settings")
-        check_limit_by_cgroup(target_limit_dict)
-
-        test.log.info("TEST_STEP14-3: For scenarios with running guest, "
-                      "check the memtune config xml")
-        check_limit_by_virsh_dump(target_limit_dict)
+            test.log.info("TEST_STEP14: For scenarios with running guest, "
+                          "check the memtune values")
+            check_guest_memtune_related_values(target_limit_dict)
 
     def teardown_test():
         """
