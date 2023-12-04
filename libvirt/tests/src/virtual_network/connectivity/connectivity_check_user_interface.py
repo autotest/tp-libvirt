@@ -28,13 +28,9 @@ def check_val(expect, actual, info, test):
     """
     if expect is None:
         return
-    match = False
-    if '+' in expect:
-        match = re.search(expect, actual)
-    elif 'nameserver' in info:
-        match = expect in actual
-    else:
-        match = expect == actual
+    pattern = re.compile(expect, re.MULTILINE)
+    LOG.debug(pattern)
+    match = pattern.search(actual)
     if match:
         LOG.debug(f'{info} match. Expect {expect}, got {actual}')
     else:
