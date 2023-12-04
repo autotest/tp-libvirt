@@ -13,6 +13,30 @@ VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 LOG = logging.getLogger('avocado.' + __name__)
 
 
+def check_model_controller(vm_name, pci_model, test):
+    """
+    Checks that the controllers are the expected pci model
+
+    :param vm_name: VM name
+    :param pci_model: The expected pci model
+    :param test: Test instance
+    """
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    iface = vmxml.get_devices('interface')[0]
+    LOG.debug(f'Interface xml after vm started:\n{iface}')
+    ctrl_index = int(iface.fetch_attrs()['address']['attrs']['bus'], 16)
+    controllers = vmxml.get_devices('controller')
+    iface_controller = [c for c in controllers if c.type == 'pci' and
+                        c.index == str(ctrl_index)][0]
+    LOG.debug(f'Controller xml:\n{iface_controller}')
+
+    if iface_controller.model == pci_model:
+        LOG.debug('XML controller model check: PASS')
+    else:
+        test.fail(f'Expect pci model: {pci_model}, '
+                  f'and got {iface_controller.model}')
+
+
 def run(test, params, env):
     """
     Test 'model' element of interface
@@ -26,6 +50,7 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs', '{}'))
     iface_driver = params.get('iface_driver')
     model_type = params.get('model_type')
+    check_pci_model = params.get('check_pci_model', 'yes') == "yes"
     if model_type == 'default':
         iface_attrs.pop('model')
 
@@ -72,19 +97,7 @@ def run(test, params, env):
         network_base.ping_check(params, ips, session, force_ipv4=True)
         session.close()
 
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        iface = vmxml.get_devices('interface')[0]
-        LOG.debug(f'Interface xml after vm started:\n{iface}')
-        ctrl_index = int(iface.fetch_attrs()['address']['attrs']['bus'], 16)
-        controllers = vmxml.get_devices('controller')
-        iface_controller = [c for c in controllers if c.type == 'pci' and
-                            c.index == str(ctrl_index)][0]
-        LOG.debug(f'Controller xml:\n{iface_controller}')
-
-        if iface_controller.model == pci_model:
-            LOG.debug('XML controller model check: PASS')
-        else:
-            test.fail(f'Expect pci model: {pci_model}, '
-                      f'and got {iface_controller.model}')
+        if check_pci_model:
+            check_model_controller(vm_name, pci_model, test)
     finally:
         bkxml.sync()
