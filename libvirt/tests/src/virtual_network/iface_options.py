@@ -404,7 +404,8 @@ def run(test, params, env):
                           " on guest")
         # Check gateway address
         gateway = str(utils_net.get_default_gateway(False, session))
-        if expect_gw not in gateway:
+        pattern = re.compile(expect_gw, re.MULTILINE)
+        if not pattern.search(gateway):
             test.fail("The gateway on guest is %s, while expect is %s" %
                       (gateway, expect_gw))
         # Check dns server address
