@@ -51,12 +51,12 @@ def run(test, params, env):
     tap_name = tap_type + '_' + rand_id
     tap_mtu = params.get('tap_mtu')
     iface_mtu = params.get('iface_mtu')
-    host_ip = utils_net.get_host_ip_address(ip_ver='ipv4')
     iface_attrs = eval(params.get('iface_attrs'))
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_net_if(
         state="UP")[0]
+    host_ip = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv4')
     status_error = 'yes' == params.get('status_error', 'no')
     err_msg = params.get('err_msg')
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
