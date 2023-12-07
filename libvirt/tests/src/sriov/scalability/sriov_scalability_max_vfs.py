@@ -1,7 +1,3 @@
-from provider.interface import interface_base
-from provider.sriov import check_points
-from provider.sriov import sriov_base
-
 from virttest import utils_misc
 from virttest import utils_sriov
 from virttest import virsh
@@ -10,6 +6,10 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_network
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
+
+from provider.interface import interface_base
+from provider.sriov import check_points
+from provider.sriov import sriov_base
 
 
 def get_vm_iface_num(vm_name):
@@ -79,7 +79,7 @@ def run(test, params, env):
         test.log.info("TEST_SETUP: Remove VM's interface devices.")
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
 
-        test.log.info("TEST_SETUP: Cold plug 64 interfaces to VM.")
+        test.log.info(f"TEST_SETUP: Cold plug {iface_num} interfaces to VM.")
         opts = "network %s --config" % list(net_info.values())[0]
         for i in range(vf_no):
             iface_dict = {
@@ -94,11 +94,13 @@ def run(test, params, env):
             if i % 8 == 0:
                 iface_dict['address']['attrs'].update({'multifunction': 'on'})
             iface_dev = interface_base.create_iface("network", iface_dict)
-            virsh.attach_device(vm.name, iface_dev.xml, flagstr="--config", debug=True, ignore_status=False)
-        net_name_2 = list(net_info.values())[1]
-        opts = "network %s --config" % net_name_2
-        virsh.attach_interface(vm_name, opts, debug=True, ignore_status=False)
-        compare_vm_iface(test, get_vm_iface_num(vm_name), vf_no+1)
+            virsh.attach_device(vm.name, iface_dev.xml, flagstr="--config",
+                                debug=True, ignore_status=False)
+        for i in range(iface_num - vf_no):
+            net_name_2 = list(net_info.values())[1]
+            opts = "network %s --config" % net_name_2
+            virsh.attach_interface(vm_name, opts, debug=True, ignore_status=False)
+        compare_vm_iface(test, get_vm_iface_num(vm_name), iface_num)
 
     def teardown_test():
         """
@@ -126,7 +128,11 @@ def run(test, params, env):
         5. Try to hot plug the 65th hostdev interface
         """
         test.log.info("TEST_STEP1: Start the VM and check networks.")
-        vm.start()
+        result = virsh.start(vm.name, debug=True)
+        libvirt.check_exit_status(result, start_error)
+        if start_error:
+            return
+        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(timeout=240)
         res = vm_session.cmd_status_output(
             'lspci |grep Ether')[1].strip().splitlines()
@@ -180,6 +186,8 @@ def run(test, params, env):
     driver = utils_sriov.get_pf_info_by_pci(pf_pci).get('driver')
     net_info = get_net_dict(pf_info)
     vf_no = int(params.get("vf_no", "63"))
+    iface_num = int(params.get("iface_num", "64"))
+    start_error = "yes" == params.get("start_error", "no")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
