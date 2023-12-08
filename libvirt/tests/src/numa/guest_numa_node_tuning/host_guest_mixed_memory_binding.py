@@ -19,6 +19,7 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_memory
+from virttest.utils_libvirt import libvirt_numa
 
 from provider.numa import numa_base
 
@@ -287,8 +288,7 @@ def check_cgroup(numatest_obj):
                                         "vcpu0_cpuset_mems=%s, "
                                         "vcpu1_cpuset_mems=%s", emulator_cpuset_mems,
                                         vcpu0_cpuset_mems, vcpu1_cpuset_mems)
-            all_nodes_str = ['%s' % a_node for a_node in all_nodes]
-            nodeset = numa_base.convert_to_string_with_dash(','.join(all_nodes_str))
+            nodeset = libvirt_numa.convert_all_nodes_to_string(all_nodes)
             for item in [emulator_cpuset_mems, vcpu0_cpuset_mems, vcpu1_cpuset_mems]:
                 if item != nodeset:
                     numatest_obj.test.fail("Expect cpuset.mems to be %s, "
