@@ -41,7 +41,7 @@ def allocate_memory_on_host_nodes(test_obj):
         return allocated_num
 
     ret = {}
-    all_nodes = test_obj.all_usable_numa_nodes
+    all_nodes = test_obj.online_nodes_withmem
     allocate_dict = eval(test_obj.params.get('allocate_dict'))
     hpc = test_setup.HugePageConfig(test_obj.params)
     pagesize_list = list(allocate_dict.keys())
@@ -212,7 +212,7 @@ def verify_node_mem_by_freepages(test_obj):
     :param test_obj: NumaTest object
     """
     allocate_result = test_obj.params['allocate_result']
-    all_nodes = test_obj.all_usable_numa_nodes
+    all_nodes = test_obj.online_nodes_withmem
     for one_node in all_nodes:
         for pgsize in allocate_result[one_node].keys():
             common_test_freepages(test_obj,
@@ -230,7 +230,7 @@ def verify_node_mem_by_freepages_various_unit(test_obj):
     :param test_obj: NumaTest object
     """
     allocate_result = test_obj.params['allocate_result']
-    all_nodes = test_obj.all_usable_numa_nodes
+    all_nodes = test_obj.online_nodes_withmem
     for pgsize in allocate_result[all_nodes[1]].keys():
         common_test_freepages(test_obj,
                               all_nodes[1],
