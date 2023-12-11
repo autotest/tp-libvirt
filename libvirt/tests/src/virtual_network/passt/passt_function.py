@@ -55,7 +55,6 @@ def run(test, params, env):
     host_ip = utils_net.get_host_ip_address(ip_ver='ipv4')
     params['host_ip_v6'] = host_ip_v6 = utils_net.get_host_ip_address(
         ip_ver='ipv6')
-    iface_attrs = eval(params.get('iface_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
     vm_iface = params.get('vm_iface', 'eno1')
@@ -65,8 +64,8 @@ def run(test, params, env):
     host_iface = host_iface if host_iface else utils_net.get_net_if(
         state="UP")[0]
     log_file = f'/run/user/{user_id}/passt.log'
+    iface_attrs = eval(params.get('iface_attrs'))
     iface_attrs['backend']['logFile'] = log_file
-    iface_attrs['source']['dev'] = host_iface
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
