@@ -46,9 +46,9 @@ def run(test, params, env):
             test.error("Failed to remove libvirt packages on guest")
 
         for daemon in daemons:
-            err, out = session.cmd_status_output("systemctl -a| grep %s" % daemon)
+            _, out = session.cmd_status_output("systemctl -a| grep %s" % daemon)
             LOGGER.debug(out)
-            if err or daemon in out and "not-found" not in out:
+            if daemon in out and "not-found" not in out:
                 test.fail("%s still exists after removing libvirt pkgs" % daemon)
 
     finally:
