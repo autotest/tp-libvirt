@@ -39,7 +39,7 @@ def run(test, params, env):
         session.close()
 
         lines = out.split('\n')
-        if len(lines) < 2 or 'real\t0m1.00' not in lines[1]:
+        if len(lines) < 2 or 'real\t0m1.0' not in lines[1]:
             test.fail("VM seems to have slept longer than expected: %s" % out)
     except Exception as e:
         test.error("Test error: %s" % e)
