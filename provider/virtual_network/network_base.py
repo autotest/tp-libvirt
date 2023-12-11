@@ -258,3 +258,17 @@ def set_static_ip(iface, ip, netmask, session):
     """
     session.cmd('systemctl stop NetworkManager'),
     session.cmd(f'ifconfig {iface} {ip}/{netmask}')
+
+
+def get_iface_xml_inst(vmxml, comment, index=0):
+    """
+    Get iface xml instance with given vm and index
+
+    :param vmxml: xml instance of vm
+    :param comment: comment to log
+    :param index: index of interface on vm, defaults to 0
+    :return: xml instance of interface
+    """
+    iface = vmxml.get_devices('interface')[index]
+    LOG.debug(f'Interface xml ({comment}):\n{iface}')
+    return iface
