@@ -1,4 +1,5 @@
 import logging as log
+import glob
 import os
 import stat
 import time
@@ -12,7 +13,10 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_package
 from virttest import virt_vm
+from virttest import virsh
+
 from virttest.staging import service
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
 from virttest.libvirt_xml.devices.graphics import Graphics
@@ -222,6 +226,321 @@ def run(test, params, env):
         vm_spice_xml.add_device(graphic)
         vm_spice_xml.sync()
 
+    def enable_virtlogd_specific_config_file():
+        """
+        Configure virtlogd using specific config file.
+
+        """
+        with open(virtlogd_config_file, "w") as fd:
+            fd.write('VIRTLOGD_ARGS="--config /etc/libvirt/virtlogd-new.conf"')
+            fd.write('\n')
+
+        with open(virtlogd_config_file_new, "w") as fd:
+            fd.write('log_level = 2')
+            fd.write('\n')
+            fd.write('log_outputs="1:file:/var/log/libvirt/virtlogd-new.log"')
+            fd.write('\n')
+        # Modify the selinux context
+        cmd = "chcon system_u:object_r:virtlogd_etc_t:s0 %s" % virtlogd_config_file_new
+        process.run(cmd, ignore_status=True, shell=True)
+        # restart virtlogd
+        service.Factory.create_service("virtlogd").restart()
+        check_service_status("virtlogd", service_start=False)
+
+    def check_virtlogd_started_with_config():
+        """
+        Check if virtlogd is started with --config argument
+
+        """
+        cmd = "ps -fC 'virtlogd'"
+        cmd_result = process.run(cmd, shell=True).stdout_text.strip()
+        matched_message = "--config %s" % virtlogd_config_file_new
+        if matched_message not in cmd_result:
+            test.fail("Check virtlogd is started with config :%s failed in output:%s"
+                      % (matched_message, cmd_result))
+        new_virtlogd_log_file = params.get("virtlogd_config_file_alternative_new")
+        if not os.path.exists(new_virtlogd_log_file):
+            test.fail("Failed to create new virtlogd log:%s" % new_virtlogd_log_file)
+        str_to_grep = "virObject"
+        if not libvirt.check_logfile(str_to_grep, new_virtlogd_log_file):
+            test.fail("Check message log:%s failed in log file:%s"
+                      % (str_to_grep, new_virtlogd_log_file))
+
+    def enable_virtlogd_timeout():
+        """
+        Configure virtlogd using timeout parameter.
+
+        """
+        with open(virtlogd_config_file, "w") as fd:
+            fd.write('VIRTLOGD_ARGS="--timeout=30"')
+            fd.write('\n')
+        # restart virtlogd
+        service.Factory.create_service("virtlogd").restart()
+        check_service_status("virtlogd", service_start=False)
+
+    def check_virtlogd_started_with_timeout():
+        """
+        Check if virtlogd is started with timeout=30
+
+        """
+        cmd = "ps -fC 'virtlogd'"
+        cmd_result = process.run(cmd, shell=True).stdout_text.strip()
+        matched_message = "--timeout=30"
+        if matched_message not in cmd_result:
+            test.fail("Check virtlogd is started with config :%s failed in output:%s"
+                      % (matched_message, cmd_result))
+        # nothing to do in 40 seconds to make virtlogd timeout
+        time.sleep(40)
+        cmd = "ps aux|grep virtlogd"
+        if process.run(cmd, shell=True).exit_status == 0:
+            test.fail("Find unexpected virtlogd")
+
+    def check_virtlogd_failed_invalid_config():
+        """
+        Check if virtlogd is failed status
+
+        """
+        virtlogd_config.max_clients = params.get("max_clients")
+        cmd = ("systemctl status virtlogd | grep 'Active: active'")
+        ret = process.run(cmd, ignore_status=True, shell=True, verbose=True)
+        if ret.exit_status != 0:
+            test.fail("virtlogd is not in active from log:%s" % ret.stdout_text.strip())
+
+        action = params.get("action")
+        process.run("systemctl %s virtlogd" % action, ignore_status=True, shell=True)
+        time.sleep(4)
+        cmd = ("systemctl status virtlogd | grep 'Active: failed'")
+        result = process.run(cmd, ignore_status=True, shell=True, verbose=True)
+        if result.exit_status != 0:
+            test.fail("virtlogd is not in failed state from output: %s" % result.stdout_text.strip())
+
+    def create_crash_vm():
+        """
+        create one VM which will crash when starting
+
+        """
+        # disable huge pages
+        cmd_hugepage = " sysctl vm.nr_hugepages=0"
+        process.run(cmd_hugepage, ignore_status=True, shell=True, verbose=True)
+        VMXML.set_memoryBacking_tag(vm_name)
+
+    def check_record_qenu_crash_log():
+        """
+        check recorded qemu crash log
+        """
+        # Start VM
+        try:
+            vm.start()
+        except virt_vm.VMStartError as detail:
+            logging.info("VM failed to start."
+                         "Error: %s" % str(detail))
+        crash_information = params.get("crash_information")
+        if not libvirt.check_logfile(crash_information, guest_log_file):
+            test.fail("Check expected message log:%s failed in log file:%s"
+                      % (crash_information, guest_log_file))
+
+    def lsof_qemu_log_file():
+        """
+        use lsof command to check qemu log file
+
+        :return: lsof command return value
+        """
+        cmd_lsof = "lsof %s" % guest_log_file
+        lsof_output = process.run(cmd_lsof, ignore_status=True, shell=True, verbose=True).stdout_text.strip()
+        return lsof_output
+
+    def stop_virtlogd():
+        """
+        Stop virtlogd service
+
+        """
+        # truncate qemu log file in order to avoid making later checking complex
+        truncate_log_file(guest_log_file, '0')
+        vm.start()
+        vm.wait_for_login().close()
+        lsof_output = lsof_qemu_log_file()
+        if "virtlogd" not in lsof_output:
+            test.fail("virtlogd does not open qemu log file:%s"
+                      % guest_log_file)
+
+    def check_stop_virtlogd():
+        """
+        Check something happen after stop virtlogd service
+
+        """
+        virtlogd_service = service.Factory.create_service("virtlogd")
+        virtlogd_service.stop()
+        vm.wait_for_login().close()
+        lsof_output = lsof_qemu_log_file()
+        if "virtlogd" in lsof_output:
+            test.fail("guest log still write into qemu log file:%s after virtlogd stop"
+                      % guest_log_file)
+        vm.destroy()
+        shut_down_msg = "shutting down, reason=shutdown"
+        if not libvirt.check_logfile(shut_down_msg, guest_log_file):
+            test.fail("Check VM destroy message log:%s failed in log file:%s"
+                      % (shut_down_msg, guest_log_file))
+        qemu_msg = "qemu-kvm: terminating on signal"
+        if not libvirt.check_logfile(qemu_msg, guest_log_file, str_in_log=False):
+            test.fail("Find unexpected:%s failed in log file:%s"
+                      % (qemu_msg, guest_log_file))
+
+        virtlogd_service.start()
+
+    def check_file_exist(log_file):
+        """
+        check whether specified file exist or not
+
+        :param log_file: specified log file name.
+        """
+        if not os.path.exists(log_file):
+            test.fail("failed to find qemu log file: %s" % log_file)
+
+    def truncate_log_file(file_path, size_in_unit="2M"):
+        """
+        truncate guest log file to default 2M
+
+        :param file_path: specified file name.
+        :param size_in_unit: expected size after being truncated.
+        """
+        truncate_2m_cmd = "truncate -s %s %s" % (size_in_unit, file_path)
+        process.run(truncate_2m_cmd, ignore_status=True, shell=True, verbose=True)
+
+    def enable_default_max_size_max_backups():
+        """
+        Enable default qemu log file max size and max backups
+
+        """
+        def _start_stop_vm():
+            """
+            start and stop to generate large logs
+            """
+            vm.start()
+            vm.wait_for_login().close()
+            vm.destroy()
+
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        # clean up log file exclude /var/log/libvirt/qemu/$guest_name.log
+        file_list = glob.glob('%s/%s.log.*' % (QEMU_LOG_PATH, vm_name))
+        for file_name in file_list:
+            if os.path.exists(file_name):
+                os.remove(file_name)
+        # increase log file size to 2M to trigger generating new log file
+        for i in range(0, 4):
+            truncate_log_file(guest_log_file)
+            _start_stop_vm()
+            # check /var/log/libvirt/qemu/$guest_name.log.1 is generated
+            if i < 3:
+                guest_log_file_index = os.path.join(QEMU_LOG_PATH, "%s.log.%s" % (vm_name, i))
+                check_file_exist(guest_log_file_index)
+
+    def check_default_max_size_max_backups():
+        """
+        check default qemu log file max size and max backups
+
+        """
+        max_backups = int(params.get("max_backups"))
+        # three are totally guest log file: max_backups + 1
+        log_file_list = glob.glob('%s/%s.log*' % (QEMU_LOG_PATH, vm_name))
+        if len(log_file_list) != (max_backups + 1):
+            test.fail("the total related log file is not expected, and actual are: %s" % log_file_list)
+
+    def enable_recreate_qemu_log():
+        """
+        Enable create new qemu log file again
+
+        """
+        vm.start()
+        check_file_exist(guest_log_file)
+        os.remove(guest_log_file)
+        # trigger qemu log generation
+        virsh.qemu_monitor_command(name=vm.name, cmd="info block", options='--hmp',
+                                   **{'debug': True, 'ignore_status': True})
+        if os.path.exists(guest_log_file):
+            test.fail("guest log file: %s is wrongly recreated" % guest_log_file)
+
+    def check_recreate_qemu_log():
+        """
+        check default qemu log will be recreated after VM destroy
+        """
+        # guest log file will be recreated once VM is destroyed, and log will be recorded accordingly
+        virsh.destroy(vm_name)
+        vm_destroy_msg = "shutting down, reason=destroyed"
+        if not libvirt.check_logfile(vm_destroy_msg, guest_log_file):
+            test.fail("Check VM destroy message log:%s failed in log file:%s"
+                      % (vm_destroy_msg, guest_log_file))
+
+    def check_opened_fd_of_qemu_log_file():
+        """
+        Check whether qemu log file is opened by virtlogd correctly
+
+        """
+        vm.start()
+        vm.wait_for_login().close()
+        lsof_start_vm_output = lsof_qemu_log_file()
+        if "virtlogd" not in lsof_start_vm_output:
+            test.fail("virtlogd does not open qemu log file after VM start:%s"
+                      % guest_log_file)
+
+        vm.destroy(gracefully=False)
+        lsof_destroy_vm_output = lsof_qemu_log_file()
+        if "virtlogd" in lsof_destroy_vm_output:
+            test.fail("guest log still write into qemu log file:%s after VM stop"
+                      % guest_log_file)
+
+    def check_vm_destroy_log_into_qemu_log_file():
+        """
+        Check whether vm destroy log is written into qemu log file
+
+        """
+        # truncate qemu log file to size 0 in order to avoid making later checking complex
+        truncate_log_file(guest_log_file, '0')
+        vm.start()
+        vm.wait_for_login().close()
+        virsh.destroy(vm_name)
+        vm_destroy_msg = ".*qemu-kvm: terminating on signal.*\n.*shutting down, reason=destroyed.*"
+        if not libvirt.check_logfile(vm_destroy_msg, guest_log_file):
+            test.fail("Check VM destroy message log:%s failed in log file:%s"
+                      % (vm_destroy_msg, guest_log_file))
+
+    def check_start_vm_twice_log_into_qemu_log_file():
+        """
+        Check whether vm start twice is written into qemu log file
+
+        """
+        vm.start()
+        vm.wait_for_login().close()
+        # truncate qemu log file to size 0 in order to avoid making later checking complex
+        truncate_log_file(guest_log_file, '0')
+        virsh.destroy(vm_name)
+        vm.start()
+        vm.wait_for_login().close()
+        vm_destroy_start_msg = ".*qemu-kvm: terminating on signal.*\n.*" + \
+            "shutting down, reason=destroyed.*\n.*name guest=%s.*" % vm_name
+        if not libvirt.check_logfile(vm_destroy_start_msg, guest_log_file):
+            test.fail("Check VM destroy and start message log:%s failed in log file:%s"
+                      % (vm_destroy_start_msg, guest_log_file))
+
+    def check_record_save_restore_guest_log():
+        """
+        Check whether vm save and restore is written into qemu log file
+
+        """
+        vm.start()
+        vm.wait_for_login().close()
+        # truncate qemu log file to size 0 in order to avoid making later checking complex
+        truncate_log_file(guest_log_file, '0')
+        save_path = params.get("save_vm_path")
+        virsh.save(vm_name, save_path)
+        virsh.restore(save_path)
+        vm.wait_for_login().close()
+        vm_save_restore_msg = ".*qemu-kvm: terminating on signal.*\n.*" + \
+            "shutting down, reason=saved.*\n.*name guest=%s.*" % vm_name
+        if not libvirt.check_logfile(vm_save_restore_msg, guest_log_file):
+            test.fail("Check VM save and restore message log:%s failed in log file:%s"
+                      % (vm_save_restore_msg, guest_log_file))
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "virtlogd_disabled")
     stdio_handler = params.get("stdio_handler", "not_set")
@@ -245,6 +564,7 @@ def run(test, params, env):
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+    virtlogd_config = utils_config.VirtLogdConfig()
     try:
         if stdio_handler != 'not_set':
             config['stdio_handler'] = "'%s'" % stdio_handler
@@ -266,13 +586,13 @@ def run(test, params, env):
         if not start_vm:
             if reload_virtlogd:
                 reload_and_check_virtlogd()
-            if expected_result == 'virtlogd_restart':
+            elif expected_result == 'virtlogd_restart':
                 # check virtlogd status
                 virtlogd_pid = check_service_status("virtlogd", service_start=True)
                 logging.info("virtlogd PID: %s", virtlogd_pid)
                 # restart virtlogd
-                ret = process.run("systemctl restart virtlogd", ignore_status=True, shell=True)
-                if ret.exit_status:
+                ret = service.Factory.create_service("virtlogd").restart()
+                if ret is False:
                     test.fail("failed to restart virtlogd.")
                 # check virtlogd status
                 new_virtlogd_pid = check_service_status("virtlogd", service_start=False)
@@ -283,7 +603,7 @@ def run(test, params, env):
                 ret = process.run(cmd, ignore_status=True, shell=True)
                 if ret.exit_status:
                     test.fail("virtlogd don't exist.")
-            if expected_result == 'virtlogd_disabled':
+            elif expected_result == 'virtlogd_disabled':
                 # check virtlogd status
                 virtlogd_pid = check_service_status("virtlogd", service_start=True)
                 logging.info("virtlogd PID: %s", virtlogd_pid)
@@ -297,6 +617,41 @@ def run(test, params, env):
                 ret = process.run(cmd, ignore_status=True, shell=True)
                 if not ret.exit_status:
                     test.fail("virtlogd still exist.")
+            elif expected_result in ['virtlogd_specific_config_file_enable', 'specific_timeout']:
+                virtlogd_config_file = params.get("virtlogd_config_file")
+                virtlogd_config_bak_file = params.get("virtlogd_config_bak_file")
+                if os.path.exists(virtlogd_config_file):
+                    # backup config file
+                    os.rename(virtlogd_config_file, virtlogd_config_bak_file)
+                virtlogd_config_file_new = params.get("virtlogd_config_file_new")
+            elif expected_result == 'virtlogd_specific_config_file_enable':
+                enable_virtlogd_specific_config_file()
+                check_virtlogd_started_with_config()
+            elif expected_result == 'specific_timeout':
+                enable_virtlogd_timeout()
+                check_virtlogd_started_with_timeout()
+            elif expected_result == "invalid_virtlogd_conf":
+                check_virtlogd_failed_invalid_config()
+            elif expected_result == "record_qenu_crash_log":
+                create_crash_vm()
+                check_record_qenu_crash_log()
+            elif expected_result == "stop_virtlogd":
+                stop_virtlogd()
+                check_stop_virtlogd()
+            elif expected_result == "default_max_size_max_backups":
+                enable_default_max_size_max_backups()
+                check_default_max_size_max_backups()
+            elif expected_result == "recreate_qemu_log":
+                enable_recreate_qemu_log()
+                check_recreate_qemu_log()
+            elif expected_result == "opened_fd_of_qemu_log_file":
+                check_opened_fd_of_qemu_log_file()
+            elif expected_result == "vm_destroy_log_into_qemu_log_file":
+                check_vm_destroy_log_into_qemu_log_file()
+            elif expected_result == "start_vm_twice_log_into_qemu_log_file":
+                check_start_vm_twice_log_into_qemu_log_file()
+            elif expected_result == "record_save_restore_guest_log":
+                check_record_save_restore_guest_log()
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
@@ -425,3 +780,15 @@ def run(test, params, env):
         config.restore()
         libvirtd.restart()
         vm_xml_backup.sync()
+        if expected_result in ['virtlogd_specific_config_file_enable', 'specific_timeout']:
+            if os.path.exists(virtlogd_config_file):
+                os.remove(virtlogd_config_file)
+            if os.path.exists(virtlogd_config_file_new):
+                os.remove(virtlogd_config_file_new)
+            if virtlogd_config_bak_file:
+                if os.path.exists(virtlogd_config_file):
+                    os.rename(virtlogd_config_bak_file, virtlogd_config_file)
+                service.Factory.create_service("virtlogd").restart()
+        if expected_result == "invalid_virtlogd_conf":
+            virtlogd_config.restore()
+            service.Factory.create_service("virtlogd").restart()
