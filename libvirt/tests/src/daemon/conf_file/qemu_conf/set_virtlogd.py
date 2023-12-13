@@ -11,6 +11,7 @@ from avocado.utils import process
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_package
+from virttest import utils_split_daemons
 from virttest import virt_vm
 from virttest.staging import service
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -251,7 +252,8 @@ def run(test, params, env):
         if restart_libvirtd or stop_libvirtd:
             virtlogd_pid = check_service_status("virtlogd", service_start=True)
             logging.info("virtlogd pid: %s", virtlogd_pid)
-            check_service_status("libvirtd", service_start=True)
+            service_name = "virtqemud" if utils_split_daemons.is_modular_daemon else "libvirtd"
+            check_service_status(service_name, service_start=True)
 
         # Restart libvirtd to make change valid.
         if not libvirtd.restart():
