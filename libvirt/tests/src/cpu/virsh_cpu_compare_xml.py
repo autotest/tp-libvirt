@@ -1,6 +1,8 @@
 import os
 import logging as log
 
+from avocado.utils import cpu
+
 from virttest import virsh
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
@@ -66,11 +68,48 @@ def get_domcapa_xml(extract=False):
     return domcapa_xml
 
 
-def get_capa_xml(operate='', extract=False):
+def get_different_cpu_vendor(test, current_cpu_vendor):
+    """
+    Get a different cpu vendor from current host cpu vendor
+
+    :param test: test object
+    :param current_cpu_vendor: str, current host cpu vendor
+    :return: str, the selected cpu vendor
+    """
+    arch_cpu_vendor_mapping = {'x86_64': ['GenuineIntel', 'AuthenticAMD'],
+                               'aarch64': ['Ampere(R)', 'Ampere(TM)',
+                                           'AppliedMicro', 'ARM', 'NVIDIA',
+                                           'FUJITSU', 'Cavium Inc.',
+                                           'Marvell', 'Qualcomm',
+                                           'CN8890-2000BG2601-AAP-PR-Y-G',
+                                           'CN8880-1800BG2601-CP-Y-G']}
+
+    host_arch = cpu.get_arch()
+    if host_arch.lower() not in arch_cpu_vendor_mapping:
+        test.error("The host arch '%s' is not supported for this case" % host_arch)
+    cpu_vendors = arch_cpu_vendor_mapping[host_arch]
+    new_vendor = ''
+    for vendor_index in range(0, len(cpu_vendors)):
+        if cpu_vendors[vendor_index].count(current_cpu_vendor):
+            if vendor_index == len(cpu_vendors) - 1:
+                new_vendor = cpu_vendors[0]
+            else:
+                new_vendor = cpu_vendors[vendor_index + 1]
+            break
+    if new_vendor:
+        test.log.debug("Found a different cpu vendor '%s'", new_vendor)
+        return new_vendor
+    else:
+        test.error("Can not find a different one from "
+                   "current cpu vendor '%s'" % current_cpu_vendor)
+
+
+def get_capa_xml(test, operate='', extract=False):
     """
     Get full capabilities xml or the cpu definition
     from capabilities xml
 
+    :param test: test object
     :param operate: Operation mode, decide file's detail
     :param extract: Setting True means to extract cpu definition
                     from capabilities xml
@@ -79,6 +118,9 @@ def get_capa_xml(operate='', extract=False):
     capa_xml = capability_xml.CapabilityXML()
     if operate == 'delete':
         capa_xml.remove_feature(num=-1)
+    elif operate == 'modify':
+        new_vendor = get_different_cpu_vendor(test, capa_xml.vendor)
+        capa_xml.vendor = new_vendor
     if extract:
         capa_xml.xmltreefile = capa_xml.xmltreefile.reroot('/host/cpu')
     return capa_xml
@@ -138,7 +180,7 @@ def run(test, params, env):
             cpu_compare_xml = get_domcapa_xml(is_extracted)
 
         if file_type == "capa_xml":
-            cpu_compare_xml = get_capa_xml(cpu_compare_mode, is_extracted)
+            cpu_compare_xml = get_capa_xml(test, cpu_compare_mode, is_extracted)
 
         if cpu_compare_mode == "invalid_test":
             cpu_compare_xml = get_invalid_xml(cpu_compare_xml)
