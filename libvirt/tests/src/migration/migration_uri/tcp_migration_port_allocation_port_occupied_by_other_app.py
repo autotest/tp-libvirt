@@ -14,13 +14,19 @@ def run(test, params, env):
     """
     vm_name = params.get("migrate_main_vm")
     occupy_port_cmd = params.get("occupy_port_cmd")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user", "root")
+    server_pwd = params.get("server_pwd")
 
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
         migration_obj.setup_connection()
-        remote.run_remote_cmd(occupy_port_cmd, params, ignore_status=False)
+        runner_on_target = remote.RemoteRunner(host=server_ip,
+                                               username=server_user,
+                                               password=server_pwd)
+        remote.run_remote_cmd(occupy_port_cmd, params, runner_on_target, ignore_status=False)
         migration_obj.run_migration()
         migration_obj.verify_default()
     finally:
