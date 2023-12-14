@@ -49,7 +49,8 @@ def run(test, params, env):
     iface_attrs['source']['bridge'] = bridge_name
     vm_attrs = eval(params.get('vm_attrs', '{}'))
     nwfilter_attrs = parse_attrs('nwfilter_attrs', params)
-    iface_in_vm = params.get('iface_in_vm', 'eno')
+    iface_in_vm = params.get('iface_in_vm')
+    iface_in_vm = iface_in_vm if iface_in_vm else 'eno'
 
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_net_if(
