@@ -7,6 +7,7 @@ from virttest import utils_config
 from virttest import utils_net
 
 from virttest.utils_libvirt import libvirt_config
+from virttest.utils_test import libvirt
 
 from provider.migration import base_steps
 from provider.migration import migration_base
@@ -174,6 +175,7 @@ def run(test, params, env):
             global remove_key_remote
             if remove_key_remote:
                 del remove_key_remote
+        libvirt.remotely_control_libvirtd(server_ip, server_user, server_pwd, "restart")
 
     def cleanup_migration_address():
         """
@@ -190,6 +192,7 @@ def run(test, params, env):
         global remove_key_remote
         if remove_key_remote:
             del remove_key_remote
+        libvirt.remotely_control_libvirtd(server_ip, server_user, server_pwd, "restart")
         if ipv4_env_on_target:
             cleanup_ipv4_env(params)
 
@@ -198,6 +201,9 @@ def run(test, params, env):
     test_case = params.get('test_case', '')
     vm_name = params.get("migrate_main_vm")
     migrate_again = "yes" == params.get("migrate_again", "no")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user", "root")
+    server_pwd = params.get("server_pwd")
 
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
