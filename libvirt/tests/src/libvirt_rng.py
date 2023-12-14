@@ -694,8 +694,9 @@ def run(test, params, env):
                           '\n%s' % details)
         except xcepts.LibvirtXMLError as details:
             logging.info(str(details))
-            if expected_create_error not in str(details):
-                test.fail("Didn't find expected error:"
+            details = str(details).replace("\n", "")
+            if not re.match(expected_create_error, details):
+                test.fail("Didn't match expected error:"
                           " %s" % expected_create_error)
     finally:
         # Delete snapshots.
