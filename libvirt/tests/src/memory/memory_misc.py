@@ -246,10 +246,12 @@ def run(test, params, env):
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
         if case == 'mount_hp_running_vm':
+            pagesize = int(params.get('pagesize'))
+            mount_pagesize = int(params.get('mount_pagesize'))
             vm_mem_size = vmxml.memory
             hp_cfg = test_setup.HugePageConfig(params)
-            hp_cfg.set_kernel_hugepages(1048576, vm_mem_size // 1048576)
-            hp_cfg.set_kernel_hugepages(2048, vm_mem_size // 2048)
+            hp_cfg.set_kernel_hugepages(pagesize, vm_mem_size // pagesize)
+            hp_cfg.set_kernel_hugepages(mount_pagesize, vm_mem_size // mount_pagesize)
             set_vmxml(vmxml, params)
             _setup_mbxml()
             vmxml.sync()
@@ -386,11 +388,15 @@ def run(test, params, env):
         if case == 'mount_hp_running_vm':
             vm.start()
             utils_libvirtd.Libvirtd('virtqemud').stop()
-            hp_path = params.get('hp_path')
-            if not os.path.exists(hp_path):
-                os.mkdir(hp_path)
-            utils_disk.mount('hugetlbfs', hp_path, 'hugetlbfs',
-                             options='pagesize=1G', verbose=True)
+            mount_path = params.get('mount_path')
+            mount_option = params.get('mount_option')
+
+            if not os.path.exists(mount_path):
+                os.mkdir(mount_path)
+            utils_disk.mount('hugetlbfs', mount_path, 'hugetlbfs',
+                             options=mount_option, verbose=True)
+            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd.restart()
 
             vm_state = virsh.domstate(vm_name).stdout_text
             if 'running' not in vm_state:
@@ -425,9 +431,9 @@ def run(test, params, env):
         if case == 'hp_from_2_numa_nodes':
             restore_hugepages()
         if case == 'mount_hp_running_vm':
-            hp_path = params.get('hp_path')
-            utils_disk.umount('hugetlbfs', hp_path, 'hugetlbfs')
-            os.rmdir(hp_path)
+            mount_path = params.get('mount_path')
+            utils_disk.umount('hugetlbfs', mount_path, 'hugetlbfs')
+            os.rmdir(mount_path)
 
     def run_test_edit_mem(case):
         """
