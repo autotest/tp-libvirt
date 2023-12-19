@@ -21,8 +21,8 @@ from provider.numa import numa_base
 
 def run(test, params, env):
     """
-    1.Define guest with dimm devices.
-    2.Attach dimm and check mem value
+    1.Define guest with virtio-mem devices.
+    2.Attach virtio-mem and check mem value
     """
 
     def setup_test():
