@@ -1,6 +1,8 @@
 import logging
 import os
+import re
 import random
+import time
 from socket import socket
 
 import aexpect
@@ -169,15 +171,17 @@ def check_proc_info(params, log_file, mac):
         raise exceptions.TestFail(';'.join(failed_check))
 
 
-def check_vm_ip(iface_attrs, session, host_iface):
+def check_vm_ip(iface_attrs, session, host_iface, vm_iface=None):
     """
     Check if vm ip and prefix meet expectation
 
     :param iface_attrs: attributes of interface
     :param session: shell session instance of vm
     :param host_iface: host interface
+    :param vm_iface: VM interface, can be omitted on x86_64
     """
-    vm_iface = 'eno' + iface_attrs.get('acpi', {'index': '1'})['index']
+    if not vm_iface:
+        vm_iface = 'eno' + iface_attrs.get('acpi', {'index': '1'})['index']
     vm_ip, prefix = get_iface_ip_and_prefix(vm_iface, session=session)
     LOG.debug(f'VM ip and prefix: {vm_ip}, {prefix}')
     if 'ips' in iface_attrs:
@@ -232,21 +236,24 @@ def check_vm_mtu(session, iface, mtu):
 
 def check_default_gw(session):
     """
-    Check whether default host gateways of host and guest are consistent
+    Check whether default host gateways of host and guest are consistent,
+    i.e. the guest's gateways are available on the host.
 
     :param session: vm shell session instance
     """
-    host_gw = utils_net.get_default_gateway(force_dhcp=True)
-    vm_gw = utils_net.get_default_gateway(session=session, force_dhcp=True)
+    host_gw = utils_net.get_default_gateway(force_dhcp=True).split()
+    vm_gw = utils_net.get_default_gateway(session=session,
+                                          force_dhcp=True).split()
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
-    host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6')
-    vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6')
+    host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6').split()
+    vm_gw_v6 = utils_net.get_default_gateway(session=session,
+                                             ip_ver='ipv6').split()
     LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
 
-    if host_gw != vm_gw:
+    if [x for x in vm_gw if x not in host_gw]:
         raise exceptions.TestFail(
             'Host default ipv4 gateway not consistent with vm.')
-    if host_gw_v6 != vm_gw_v6:
+    if [x for x in vm_gw_v6 if x not in host_gw_v6]:
         raise exceptions.TestFail(
             'Host default ipv6 gateway not consistent with vm.')
 
@@ -258,8 +265,11 @@ def check_nameserver(session):
     :param session: vm shell session instance
     """
     get_cmd = 'cat /etc/resolv.conf|grep -vE "#|;"'
-    on_host = process.run(get_cmd, shell=True).stdout_text.strip()
-    on_vm = session.cmd_output(get_cmd).strip()
+    on_host = process.run(get_cmd, shell=True).stdout_text.strip().split()
+    on_vm = session.cmd_output(get_cmd).strip().split()
+    # remove zone index
+    on_host = [re.sub(r'%.*', '', x) for x in on_host]
+    on_vm = [re.sub(r'%.*', '', x) for x in on_vm]
     if on_host == on_vm:
         LOG.debug(f'Nameserver on vm is consistent with host:\n{on_host}')
     else:
@@ -293,6 +303,7 @@ def check_protocol_connection(src_sess, tar_sess, protocol, addr,
     cmd_listen = f'socat {protocol}-LISTEN:{tar_port} -'
     LOG.debug(cmd_listen)
     tar_sess.sendline(cmd_listen)
+    time.sleep(1)
     msg = f'Message {utils_misc.generate_random_string(6)} '\
           f'from source via {protocol}'
     if src_iface:
@@ -320,16 +331,20 @@ def check_protocol_connection(src_sess, tar_sess, protocol, addr,
                                   f'actually is {conneted}')
 
 
-def check_connection(vm, vm_iface, protocols):
+def check_connection(vm, vm_iface, protocols, host_iface=None):
     """
     Check connection of vm and host
 
     :param vm: vm instance
     :param vm_iface: interface of vm
     :param protocols: protocols to check
+    :param host_iface: host interface to get default gw for
+                       if ommitted all default routes are returned
     """
-    default_gw = utils_net.get_default_gateway(force_dhcp=True)
-    default_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6')
+    default_gw = utils_net.get_default_gateway(force_dhcp=True,
+                                               target_iface=host_iface)
+    default_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
+                                                  target_iface=host_iface)
     for protocol in protocols:
         host_sess = aexpect.ShellSession('su')
         vm_sess = vm.wait_for_serial_login(timeout=60)
@@ -379,7 +394,7 @@ def check_port_listen(ports, protocol, host_ip=None):
     """
     if protocol.lower() not in ('tcp', 'udp'):
         raise exceptions.TestError(f'Unsupported protocol: {protocol}')
-    cmd_listen = process.run(f"ss -{protocol[0].lower()}lpn|egrep 'passt.avx2'",
+    cmd_listen = process.run(f"ss -{protocol[0].lower()}lpn|egrep 'passt'",
                              shell=True).stdout_text
     for item in ports:
         if item in cmd_listen:
@@ -389,16 +404,16 @@ def check_port_listen(ports, protocol, host_ip=None):
                                       'listened to')
 
 
-def check_portforward(vm, host_ip, params):
+def check_portforward(vm, host_ip, params, host_iface=None):
     """
     Check function for portforward
 
     :param vm: vm instance
     :param host_ip: host ipv4 address
     :param params: test params
+    :param host_iface: host interface for passt
     """
     host_ip_v6 = params.get('host_ip_v6')
-    vm_iface = params.get('vm_iface')
     tcp_port_list = eval(params.get('tcp_port_list', '[]'))
     tcp_port_list = [f'{host_ip}:{port}' if str(port).isdigit()
                      else port for port in tcp_port_list]
