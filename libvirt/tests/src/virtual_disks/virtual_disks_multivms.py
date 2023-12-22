@@ -1,6 +1,7 @@
 import os
 import logging as log
 import aexpect
+import time
 
 from avocado.utils import process
 
@@ -11,6 +12,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import utils_disk
 from virttest import utils_misc
+from virttest.utils_libvirt.libvirt_disk import get_non_root_disk_name
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -35,6 +37,19 @@ def run(test, params, env):
     5.Recover test environment.
     6.Confirm the test result.
     """
+
+    def _delete_scsi_disk():
+        """ Helper function for wait_for in finally """
+        libvirt.delete_scsi_disk()
+        cmd = "lsscsi|grep scsi_debug"
+        s1, _ = utils_misc.cmd_status_output(cmd,
+                                             shell=True,
+                                             ignore_status=False)
+        cmd = "lsmod|grep scsi_debug"
+        s2, _ = utils_misc.cmd_status_output(cmd,
+                                             shell=True,
+                                             ignore_status=False)
+        return s1 + s2 == 2
 
     def set_vm_controller_xml(vmxml):
         """
@@ -239,7 +254,8 @@ def run(test, params, env):
                         test.fail('Failed to hotplug disk device')
                     elif 0 == result and not vms_list[i]['status']:
                         test.fail('Hotplug disk device unexpectedly.')
-
+                    time.sleep(5)
+                added_disk, _ = get_non_root_disk_name(session)
                 # Check disk error_policy option in VMs.
                 if test_error_policy:
                     error_policy = vms_list[i]['disk'].driver["error_policy"]
@@ -248,7 +264,7 @@ def run(test, params, env):
                         if error_policy == "enospace":
                             cmd = ("mount /dev/%s /mnt && dd if=/dev/zero of=/mnt/test"
                                    " bs=1M count=2000 2>&1 | grep 'No space left'"
-                                   % disk_target)
+                                   % added_disk)
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("error_policy in vm0 exit %s; output: %s", s, o)
                             if 0 != s:
@@ -258,7 +274,7 @@ def run(test, params, env):
                             break
 
                         if session.cmd_status("fdisk -l /dev/%s && mount /dev/%s /mnt; ls /mnt"
-                                              % (disk_target, disk_target)):
+                                              % (added_disk, added_disk)):
                             session.close()
                             test.fail("Test error_policy: "
                                       "failed to mount disk")
@@ -266,7 +282,7 @@ def run(test, params, env):
                         try:
                             session0 = vms_list[0]['vm'].wait_for_login(timeout=10)
                             cmd = ("fdisk -l /dev/%s && mkfs.ext3 -F /dev/%s "
-                                   % (disk_target, disk_target))
+                                   % (added_disk, added_disk))
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("error_policy in vm1 exit %s; output: %s", s, o)
                             session.close()
@@ -312,9 +328,10 @@ def run(test, params, env):
                             test_str = "teststring"
                             # Try to write on vm0.
                             session0 = vms_list[0]['vm'].wait_for_login(timeout=10)
+                            added_disk0, _ = get_non_root_disk_name(session0)
                             cmd = ("fdisk -l /dev/%s && mount /dev/%s /mnt && echo '%s' "
                                    "> /mnt/test && umount /mnt"
-                                   % (disk_target, disk_target, test_str))
+                                   % (added_disk0, added_disk0, test_str))
                             s, o = session0.cmd_status_output(cmd)
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             if s:
@@ -323,7 +340,7 @@ def run(test, params, env):
                             # Try to read on vm1.
                             cmd = ("fdisk -l /dev/%s && mount /dev/%s /mnt && grep %s"
                                    " /mnt/test && umount /mnt"
-                                   % (disk_target, disk_target, test_str))
+                                   % (added_disk, added_disk, test_str))
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("session in vm1 exit %s; output: %s", s, o)
                             if s:
@@ -377,7 +394,7 @@ def run(test, params, env):
         for img in disks:
             if 'format' in img:
                 if img["format"] == "scsi":
-                    utils_misc.wait_for(libvirt.delete_scsi_disk,
+                    utils_misc.wait_for(_delete_scsi_disk,
                                         120, ignore_errors=True)
                 elif img["format"] == "iscsi":
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
