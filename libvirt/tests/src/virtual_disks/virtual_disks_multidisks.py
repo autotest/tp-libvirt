@@ -37,6 +37,7 @@ from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.staging import lv_utils
 from virttest.utils_libvirt import libvirt_pcicontr
+from virttest.utils_libvirt import libvirt_disk
 
 from virttest import libvirt_version
 
@@ -77,6 +78,19 @@ def run(test, params, env):
         if disk.device != 'disk':
             virsh.detach_disk(vm_name, disk.target['dev'],
                               extra='--config', debug=True)
+
+    def _delete_scsi_disk():
+        """ Helper function for wait_for in finally """
+        libvirt.delete_scsi_disk()
+        cmd = "lsscsi|grep scsi_debug"
+        s1, _ = utils_misc.cmd_status_output(cmd,
+                                             shell=True,
+                                             ignore_status=False)
+        cmd = "lsmod|grep scsi_debug"
+        s2, _ = utils_misc.cmd_status_output(cmd,
+                                             shell=True,
+                                             ignore_status=False)
+        return s1 + s2 == 2
 
     def check_disk_order(targets_name):
         """
@@ -412,15 +426,14 @@ def run(test, params, env):
             logging.error(str(e))
             return False
 
-    def check_vm_discard(target_name):
+    def check_vm_discard():
         """
         Check VM discard value.
-
-        :param target_name. Device target name.
         """
         logging.info("Checking VM discard...")
         try:
             session = vm.wait_for_login()
+            target_name, _ = libvirt_disk.get_non_root_disk_name(session)
             cmd = ("fdisk -l  /dev/{0} && mkfs.ext4 -F /dev/{0} && "
                    "mkdir -p test && mount /dev/{0} test && "
                    "dd if=/dev/zero of=test/file bs=1M count=300 && sync"
@@ -560,15 +573,14 @@ def run(test, params, env):
         if process.system(cmd, ignore_status=False, shell=True):
             test.fail("Check transident disk failed")
 
-    def check_restart_transient_vm(target_name):
+    def check_restart_transient_vm():
         """
         Check VM transient feature.
-
-        :param target_name. Device target name.
         """
         logging.info("Checking VM transident...")
         try:
             session = vm.wait_for_login()
+            target_name, _ = libvirt_disk.get_non_root_disk_name(session)
             cmd = ("fdisk -l  /dev/{0} && mkfs.ext4 -F /dev/{0} && "
                    "mkdir -p /test && mount /dev/{0} /test && "
                    "dd if=/dev/zero of=/test/transient.txt bs=1M count=300 && sync"
@@ -1591,6 +1603,7 @@ def run(test, params, env):
             # Update disk cdrom/floppy with modified boot order,it expect fail.
             flopy_error_msg = params.get('flopy_error_msg', "")
             cdrom_error_msg = params.get('cdrom_error_msg', "")
+            stderr_output = None
             try:
                 stderr_output = virsh.update_device(vm_name, addtional_disk.xml, debug=True).stderr_text
             except Exception as update_device_exception:
@@ -1945,7 +1958,7 @@ def run(test, params, env):
 
         # Check discard in VM after command.
         if check_discard:
-            check_vm_discard(device_targets[0])
+            check_vm_discard()
 
         # Check pci bridge in VM after command.
         if check_pci_bridge:
@@ -1964,7 +1977,7 @@ def run(test, params, env):
             vm.wait_for_login()
         if disk_transient:
             check_transient_disk_keyword()
-            check_restart_transient_vm(device_targets[0])
+            check_restart_transient_vm()
         # If we testing hotplug, detach the disk at last.
         if device_at_dt_disk:
             for i in list(range(len(disks))):
@@ -2108,7 +2121,7 @@ def run(test, params, env):
                 del img["disk_dev"]
             else:
                 if img["format"] == "scsi":
-                    utils_misc.wait_for(libvirt.delete_scsi_disk,
+                    utils_misc.wait_for(_delete_scsi_disk,
                                         120, ignore_errors=True)
                 elif img["format"] == "iscsi" or network_iscsi_baseimg:
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
