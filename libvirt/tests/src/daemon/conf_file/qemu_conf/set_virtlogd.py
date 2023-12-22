@@ -572,7 +572,7 @@ def run(test, params, env):
         if restart_libvirtd or stop_libvirtd:
             virtlogd_pid = check_service_status("virtlogd", service_start=True)
             logging.info("virtlogd pid: %s", virtlogd_pid)
-            service_name = "virtqemud" if utils_split_daemons.is_modular_daemon else "libvirtd"
+            service_name = "virtqemud" if utils_split_daemons.is_modular_daemon() else "libvirtd"
             check_service_status(service_name, service_start=True)
 
         # Restart libvirtd to make change valid.
