@@ -66,13 +66,14 @@ def run(test, params, env):
 
         try:
             test_str = "teststring"
-            sha_cmd = ("sha1sum /dev/%s" % disk_target)
+            session0 = vms_list[0]['vm'].wait_for_login(timeout=10)
+            new_disk0, _ = libvirt_disk.get_non_root_disk_name(session0)
+            sha_cmd = ("sha1sum /dev/%s" % new_disk0)
             cmd = ("fdisk -l /dev/%s && mkfs.ext4 -F /dev/%s && mount /dev/%s"
                    " /mnt && echo '%s' > /mnt/test && umount /mnt"
-                   % (disk_target, disk_target, disk_target, test_str))
+                   % (new_disk0, new_disk0, new_disk0, test_str))
 
             # check on vm0.
-            session0 = vms_list[0]['vm'].wait_for_login(timeout=10)
             s, o = session0.cmd_status_output(cmd)
             logging.debug("session in vm0 exit %s; output: %s", s, o)
             if s:
