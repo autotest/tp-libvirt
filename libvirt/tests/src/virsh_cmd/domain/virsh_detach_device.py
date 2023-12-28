@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import data_dir
 from virttest import utils_misc
+from virttest.utils_libvirt.libvirt_disk import get_non_root_disk_name
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -246,6 +247,7 @@ def run(test, params, env):
                               ignore_status=True)
 
         device_xml = create_device_xml(params, tmp_dir, device_source)
+        target_name = device_target
         if not no_attach:
             s_attach = virsh.attach_device(vm_name, device_xml,
                                            flagstr="--config", debug=True).exit_status
@@ -254,7 +256,10 @@ def run(test, params, env):
                               "detach-device")
 
         vm.start()
-        vm.wait_for_serial_login()
+        session = vm.wait_for_serial_login()
+        if not no_attach and device == 'disk' and s_attach == 0:
+            target_name, _ = get_non_root_disk_name(session)
+        session.close()
 
         # Add acpiphp module before testing if VM's os type is rhle5.*
         if device in ['disk', 'cdrom']:
@@ -343,7 +348,7 @@ def run(test, params, env):
         check_vm_after_cmd = True
         if device in ['disk', 'cdrom']:
             check_vm_after_cmd = check_vm_partition(vm, device, os_type,
-                                                    device_target)
+                                                    target_name)
 
         # Destroy VM.
         if vm.is_alive():
