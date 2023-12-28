@@ -285,7 +285,7 @@ def check_cgroup(numatest_obj):
        memnode_mode != 'restrictive'):
         mem_nodeset = numatest_obj.params['nodeset']
         memnode_nodeset = eval(numatest_obj.params['numa_memnode'])[0].get('nodeset')
-        nodeset = ','.join(list(set(mem_nodeset).union(set(memnode_nodeset))))
+        nodeset = ','.join(sorted(set(mem_nodeset).union(set(memnode_nodeset))))
         nodeset = numa_base.convert_to_string_with_dash(nodeset)
         for item in [emulator_cpuset_mems, vcpu0_cpuset_mems, vcpu1_cpuset_mems]:
             if item != nodeset:
