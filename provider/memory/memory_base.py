@@ -1,4 +1,5 @@
 import re
+import platform
 
 from virttest import libvirt_version
 from virttest import utils_misc
@@ -89,3 +90,44 @@ def prepare_mem_obj(dest_dict):
     mem_obj.setup_attrs(**dest_dict)
 
     return mem_obj
+
+
+def create_file_within_nvdimm_disk(test, vm_session, test_device, test_file,
+                                   mount_point, error_msg="", test_str="test_text",
+                                   block_size=4096):
+    """
+    Create a test file in the nvdimm file disk
+
+    :param test: test object
+    :param vm_session: VM session
+    :param test_device: str, device value
+    :param test_file: str, file name to be used
+    :param mount_point: mount point path.
+    :param error_msg: Error msg content when useing mkfs cmd
+    :param test_str: str to be written into the nvdimm file disk
+    :param block_size: int, block size for mkfs.xfs -b
+    """
+    # Create a file system
+    bsize_str = '-b size={}'.format(block_size) if block_size != 0 else ''
+    if any(platform.platform().find(ver) for ver in ('el8', 'el9')):
+        cmd = 'mkfs.xfs -f {} {} -m reflink=0'.format(test_device, bsize_str)
+    else:
+        cmd = 'mkfs.xfs -f {} {}'.format(test_device, bsize_str)
+
+    vm_session.cmd("mkdir -p %s" % mount_point)
+    output = vm_session.cmd_output(cmd)
+    if error_msg:
+        if error_msg not in output:
+            test.fail("Expect to get '%s' in '%s'" % (error_msg, output))
+        else:
+            return
+    test.log.debug("Command '%s' output:%s", cmd, output)
+
+    # Mount the file system
+    uuid = re.findall(
+        r' UUID="(\S+)"', vm_session.cmd_output('blkid %s' % test_device))[0]
+    vm_session.cmd_status_output('mount -o dax -U {} {}'.format(uuid, mount_point))
+
+    cmd = 'echo \"%s\" >%s' % (test_str, test_file)
+    vm_session.cmd(cmd)
+    vm_session.cmd_output('umount %s' % mount_point)
