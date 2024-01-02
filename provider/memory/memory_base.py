@@ -3,6 +3,7 @@ import re
 from virttest import libvirt_version
 from virttest import utils_misc
 
+from virttest.libvirt_xml.devices import memory
 from virttest.utils_version import VersionInterval
 
 from avocado.core import exceptions
@@ -76,3 +77,15 @@ def check_supported_version(params, test, vm):
     if vm_kerv not in VersionInterval(guest_required_kernel):
         test.cancel("Got guest kernel version:%s, which is not in %s" %
                     (vm_kerv, guest_required_kernel))
+
+
+def prepare_mem_obj(dest_dict):
+    """
+    Prepare memory object
+    :param dest_dict: dimm memory dict.
+    :return mem_obj, memory object.
+    """
+    mem_obj = memory.Memory()
+    mem_obj.setup_attrs(**dest_dict)
+
+    return mem_obj
