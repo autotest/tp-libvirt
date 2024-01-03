@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import platform
 
 import aexpect
 from virttest import libvirt_version
@@ -97,7 +98,9 @@ def run(test, params, env):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
         session = vm.wait_for_serial_login(timeout=60)
-        passt.check_vm_ip(iface_attrs, session, host_iface)
+        if platform.machine() != "x86_64":
+            vm_iface = utils_net.get_linux_ifname(session, mac)
+        passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
         passt.check_default_gw(session)
         passt.check_nameserver(session)
