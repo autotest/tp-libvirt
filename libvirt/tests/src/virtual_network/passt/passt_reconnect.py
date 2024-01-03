@@ -109,7 +109,7 @@ def run(test, params, env):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
         session = vm.wait_for_serial_login(timeout=60)
-        passt.check_vm_ip(iface_attrs, session, host_iface)
+        passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
         passt.check_default_gw(session)
         passt.check_nameserver(session)
@@ -124,7 +124,8 @@ def run(test, params, env):
         LOG.debug(f'Service status of firewalld: {firewalld.status()}')
 
         passt.check_connection(vm, vm_iface,
-                               ['TCP4', 'TCP6', 'UDP4', 'UDP6'])
+                               ['TCP4', 'TCP6', 'UDP4', 'UDP6'],
+                               host_iface)
 
         if 'portForwards' in iface_attrs:
             passt.check_portforward(vm, host_ip, params)
