@@ -13,6 +13,7 @@ from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_disk
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -339,9 +340,18 @@ def test_with_label(vm, params, test):
         vm_session = vm.wait_for_login()
         check_nvdimm_file(test_str, test_file, vm_session, test)
         vm_session.close()
-        virsh.snapshot_create_as(vm_name, vm_s1, ignore_status=False, debug=True)
-        virsh.snapshot_revert(vm_name, vm_s1, ignore_status=False, debug=True)
-        virsh.snapshot_delete(vm_name, vm_s1, ignore_status=False, debug=True)
+        virsh.snapshot_create_as(vm_name, "%s --disk-only" % vm_s1,
+                                 ignore_status=False, debug=True)
+        revert_result = virsh.snapshot_revert(vm_name, vm_s1, debug=True)
+        libvirt.check_result(revert_result, expected_fails=([params.get('error_msg_1'),
+                                                            params.get('error_msg_2')]))
+        if libvirt_version.version_compare(9, 10, 0):
+            virsh.snapshot_delete(vm_name, vm_s1, ignore_status=False, debug=True)
+        else:
+            virsh.snapshot_delete(vm_name, "%s --metadata" % vm_s1, ignore_status=False, debug=True)
+            snap_file_path = libvirt_disk.get_first_disk_source(vm)
+            if os.path.exists(snap_file_path):
+                os.remove(snap_file_path)
 
 
 def test_hotplug(vm, params, test):
