@@ -8,6 +8,7 @@
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import os
 import re
 
 from avocado.utils import process
@@ -74,6 +75,9 @@ def run(test, params, env):
         migrate_desturi_type = params.get("migrate_desturi_type", "tcp")
 
         test.log.info("Setup steps.")
+        disk_source = os.path.dirname(disk_source_name)
+        if not os.path.exists(disk_source):
+            os.mkdir(disk_source)
         cmd = "qemu-img convert -f qcow2 -O %s %s %s" % (disk_format, blk_source, disk_source_name)
         process.run(cmd, shell=True)
 
