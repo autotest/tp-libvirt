@@ -1,3 +1,5 @@
+from avocado.utils import distro
+
 from virttest import virsh
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
@@ -23,6 +25,7 @@ def run(test, params, env):
     status_error = params.get("status_error", "no")
     suspend_readonly = "yes" == params.get("suspend_readonly", "no")
 
+    detected_distro = distro.detect()
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
@@ -38,7 +41,10 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             test.cancel("API acl test not supported in current libvirt "
                         "version.")
-
+    #After RHEL8.2 polkit rules expanded,default domain name is avocado-vt-vm1
+    if unprivileged_user == 'testacl' and vm_name != "avocado-vt-vm1":
+        if detected_distro.name == "rhel" and int(detected_distro.version) > 8.2:
+            test.cancel("Domain name expected in polkit rules is avocado-vt-vm1")
     # Run test case
     if vm_ref == "id":
         vm_ref = domid
