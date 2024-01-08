@@ -705,12 +705,14 @@ def do_domjobabort(params):
     dest_uri = params.get("virsh_migrate_desturi")
     vm_name = params.get("main_vm")
     domjobabort_err_msg = params.get("domjobabort_err_msg")
-    postcopy_options = params.get("postcopy_options")
+    domjobabort_on_src = "yes" == params.get("domjobabort_on_src", "no")
+    domjobabort_options = params.get("domjobabort_options", "")
 
-    if postcopy_options:
-        ret = virsh.domjobabort(vm_name, option="--postcopy", debug=True, uri=dest_uri)
+    if domjobabort_on_src:
+        uri = None
     else:
-        ret = virsh.domjobabort(vm_name, debug=True, uri=dest_uri)
+        uri = dest_uri
+    ret = virsh.domjobabort(vm_name, options=domjobabort_options, debug=True, uri=uri)
     libvirt.check_result(ret, expected_fails=domjobabort_err_msg, check_both_on_error=True)
 
 
