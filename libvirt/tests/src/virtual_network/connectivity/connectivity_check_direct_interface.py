@@ -46,10 +46,12 @@ def run(test, params, env):
 
         ips_v4 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
                                            net_name=None,
-                                           ip_ver='ipv4')
+                                           ip_ver='ipv4',
+                                           host_iface=host_iface)
         ips_v6 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
                                            net_name=None,
-                                           ip_ver='ipv6')
+                                           ip_ver='ipv6',
+                                           host_iface=host_iface)
         ips_v4['outside_ip'] = outside_ip
         ping_check_args = {'host_ping_outside': {'interface': host_iface}}
 

@@ -18,7 +18,7 @@ LOG = logging.getLogger('avocado.' + __name__)
 
 
 def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
-                 ip_ver='ipv4'):
+                 ip_ver='ipv4', host_iface=None):
     """
     Get ips including vm ip, endpoint ip, host ip
 
@@ -28,13 +28,19 @@ def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
     :param ep_mac: mac address of endpoint vm
     :param net_name: name of virtual network
     :param ip_ver: ip version, ipv4/ipv6
+    :param host_iface: Host interface
     :return: a dict of ip addresses
     """
     ips = {}
     ips['vm_ip'], ips['ep_vm_ip'] = [utils_net.get_guest_ip_addr(
         sess, mac_ad, ip_version=ip_ver)
         for sess, mac_ad in [(session, mac), (ep_session, ep_mac)]]
-    ips['host_public_ip'] = utils_net.get_host_ip_address(ip_ver=ip_ver)
+    if not host_iface:
+        host_public_ip = utils_net.get_host_ip_address(ip_ver=ip_ver)
+    else:
+        host_public_ip = utils_net.get_ip_address_by_interface(host_iface,
+                                                               ip_ver=ip_ver)
+    ips['host_public_ip'] = host_public_ip
 
     if net_name:
         net_inst = network_xml.NetworkXML.new_from_net_dumpxml(net_name)
