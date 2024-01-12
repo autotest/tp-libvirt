@@ -1,6 +1,7 @@
 import os
 import logging as log
 import random
+import sys
 
 from avocado.utils import cpu
 from avocado.utils import process
@@ -28,6 +29,12 @@ def get_emulatorpin_from_cgroup(params, test):
     :raises: test.error if an error happens
     """
     vm = params.get("vm")
+    # U flag was deprecated since Python3.3
+    # and got removed in Python3.11 . It is by default enabled.
+    if sys.version_info >= (3, 11):
+        flag = "r"
+    else:
+        flag = "rU"
 
     cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
     cpuset_path = cg_obj.get_cgroup_path("cpuset")
@@ -38,7 +45,7 @@ def get_emulatorpin_from_cgroup(params, test):
         cpuset_file = os.path.join(cpuset_path, "cpuset.cpus")
 
     try:
-        with open(cpuset_file, "rU") as f_emulatorpin_params:
+        with open(cpuset_file, flag) as f_emulatorpin_params:
             emulatorpin_params_from_cgroup = f_emulatorpin_params.readline()
         return emulatorpin_params_from_cgroup
     except IOError:
