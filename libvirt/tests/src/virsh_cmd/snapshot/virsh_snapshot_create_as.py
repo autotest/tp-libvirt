@@ -590,11 +590,15 @@ def run(test, params, env):
                     time.sleep(1.1)
             output = cmd_result.stdout.strip()
             status = cmd_result.exit_status
-
             # check status_error
             if status_error == "yes":
                 if status == 0:
-                    test.fail("Run successfully with wrong command!")
+                    #libvirt_version 5.8.0 on-wards taking snapshot of guest created with
+                    #autodestroy option is enabled
+                    if libvirt_version.version_compare(5, 8, 0) and create_autodestroy:
+                        logging.info("Run expected to pass in libvirt_version >= 5.8.0")
+                    else:
+                        test.fail("Run successfully with wrong command!")
                 else:
                     # Check memspec file should be removed if failed
                     if (options.find("memspec") >= 0 and
