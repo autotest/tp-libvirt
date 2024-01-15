@@ -18,6 +18,7 @@ from virttest.utils_test import libvirt
 from provider.virtual_network import passt
 
 LOG = logging.getLogger('avocado.' + __name__)
+DOWN_IFACE_NAME = "br1234"
 
 
 def run(test, params, env):
@@ -73,12 +74,9 @@ def run(test, params, env):
         if scenario == 'rm_passt_pgk':
             utils_package.package_remove('passt')
         elif scenario == 'inactive_host_iface':
-            inactive_iface_list = [iface for iface in host_iface_list
-                                   if iface['operstate'] == 'DOWN']
-            if not inactive_iface_list:
-                test.error('No inactive interface on host')
-            host_iface = inactive_iface_list[0]['ifname']
-            iface_attrs['source']['dev'] = host_iface
+            process.run(f'ip link add name {DOWN_IFACE_NAME} type bridge',
+                        shell=True, ignore_status=False)
+            iface_attrs['source']['dev'] = DOWN_IFACE_NAME
         elif scenario == 'non_exist_bind_ip':
             bind_ip = ''
 
@@ -142,3 +140,5 @@ def run(test, params, env):
         else:
             del virsh_ins
         utils_selinux.set_status(selinux_status)
+        process.run(f'ip link del {DOWN_IFACE_NAME}',
+                    shell=True, ignore_status=True)
