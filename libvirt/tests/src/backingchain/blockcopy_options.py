@@ -42,7 +42,6 @@ def run(test, params, env):
         test_obj.new_image_path = image_path
         # start get old parts
         session = vm.wait_for_login()
-        test_obj.old_parts = utils_disk.get_parts_list(session)
         session.close()
         # attach new disk
         if encryption_disk:
@@ -84,9 +83,8 @@ def run(test, params, env):
                                        expected_value='true')
         # Check domain write file
         session = vm.wait_for_login()
-        new_parts = utils_disk.get_parts_list(session)
-        added_parts = list(set(new_parts).difference(set(test_obj.old_parts)))
-        utils_disk.linux_disk_check(session, added_parts[0])
+        added_disk, _ = libvirt_disk.get_non_root_disk_name(session)
+        utils_disk.linux_disk_check(session, added_disk)
         session.close()
 
     def teardown_blockcopy_extended_l2():
