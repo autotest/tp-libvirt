@@ -77,7 +77,7 @@ def get_hyperv_features_in_domcapabilities():
 def update_hyperv_features(vmxml, hyperv_attr, test):
     """
     Update specified hyperv features in vmxml
-    Sample hyperv_attr: {'relaxed': {'state': 'on'}, 'spinlocks'： {'state': 'on', 'retries': '4096'}}
+    Sample hyperv_attr: {'relaxed': {'state': 'on'}, 'spinlocks': {'state': 'on', 'retries': '4096'}}
 
     :param vmxml: VMXML instance
     :param hyperv_attr: dict, hyperv features and attributes
@@ -145,6 +145,22 @@ def assemble_hyperv_feature_list(feature_list, params, test):
     return hyperv_attr
 
 
+def get_expected_hyperv_values_in_qemu_line(feature_name):
+    """
+    Get expected hyperv feature values in qemu command line
+
+    :param feature_name: str, the hyperv feature name
+    :return: str, expected qemu command line for given feature
+    """
+    feature_name_value_mapping = {'hv-spinlocks': 'hv-spinlocks=0x1000',
+                                  'hv-stimer': 'hv-stimer=on,hv-stimer-direct=on',
+                                  'hv-vendor-id': 'hv-vendor-id=KVM Hv'}
+    if feature_name in feature_name_value_mapping:
+        return feature_name_value_mapping[feature_name]
+    else:
+        return "%s=on" % feature_name
+
+
 def run(test, params, env):
     """
     Test vm features
@@ -198,19 +214,27 @@ def run(test, params, env):
                 test.fail('VM failed to start:\n%s' % details)
         vm_session = vm.wait_for_login()
 
-        if hyperv_attr and not features_from_domcap:
+        if hyperv_attr and features_from_domcap == 'in':
             # Check hyperv settings in qemu command line
+            expect_exist_list = []
+            expect_nonexist_list = []
             for attr in hyperv_attr:
+                new_attr = re.sub('_', '-', attr)
                 if libvirt_version.version_compare(5, 6, 0):
-                    exp_str = 'hv-' + attr
+                    exp_str = 'hv-' + new_attr
                 else:
-                    exp_str = 'hv_' + attr
+                    exp_str = 'hv_' + new_attr
                 if hyperv_attr[attr] == 'off':
-                    if libvirt.check_qemu_cmd_line(exp_str, True):
-                        test.fail("Unexpected '%s' was found in "
-                                  "qemu command line" % exp_str)
+                    expect_nonexist_list.append(exp_str)
                 else:
-                    libvirt.check_qemu_cmd_line(exp_str)
+                    exp_str = get_expected_hyperv_values_in_qemu_line(exp_str)
+                    expect_exist_list.append(exp_str)
+            if expect_nonexist_list:
+                test.log.debug("Not expected list:%s", expect_nonexist_list)
+                libvirt.check_qemu_cmd_line(expect_nonexist_list, expect_exist=False)
+            if expect_exist_list:
+                test.log.debug("Expected list:%s", expect_exist_list)
+                libvirt.check_qemu_cmd_line(expect_exist_list)
 
         if pmu_attr:
             libvirt.check_qemu_cmd_line('pmu=' + pmu_attr['pmu'])
