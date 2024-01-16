@@ -96,7 +96,7 @@ def run(test, params, env):
                               "but found memtune XML:\n%s" % guest_xml.memtune)
             except xcepts.LibvirtXMLNotFoundError as detail:
                 test.log.debug(
-                    "Did not find the memtune xml, error is:%s" % detail)
+                    "Did not find the memtune xml, error is:%s", detail)
         else:
             memtune_element = guest_xml.memtune
             for key, value in limit_dict.items():
