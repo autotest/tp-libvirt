@@ -50,6 +50,7 @@ def run(test, params, env):
     vpx_passwd = params.get("vpx_password")
     esxi_host = esx_ip = params.get('esx_hostname')
     vpx_dc = params.get('vpx_dc')
+    vpx_no_username = params.get('vpx_no_username')
     vm_name = params.get('main_vm')
     output_mode = params.get('output_mode')
     pool_name = params.get('pool_name', 'v2v_test')
@@ -656,7 +657,7 @@ def run(test, params, env):
 
         v2v_params = {
             'hostname': remote_host, 'hypervisor': 'esx', 'main_vm': vm_name,
-            'vpx_dc': vpx_dc, 'esx_ip': esx_ip,
+            'vpx_dc': vpx_dc, 'esx_ip': esx_ip, 'vpx_no_username': vpx_no_username,
             'new_name': vm_name + utils_misc.generate_random_string(4),
             'v2v_opts': v2v_opts, 'input_mode': 'libvirt',
             'os_storage': os_storage,
