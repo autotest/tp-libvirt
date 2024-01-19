@@ -1,15 +1,18 @@
 import os
+import re
 import logging as log
 
 from avocado.utils import process
 from avocado.core import exceptions
 
-from virttest import utils_libvirtd
 from virttest import libvirt_storage
-
+from virttest import utils_libvirtd
 from virttest import virsh
-from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import pool_xml
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_test import libvirt as utlv
+from virttest.utils_libvirt import libvirt_disk
 from virttest.staging import lv_utils
 
 from virttest import libvirt_version
@@ -52,6 +55,12 @@ def run(test, params, env):
     lv_name = params.get("lv_name", "")
     update_policy = params.get("update_policy")
     libvirt_version.is_libvirt_feature_supported(params)
+    destroy_pool_used_by_guest = params.get("destroy_pool_used_by_guest")
+    disk_dict = params.get("disk_dict")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
+    vm = env.get_vm(vm_name)
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    bkxml = vmxml.copy()
 
     # Readonly mode
     ro_flag = False
@@ -148,6 +157,17 @@ def run(test, params, env):
             # Get pool uuid:
             if pool_ref == "uuid" and not pool_uuid:
                 pool = pool_ins.get_pool_uuid(pool_name)
+            if destroy_pool_used_by_guest:
+                virsh.pool_start(pool_name, debug=True, ignore_status=False)
+                res = virsh.vol_list(pool_name, debug=True,
+                                     ignore_status=False).stdout_text
+                vol = re.findall(r"(\S+)\ +(\S+)", str(res.strip()))[1][0]
+
+                libvirt_vmxml.modify_vm_device(
+                    vmxml, 'disk', eval(disk_dict % (pool_name, vol)), index=1)
+                virsh.start(vm_name)
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                test.log.debug("Get guest xml is:\n%s", vmxml)
 
             # Setup logical block device
             # Change pool source path
@@ -202,6 +222,15 @@ def run(test, params, env):
         if not result.exit_status:
             check_pool(pool_name, pool_type, checkpoint='Autostart',
                        expect_value="yes", expect_error=status_error)
+            if destroy_pool_used_by_guest:
+                session = vm.wait_for_login()
+                disk_name, _ = libvirt_disk.get_non_root_disk_name(session)
+                test.log.debug("Get new disk name is:%s", disk_name)
+                session.close()
+
+                virsh.pool_destroy(pool_name, debug=True, ignore_status=False)
+                utils_libvirtd.Libvirtd().restart()
+                libvirt_disk.check_virtual_disk_io(vm, disk_name)
 
             # Step(3)
             # Restart libvirtd and check pool status
@@ -240,6 +269,8 @@ def run(test, params, env):
         # Clean up
         logging.debug("Try to clean up env")
         try:
+            if destroy_pool_used_by_guest:
+                bkxml.sync()
             if clean_mount is True:
                 for src in source_list:
                     process.system("umount %s" % pool_target)
