@@ -29,6 +29,9 @@ def run(test, params, env):
     def adjust_limit_for_memory_page(limit_dict):
         """
         Limit value would be aligned to the default memory page size
+
+        :param params: dict of memory limitation
+        :return: dict, adjucted memory limitation dict from host page size
         """
         default_page_size = utils_memory.getpagesize()
         return {key: (value // default_page_size * default_page_size)
@@ -37,6 +40,8 @@ def run(test, params, env):
     def check_limit_by_virsh_memtune(limit_dict):
         """
         Check the memtune limit is expected by virsh memtune
+
+        :param params: dict of memory limitation
         """
         expected_limit_dict = adjust_limit_for_memory_page(limit_dict)
         for key, value in expected_limit_dict.items():
@@ -48,6 +53,8 @@ def run(test, params, env):
     def set_limit_by_virsh_memtune_in_turn(limit_dict):
         """
         Set memory limit by virsh memtune one by one
+
+        :param params: dict of memory limitation
         """
         vm_pid = vm.get_pid()
         cg = libvirt_cgroup.CgroupTest(vm_pid)
@@ -63,6 +70,8 @@ def run(test, params, env):
     def set_limit_by_virsh_memtune_once(limit_dict):
         """
         Set memory limit by virsh memtune all together
+
+        :param params: dict of memory limitation
         """
         limit_value_list = [str(limit_dict[limit_name])
                             for limit_name in memtune_cmd_parameter_seq]
@@ -72,6 +81,8 @@ def run(test, params, env):
     def check_limit_by_cgroup(limit_dict):
         """
         Check the memtune limit is expected by cgroup
+
+        :param params: dict of memory limitation
         """
         adjusted_limit_dict = adjust_limit_for_memory_page(limit_dict)
         expected_limit_dict = {key: (value*1024) if value != -1 else 'max'
@@ -87,6 +98,8 @@ def run(test, params, env):
     def check_limit_by_virsh_dump(limit_dict):
         """
         check the memtune limit is expected by virsh dump
+
+        :param params: dict of memory limitation
         """
         guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name)
         if len(set(limit_dict.values())) == 1 and list(limit_dict.values())[0] == -1:
@@ -108,6 +121,8 @@ def run(test, params, env):
     def check_guest_memtune_related_values(limit_dict):
         """
         check memtune by cmd virsh memtune, cgroup value and guest config xml
+
+        :param params: dict of memory limitation
         """
         test.log.info("Check the memtune value by virsh memtune")
         check_limit_by_virsh_memtune(limit_dict)
