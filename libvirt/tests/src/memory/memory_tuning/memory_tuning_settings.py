@@ -31,7 +31,7 @@ def run(test, params, env):
         Limit value would be aligned to the default memory page size
 
         :param params: dict of memory limitation
-        :return: dict, adjucted memory limitation dict from host page size
+        :return: dict, adjusted memory limitation dict from host page size
         """
         default_page_size = utils_memory.getpagesize()
         return {key: (value // default_page_size * default_page_size)
