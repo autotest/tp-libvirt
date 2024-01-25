@@ -139,12 +139,12 @@ def run(test, params, env):
             hugepage = str(json.loads(result)['return'])
 
             result = virsh.qemu_monitor_command(
-                vm_name, check_thread % (mem_name, 'hugetlbsize'), debug=True).stdout_text
+                vm_name, check_thread % (mem_name, 'size'), debug=True).stdout_text
             hugepage_size = str(json.loads(result)['return'])
 
             if hugepage != 'True':
                 test.fail("Expect to get hugepage 'True', but got '%s'" % hugepage)
-            if hugepage_size != memory_value:
+            if int(hugepage_size) != int(memory_value) * 1024:
                 test.fail("Expect to get hugepage size '%s', but got '%s'" % (
                     hugepage_size, memory_value))
             test.log.debug("Get correct hugepage '%s' and hugepage_size '%s'",
