@@ -4,7 +4,6 @@ import os
 
 from uuid import uuid1
 
-from avocado.utils import process
 from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_misc
@@ -119,7 +118,7 @@ def check_device_attributes_are_dumped(test, dev_name, adapter, domain):
     :param domain: domain number in base 16
     """
 
-    process.run("udevadm settle")
+    time.sleep(10)
     nodedevice_xml = nodedev_xml.NodedevXML.new_from_dumpxml(dev_name)
     mdev_cap_xml = nodedevice_xml.get_cap()
     logging.debug("MdevXML: %s", mdev_cap_xml)
