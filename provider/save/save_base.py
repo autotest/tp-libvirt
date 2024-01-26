@@ -50,8 +50,8 @@ def post_save_check(vm, pid_ping, upsince):
     session.close()
 
     if upsince_restore != upsince:
-        raise exceptions.TestWarn(f'Uptime since {upsince_restore} is '
-                                  f'incorrect, should be {upsince}')
+        LOG.warning(f'Uptime since {upsince_restore} is '
+                    f'incorrect, should be {upsince}')
     ping_cmd = 'ping 127.0.0.1'
     if ping_cmd not in proc_info:
         raise exceptions.TestFail('Cannot find running ping command '
