@@ -71,6 +71,7 @@ def set_clock_xml(test, vm, params):
         newtimers.append(newtimer)
     vmclockxml.timers = newtimers
     vmxml.clock = vmclockxml
+    vmxml.remove_all_device_by_type('interface')
     logging.debug("New vm XML:\n%s", vmxml)
     vmxml.sync()
     # Return timer elements for test verify
@@ -92,7 +93,7 @@ def vm_clock_source(vm, target, value=''):
         clock_file = 'current_clocksource'
     else:
         exceptions.TestError("Clock source target must be 'available' or 'current'")
-    session = vm.wait_for_login()
+    session = vm.wait_for_serial_login()
     session.cmd("cd %s" % CLOCK_SOURCE_PATH)
     set_clock = False
     if value:
@@ -121,10 +122,11 @@ def get_time(vm=None, time_type=None, windows=False):
     :return: Epoch time or timezone
     """
     if vm:
-        session = vm.wait_for_login()
+        session = vm.wait_for_serial_login()
         if time_type == "utc":
             cmd = "date -u +%Y/%m/%d/%H/%M/%S"
             ts, timestr = session.cmd_status_output(cmd)
+            logging.debug("VM UTC time is %s", timestr)
         elif windows is True:
             # Date in this format: Sun 09/14/2014 or 2014/09/14 Sun
             # So deal with it after getting date
@@ -197,7 +199,7 @@ def set_vm_timezone(test, vm, timezone="America/New_York", windows=False):
     cmd_o = ''
     if not windows:
         timezone_file = "/usr/share/zoneinfo/%s" % timezone
-        session = vm.wait_for_login()
+        session = vm.wait_for_serial_login()
         if session.cmd_status("ls %s" % timezone_file):
             session.close()
             test.error("Not correct timezone:%s" % timezone_file)
@@ -214,7 +216,7 @@ def set_vm_timezone(test, vm, timezone="America/New_York", windows=False):
         if timezone not in list(timezone_codes.keys()):
             test.error("Not supported timezone, please add it.")
         cmd = "tzutil /s \"%s\"" % timezone_codes[timezone]
-        session = vm.wait_for_login()
+        session = vm.wait_for_serial_login()
         cmd_s, cmd_o = session.cmd_status_output(cmd)
         session.close()
     if cmd_s:
@@ -303,6 +305,8 @@ def manipulate_vm(vm, operation, params=None):
                 os.remove(save_path)
             except OSError:
                 pass
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
     else:
         err_msg = "Unsupported operation in this function: %s" % operation
     return err_msg
@@ -347,6 +351,7 @@ def test_timers_in_vm(test, vm, params):
 
     # Set host timezone
     set_host_timezone(test, host_tz)
+    syncup_host_time(test)
 
     # Confirm vm is down for editing
     if vm.is_alive():
@@ -357,7 +362,7 @@ def test_timers_in_vm(test, vm, params):
 
     # Logging vm to set time
     vm.start()
-    vm.wait_for_login()
+    vm.wait_for_serial_login()
     set_vm_timezone(test, vm, vm_tz, windows_test)
 
     # manipulate vm if necessary, linux guest only
@@ -452,7 +457,7 @@ def test_specific_timer(test, vm, params):
         start_error = "yes" == params.get("timer_start_error", "no")
     if vm.is_dead():
         vm.start()
-    vm.wait_for_login()
+    vm.wait_for_serial_login()
     # Not config VM clock if the timer is unsupported in VM
     config_clock_in_vm = True
     for timer in timers:
@@ -472,7 +477,7 @@ def test_specific_timer(test, vm, params):
     # Logging vm to verify whether setting is work
     try:
         vm.start()
-        vm.wait_for_login()
+        vm.wait_for_serial_login()
         if start_error:
             test.fail("Start vm succeed, but expect fail.")
     except virt_vm.VMStartError as detail:
@@ -520,6 +525,17 @@ def test_specific_timer(test, vm, params):
             if vm_clock_source(vm, 'current') != t_name:
                 test.fail("Set clock source to %s in vm successfully"
                           " while present is yes" % t_name)
+
+
+def syncup_host_time(test):
+    """
+    Sync up host time to ntp server before testing.
+    """
+    try:
+        process.run("chronyd -q 'server clock.redhat.com iburst'", shell=True)
+        process.run("hwclock --systohc", shell=True)
+    except Exception as e:
+        logging.error("sync up host time to ntp server error: %s", e)
 
 
 def run(test, params, env):
