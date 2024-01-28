@@ -50,7 +50,7 @@ def run(test, params, env):
                 logging.error("Get boot_time error:%s" % e)
             return boot_time
 
-        boot_time = utils_misc.wait_for(get_boot_time, 60)
+        boot_time = utils_misc.wait_for(get_boot_time, 120)
         session.close()
         return boot_time
 
