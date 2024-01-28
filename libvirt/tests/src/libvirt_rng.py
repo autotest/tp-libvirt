@@ -377,7 +377,7 @@ def run(test, params, env):
         rng_rate = params.get("rng_rate")
         # For rng rate test this command and return in a short time
         # but for other test it will hang
-        cmd = ("dd if=/dev/hwrng of=rng.test count=100"
+        cmd = ("dd if=/dev/hwrng of=rng.test bs=1M count=10"
                " && rm -f rng.test")
         try:
             ret, output = session.cmd_status_output(cmd, timeout=timeout)
