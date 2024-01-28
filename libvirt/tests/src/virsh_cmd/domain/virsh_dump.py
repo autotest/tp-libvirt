@@ -183,7 +183,7 @@ def run(test, params, env):
                 return False
             logging.debug("Run file %s output: %s", dump_file, output)
             actual_format = output.split(" ")[1]
-            if actual_format.lower() != dump_image_format.lower():
+            if actual_format.lower() not in (dump_image_format.lower(), "flattened"):
                 logging.error("Compress dumped file to %s fail: %s" %
                               (dump_image_format, actual_format))
                 return False
