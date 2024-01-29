@@ -253,6 +253,10 @@ def check_default_gw(session):
     if [x for x in vm_gw if x not in host_gw]:
         raise exceptions.TestFail(
             'Host default ipv4 gateway not consistent with vm.')
+    if not host_gw_v6:
+        LOG.debug("Skip ipv6 route check as host has multipath ipv6 route "
+                  "which Passt can not recognize.")
+        return
     if [x for x in vm_gw_v6 if x not in host_gw_v6]:
         raise exceptions.TestFail(
             'Host default ipv6 gateway not consistent with vm.')
