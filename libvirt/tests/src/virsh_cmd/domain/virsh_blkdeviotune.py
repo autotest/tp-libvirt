@@ -25,7 +25,7 @@ def check_blkdeviotune(params):
     vm = params.get("vm")
     options = params.get("blkdevio_options")
     device = params.get("device_name", "")
-    result = virsh.blkdeviotune(vm_name, device)
+    result = virsh.blkdeviotune(vm_name, device, ignore_status=False)
     dicts = {}
     # Parsing command output and putting them into python dictionary.
     cmd_output = result.stdout.strip().splitlines()
