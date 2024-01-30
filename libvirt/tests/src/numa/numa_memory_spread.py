@@ -84,7 +84,7 @@ def prepare_host_for_test(params, test):
     # Decrease nodeset size by 25%
     undersize = int(nodeset_size * 0.25)
     # Memory to eat is a whole nodeset + 5% of neighbour size
-    memory_to_eat = int(nodeset_size + 0.05 * nodeset_nb_size)
+    memory_to_eat = int(nodeset_size + 0.005 * nodeset_nb_size)
     nodeset_string = '{},{}'.format(online_nodes[0], neighbour)
     process.run("swapoff -a", shell=True)
 
