@@ -10,6 +10,7 @@
 import re
 
 from avocado.core import exceptions
+from avocado.utils import memory
 from avocado.utils import process
 
 from virttest import cpu
@@ -213,3 +214,24 @@ def convert_to_list_of_int(cpus_in_short, cpu_num):
     """
     cpu_list = cpu.cpus_string_to_affinity_list(cpus_in_short, cpu_num)
     return [index for index in range(0, len(cpu_list)) if cpu_list[index] == 'y']
+
+
+def check_hugepage_availability(memory_backing):
+    """
+    Check if the configured huge page size is supported on the system
+
+    :param memory_backing: like {'hugepages': {'pages': [{'size': '1048576', 'unit': 'KiB', 'nodeset': '0'}]}}
+    :raises: exceptions.TestSkipError: when hugepage is not supported
+    """
+    unit_mapping = {'G': 1048576, 'M': 1024, 'KiB': 1}
+    supported_hugepages = memory.get_supported_huge_pages_size()
+    pages_list = memory_backing['hugepages']['pages']
+    for a_page in pages_list:
+        size = int(a_page['size'])
+        unit = a_page['unit']
+        size *= unit_mapping[unit]
+        if size not in supported_hugepages:
+            raise exceptions.TestSkipError("The hugepage size '%s' is "
+                                           "not supported on current "
+                                           "arch (support: %s)" % (size,
+                                                                   supported_hugepages))

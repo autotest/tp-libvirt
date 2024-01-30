@@ -39,6 +39,9 @@ def setup_default(test_obj):
 
     :param test_obj: NumaTest object
     """
+    memory_backing = eval(test_obj.params.get('memory_backing', '{}'))
+    if memory_backing:
+        numa_base.check_hugepage_availability(memory_backing)
     test_obj.setup()
     params_2M = {'hugepage_size': '2048',
                  'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_2M'),
@@ -218,11 +221,6 @@ def run(test, params, env):
     """
     Test for numa memory binding with emulator thread pin
     """
-    conf_pagesize = params.get("conf_pagesize")
-    kernel_pagesize = process.run("getconf PAGESIZE", shell=True).stdout_text.strip()
-    if kernel_pagesize != conf_pagesize:
-        test.cancel("The current test does not work with this kernel pagesize.")
-
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     numatest_obj = numa_base.NumaTest(vm, params, test)
