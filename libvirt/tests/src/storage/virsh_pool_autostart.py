@@ -6,6 +6,7 @@ from avocado.core import exceptions
 
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
+
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import pool_xml
@@ -45,10 +46,12 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     readonly_mode = "yes" == params.get("readonly_mode", "no")
     pre_def_pool = "yes" == params.get("pre_def_pool", "yes")
+    with_empty_vg = "yes" == params.get("with_empty_vg", "no")
     disk_type = params.get("disk_type", "")
     vg_name = params.get("vg_name", "")
     lv_name = params.get("lv_name", "")
     update_policy = params.get("update_policy")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Readonly mode
     ro_flag = False
@@ -90,7 +93,7 @@ def run(test, params, env):
             actual_value = libvirt_pool.pool_autostart(pool_name)
         if actual_value != expect_value:
             if not expect_error:
-                if checkpoint == 'State' and pool_type in ("dir", "scsi", "disk"):
+                if checkpoint == 'State' and pool_type in ("dir", "scsi", "disk", "logical"):
                     debug_msg = "Dir/scsi/disk pool should be active when libvirtd restart. "
                     debug_msg += "See https://bugzilla.redhat.com/show_bug.cgi?id=1238610"
                     logging.debug(debug_msg)
@@ -129,7 +132,15 @@ def run(test, params, env):
         if pre_def_pool:
             # Step(1)
             # Pool define
-            pvt.pre_pool(**params)
+            if with_empty_vg and pool_type == "logical":
+                new_disk = utlv.setup_or_cleanup_iscsi(True)
+                pool_options = "--source-dev %s" % new_disk
+                virsh.pool_define_as(pool_name, pool_type, pool_target,
+                                     extra=pool_options, debug=True)
+                virsh.pool_build(pool_name, "--overwrite", debug=True)
+                virsh.pool_start(pool_name, ignore_status=False, debug=True)
+            else:
+                pvt.pre_pool(**params)
             # Remove the partition for disk pool
             # For sometimes the partition will cause pool start failed
             if pool_type == "disk":
@@ -237,6 +248,8 @@ def run(test, params, env):
             if new_device:
                 utlv.delete_local_disk(disk_type, vgname=vg_name, lvname=lv_name)
                 lv_utils.vg_remove(vg_name)
+                utlv.setup_or_cleanup_iscsi(False)
+            if with_empty_vg:
                 utlv.setup_or_cleanup_iscsi(False)
             if os.path.exists(p_xml):
                 os.remove(p_xml)
