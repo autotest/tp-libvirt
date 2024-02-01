@@ -172,7 +172,7 @@ def run(test, params, env):
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
 
         session = vm.wait_for_serial_login(timeout=60)
-        passt.check_default_gw(session)
+        passt.check_default_gw(session, host_iface)
 
         prot = 'TCP' if ip_ver == 'ipv4' else 'TCP6'
         if direction == 'host_to_vm':
