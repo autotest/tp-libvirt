@@ -403,11 +403,13 @@ def run(test, params, env):
         logging.info("Checking VM block size...")
         try:
             session = vm.wait_for_login()
+            new_disks = libvirt_disk.get_non_root_disk_names(session)
+            new_disk_names = [disk_info[0] for disk_info in new_disks]
             # Here the script needs wait for a while for the guest to
             # recognize the block on PPC
             add_sleep()
-            for target in targets_name:
-                cmd = "cat /sys/block/%s/queue/" % target
+            for disk_name in new_disk_names:
+                cmd = "cat /sys/block/%s/queue/" % disk_name
                 s, o = session.cmd_status_output("%slogical_block_size"
                                                  % cmd)
                 logging.debug("logical block size in VM:\n%s", o)
