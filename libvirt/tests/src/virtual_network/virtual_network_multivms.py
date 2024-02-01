@@ -368,7 +368,7 @@ def run(test, params, env):
             for vm_i in vm_list:
                 mac = vm_xml.VMXML.get_first_mac_by_name(vm_i.name)
                 sess = vm_i.wait_for_serial_login()
-                vm_ip = utils_net.get_guest_ip_addr(sess, mac)
+                vm_ip = utils_net.get_guest_ip_addr(sess, mac, timeout=5)
                 session_n_ip[sess] = vm_ip
                 logging.debug('Vm %s ip: %s', vm_i.name, vm_ip)
                 if not vm_ip:
