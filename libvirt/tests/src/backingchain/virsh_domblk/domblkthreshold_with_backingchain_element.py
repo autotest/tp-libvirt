@@ -1,7 +1,9 @@
 import re
+import time
 
 from virttest import utils_disk
 from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
 from provider.backingchain import blockcommand_base
@@ -45,6 +47,7 @@ def run(test, params, env):
         Do domblkthreshold for the entire disk device target
         """
         test.log.info("TEST_STEP1:Set domblkthreshold for the entire disk")
+        time.sleep(5)
         virsh.domblkthreshold(vm_name, '%s' % target_disk,
                               domblk_threshold, debug=True,
                               ignore_status=False)
@@ -77,6 +80,12 @@ def run(test, params, env):
         :param threshold_value: domstats threshold value, if it is None,
         result should be no output
         """
+        if not utils_misc.wait_for(
+                lambda:
+                bool(threshold_value) == ('threshold' in virsh.domstats(
+                    vm_name, options, debug=True).stdout_text.strip()), 30, 2):
+            test.fail('Failed to get expected threshold value in 30s')
+
         result = virsh.domstats(vm_name, options, debug=True,
                                 ignore_status=False).stdout_text.strip()
         if not threshold_value:
