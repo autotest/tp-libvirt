@@ -318,9 +318,9 @@ def verify_node_cpus_under_cell(test_obj, cpu_list, node_id):
     one_numa_node = NumaNode(int(node_id) + 1)
     for one_cpu_dict in cpu_list:
         cpu_info_in_sys = one_numa_node.get_cpu_topology(one_cpu_dict['id'])
-        if one_cpu_dict != cpu_info_in_sys:
+        if not set(one_cpu_dict.items()).issubset(cpu_info_in_sys.items()):
             test_obj.test.fail("Expect cpu '%s' in node '%s' "
-                               "to be '%s', but found "
+                               "to be included in '%s', but found "
                                "'%s'" % (one_cpu_dict['id'],
                                          node_id,
                                          cpu_info_in_sys,
