@@ -67,7 +67,7 @@ def run(test, params, env):
 
         # Build omping command
         ip_suf, ip_suf_c = (ip_i.split('.')[-1] for ip_i in (ip, ip_c))
-        ip_pre = ip.replace(f'.{ip_suf}', '')
+        ip_pre = '.'.join(ip.split('.')[:3])
         omping_cmd = f'omping -m {mcast_addr} {ip_pre}.{{{ip_suf},{ip_suf_c}}}'
 
         # omping from vm to vm_c
@@ -75,7 +75,7 @@ def run(test, params, env):
         status, output = utils_net.raw_ping(omping_cmd, 5, session,
                                             output_func=LOG.debug)
         if 'response message never received' not in output:
-            test.fail('omping should fail with remote vm firewalld on')
+            test.fail(f'omping failed due to "{output}"')
 
         # Keep omping process alive on vm then omping from vm_c to vm
         session.sendline(omping_cmd)
