@@ -34,7 +34,7 @@ def run(test, params, env):
         pid = vm.get_pid()
         cmdline = process.run("cat -v /proc/%d/cmdline" % pid).stdout_text
         cmdline = re.sub(r'\^@', ' ', cmdline)
-        cmdline_tmp = re.sub(r'\s-drive\s[^\s]+', '\s', cmdline)
+        cmdline_tmp = re.sub(r'\s-drive\s[^\s]+', ' ', cmdline)
 
         # Libvirt requires the binary path for domxml-from-native to succeed
         # /proc/pid/cmdline would give qemu cmdline with binary without
