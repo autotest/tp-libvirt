@@ -77,6 +77,7 @@ def run(test, params, env):
     expected_nmi_times = params.get("expected_nmi_times", '0')
     kernel_params = params.get("kernel_params", "")
     unprivileged_user = params.get('unprivileged_user')
+    check_qemu_monitor = "yes" == params.get("check_qemu_monitor", "yes")
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -115,8 +116,9 @@ def run(test, params, env):
             logging.info("Inject NMI to the guest via virsh inject_nmi")
             virsh.inject_nmi(vm_name, debug=True, ignore_status=False)
 
-            logging.info("Inject NMI to the guest via virsh qemu_monitor_command")
-            virsh.qemu_monitor_command(vm_name, '{"execute":"inject-nmi"}')
+            if check_qemu_monitor:
+                logging.info("Inject NMI to the guest via virsh qemu_monitor_command")
+                virsh.qemu_monitor_command(vm_name, '{"execute":"inject-nmi"}')
 
             # injects a Non-Maskable Interrupt into the default CPU (x86/s390)
             # or all CPUs (ppc64), as usual, the default CPU index is 0
