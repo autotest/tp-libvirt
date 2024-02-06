@@ -21,6 +21,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest.libvirt_xml.devices.watchdog import Watchdog
+from virttest.utils_libvirt.libvirt_disk import get_non_root_disk_name
 
 from xml.dom.minidom import parseString
 
@@ -378,8 +379,10 @@ def run(test, params, env):
                     logging.debug(process.run('qemu-img info %s -U' % new_disk))
                     virsh.domblkthreshold(vm_name, 'vdb', '100M')
                     session = dom.wait_for_login()
-                    session.cmd("mkfs.ext4 /dev/vdb && mount /dev/vdb /mnt && ls /mnt && "
-                                "dd if=/dev/urandom of=/mnt/bigfile bs=1M count=300 && sync", timeout=90)
+                    disk_name, _ = get_non_root_disk_name(session)
+                    session.cmd("mkfs.ext4 /dev/%s && mount /dev/%s /mnt && ls /mnt && "
+                                "dd if=/dev/urandom of=/mnt/bigfile bs=1M count=300 && sync"
+                                % (disk_name, disk_name), timeout=90)
                     time.sleep(5)
                     session.close()
                     expected_events_list.append("'block-threshold' for %s:"
@@ -558,8 +561,10 @@ def run(test, params, env):
                     add_disk(dom.name, new_disk, 'vdb', '--subdriver qcow2 --config', 'qcow2')
                     dom.start()
                     session = dom.wait_for_login()
-                    session.cmd("mkfs.ext4 /dev/vdb && mount /dev/vdb /mnt && ls /mnt && "
-                                "dd if=/dev/zero of=/mnt/test.img bs=1M count=50", ignore_all_errors=True)
+                    disk_name, _ = get_non_root_disk_name(session)
+                    session.cmd("mkfs.ext4 /dev/%s && mount /dev/%s /mnt && ls /mnt && "
+                                "dd if=/dev/zero of=/mnt/test.img bs=1M count=50"
+                                % (disk_name, disk_name), ignore_all_errors=True)
                     time.sleep(5)
                     session.close()
                     expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause")
