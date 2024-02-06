@@ -10,15 +10,12 @@
 
 import logging
 import os
-import platform
 import shutil
 import time
 
 from avocado.utils import process
 
 from virttest import libvirt_version
-from virttest import utils_disk
-from virttest import utils_misc
 from virttest import utils_selinux
 from virttest import virsh
 from virttest import virt_vm
@@ -30,33 +27,6 @@ from virttest.utils_test import libvirt
 
 LOG = logging.getLogger('avocado.' + __name__)
 cleanup_files = []
-
-
-def get_added_disks(old_partitions, test, params, env):
-    """
-    Get new virtual disks in VM after disk plug.
-
-    :param old_partitions: already existing partitions in VM
-    :param test: test object
-    :param params: one dictionary wrapping parameters
-    :param env: environment representing running context
-    :return: New disks/partitions in VM
-    """
-    vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
-    session = None
-    try:
-        session = vm.wait_for_login()
-        if platform.platform().count('ppc64'):
-            time.sleep(10)
-        added_partitions = utils_disk.get_added_parts(session, old_partitions)
-        LOG.debug("Newly added partition(s) is: %s", added_partitions)
-        return added_partitions
-    except Exception as err:
-        test.fail("Error happens when get new disk: %s" % str(err))
-    finally:
-        if session:
-            session.close()
 
 
 def create_customized_disk(params):
@@ -264,7 +234,6 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_partitions = utils_disk.get_parts_list(session)
     session.close()
     if not hotplug:
         vm.destroy(gracefully=False)
@@ -305,13 +274,10 @@ def run(test, params, env):
                   "Error: %s" % str(xml_error))
     else:
         check_disk_file_selinux_label(test, params, "after_start")
-        utils_misc.wait_for(lambda: get_added_disks(old_partitions, test, params, env), 20)
-        new_disks = get_added_disks(old_partitions, test, params, env)
-        if len(new_disks) != 1:
-            test.fail("Attached 1 virtual disk but got %s." % len(new_disks))
-        new_disk = new_disks[0]
-        if platform.platform().count('ppc64'):
-            time.sleep(10)
+        session = vm.wait_for_login()
+        new_disk, _ = libvirt_disk.get_non_root_disk_name(session)
+        session.close()
+        time.sleep(10)
         if disk_readonly:
             if libvirt_disk.check_virtual_disk_io(vm, new_disk, path=part_path):
                 test.fail("Expect the newly added disk is not writable, but actually it is")
