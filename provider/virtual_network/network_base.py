@@ -2,15 +2,13 @@ import logging
 import shutil
 
 import aexpect
-
 from avocado.core import exceptions
 from avocado.utils import process
-
 from virttest import remote
 from virttest import utils_net
 from virttest import virsh
-
 from virttest.libvirt_xml import network_xml
+from virttest.libvirt_xml import vm_xml
 
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 
@@ -266,15 +264,46 @@ def set_static_ip(iface, ip, netmask, session):
     session.cmd(f'ifconfig {iface} {ip}/{netmask}')
 
 
-def get_iface_xml_inst(vmxml, comment, index=0):
+def get_iface_xml_inst(vm_name, comment, index=0):
     """
     Get iface xml instance with given vm and index
 
-    :param vmxml: xml instance of vm
+    :param vm_name: name of vm
     :param comment: comment to log
     :param index: index of interface on vm, defaults to 0
     :return: xml instance of interface
     """
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     iface = vmxml.get_devices('interface')[index]
     LOG.debug(f'Interface xml ({comment}):\n{iface}')
     return iface
+
+
+def get_ethtool_coalesce(iface):
+    """
+    Get coalesce parameters from ethtool command output
+
+    :param iface: interface name
+    :return: dict-type coalesce parameters
+    """
+    eth_out = process.run(f'ethtool -c {iface}').stdout_text
+    items = [x.split(':') for x in eth_out.replace('\t', '').splitlines() if x]
+    coalesce = {item[0]: item[1] for item in items[1:] if len(item) == 2}
+
+    return coalesce
+
+
+def check_iface_attrs(iface, key, expect_val):
+    """
+    Check whether interface attribute value meets expectation
+
+    :param iface: interface name
+    :param key: interface attribute key
+    :param expect_val: expect attribute value
+    """
+    actual_val = iface.fetch_attrs().get(key)
+    LOG.debug(f'Expect {key}: {expect_val}\n'
+              f'Actual {key}: {actual_val}')
+    if actual_val != expect_val:
+        raise exceptions.TestFail(f'Updated {key} of iface should be '
+                                  f'{expect_val}, NOT {actual_val}')
