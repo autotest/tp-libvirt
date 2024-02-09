@@ -254,9 +254,6 @@ def run(test, params, env):
     check_cpus_allowed_list = "yes" == params.get("check_cpus_allowed_list", "")
 
     host_cpus_num = cpu.online_count()
-    if all_cpuset and int(host_cpus_num) % 8 != 0:
-        test.cancel("Host cpu number is expected to be multiple of 8, "
-                    "but found %s" % host_cpus_num)
     # Backup original vm
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
