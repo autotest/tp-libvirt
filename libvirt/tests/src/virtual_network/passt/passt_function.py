@@ -99,7 +99,7 @@ def run(test, params, env):
         session = vm.wait_for_serial_login(timeout=60)
         passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
-        passt.check_default_gw(session)
+        passt.check_default_gw(session, host_iface)
         passt.check_nameserver(session)
 
         ips = {

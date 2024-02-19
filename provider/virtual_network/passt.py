@@ -234,20 +234,28 @@ def check_vm_mtu(session, iface, mtu):
         raise exceptions.TestFail(f'Wrong vm mtu: {vm_mtu}, should be {mtu}')
 
 
-def check_default_gw(session):
+def check_default_gw(session, host_iface=None):
     """
     Check whether default host gateways of host and guest are consistent,
     i.e. the guest's gateways are available on the host.
 
     :param session: vm shell session instance
+    :param host_iface: if given, only check gateway information on this
+                       host interface
     """
-    host_gw = utils_net.get_default_gateway(force_dhcp=True).split()
+    host_gw = utils_net.get_default_gateway(force_dhcp=True,
+                                            target_iface=host_iface).split()
     vm_gw = utils_net.get_default_gateway(session=session,
                                           force_dhcp=True).split()
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
-    host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6').split()
-    vm_gw_v6 = utils_net.get_default_gateway(session=session,
-                                             ip_ver='ipv6').split()
+    _host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
+                                                target_iface=host_iface)
+    _vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6')
+    if not _host_gw_v6 or not _vm_gw_v6:
+        raise exceptions.TestFail(
+            'Cannot recognize ipv6 multipath router!')
+    host_gw_v6 = _host_gw_v6.split()
+    vm_gw_v6 = _vm_gw_v6.split()
     LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
 
     if [x for x in vm_gw if x not in host_gw]:
