@@ -493,6 +493,23 @@ def check_scsi_cdrom_hot_eject(vm, params, test):
         test.fail("cdrom disk can not be detached successfully")
 
 
+def check_empty_source_cdrom(vm, params, test):
+    """
+    Check hotplug empty source cdrom
+
+    :param vm: one object representing VM
+    :param params: wrapped parameters in dictionary format
+    :param test: test assert object
+    """
+    vm.wait_for_login().close()
+    # hotplug cdrom device
+    device_obj = params.get("cdrom_xml")
+    virsh.attach_device(vm.name, device_obj.xml, flagstr="--live", ignore_status=False, debug=True)
+
+    # Check cdrom is present in disk xml
+    check_source_in_cdrom_device(vm, None, test)
+
+
 def run(test, params, env):
     """
     Test attach cdrom device with option.
@@ -557,6 +574,9 @@ def run(test, params, env):
                                ignore_status=False, debug=True)
         if backend_device == "block_lun_source":
             device_obj = create_block_lun_source_disk(params)
+        if backend_device == "empty_source_cdrom_backend":
+            device_obj = create_customized_disk(params)
+            params.update({'cdrom_xml': device_obj})
         if not hotplug:
             # Sync VM xml.
             vmxml.add_device(device_obj)
@@ -614,6 +634,8 @@ def run(test, params, env):
             check_cdrom_reboot_reset(vm, params, test)
         elif backend_device == "scsi_cdrom_hot_eject_backend":
             check_scsi_cdrom_hot_eject(vm, params, test)
+        elif backend_device == "empty_source_cdrom_backend":
+            check_empty_source_cdrom(vm, params, test)
     finally:
         # Recover VM.
         if vm.is_alive():
