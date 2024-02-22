@@ -10,6 +10,9 @@ from virttest import utils_misc
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.staging import utils_memory
+
+from provider.memory import memory_base
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -250,6 +253,21 @@ def run(test, params, env):
     # Back up domain XML
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+
+    vm_attrs = eval(params.get('vm_attrs'))
+    memory_size = vm_attrs['memory']
+    memory_unit = vm_attrs['memory_unit']
+    guest_memory = memory_base.convert_data_size(
+        str(memory_size) + memory_unit, dest_unit='KiB')
+    host_free_mem = utils_memory.freememtotal()
+    logging.debug("The allocation memory for guest is %sKiB,"
+                  " the total free memory of host is %sKiB.",
+                  guest_memory, host_free_mem)
+    if host_free_mem < guest_memory:
+        test.cancel("There is not enough memory for guest.")
+
+    vmxml.setup_attrs(**vm_attrs)
+    vmxml.sync()
 
     if with_packed and not libvirt_version.version_compare(6, 3, 0):
         test.cancel("The virtio packed attribute is not supported in"
