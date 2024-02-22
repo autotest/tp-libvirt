@@ -9,9 +9,6 @@ from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 
-from virttest import utils_disk
-
-
 from virttest.utils_test import libvirt
 
 from virttest.utils_libvirt import libvirt_disk
@@ -335,12 +332,9 @@ def run(test, params, env):
     # Initialize one NbdExport object
     nbd = None
 
-    # Start VM and get all partitions in VM.
+    # Start VM
     if vm.is_dead():
         vm.start()
-    session = vm.wait_for_login()
-    old_parts = utils_disk.get_parts_list(session)
-    session.close()
     vm.destroy(gracefully=False)
 
     # Back up xml file.
@@ -359,7 +353,11 @@ def run(test, params, env):
             setup_nbd_env(params)
         try:
             vm.start()
-            vm.wait_for_login().close()
+            session = vm.wait_for_login()
+            disk_name = device_target
+            if additional_disk:
+                disk_name, _ = libvirt_disk.get_non_root_disk_name(session)
+            session.close()
         except virt_vm.VMStartError as details:
             # VM cannot be started
             if status_error:
@@ -368,7 +366,7 @@ def run(test, params, env):
                 test.fail("VM should start but failed: %s" % str(details))
 
         if fill_in_vm:
-            libvirt_disk.fill_null_in_vm(vm, device_target)
+            libvirt_disk.fill_null_in_vm(vm, disk_name)
 
         if backend_path in ['native_path']:
             external_snapshot_disks = libvirt_disk.make_external_disk_snapshots(vm, device_target, "blockpull_snapshot", snapshot_take)
