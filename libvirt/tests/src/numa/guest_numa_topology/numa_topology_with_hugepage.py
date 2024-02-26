@@ -41,7 +41,7 @@ def setup_default(test_obj):
     """
     memory_backing = eval(test_obj.params.get('memory_backing', '{}'))
     if memory_backing:
-        numa_base.check_hugepage_availability(memory_backing)
+        numa_base.check_hugepage_availability(memory_backing["hugepages"]["pages"])
     test_obj.setup()
     params_2M = {'hugepage_size': '2048',
                  'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_2M'),
