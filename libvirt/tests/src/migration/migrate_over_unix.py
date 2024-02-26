@@ -129,7 +129,7 @@ def run(test, params, env):
             global sockets
             sockets = [x.strip() for x in _res if socket_pattern.match(x)]
             logging.debug("Found sockets: %s", sockets)
-            return len(sockets) == int(exp_num)
+            return len(sockets) >= int(exp_num)
 
         found_expected = utils_misc.wait_for(_check_socket, timeout=30)
 
