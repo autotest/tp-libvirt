@@ -68,7 +68,8 @@ def run(test, params, env):
         os.chmod(save_path, mod)
 
         LOG.debug('Make nfs mount dir and mount nfs storage')
-        os.mkdir(nfs_mount_dir)
+        if not os.path.exists(nfs_mount_dir):
+            os.mkdir(nfs_mount_dir)
         utils_disk.mount('127.0.0.1:' + nfs['export_dir'], nfs_mount_dir,
                          'nfs', options='rw')
 
