@@ -99,8 +99,6 @@ def run(test, params, env):
     try:
         # Test step 1: Check the guest can shutdown via virsh.shutdown()
         LOG.info("Starting test step 1.")
-        if not vm.is_alive():
-            vm.start()
         session = vm.wait_for_login(timeout=LOGIN_WAIT_TIMEOUT)
         IS_UEFI = utils_misc.is_linux_uefi_guest(lambda x: utils_misc.cmd_status_output(x, session=session)) or \
             utils_misc.is_windows_uefi_guest(lambda x: utils_misc.cmd_status_output(x, session=session))
@@ -113,21 +111,14 @@ def run(test, params, env):
             session.close()
 
     if IS_UEFI:
-        # Backup the efi vars file: (UEFI special edge case)
-        # To update a vm's xml we use vmxml.sync()
-        # sync() uses virsh.undefine and virsh.define in the backend
-        # virsh.undefine deletes the efi vars nvram file
-        # virsh.define does not "restore" it
-        # after starting the UEFI vm it sees the file is not populated and issues a reboot
-        # reboot=destroy, vm does not come up
-        # try to start the vm, goto step5
-        # to work around this we back up the file before sync and restore it after sync
+        # Backup the EFI vars file before sync to prevent reset/reboot issue
+        # Updating a VM's XML using vmxml.sync() deletes the nvram file, which on a UEFI VM
+        # causes an unwanted reset/reboot.
         source_file = vmxml.get_os().get_nvram()
         temp_dir = tempfile.TemporaryDirectory()
         backup_file = pathlib.Path(temp_dir.name) / pathlib.Path(source_file).name
 
-        backup_success = backup_nvram_file(source_file, backup_file)
-        if not backup_success:
+        if not backup_nvram_file(source_file, backup_file):
             test.error("Backing up nvram file failed")
 
     vmxml.set_on_poweroff(params.get("on_poweroff"))
@@ -139,8 +130,7 @@ def run(test, params, env):
     vmxml.sync()
 
     if IS_UEFI:
-        restore_success = restore_nvram_file(backup_file, source_file)
-        if not restore_success:
+        if not restore_nvram_file(backup_file, source_file):
             test.error("Restoring nvram file failed")
 
     if vm.is_alive():
@@ -153,18 +143,16 @@ def run(test, params, env):
             vm.start()
         session = vm.wait_for_login(timeout=LOGIN_WAIT_TIMEOUT)
         try:
-            vm.reboot(method="shell", timeout=10)  # timeout = 10 because we don't want to login but wwait for the vm to go down
+            vm.reboot(method="shell", timeout=10)  # timeout = 10 because we don't want to login but wait for the vm to go down
         except (remote.LoginTimeoutError, virt_vm.VMDeadError):
             # We are expecting this error and **must** ignore it otherwise it will halt the execution
             LOG.debug(f'Step 2: Exception caught as expected')
             pass
 
         if not utils_misc.wait_for(
-            lambda: not session.is_responsive(),
+            lambda: vm.is_dead(),
                 timeout=LOGIN_WAIT_TIMEOUT):
             test.fail("Step 2: VM is still alive after console reboot with behaviour set to 'destroy'")
-        if vm.is_alive():
-            test.fail("VM is still alive after console reboot")
         LOG.info("Test step 2 passed.")
 
         # Test step 3: "virsh reboot <guest>"
@@ -174,7 +162,7 @@ def run(test, params, env):
         if not virsh.reboot(vm_name):
             test.error("Reboot failed")
         if not utils_misc.wait_for(
-            lambda: not session.is_responsive(),
+            lambda: vm.is_dead(),
                 timeout=LOGIN_WAIT_TIMEOUT):
             test.fail("Step 3: VM is still alive after reboot with behaviour set to 'destroy'")
         LOG.info("Test step 3 passed.")
@@ -184,9 +172,9 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_login(timeout=LOGIN_WAIT_TIMEOUT)
         if not virsh.shutdown(vm_name):
-            test.reboot("Shutdown failed")
+            test.fail("Shutdown failed")
         if not utils_misc.wait_for(
-            lambda: not session.is_responsive(),
+            lambda: vm.is_dead(),
                 timeout=LOGIN_WAIT_TIMEOUT):
             test.fail("Step 4: VM is still alive after shutdown with behaviour set to 'destroy'")
         LOG.info("Test step 4 passed.")
