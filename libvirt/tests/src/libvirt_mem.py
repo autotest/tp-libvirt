@@ -359,8 +359,8 @@ def run(test, params, env):
                         align_to_value))
                     cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
-            cpu_xml.xml = "<cpu mode='host-model'><numa/></cpu>"
-            cpu_mode = params.get("cpu_mode")
+            cpu_mode = params.get("cpu_mode", "host-model")
+            cpu_xml.xml = "<cpu mode='%s'><numa/></cpu>" % cpu_mode
             model_fallback = params.get("model_fallback")
             if cpu_mode:
                 cpu_xml.mode = cpu_mode
