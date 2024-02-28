@@ -446,9 +446,9 @@ TIMEOUT 3"""
             if "mode" in net_forward and net_forward["mode"] == "nat" \
                     and nat_attrs.get('ipv6') == 'yes':
                 v6_nat_rules = [
-                    "MASQUERADE\s+tcp\s+{0}\s+!{0}".format(net_ipv6),
-                    "MASQUERADE\s+udp\s+{0}\s+!{0}".format(net_ipv6),
-                    "MASQUERADE\s+all\s+{0}\s+!{0}".format(net_ipv6),
+                    "MASQUERADE.*tcp.*{0}.*!{0}".format(net_ipv6),
+                    "MASQUERADE.*udp.*{0}.*!{0}".format(net_ipv6),
+                    "MASQUERADE.*all.*{0}.*!{0}".format(net_ipv6)
                 ]
                 v6_output = process.run('ip6tables -t nat -L', shell=True).stdout_text
                 for rule in v6_nat_rules:
