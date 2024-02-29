@@ -377,6 +377,7 @@ name = rhel9-debug
         tmp_path = data_dir.get_tmp_dir()
         process.run('yum download nbdkit-server nbdkit-server-debuginfo --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
+        process.run('rm -rf /etc/yum.repos.d/rhel9-debug.repo', shell=True, ignore_status=True)
         cmd_3 = 'annocheck -v --skip-cf-protection --skip-glibcxx-assertions --skip-glibcxx-assertions ' \
                 '--skip-stack-realign --section-size=.gnu.build.attributes --ignore-gaps ' \
                 '%s/%s --debug-rpm=%s/%s' % (tmp_path, (process.run('ls %s/nbdkit-server-1*' % tmp_path,
@@ -387,7 +388,6 @@ name = rhel9-debug
         cmd_3_result = process.run(cmd_3, shell=True, ignore_status=True)
         if re.search('FAIL', cmd_3_result.stdout_text) and len(cmd_3_result.stdout_text) == 0:
             test.fail('fail to test ndbkit-server rpm package with annocheck tool')
-        process.run('rm -rf /etc/yum.repos.d/rhel9-debug.repo', shell=True, ignore_status=True)
 
     def statsfile_option():
         tmp_path = data_dir.get_tmp_dir()
@@ -558,6 +558,7 @@ name = rhel9-appsource
         process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
         process.run('yum install libtool -y', shell=True, ignore_status=True)
+        process.run('rm -rf /etc/yum.repos.d/rhel9-appsource.repo', shell=True, ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
         check_file = process.run('ls /root/rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
