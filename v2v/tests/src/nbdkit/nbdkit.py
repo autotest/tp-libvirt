@@ -589,6 +589,23 @@ name = rhel9-appsource
         if not re.search('Operation not permitted ', grep_stdout_2.decode()):
             test.fail('fail to test protect filter')
 
+    def security_label():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        label = process.run("ps -Z", shell=True, ignore_status=True)
+        LOG.info("label %s", label)
+        sec_label = re.search('unconfined_u:unconfined_r:unconfined.*\n', label.stdout_text).group(0).split(' ')[0]
+        LOG.info("seclabel %s", sec_label)
+        test_co_label = process.run("nbdkit --filter=ip file %s allow=security:%s deny=all --run 'nbdinfo $uri'" %
+                                    (image_path, sec_label), shell=True, ignore_status=True)
+        test_inco_label = process.run("nbdkit --filter=ip file %s allow=security:%s1 deny=all --run 'nbdinfo $uri'" %
+                                      (image_path, sec_label), shell=True, ignore_status=True)
+        if re.search(" error", test_co_label.stdout_text) or not re.search("error: client not permitted",
+                                                                           test_inco_label.stderr_text):
+            test.fail('fail to test security label of IP filter')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -648,5 +665,7 @@ name = rhel9-appsource
         cve_starttls()
     elif checkpoint == 'test_protect_filter':
         test_protect_filter()
+    elif checkpoint == 'security_label':
+        security_label()
     else:
         test.error('Not found testcase: %s' % checkpoint)
