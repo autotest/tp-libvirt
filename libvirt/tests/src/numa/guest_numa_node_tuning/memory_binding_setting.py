@@ -13,6 +13,7 @@ import os
 import re
 import platform
 
+from avocado.utils import memory
 from avocado.utils import process
 
 from virttest import libvirt_cgroup
@@ -34,6 +35,8 @@ def setup_default(test_obj):
     """
     test_obj.setup()
     if test_obj.params.get('memory_backing'):
+        numa_base.adjust_parameters(test_obj.params,
+                                    hugepage_mem=int(test_obj.params.get("hugepage_mem")))
         expected_hugepage_size = test_obj.params.get('expected_hugepage_size')
         hpc = test_setup.HugePageConfig(test_obj.params)
         all_nodes = test_obj.online_nodes_withmem
@@ -101,9 +104,8 @@ def verify_host_numa_memory_allocation(test_obj):
     has_huge = True if re.search('huge', out_numa_maps) else False
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
     N1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)
-    default_pagesize = test_obj.params.get('default_pagesize')
     expected_hugepage_size = test_obj.params.get('expected_hugepage_size')
-    psize = expected_hugepage_size if memory_backing else default_pagesize
+    psize = expected_hugepage_size if memory_backing else memory.get_page_size()
     has_kernelpage = True if re.search('kernelpagesize_kB=%s' % psize, out_numa_maps) else False
 
     def _check_values(expect_huge, expect_N0, expect_N1, expect_sum=None):

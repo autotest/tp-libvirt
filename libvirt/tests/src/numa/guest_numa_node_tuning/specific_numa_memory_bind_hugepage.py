@@ -25,10 +25,12 @@ def setup_default(test_obj):
     :param test_obj: NumaTest object
     """
     test_obj.setup()
+    numa_base.adjust_parameters(test_obj.params,
+                                hugepage_mem=int(test_obj.params.get("hugepage_mem")))
     hpc = test_setup.HugePageConfig(test_obj.params)
     hpc.setup()
     utils_libvirtd.Libvirtd().restart()
-    test_obj.params['hp_config_2M'] = hpc
+    test_obj.params['hpc_list'] = [hpc]
     test_obj.test.log.debug("Step: setup is done")
 
 

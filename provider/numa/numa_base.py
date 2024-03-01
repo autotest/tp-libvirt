@@ -66,13 +66,10 @@ class NumaTest(object):
                 self.test.log.debug("Host numa node '%s' free memory "
                                     "is %s which meets the requirement", a_node, free_mem_min)
 
-    def setup(self, node_index=0, expect_nodes_num=2, expect_node_free_mem_min=None):
+    def setup(self, expect_nodes_num=2, expect_node_free_mem_min=None):
         self.check_numa_nodes_availability(expect_nodes_num, expect_node_free_mem_min)
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.params['backup_vmxml'] = vmxml.copy()
-        kernel_hp_file = self.params.get('kernel_hp_file')
-        if kernel_hp_file and kernel_hp_file.count('/sys/devices/system/node/'):
-            self.params['kernel_hp_file'] = kernel_hp_file % self.online_nodes_withmem[node_index]
 
     def teardown(self):
         if self.vm.is_alive():
@@ -83,7 +80,9 @@ class NumaTest(object):
             backup_vmxml.sync()
         hpc_2M = self.params.get('hp_config_2M')
         hpc_1G = self.params.get('hp_config_1G')
-        for hpc in [hpc_2M, hpc_1G]:
+        hpc_list = self.params.get('hpc_list', [])
+        hpc_list.extend([hpc_2M, hpc_1G])
+        for hpc in hpc_list:
             if hpc:
                 hpc.cleanup()
 
@@ -237,3 +236,40 @@ def check_hugepage_availability(pages_list):
                                            "not supported on current "
                                            "arch (support: %s)" % (size,
                                                                    supported_hugepages))
+
+
+def adjust_parameters(params, hugepage_size=None, node_index='0', hugepage_mem=1048576):
+    """
+    This function will adjust parameters according to current
+    architecture and given hugepage size and parameters.
+
+    Used parameters:
+    - memory_backing:              optional
+    - kernel_hp_file:              optional
+
+    Adjusted parameters:
+     - hugepage_size: hugepage size in KiB to be allocated
+     - kernel_hp_file: huge page kernel file,
+         like /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
+     - expected_hugepage_size: expected hugepage size for the test
+     - target_hugepages: hugepage numbers to be allocated
+     Above four parameters are used by test_setup.HugePageConfig()
+     - memory_backing: memory backing dict used by test case, like
+        {'hugepages': {'pages': [{'size': '%s', 'unit': 'KiB'}]}}
+
+    :param params: dict, test parameters
+    :param hugepage_size: int, huge page size in KiB
+    :param node_index: str, the numa node index
+    :param hugepage_mem: int, the hugepage memory in KiB to be allocated
+    """
+    default_hugepage_size = memory.get_huge_page_size()
+    page_size = default_hugepage_size if hugepage_size is None else hugepage_size
+    params['hugepage_size'] = page_size
+    memory_backing = params['memory_backing']
+    if memory_backing and memory_backing.count('%s'):
+        params['memory_backing'] = memory_backing % str(page_size)
+    kernel_hp_file = params.get('kernel_hp_file', '')
+    if kernel_hp_file.count('/sys/devices/system/node/'):
+        params['kernel_hp_file'] = kernel_hp_file % (node_index, str(page_size))
+    params['expected_hugepage_size'] = page_size
+    params['target_hugepages'] = hugepage_mem//page_size
