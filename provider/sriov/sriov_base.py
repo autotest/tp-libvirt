@@ -1,5 +1,6 @@
-import re
 import os
+import re
+import time
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -20,6 +21,8 @@ from virttest.utils_libvirt import libvirt_network
 from virttest.utils_libvirt import libvirt_pcicontr
 
 from provider.interface import interface_base
+
+SKIP_CHECKS = False
 
 
 def setup_vf(pf_pci, params, session=None):
@@ -125,6 +128,8 @@ class SRIOVTest(object):
                                                    session=self.session)
 
         utils_sriov.set_vf(self.pf_pci_path, 0, session=self.session)
+        time.sleep(10)
+        self.host_linked_ifaces = utils_net.get_net_if(state="UP")
         setup_vf(self.pf_pci, self.params, session=self.session)
         self.pf_info = utils_sriov.get_pf_info_by_pci(
             self.pf_pci, session=self.session)
@@ -145,6 +150,23 @@ class SRIOVTest(object):
         self.vf_mac = ""
         self.dev_slot = None
         self.controller_dicts = eval(self.params.get("controller_dicts", "[]"))
+
+        iface_attrs = self.params.get('iface_dict') if self.params.get(
+            'iface_dict') else self.params.get('hostdev_dict')
+
+        if self.pf_name not in self.host_linked_ifaces:
+            test.log.debug("skip connection check on this host")
+            global SKIP_CHECKS
+            SKIP_CHECKS = True
+        else:
+            if (self.params.get("dev_name", "vf") == "pf" or
+                (not self.params.get("network_dict") and iface_attrs
+                 and iface_attrs.count("pf_"))):
+                self.host_linked_ifaces.remove(self.pf_name)
+                if not self.host_linked_ifaces:
+                    self.test.cancel("This test needs at least 1 linked "
+                                     "interface(excluding PF) available "
+                                     "on the host.")
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.orig_config_xml = new_xml.copy()
 
