@@ -377,8 +377,8 @@ def run(test, params, env):
         rng_rate = params.get("rng_rate")
         # For rng rate test this command and return in a short time
         # but for other test it will hang
-        cmd = ("dd if=/dev/hwrng of=rng.test bs=1M count=10"
-               " && rm -f rng.test")
+        cmd = ("dd if=/dev/hwrng of=rng.test %s"
+               " && rm -f rng.test" % dd_throughput)
         try:
             ret, output = session.cmd_status_output(cmd, timeout=timeout)
             if ret and expect_fail:
@@ -488,6 +488,7 @@ def run(test, params, env):
     with_packed = "yes" == params.get("with_packed", "no")
     driver_packed = params.get("driver_packed", "on")
     urandom = "yes" == params.get("urandom", "no")
+    dd_throughput = params.get("dd_throughput")
 
     if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(6, 2, 0):
         test.cancel("Builtin backend is not supported on this libvirt version")
