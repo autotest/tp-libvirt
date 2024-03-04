@@ -106,60 +106,72 @@ def check_vm_numa_1_memory_allocation(numatest_obj, mem_size):
     mem_mode = numatest_obj.params.get('mem_mode')
     single_host_node = numatest_obj.params.get('single_host_node')
     all_nodes = numatest_obj.online_nodes_withmem
-    node0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
-    node1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)
-    numatest_obj.test.log.debug("all_nodes:%s, N0_value:%s, "
-                                "N1_value:%s", all_nodes, node0_value, node1_value)
+    node_values = {}
+    numatest_obj.test.log.debug("all_nodes:%s", all_nodes)
+    for node_num in all_nodes:
+        node_value = re.findall('N%s=(\d+)' % node_num, out_numa_maps)
+        if not node_value:
+            continue
+        numatest_obj.test.log.debug("N%s_value:%s", node_num, node_value[0])
+        node_values[node_num] = node_value[0]
 
     def _check_N0_no_N1():
-        if not node0_value:
+        if all_nodes[0] not in node_values:
             numatest_obj.test.fail("Expect N%s > 0, but found not" % all_nodes[0])
-        if node1_value:
+        if all_nodes[1] in node_values:
             numatest_obj.test.fail("Not expect N%s to exist, but found" % all_nodes[1])
 
     def _check_N0_N1_sum():
-        n0_value = 0 if not node0_value else int(node0_value[0])
-        n1_value = 0 if not node1_value else int(node1_value[0])
+        n0_value = 0 if all_nodes[0] not in node_values else int(node_values[all_nodes[0]])
+        n1_value = 0 if all_nodes[1] not in node_values else int(node_values[all_nodes[1]])
         if n0_value + n1_value <= 0:
             numatest_obj.test.fail("Expect N%s + N%s > 0, but found "
                                    "not" % (all_nodes[0], all_nodes[1]))
 
+    def _check_all_nodes_sum():
+        node_value_sum = 0
+        for node_value in node_values.values():
+            node_value_sum += int(node_value)
+        if node_value_sum <= 0:
+            numatest_obj.test.fail("Expect the sum of all node values is greater than 0, but found not")
+
     def _check_N0():
-        if not node0_value:
+        if all_nodes[0] not in node_values:
             numatest_obj.test.fail("Expect N%s > 0, but found not" % all_nodes[0])
 
-    if single_host_node == "yes":
-        if mem_mode == 'strict' and memnode_mode in ['strict', 'interleave', 'preferred']:
-            pat = "bind:%s" % all_nodes[0]
-            _check_N0_no_N1()
-        if mem_mode == 'strict' and memnode_mode == 'restrictive':
-            pat = "bind:%s" % all_nodes[0]
+    if mem_mode is not None:
+        if single_host_node == "yes":
+            if mem_mode == 'strict' and memnode_mode in ['strict', 'interleave', 'preferred']:
+                pat = "bind:%s" % all_nodes[0]
+                _check_N0_no_N1()
+            if mem_mode == 'strict' and memnode_mode == 'restrictive':
+                pat = "bind:%s" % all_nodes[0]
+                _check_N0_N1_sum()
+            if mem_mode == 'interleave':
+                pat = "interleave:%s" % all_nodes[0]
+                _check_N0()
+            if mem_mode == 'preferred':
+                pat = "prefer \(many\):%s" % all_nodes[0] \
+                    if libvirt_version.version_compare(9, 3, 0) \
+                    else "prefer:%s" % all_nodes[0]
+                _check_N0()
+            if mem_mode == 'restrictive':
+                pat = "default"
+                _check_N0_N1_sum()
+        elif single_host_node == 'no':
+            nodeset = numa_base.convert_to_string_with_dash(numatest_obj.params['nodeset'])
+            if mem_mode == 'strict':
+                pat = "bind:%s" % nodeset
+            if mem_mode == 'interleave':
+                pat = "interleave:%s" % nodeset
+            if mem_mode == 'preferred':
+                pat = "prefer \(many\):%s" % nodeset
+            if mem_mode == 'restrictive':
+                pat = "default"
             _check_N0_N1_sum()
-        if mem_mode == 'interleave':
-            pat = "interleave:%s" % all_nodes[0]
-            _check_N0()
-        if mem_mode == 'preferred':
-            pat = "prefer \(many\):%s" % all_nodes[0] \
-               if libvirt_version.version_compare(9, 3, 0) \
-               else "prefer:%s" % all_nodes[0]
-            _check_N0()
-        if mem_mode == 'restrictive':
-            pat = "default"
-            _check_N0_N1_sum()
-    elif single_host_node == 'no':
-        nodeset = numa_base.convert_to_string_with_dash(numatest_obj.params['nodeset'])
-        if mem_mode == 'strict':
-            pat = "bind:%s" % nodeset
-        if mem_mode == 'interleave':
-            pat = "interleave:%s" % nodeset
-        if mem_mode == 'preferred':
-            pat = "prefer \(many\):%s" % nodeset
-        if mem_mode == 'restrictive':
-            pat = "default"
-        _check_N0_N1_sum()
-    if mem_mode is None:
+    else:
         pat = "default"
-        _check_N0_N1_sum()
+        _check_all_nodes_sum()
 
     search_pattern = r"\s+%s\s+anon=" % pat
     if not re.findall(search_pattern, out_numa_maps):
