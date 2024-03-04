@@ -161,10 +161,12 @@ def run(test, params, env):
                 virsh.pool_start(pool_name, debug=True, ignore_status=False)
                 res = virsh.vol_list(pool_name, debug=True,
                                      ignore_status=False).stdout_text
-                vol = re.findall(r"(\S+)\ +(\S+)", str(res.strip()))[1][0]
 
+                vol = re.findall(r"(\S+)\ +(\S+)", str(res.strip()))[1]
+                if not vol:
+                    test.fail('Expect to get vol in %s pool' % pool_name)
                 libvirt_vmxml.modify_vm_device(
-                    vmxml, 'disk', eval(disk_dict % (pool_name, vol)), index=1)
+                    vmxml, 'disk', eval(disk_dict % (pool_name, vol[0])), index=1)
                 virsh.start(vm_name)
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 test.log.debug("Get guest xml is:\n%s", vmxml)
