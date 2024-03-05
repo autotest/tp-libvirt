@@ -97,9 +97,9 @@ def run(test, params, env):
             sve_length_byte = re.search(r"length (\d+) bytes", ret).groups()[0]
             # Change max_length into sve + length(bit) E.g. sve512
             sve_length_bit = "sve" + str(int(sve_length_byte) * 8)
-            logging.debug("guest sve_length_bit is %s" % sve_length_bit)
+            logging.debug("The guest maximum SVE vector length is %s", sve_length_bit)
         except Exception as e:
-            test.fail("Failed to get guest SVE Vector length: %s" % e)
+            test.fail("Failed to get maximum guest SVE vector length: %s" % e)
         finally:
             if session:
                 session.close()
@@ -170,6 +170,9 @@ def run(test, params, env):
                 test.error("Failed to define guest: %s" % str(e))
 
         result = virsh.start(vm_name)
+        special_error_msg = "CPU does not support the vector length"
+        if re.search(special_error_msg, result.stderr_text):
+            test.cancel(result.stderr_text)
         libvirt.check_exit_status(result, status_error)
 
         if status_error:
@@ -189,9 +192,10 @@ def run(test, params, env):
 
                 # SVE available with only the selected vector
                 expect_vector_length = vector_length
+                available_maxium_sve_length = _get_maxium_sve_length(vm)
                 if vector_length == "sve":
-                    expect_vector_length = "sve512"
-                if expect_vector_length != _get_maxium_sve_length(vm):
+                    expect_vector_length = available_maxium_sve_length
+                if expect_vector_length != available_maxium_sve_length:
                     test.fail("Expect guest support %s" % vector_length)
             else:
                 # Disable SVE in domain xml
