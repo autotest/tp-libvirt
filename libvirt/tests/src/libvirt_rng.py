@@ -393,6 +393,8 @@ def run(test, params, env):
 
             if expect_fail:
                 test.fail("Still can find rng device in guest")
+            elif rng_rate:
+                test.fail("No way to calc rng rate due to dd timeout")
             else:
                 logging.info("dd cmd do not fail with error")
                 # Check if file have data
