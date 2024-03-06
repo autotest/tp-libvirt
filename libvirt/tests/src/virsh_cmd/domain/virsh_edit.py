@@ -117,8 +117,10 @@ def run(test, params, env):
                                                        dic_mode["recover"]])
         else:
             status = libvirt.exec_virsh_edit(vm_name, [dic_mode["recover"]])
+        logging.info(status)
         vmxml.sync()
         if status and new_vcpus != expected_vcpu:
+            logging.debug("new_vcpus, expected_vcpu: %s, %s", new_vcpus, expected_vcpu)
             return False
         return status
 
