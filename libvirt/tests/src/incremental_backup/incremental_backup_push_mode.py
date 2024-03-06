@@ -253,10 +253,7 @@ def run(test, params, env):
             backup_options = backup_xml.xml + " " + checkpoint_xml.xml
 
             # Create some data in vdb
-            dd_count = "1"
-            if expect_backup_canceled:
-                # Generate more data to extend the backup job duration
-                dd_count = "100"
+            dd_count = params.get("dd_count", "1")
             dd_seek = str(backup_index * 10 + 10)
             dd_bs = "1M"
             session = vm.wait_for_login()
