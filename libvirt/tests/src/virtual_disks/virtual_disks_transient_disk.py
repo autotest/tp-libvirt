@@ -86,11 +86,16 @@ def run(test, params, env):
 
             # check on vm1.
             session = vms_list[1]['vm'].wait_for_login(timeout=10)
+            new_disk, _ = libvirt_disk.get_non_root_disk_name(session)
+            sha_cmd = ("sha1sum /dev/%s" % new_disk)
             vm1_disk_sha1 = session.cmd_output(sha_cmd)
             if vm0_disk_sha1 == vm1_disk_sha1:
                 session.close()
                 test.fail("Still can find file created in transient disk of vm0")
 
+            cmd = ("fdisk -l /dev/%s && mkfs.ext4 -F /dev/%s && mount /dev/%s"
+                   " /mnt && echo '%s' > /mnt/test && umount /mnt"
+                   % (new_disk, new_disk, new_disk, test_str))
             s, o = session.cmd_status_output(cmd)
             logging.debug("session in vm1 exit %s; output: %s", s, o)
             if s:
