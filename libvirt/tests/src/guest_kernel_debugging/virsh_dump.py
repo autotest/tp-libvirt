@@ -4,15 +4,17 @@ import multiprocessing
 import time
 import platform
 import re
-
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest import data_dir
+from virttest import utils_misc
 from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_test import libvirt
 
 
 from provider import libvirt_version
@@ -36,6 +38,7 @@ def run(test, params, env):
         2.1 Dump domain to a non-exist directory.
         2.2 Dump domain with invalid option.
         2.3 Dump a shut-off domain.
+        2.4 Dump onto directory that's too small.
     """
 
     vm_name = params.get("main_vm", "vm1")
@@ -46,6 +49,7 @@ def run(test, params, env):
     if os.path.dirname(dump_file) is "":
         dump_file = os.path.join(dump_dir, dump_file)
     dump_image_format = params.get("dump_image_format")
+    small_img = os.path.join(data_dir.get_tmp_dir(), "small.img")
     start_vm = params.get("start_vm") == "yes"
     paused_after_start_vm = params.get("paused_after_start_vm") == "yes"
     status_error = params.get("status_error", "no") == "yes"
@@ -132,6 +136,7 @@ def run(test, params, env):
         Check the domain status according to dump options.
         """
 
+        logging.debug("Actual VM status is %s", actual)
         if options.find('live') >= 0:
             domstate = "running"
             if options.find('crash') >= 0 or options.find('reset') > 0:
@@ -268,6 +273,15 @@ def run(test, params, env):
                                                     args=(dump_file, result_dict))
             child_process.start()
 
+        # Create too small a directory
+        if "too_small" in dump_dir:
+            libvirt_disk.create_disk("file",
+                                     small_img,
+                                     "100M",
+                                     "raw")
+            libvirt.mkfs(small_img, "ext3")
+            os.mkdir(dump_dir)
+            utils_misc.mount(small_img, dump_dir, None)
         # Run virsh command
         cmd_result = virsh.dump(vm_name, dump_file, options,
                                 unprivileged_user=unprivileged_user,
@@ -279,6 +293,7 @@ def run(test, params, env):
             params['bypass'] = result_dict['bypass']
 
         logging.info("Start check result")
+        time.sleep(5)
         if not check_domstate(vm.state(), options):
             test.fail("Domain status check fail.")
         if status_error:
@@ -299,5 +314,10 @@ def run(test, params, env):
         backup_xml.sync()
         qemu_config.restore()
         libvirtd.restart()
+        if os.path.isfile(small_img):
+            # small_img is a file and will show as /dev/loop0 in /proc/mounts
+            utils_misc.umount("/dev/loop0", dump_dir, None, verbose=True)
+            os.rmdir(dump_dir)
+            os.remove(small_img)
         if os.path.isfile(dump_file):
             os.remove(dump_file)
