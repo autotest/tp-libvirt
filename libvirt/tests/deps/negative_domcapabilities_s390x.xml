@@ -35,6 +35,7 @@
     </mode>
     <mode name='host-model' supported='yes'>
       <model fallback='forbid'>gen15a-base</model>
+      <feature policy='require' name='cmma'/>
       <feature policy='require' name='ctop'/>
       <feature policy='require' name='aen'/>
       <feature policy='require' name='cmmnt'/>
