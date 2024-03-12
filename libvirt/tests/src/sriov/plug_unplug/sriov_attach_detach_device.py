@@ -45,6 +45,7 @@ def run(test, params, env):
         vm_hostdev = vm_xml.VMXML.new_from_dumpxml(vm.name)\
             .devices.by_device_tag(device_type)[0]
         virsh.detach_device(vm.name, vm_hostdev.xml, debug=True,
+                            wait_for_event=True,
                             ignore_status=False)
         cur_hostdevs = vm_xml.VMXML.new_from_dumpxml(vm.name)\
             .devices.by_device_tag(device_type)

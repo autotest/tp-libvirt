@@ -1,3 +1,5 @@
+import time
+
 from provider.sriov import sriov_base
 
 from virttest import utils_libvirtd
@@ -36,7 +38,7 @@ def run(test, params, env):
         iface_dev = sriov_test_obj.create_iface_dev(dev_type, iface_dict)
         virsh.attach_device(vm.name, iface_dev.xml, debug=True,
                             ignore_status=False)
-
+        time.sleep(10)
         test.log.info("TEST_STEP3: Detach the hostdev interface/device")
         virsh.detach_device(vm.name, iface_dev.xml, debug=True,
                             ignore_status=False)
