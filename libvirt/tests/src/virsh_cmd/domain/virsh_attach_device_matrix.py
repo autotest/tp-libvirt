@@ -7,6 +7,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_test import libvirt
 
 
@@ -225,11 +226,11 @@ def run(test, params, env):
         libvirt.create_local_disk("file", device_source, "1")
 
         # Get disk xml file.
-        disk_params = {'type_name': "file", 'device_type': device,
-                       'target_dev': device_target, 'target_bus': "virtio",
-                       'source_file': device_source, 'driver_name': "qemu",
-                       'driver_type': "raw"}
-        disk_xml = libvirt.create_disk_xml(disk_params)
+        disk_xml_obj = libvirt_disk.create_primitive_disk_xml(
+            "file", device,
+            device_target, "virtio",
+            "raw", {"attrs": {"file": device_source}}, None)
+        disk_xml = disk_xml_obj.xml
 
         # Copy disk xml for virsh.detach in the following code
         new_xml_path = os.path.join(data_dir.get_tmp_dir(), "disk_copy.xml")
