@@ -8,29 +8,33 @@ LOG = logging.getLogger('avocado.' + __name__)
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
 
-def pre_save_setup(vm):
+def pre_save_setup(vm, serial=False):
     """
     Setup vm before save:
     Start ping process and get uptime since when on vm
 
     :param vm: vm instance
+    :param serial: Whether to use a serial connection
     :return: a tuple of pid of ping and uptime since when
     """
-    session = vm.wait_for_login()
+    if serial:
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
+        session = vm.wait_for_serial_login()
+    else:
+        session = vm.wait_for_login()
     upsince = session.cmd_output('uptime --since').strip()
     LOG.debug(f'VM has been up since {upsince}')
-    ping_cmd = 'ping 127.0.0.1'
+    ping_cmd = 'ping 127.0.0.1 >/tmp/ping_out 2>&1'
     # This session shouldn't be closed or it will kill ping
     session.sendline(ping_cmd + '&')
-    check_session = vm.wait_for_login()
-    pid_ping = check_session.cmd_output('pidof ping').strip().split()[-1]
-    check_session.close()
+    pid_ping = session.cmd_output('pidof ping').strip().split()[-1]
     LOG.debug(f'Pid of ping: {pid_ping}')
 
     return pid_ping, upsince
 
 
-def post_save_check(vm, pid_ping, upsince):
+def post_save_check(vm, pid_ping, upsince, serial=False):
     """
     Check vm status after save-restore:
     Whether ping is still running, uptime since when is the same as before
@@ -39,8 +43,14 @@ def post_save_check(vm, pid_ping, upsince):
     :param vm: vm instance
     :param pid_ping: pid of ping
     :param upsince: uptime since when
+    :param serial: Whether to use a serial connection
     """
-    session = vm.wait_for_login()
+    if serial:
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
+        session = vm.wait_for_serial_login()
+    else:
+        session = vm.wait_for_login()
     upsince_restore = session.cmd_output('uptime --since').strip()
     LOG.debug(f'VM has been up (after restore) since {upsince_restore}')
     LOG.debug(session.cmd_output(f'pidof ping'))
