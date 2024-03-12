@@ -4,6 +4,7 @@ import platform
 from virttest import libvirt_version
 from virttest import utils_net
 from virttest import virsh
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.controller import Controller  # pylint: disable=W0611
 from virttest.libvirt_xml.devices.disk import Disk  # pylint: disable=W0611
@@ -13,6 +14,7 @@ from virttest.libvirt_xml.devices.input import Input  # pylint: disable=W0611
 from virttest.libvirt_xml.devices.memballoon import Memballoon  # pylint: disable=W0611
 from virttest.libvirt_xml.devices.rng import Rng  # pylint: disable=W0611
 from virttest.libvirt_xml.devices.video import Video  # pylint: disable=W0611
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -29,7 +31,8 @@ def run(test, params, env):
 
         :params vmxml: the vm xml
         """
-        vmxml.remove_all_device_by_type(device_type)
+        if not ((device_type == "disk" and hotplug) or device_type == "input"):
+            vmxml.remove_all_device_by_type(device_type)
         # For now, arm can not create USB controller automatically.
         if device_type == "controller" and platform.machine() == 'aarch64':
             usb_controller = Controller("controller")
@@ -44,6 +47,12 @@ def run(test, params, env):
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         # Prepare device xml by using device function, for example, Disk().
         device_obj = device_type.capitalize()
+        if device_type == "disk" and hotplug:
+            disk_image_path = os.path.join(os.path.dirname(disk_image), "base.qcow2")
+            libvirt.create_local_disk(
+                "file", path=disk_image_path,
+                size="1G", disk_format="qcow2")
+            device_dict['source']['attrs']['file'] = disk_image_path
         if device_type == "input":
             device_xml = eval(device_obj)(input_type)
         else:
@@ -91,11 +100,13 @@ def run(test, params, env):
         af_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         test.log.info("The current dumpxml is %s", virsh.dumpxml(af_vmxml))
         # Keyboard and mouse input will be default in guest. So identify input device.
-        if device_type == "input" and hotplug:
+        if device_type == "input":
             dev_xml = af_vmxml.get_devices(device_type)[2]
         # Guest has many controllers, so also need to identify it.
         elif device_type == "controller":
             dev_xml = af_vmxml.get_devices(device_type)
+        elif device_type == "disk" and hotplug:
+            dev_xml = af_vmxml.get_devices(device_type)[1]
         else:
             dev_xml = af_vmxml.get_devices(device_type)[0]
         # Select the virtio-scsi/virtio-serial controller from all controllers
