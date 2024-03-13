@@ -311,6 +311,9 @@ def run(test, params, env):
         if case == 'prealloc_thread':
             virsh.start(vm_name, ignore_status=False)
             vm.wait_for_login().close()
+            nonlocal qemu_check
+            if scenario == 'memfd_backed':
+                qemu_check = qemu_check % (utils_memory.get_huge_page_size() * 1024)
             libvirt.check_qemu_cmd_line(qemu_check)
 
         if case == 'no_mem_backing':
