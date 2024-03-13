@@ -1656,6 +1656,13 @@ def run(test, params, env):
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
 
+    # Update the value of IPv6 router advertisement to 2 to avoid failure when
+    # the IPv6 can configure route automatically
+    default_route = process.run("ip route | grep default", shell=True, verbose=True).stdout_text
+    default_interface = default_route.split(' ')[4]
+    process.run("echo 2 > /proc/sys/net/ipv6/conf/%s/accept_ra" % default_interface, shell=True)
+    process.run("cat /proc/sys/net/ipv6/conf/%s/accept_ra" % default_interface).stdout_text
+
     secret_uuid = ""
     if vnc_secret_uuid == "valid":
         secret_uuid = create_secret(config.vnc_tls_x509_secret_uuid, secret_password)
