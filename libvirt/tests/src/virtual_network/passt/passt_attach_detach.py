@@ -155,6 +155,8 @@ def run(test, params, env):
             LOG.debug(f'vmxml before detach:\n{vmxml}')
             iface_to_detach = vmxml.get_devices('interface')[0]
             mac = iface_to_detach.mac_address
+            # Wait for guest os to boot completely before detaching interface
+            vm.wait_for_serial_login(timeout=60).close()
 
             virsh.detach_device(vm_name, iface_to_detach.xml,
                                 wait_for_event=True, event_timeout=15,
