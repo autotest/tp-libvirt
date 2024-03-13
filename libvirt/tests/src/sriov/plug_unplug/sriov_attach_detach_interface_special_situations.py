@@ -27,10 +27,8 @@ def run(test, params, env):
                                    debug=True, ignore_status=False)
 
         elif test_scenario == "module_auto_reload":
-            modules = ["vfio_pci", "vfio_iommu_type1"]
-            test.log.info("TEST_SETUP: Remove modules: %s." % modules)
-            for module_name in modules:
-                KernelModuleHandler(module_name).unload_module()
+            test.log.info("TEST_SETUP: Remove vfio module.")
+            KernelModuleHandler("vfio").unload_module()
 
     def check_vm_iface_after_detaching(test_scenario):
         """
