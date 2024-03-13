@@ -67,7 +67,9 @@ def run(test, params, env):
             test.log.info("TEST_STEP1: hotplug %s device", device_type)
             start_guest()
             virsh.attach_device(vm_name, device_xml.xml, ignore_status=False, debug=True)
-        vm.wait_for_login()
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
+        vm.wait_for_serial_login().close()
 
         test.log.info("TEST_STEP2: check the attribute in %s xml", device_type)
         check_attribute()
@@ -120,7 +122,7 @@ def run(test, params, env):
         """
         test.log.info("Start the guest")
         if not vm.is_alive():
-            virsh.start(vm_name, ignore_status=False, debug=True)
+            vm.start()
 
     vm_name = params.get("main_vm")
     device_type = params.get("device_type")
