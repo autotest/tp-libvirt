@@ -288,6 +288,7 @@ def run(test, params, env):
             if vm_state == "shut off":
                 vm.destroy(gracefully=False)
 
+            logging.debug("VM state: %s", vm.state())
             snapshot_result = virsh.snapshot_create(
                 vm_name, options, debug=True)
             out_err = snapshot_result.stderr.strip()
@@ -320,6 +321,7 @@ def run(test, params, env):
                 if match_cluster_size not in img_info:
                     test.fail("%s snapshot image doesn't have the same cluster size with backing file" % disk_path)
         else:
+            logging.debug("VM state: %s", vm.state())
             snapshot_result = virsh.snapshot_create(vm_name, options,
                                                     debug=True)
             if snapshot_result.exit_status:
@@ -338,6 +340,7 @@ def run(test, params, env):
                 # update an element
                 new_snap.creation_time = snapshot_name
                 snapshot_xml_path = new_snap.xml
+                logging.debug("VM state: %s", vm.state())
                 options += "--redefine %s --current" % snapshot_xml_path
                 snapshot_result = virsh.snapshot_create(vm_name,
                                                         options, debug=True)
