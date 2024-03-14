@@ -97,6 +97,8 @@ def run(test, params, env):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
         session = vm.wait_for_serial_login(timeout=60)
+        vm_iface_info = utils_net.get_linux_iface_info(mac=mac, session=session)
+        vm_iface = vm_iface_info.get('ifname')
         passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
         passt.check_default_gw(session, host_iface)
