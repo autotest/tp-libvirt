@@ -8,6 +8,7 @@ import locale
 
 from aexpect import ShellError
 
+from avocado.core.exceptions import TestError
 from avocado.utils import process
 
 from virttest import virsh
@@ -16,6 +17,7 @@ from virttest import utils_misc
 from virttest.remote import LoginError
 from virttest.virt_vm import VMError
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_disk
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml.secret_xml import SecretXML
@@ -386,13 +388,10 @@ def run(test, params, env):
                     # recognize the hotplugged disk on PPC
                     if on_ppc:
                         time.sleep(10)
-                    cmd = "grep %s /proc/partitions" % disk_target
-                    s, o = session.cmd_status_output(cmd)
-                    logging.info("%s output: %s", cmd, o)
-                    session.close()
-                    if s == 0:
-                        found_disk = True
-                except (LoginError, VMError, ShellError) as e:
+                    disk, _ = libvirt_disk.get_non_root_disk_name(session)
+                    logging.debug("Found new disk in VM as %s", disk)
+                    found_disk = True
+                except (LoginError, VMError, ShellError, TestError) as e:
                     logging.error(str(e))
             if found_disk == expect:
                 logging.debug("Check disk inside the VM PASS as expected")
