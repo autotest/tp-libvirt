@@ -248,23 +248,23 @@ def check_default_gw(session, host_iface=None):
     vm_gw = utils_net.get_default_gateway(session=session,
                                           force_dhcp=True).split()
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
+    if [x for x in vm_gw if x not in host_gw]:
+        raise exceptions.TestFail(
+            'Host default ipv4 gateway not consistent with vm.')
+
     _host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
                                                 target_iface=host_iface)
+    if not _host_gw_v6:
+        LOG.debug("Skip ipv6 route check as host has no default route or has "
+                  "multipath route which passt can not recognize!")
+        return
     _vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6')
-    if not _host_gw_v6 or not _vm_gw_v6:
-        raise exceptions.TestFail(
-            'Cannot recognize ipv6 multipath router!')
+    if not _vm_gw_v6:
+        raise exceptions.TestFail('Guest has no ipv6 gateway!')
     host_gw_v6 = _host_gw_v6.split()
     vm_gw_v6 = _vm_gw_v6.split()
     LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
 
-    if [x for x in vm_gw if x not in host_gw]:
-        raise exceptions.TestFail(
-            'Host default ipv4 gateway not consistent with vm.')
-    if not host_gw_v6:
-        LOG.debug("Skip ipv6 route check as host has multipath ipv6 route "
-                  "which Passt can not recognize.")
-        return
     if [x for x in vm_gw_v6 if x not in host_gw_v6]:
         raise exceptions.TestFail(
             'Host default ipv6 gateway not consistent with vm.')
