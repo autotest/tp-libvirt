@@ -775,7 +775,7 @@ def run(test, params, env):
                           "Error: %s" % str(detail))
             # Check the new VM start log is appended to the end of the VM log file.
             if not with_console_log:
-                check_info_in_vm_log_file(vm_name, guest_log_file, cmd="tail -n 5",
+                check_info_in_vm_log_file(vm_name, guest_log_file,
                                           matchedMsg="char device redirected to /dev/pts")
 
     finally:
