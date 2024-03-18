@@ -1,6 +1,7 @@
 import logging as log
 import shutil
 import aexpect
+import time
 
 from avocado.utils import process
 
@@ -164,7 +165,13 @@ def run(test, params, env):
                     user=up_user, path=device_path),
                     shell=True, verbose=True)
                 # Check if device owner is changed to unprivileged user
-                process.run('ls -l %s' % device_path, shell=True, verbose=True)
+                cmd_result = process.run('ls -l %s' % device_path, shell=True, verbose=True)
+                while "%s %s" % (up_user, up_user) not in str(cmd_result):
+                    time.sleep(4)
+                    process.run('chown {user} {path};chgrp {user} {path}'.format(
+                        user=up_user, path=device_path),
+                        shell=True, verbose=True)
+                    cmd_result = process.run('ls -l %s' % device_path, shell=True, verbose=True)
 
             # Modify interface
             all_devices = upu_vmxml.devices
