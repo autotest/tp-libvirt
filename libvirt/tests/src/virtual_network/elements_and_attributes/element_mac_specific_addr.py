@@ -3,6 +3,7 @@ import re
 
 from virttest import utils_net
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
@@ -18,6 +19,7 @@ def run(test, params, env):
     """
     Test start vm or hotplug interface with specific mac address
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     scenario = params.get('scenario')
