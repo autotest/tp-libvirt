@@ -55,6 +55,13 @@ def run(test, params, env):
     new_max_mem = None
     new_cur_mem = None
 
+    def get_hugepage_num(total_huge_page_size):
+        """
+        Calculate huge page number according to total huge page size
+        """
+        default_mem_huge_page_size = utils_memory.get_huge_page_size()
+        return int(total_huge_page_size) // default_mem_huge_page_size
+
     def consume_vm_mem(size=1000, timeout=360):
         """
         To consume guest memory, default size is 1000M
@@ -436,7 +443,6 @@ def run(test, params, env):
     tg_node = params.get("tg_node", 0)
     pg_size = params.get("page_size")
     pg_unit = params.get("page_unit", "KiB")
-    huge_page_num = int(params.get('huge_page_num', 2000))
     node_mask = params.get("node_mask", "0")
     mem_addr = ast.literal_eval(params.get("memory_addr", "{}"))
     huge_pages = [ast.literal_eval(x)
@@ -448,15 +454,22 @@ def run(test, params, env):
 
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
+    total_huge_page_size = params.get("total_huge_page_size")
+    pg_size = str(utils_memory.getpagesize()) if pg_size else None
     if (setup_hugepages_flag == "yes"):
-        cpu_arch = cpu_util.get_family() if hasattr(cpu_util, 'get_family')\
-            else cpu_util.get_cpu_arch()
-        if cpu_arch == 'power8':
-            pg_size = '16384'
-            huge_page_num = 200
-        elif cpu_arch == 'power9':
-            pg_size = '2048'
-            huge_page_num = 2000
+        pg_size = utils_memory.get_huge_page_size()
+        huge_page_num = get_hugepage_num(total_huge_page_size)
+        # Currently aarch64 host has issue with cpu model or family related info,
+        # so skip it.
+        if cpu_util.get_arch() != 'aarch64':
+            cpu_arch = cpu_util.get_family() if hasattr(cpu_util, 'get_family')\
+                else cpu_util.get_cpu_arch()
+            if cpu_arch == 'power8':
+                pg_size = '16384'
+                huge_page_num = 200
+            elif cpu_arch == 'power9':
+                pg_size = '2048'
+                huge_page_num = 2000
         [x.update({'size': pg_size}) for x in huge_pages]
         setup_hugepages(int(pg_size), shp_num=huge_page_num)
 
@@ -727,9 +740,11 @@ def run(test, params, env):
                 # Remove dmesg temp file
                 if os.path.exists(dmesg_file):
                     os.remove(dmesg_file)
-    except xcepts.LibvirtXMLError:
+    except xcepts.LibvirtXMLError as e:
         if define_error:
             pass
+        else:
+            raise e
     finally:
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)
