@@ -57,7 +57,10 @@ def run(test, params, env):
 
     def get_hugepage_num(total_huge_page_size):
         """
-        Calculate huge page number according to total huge page size
+        Calculate huge page number according to total huge page size.
+
+        :param total_huge_page_size: required total huge page size in KiB
+        :return: huge page number required
         """
         default_mem_huge_page_size = utils_memory.get_huge_page_size()
         return int(total_huge_page_size) // default_mem_huge_page_size
