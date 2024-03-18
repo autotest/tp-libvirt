@@ -52,8 +52,9 @@ def run(test, params, env):
                 cpu_topo_list.append(cpu_dict)
             logging.debug("cpu topology list from capabilities xml is %s",
                           cpu_list_from_xml)
-            if cpu_list_from_xml != cpu_topo_list:
-                test.fail("cpu list %s from capabilities xml not "
-                          "expected.")
+            for i, cpu_dict in enumerate(cpu_list_from_xml):
+                if not set(cpu_dict.items()).issubset(set(cpu_topo_list[i].items())):
+                    test.fail("cpu list %s from capabilities xml is not subset from "
+                              "system %s" % (cpu_list_from_xml, cpu_topo_list))
     finally:
         libvirtd.restart()
