@@ -217,17 +217,18 @@ def convert_to_list_of_int(cpus_in_short, cpu_num):
     return [index for index in range(0, len(cpu_list)) if cpu_list[index] == 'y']
 
 
-def check_hugepage_availability(memory_backing):
+def check_hugepage_availability(pages_list):
     """
     Check if the configured huge page size is supported on the system
 
-    :param memory_backing: like {'hugepages': {'pages': [{'size': '1048576', 'unit': 'KiB', 'nodeset': '0'}]}}
+    :param pages_list: list, like [{'size': '1048576', 'unit': 'KiB'}]
     :raises: exceptions.TestSkipError: when hugepage is not supported
     """
     unit_mapping = {'G': 1048576, 'M': 1024, 'KiB': 1}
     supported_hugepages = memory.get_supported_huge_pages_size()
-    pages_list = memory_backing['hugepages']['pages']
     for a_page in pages_list:
+        if a_page.get("size") is None or a_page.get("unit") is None:
+            raise exceptions.TestError("'size' and 'unit' are required")
         size = int(a_page['size'])
         unit = a_page['unit']
         size *= unit_mapping[unit]
