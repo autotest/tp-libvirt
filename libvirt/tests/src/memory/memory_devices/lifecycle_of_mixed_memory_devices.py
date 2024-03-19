@@ -8,6 +8,7 @@
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import math
 import os
 import re
 
@@ -127,6 +128,7 @@ def attach_all_memory_devices(vm, params, operate_flag):
             vm.start()
         for mem in mem_list:
             dev_dict = globals()[mem]
+            update_mem_device_pagesize(dev_dict)
             mem_dev = memory.Memory()
             mem_dev.setup_attrs(**dev_dict)
             virsh.attach_device(vm.name, mem_dev.xml, debug=True,
@@ -146,6 +148,7 @@ def detach_all_memory_devices(vm_name, params, operate_flag):
     for index, value in enumerate(set_value):
         if value[get_index(params, operate_flag)] != "":
             dev_dict = globals()[value[-1]]
+            update_mem_device_pagesize(dev_dict)
             mem_xml = memory.Memory()
             mem_xml.setup_attrs(**dev_dict)
             virsh.detach_device(vm_name, mem_xml.xml, debug=True,
@@ -260,6 +263,19 @@ def get_affected_mem(params, operation):
     return memory_affected, current_mem_affected
 
 
+def update_mem_device_pagesize(mem_device_dict):
+    """
+    update memory device page size and block size to default hugepage size.
+
+    :param mem_device_dict: memory device dictionary.
+    """
+    page_size = int(utils_memory.get_huge_page_size())
+    if 'source' in mem_device_dict and 'pagesize' in mem_device_dict['source']:
+        mem_device_dict['source']['pagesize'] = page_size
+    if 'target' in mem_device_dict and 'block_size' in mem_device_dict['target']:
+        mem_device_dict['target']['block_size'] = page_size
+
+
 def update_vm_devices(vmxml, params):
     """
     Update vm devices.
@@ -276,6 +292,7 @@ def update_vm_devices(vmxml, params):
             mem_list.append(value[-1])
     for index, mem in enumerate(mem_list):
         dev_dict = globals()[mem]
+        update_mem_device_pagesize(dev_dict)
         new_mem = memory.Memory()
         new_mem.setup_attrs(**dev_dict)
         devices.append(new_mem)
@@ -293,10 +310,12 @@ def run(test, params, env):
         """
         test.log.info("TEST_SETUP: Set hugepage and guest boot ")
         process.run(truncate_cmd, ignore_status=False, shell=True)
-        utils_memory.set_num_huge_pages(int(nr_hugepages))
+        nr_hugepages = math.ceil(
+            int(total_hugepage_size) / utils_memory.get_huge_page_size())
+        utils_memory.set_num_huge_pages(nr_hugepages)
         result = process.run("cat %s" % kernel_hp_file, ignore_status=True,
                              verbose=False).stdout_text.strip()
-        if nr_hugepages != result:
+        if str(nr_hugepages) != result:
             test.fail("Hugepage set failed, should be %s instead of %s" % (
                 nr_hugepages, result))
 
@@ -408,7 +427,7 @@ def run(test, params, env):
     kernel_params_remove = params.get("kernel_params_remove")
     kernel_params_add = params.get("kernel_params_add")
     truncate_cmd = params.get("truncate_cmd")
-    nr_hugepages = params.get("nr_hugepages")
+    total_hugepage_size = params.get("total_hugepage_size")
     kernel_hp_file = params.get("kernel_hp_file")
     nvdimm_path_1 = params.get("nvdimm_path_1")
     nvdimm_path_2 = params.get("nvdimm_path_2")
