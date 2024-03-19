@@ -1,4 +1,5 @@
 import logging
+import re
 import shutil
 
 import aexpect
@@ -287,7 +288,9 @@ def get_ethtool_coalesce(iface):
     :return: dict-type coalesce parameters
     """
     eth_out = process.run(f'ethtool -c {iface}').stdout_text
-    items = [x.split(':') for x in eth_out.replace('\t', '').splitlines() if x]
+    eth_out = re.sub("[\t ]+", "", eth_out)
+    eth_out = re.sub("n/a", "0", eth_out)
+    items = [x.split(':') for x in eth_out.splitlines() if x]
     coalesce = {item[0]: item[1] for item in items[1:] if len(item) == 2}
 
     return coalesce
