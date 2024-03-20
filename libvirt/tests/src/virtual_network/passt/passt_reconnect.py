@@ -59,7 +59,6 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
-    vm_iface = params.get('vm_iface', 'eno1')
     mtu = params.get('mtu')
     qemu_cmd_check = params.get('qemu_cmd_check')
     outside_ip = params.get('outside_ip')
@@ -109,6 +108,7 @@ def run(test, params, env):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
         session = vm.wait_for_serial_login(timeout=60)
+        vm_iface = utils_net.get_linux_ifname(session, mac)
         passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
         passt.check_default_gw(session, host_iface)
