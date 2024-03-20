@@ -18,7 +18,9 @@ def setup_default(test_obj):
 
     :param test_obj: NumaTest object
     """
-    test_obj.setup()
+    expect_nodes_num = test_obj.params.get("expect_nodes_num", 2)
+    test_obj.params['expect_nodes_num'] = int(expect_nodes_num)
+    test_obj.setup(expect_nodes_num=int(expect_nodes_num))
     test_obj.test.log.debug("Step: setup is done")
 
 
@@ -31,6 +33,12 @@ def allocate_memory_on_host_nodes(test_obj):
                    like {'2048': '100', '1048576': '1'}
     """
     def _allocate_test(page_num, node_id, page_size):
+        # Drop caches to clean some usable memory
+        with open("/proc/sys/vm/drop_caches", "w") as caches:
+            caches.write('3')
+        # Compact memory to get more continual memory
+        with open("/proc/sys/vm/compact_memory", "w") as memory:
+            memory.write('1')
         hpc.set_node_num_huge_pages(page_num, node_id, page_size, ignore_error=True)
         allocated_num = hpc.get_node_num_huge_pages(node_id, page_size)
         if allocated_num < 1:
@@ -231,26 +239,30 @@ def verify_node_mem_by_freepages_various_unit(test_obj):
     """
     allocate_result = test_obj.params['allocate_result']
     all_nodes = test_obj.online_nodes_withmem
-    for pgsize in allocate_result[all_nodes[1]].keys():
+    if test_obj.params['expect_nodes_num'] == 1:
+        target_node = all_nodes[0]
+    else:
+        target_node = all_nodes[1]
+    for pgsize in allocate_result[target_node].keys():
         common_test_freepages(test_obj,
-                              all_nodes[1],
-                              pgsize, allocate_result[all_nodes[1]][pgsize])
+                              target_node,
+                              pgsize, allocate_result[target_node][pgsize])
         common_test_freepages(test_obj,
-                              all_nodes[1],
+                              target_node,
                               pgsize,
-                              allocate_result[all_nodes[1]][pgsize],
+                              allocate_result[target_node][pgsize],
                               size_unit='KiB')
         if int(pgsize) >= 1024:
             common_test_freepages(test_obj,
-                                  all_nodes[1],
+                                  target_node,
                                   int(pgsize)//1024,
-                                  allocate_result[all_nodes[1]][pgsize],
+                                  allocate_result[target_node][pgsize],
                                   size_unit='M')
         if int(pgsize) >= (1024*1024):
             common_test_freepages(test_obj,
-                                  all_nodes[1],
+                                  target_node,
                                   int(pgsize)//(1024*1024),
-                                  allocate_result[all_nodes[1]][pgsize],
+                                  allocate_result[target_node][pgsize],
                                   size_unit='G')
     test_obj.test.log.debug("Verify huge page memory info on "
                             "the first host numa node with different "
