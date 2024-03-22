@@ -57,19 +57,19 @@ def create_customized_nbd_disk(params, nbd_server_host):
     return customized_disk
 
 
-def operate_guest_disk_after_killing_nbdserver(vm, device_target):
+def operate_guest_disk_after_killing_nbdserver(vm):
     """
     Operate guest disk after killing nbd server.
 
     :params vm: VM instance
-    :params device_target: VM device target
     """
     try:
         session = vm.wait_for_login()
+        nbd_disk_name, _ = libvirt_disk.get_non_root_disk_name(session)
         process.run("pidof qemu-nbd && killall qemu-nbd",
                     ignore_status=True, shell=True)
         # Execute read disk operation
-        cmd = "dd if=/dev/%s of=file" % device_target
+        cmd = "dd if=/dev/%s of=file" % nbd_disk_name
         session.cmd_status_output(cmd)
         session.close()
     except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
@@ -89,7 +89,7 @@ def check_dmeg_and_domblkerror(params, vm, test, check_error_msg=True):
     error_msg = params.get("error_msg")
     device_target = params.get("target_dev")
 
-    operate_guest_disk_after_killing_nbdserver(vm, device_target)
+    operate_guest_disk_after_killing_nbdserver(vm)
 
     def _check_dmeg_msg(error_msg):
         """
