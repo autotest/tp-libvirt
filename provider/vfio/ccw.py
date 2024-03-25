@@ -116,6 +116,8 @@ def format_dasd(path, session):
     err, out = cmd_status_output(cmd, shell=True, session=session)
     if err:
         raise TestError("Couldn't format disk. %s" % out)
+    udev_cmd = "udevadm settle"
+    cmd_status_output(udev_cmd, shell=True, session=session)
     return True
 
 
