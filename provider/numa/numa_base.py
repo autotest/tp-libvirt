@@ -84,6 +84,7 @@ class NumaTest(object):
         hpc_list.extend([hpc_2M, hpc_1G])
         for hpc in hpc_list:
             if hpc:
+                self.test.log.debug("Teardown: clean up hugepage setting for %d", hpc.hugepage_size)
                 hpc.cleanup()
 
     def prepare_vm_xml(self):
@@ -228,6 +229,8 @@ def check_hugepage_availability(pages_list):
     for a_page in pages_list:
         if a_page.get("size") is None or a_page.get("unit") is None:
             raise exceptions.TestError("'size' and 'unit' are required")
+        if a_page['size'].count("%s"):
+            continue
         size = int(a_page['size'])
         unit = a_page['unit']
         size *= unit_mapping[unit]
@@ -268,8 +271,16 @@ def adjust_parameters(params, hugepage_size=None, node_index='0', hugepage_mem=1
     memory_backing = params['memory_backing']
     if memory_backing and memory_backing.count('%s'):
         params['memory_backing'] = memory_backing % str(page_size)
-    kernel_hp_file = params.get('kernel_hp_file', '')
-    if kernel_hp_file.count('/sys/devices/system/node/'):
-        params['kernel_hp_file'] = kernel_hp_file % (node_index, str(page_size))
+    kernel_hp_file = params.get('kernel_hp_file')
+    if kernel_hp_file:
+        if kernel_hp_file.count('/sys/devices/system/node/node%s/hugepages/hugepages-%s'):
+            params['kernel_hp_file'] = kernel_hp_file % (node_index, str(page_size))
+        elif kernel_hp_file.count('/sys/kernel/mm/hugepages/hugepages-%s'):
+            params['kernel_hp_file'] = kernel_hp_file % str(page_size)
     params['expected_hugepage_size'] = page_size
-    params['target_hugepages'] = hugepage_mem//page_size
+    params['target_hugepages'] = hugepage_mem // page_size
+    if page_size == default_hugepage_size:
+        hugepage_path = "/dev/hugepages"
+    else:
+        hugepage_path = "/dev/hugepages%d" % page_size
+    params['vm_hugepage_mountpoint'] = hugepage_path
