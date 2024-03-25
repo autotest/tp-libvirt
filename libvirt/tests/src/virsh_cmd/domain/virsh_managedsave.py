@@ -314,7 +314,7 @@ def run(test, params, env):
             vm.start()
         except Exception as e:
             logging.error(str(e))
-            test.cancel("Build domain xml failed")
+            test.error("Build domain xml failed")
 
     status_error = ("yes" == params.get("status_error", "no"))
     vm_ref = params.get("managedsave_vm_ref", "name")
