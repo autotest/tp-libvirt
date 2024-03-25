@@ -1,10 +1,12 @@
 import os
+import platform
 import uuid
 import logging as log
 
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
+from virttest import utils_sys
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.watchdog import Watchdog
@@ -39,7 +41,6 @@ def run(test, params, env):
     hostdev_type = params.get("detach_hostdev_type", "")
     hostdev_managed = params.get("detach_hostdev_managed")
     controller_dict = eval(params.get('controller_dict', '{}'))
-    pci_filter = params.get("pci_filter", "")
     # controller params
     contr_type = params.get("detach_controller_type")
     contr_model = params.get("detach_controller_mode")
@@ -160,8 +161,15 @@ def run(test, params, env):
                                                dev_dict=controller_dict,
                                                index=int(params.get("index")))
 
-                pci_id = utils_misc.get_full_pci_id(
-                    utils_misc.get_pci_id_using_filter(pci_filter)[-1])
+                # only 'host bridge' can be used for hostdev_pci on aarch64
+                if 'aarch' in platform.machine():
+                    pci_ids = utils_sys.get_host_bridge_id()
+                else:
+                    pci_ids = utils_misc.get_pci_id_using_filter('')
+
+                if not pci_ids:
+                    test.error('Not Found any pci devices')
+                pci_id = utils_misc.get_full_pci_id(pci_ids[-1])
 
                 if not vm.is_alive():
                     vm.start()
