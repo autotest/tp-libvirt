@@ -97,35 +97,6 @@ def run(test, params, env):
     """
     Test guest numa setting
     """
-
-    def replace_qemu_cmdline(cmdline_list):
-        """
-        Replace the expected qemu command line for new machine type
-
-        :param cmdline_list: The list for expected qemu command lines
-        :return: The list contains the updated qemu command lines if any
-        """
-        os_xml = getattr(vmxml, "os")
-        machine_ver = getattr(os_xml, 'machine')
-        if (machine_ver.startswith("pc-q35-rhel") and
-                machine_ver > 'pc-q35-rhel8.2.0' and
-                libvirt_version.version_compare(6, 4, 0)):
-            # Replace 'node,nodeid=0,cpus=0-1,mem=1024' with
-            # 'node,nodeid=0,cpus=0-1,memdev=ram-node0'
-            # Replace 'node,nodeid=1,cpus=2-3,mem=1024' with
-            # 'node,nodeid=1,cpus=2-3,memdev=ram-node1'
-            for cmd in cmdline_list:
-                line = cmd['cmdline']
-                try:
-                    node = line.split(',')[1][-1]
-                    cmd['cmdline'] = line.replace('mem=1024',
-                                                  'memdev=ram-node{}'.format(node))
-                # We can skip replacing, when the cmdline parameter is empty.
-                except IndexError:
-                    pass
-
-        return cmdline_list
-
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes
     arch = platform.machine()
@@ -430,7 +401,6 @@ def run(test, params, env):
         with open("/proc/%s/cmdline" % vm_pid) as f_cmdline:
             q_cmdline_list = f_cmdline.read().split("\x00")
         logging.debug("vm qemu cmdline list is %s" % q_cmdline_list)
-        cmdline_list = replace_qemu_cmdline(cmdline_list)
         for cmd in cmdline_list:
             logging.debug("checking '%s' in qemu cmdline", cmd['cmdline'])
             p_found = False
