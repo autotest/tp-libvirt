@@ -21,7 +21,7 @@ def run(test, params, env):
     machine.
     """
     # Install virt-top package if missing.
-    software_mgr = software_manager.SoftwareManager()
+    software_mgr = software_manager.manager.SoftwareManager()
     if not software_mgr.check_installed('virt-top'):
         logging.info('Installing virt-top package:')
         software_mgr.install('virt-top')

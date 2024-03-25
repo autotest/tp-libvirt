@@ -82,7 +82,7 @@ def run(test, params, env):
     # In RHEL6 iptables-services and firewalld is not supported
     # So try to install all required packages but ignore failures
     logging.info('Preparing firewall related packages')
-    software_mgr = software_manager.SoftwareManager()
+    software_mgr = software_manager.manager.SoftwareManager()
     for pkg in ['iptables', 'iptables-services', 'firewalld']:
         if not software_mgr.check_installed(pkg):
             software_mgr.install(pkg)
