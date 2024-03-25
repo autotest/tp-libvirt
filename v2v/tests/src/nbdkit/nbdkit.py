@@ -377,6 +377,7 @@ name = rhel9-debug
         tmp_path = data_dir.get_tmp_dir()
         process.run('yum download nbdkit-server nbdkit-server-debuginfo --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
+        process.run('rm -rf /etc/yum.repos.d/rhel9-debug.repo', shell=True, ignore_status=True)
         cmd_3 = 'annocheck -v --skip-cf-protection --skip-glibcxx-assertions --skip-glibcxx-assertions ' \
                 '--skip-stack-realign --section-size=.gnu.build.attributes --ignore-gaps ' \
                 '%s/%s --debug-rpm=%s/%s' % (tmp_path, (process.run('ls %s/nbdkit-server-1*' % tmp_path,
@@ -387,7 +388,6 @@ name = rhel9-debug
         cmd_3_result = process.run(cmd_3, shell=True, ignore_status=True)
         if re.search('FAIL', cmd_3_result.stdout_text) and len(cmd_3_result.stdout_text) == 0:
             test.fail('fail to test ndbkit-server rpm package with annocheck tool')
-        process.run('rm -rf /etc/yum.repos.d/rhel9-debug.repo', shell=True, ignore_status=True)
 
     def statsfile_option():
         tmp_path = data_dir.get_tmp_dir()
@@ -558,6 +558,7 @@ name = rhel9-appsource
         process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
         process.run('yum install libtool -y', shell=True, ignore_status=True)
+        process.run('rm -rf /etc/yum.repos.d/rhel9-appsource.repo', shell=True, ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
         check_file = process.run('ls /root/rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
@@ -587,6 +588,23 @@ name = rhel9-appsource
                                              b"h.pwrite(buf,0)\n")[0]
         if not re.search('Operation not permitted ', grep_stdout_2.decode()):
             test.fail('fail to test protect filter')
+
+    def security_label():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        label = process.run("ps -Z", shell=True, ignore_status=True)
+        LOG.info("label %s", label)
+        sec_label = re.search('unconfined_u:unconfined_r:unconfined.*\n', label.stdout_text).group(0).split(' ')[0]
+        LOG.info("seclabel %s", sec_label)
+        test_co_label = process.run("nbdkit --filter=ip file %s allow=security:%s deny=all --run 'nbdinfo $uri'" %
+                                    (image_path, sec_label), shell=True, ignore_status=True)
+        test_inco_label = process.run("nbdkit --filter=ip file %s allow=security:%s1 deny=all --run 'nbdinfo $uri'" %
+                                      (image_path, sec_label), shell=True, ignore_status=True)
+        if re.search(" error", test_co_label.stdout_text) or not re.search("error: client not permitted",
+                                                                           test_inco_label.stderr_text):
+            test.fail('fail to test security label of IP filter')
 
     if version_required and not multiple_versions_compare(
             version_required):
@@ -647,5 +665,7 @@ name = rhel9-appsource
         cve_starttls()
     elif checkpoint == 'test_protect_filter':
         test_protect_filter()
+    elif checkpoint == 'security_label':
+        security_label()
     else:
         test.error('Not found testcase: %s' % checkpoint)
