@@ -430,7 +430,6 @@ def run(test, params, env):
         with open("/proc/%s/cmdline" % vm_pid) as f_cmdline:
             q_cmdline_list = f_cmdline.read().split("\x00")
         logging.debug("vm qemu cmdline list is %s" % q_cmdline_list)
-        cmdline_list = replace_qemu_cmdline(cmdline_list)
         for cmd in cmdline_list:
             logging.debug("checking '%s' in qemu cmdline", cmd['cmdline'])
             p_found = False
