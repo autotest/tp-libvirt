@@ -182,6 +182,9 @@ def run(test, params, env):
         Cleanup for migration_address case
         """
         ipv4_env_on_target = "yes" == params.get("ipv4_env_on_target", "no")
+        remote_ip = params.get("server_ip", params.get("remote_ip"))
+        remote_pwd = params.get("server_pwd", params.get("remote_pwd"))
+        remote_user = params.get("server_user", params.get("remote_user"))
 
         test.log.info("Cleanup for migration_address case.")
         migration_obj.cleanup_connection()
@@ -189,6 +192,9 @@ def run(test, params, env):
         if qemu_conf_remote:
             test.log.info("Recover remote qemu configurations")
             del qemu_conf_remote
+            libvirt.remotely_control_libvirtd(remote_ip, remote_user,
+                                              remote_pwd, action='restart',
+                                              status_error='no')
         global remove_key_remote
         if remove_key_remote:
             del remove_key_remote
