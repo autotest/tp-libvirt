@@ -116,6 +116,15 @@ def run(test, params, env):
     Test file transfer between host and vm with passt backend interface
     """
     libvirt_version.is_libvirt_feature_supported(params)
+    # Since passt can not handle the multipath route on the host, skip the ipv6
+    # related test if host has multipath route. When there is multipath route,
+    # the utils_net.get_default_gateway() will return none.
+    ip_ver = params.get('ip_ver')
+    if ip_ver == "ipv6":
+        if not utils_net.get_default_gateway(ip_ver=ip_ver):
+            test.cancel("Host has multipath route which can not be "
+                        "recognized by passt and passt will disable ipv6.")
+
     root = 'root_user' == params.get('user_type', '')
     if root:
         vm_name = params.get('main_vm')
@@ -153,7 +162,6 @@ def run(test, params, env):
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
     direction = params.get('direction')
-    ip_ver = params.get('ip_ver')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
