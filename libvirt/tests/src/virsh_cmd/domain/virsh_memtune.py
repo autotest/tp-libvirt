@@ -178,7 +178,8 @@ def run(test, params, env):
 
     # Get the vm name, pid of vm and check for alive
     vm = env.get_vm(params["main_vm"])
-    vm.verify_alive()
+    if not vm.is_alive():
+        vm.start()
     pid = vm.get_pid()
 
     # Resolve the memory cgroup path for a domain
