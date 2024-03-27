@@ -10,6 +10,7 @@
 from virttest.libvirt_xml.devices.input import Input
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import virsh
+from virttest.utils_libvirt import libvirt_pcicontr
 
 
 def prepare_vm_xml(vm_xml, device_type, test):
@@ -67,6 +68,7 @@ def run(test, params, env):
     3. check the result
     """
     vm_name = params.get("main_vm", "avocado-vt-vm1")
+    libvirt_pcicontr.reset_pci_num(vm_name)
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
