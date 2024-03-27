@@ -266,7 +266,9 @@ def run(test, params, env):
         vmxml.remove_all_device_by_type('input')
         input_dict.update({"alias": {"name": device_alias}})
         if input_type == "passthrough":
-            event = process.run("ls /dev/input/event*", shell=True).stdout
+            event = process.run("ls /dev/input/event*", shell=True, ignore_status=True).stdout
+            if len(event) == 0:
+                test.error("Not found any input devices")
             input_dict.update({"source_evdev": event.decode('utf-8').split()[0]})
 
         input_obj = Input(type_name=input_type)
