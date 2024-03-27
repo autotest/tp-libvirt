@@ -4,6 +4,7 @@ import random
 import re
 import string
 import aexpect
+import time
 
 from avocado.utils import linux_modules
 from avocado.utils import process
@@ -452,7 +453,7 @@ def check_scsi_cdrom_hot_eject(vm, params, test):
     virsh_session = aexpect.ShellSession(virsh.VIRSH_EXEC, auto_close=True)
     event_cmd = "event --domain %s --event tray-change --loop" % vm.name
     virsh_session.sendline(event_cmd)
-
+    time.sleep(60)
     device_target = params.get("target_dev")
     virsh.change_media(vm.name, device_target, " --eject --live",
                        ignore_status=False, debug=True)
@@ -478,6 +479,7 @@ def check_scsi_cdrom_hot_eject(vm, params, test):
     # check tray-change event
     virsh_session.send_ctrl("^C")
     ret_output = virsh_session.get_stripped_output().replace("\n", "").strip()
+    LOG.debug("event:\n%s", ret_output)
 
     event_matched_opened = r"event 'tray-change' for domain '%s' disk .*opened" % vm.name
     if not re.search(event_matched_opened, ret_output):
