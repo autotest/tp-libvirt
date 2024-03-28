@@ -105,7 +105,7 @@ def verify_host_numa_memory_allocation(test_obj):
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
     N1_value = re.findall('N%s=(\d+)' % all_nodes[1], out_numa_maps)
     expected_hugepage_size = test_obj.params.get('expected_hugepage_size')
-    psize = expected_hugepage_size if memory_backing else memory.get_page_size()
+    psize = expected_hugepage_size if memory_backing else memory.get_page_size() // 1024
     has_kernelpage = True if re.search('kernelpagesize_kB=%s' % psize, out_numa_maps) else False
 
     def _check_values(expect_huge, expect_N0, expect_N1, expect_sum=None):
