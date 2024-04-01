@@ -153,6 +153,7 @@ def run(test, params, env):
         vmxml.max_mem_rt_slots = int(params.get("maxmem_slots"))
         mem_unit = params.get("mem_unit")
         vmxml.max_mem_rt_unit = mem_unit
+        cpu_mode = params.get("cpu_mode")
         current_mem = int(params.get("current_mem"))
         vmxml.current_mem = current_mem
         vmxml.current_mem_unit = mem_unit
@@ -177,10 +178,10 @@ def run(test, params, env):
         if vmxml.xmltreefile.find('cpu'):
             vmxml_cpu = vmxml.cpu
             logging.debug("Existing cpu configuration in guest xml:\n%s", vmxml_cpu)
-            vmxml_cpu.mode = 'host-model'
+            vmxml_cpu.mode = cpu_mode
         else:
             vmxml_cpu = vm_xml.VMCPUXML()
-            vmxml_cpu.xml = "<cpu mode='host-model'><numa/></cpu>"
+            vmxml_cpu.xml = "<cpu mode='%s'><numa/></cpu>" % cpu_mode
         vmxml.vcpu = numa_nodes * 2
         vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
         logging.debug(vmxml_cpu.numa_cell)
