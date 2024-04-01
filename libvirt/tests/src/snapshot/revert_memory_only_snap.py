@@ -20,12 +20,6 @@ def run(test, params, env):
     """
     Revert guest to memory only snapshot.
     """
-    def setup_test():
-        """
-        Check libvirt version
-        """
-        libvirt_version.is_libvirt_feature_supported(params)
-
     def run_test():
         """
         Revert guest to memory only snapshot.
@@ -36,10 +30,7 @@ def run(test, params, env):
         for sname in snap_names:
             virsh.snapshot_create_as(vm.name, snap_options % (sname, sname),
                                      **virsh_dargs)
-            snap_lists = virsh.snapshot_list(vm_name, **virsh_dargs)
-            if sname not in snap_lists:
-                test.fail("Expect to get '%s' in snap list" % sname)
-
+            test_obj.check_snap_list(sname)
         test.log.info("TEST_STEP2:Revert the second snap and check source path")
         virsh.snapshot_revert(vm_name, snap_names[1], **virsh_dargs)
 
@@ -65,12 +56,12 @@ def run(test, params, env):
         """
         test.log.info("TEST_TEARDOWN: Clean up env.")
         snap_names.reverse()
-        test_obj.delete_snapshot(snap_names)
-        bkxml.sync()
+        test_obj.teardown_test()
 
     vm_name = params.get("main_vm")
     original_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    bkxml = original_xml.copy()
+    params['backup_vmxml'] = original_xml.copy()
+
     vm = env.get_vm(vm_name)
 
     virsh_dargs = {"debug": True, "ignore_status": True}
@@ -82,7 +73,7 @@ def run(test, params, env):
     disk_obj = disk_base.DiskBase(test, vm, params)
 
     try:
-        setup_test()
+        libvirt_version.is_libvirt_feature_supported(params)
         run_test()
 
     finally:
