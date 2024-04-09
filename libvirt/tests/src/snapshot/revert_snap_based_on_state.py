@@ -90,9 +90,8 @@ def run(test, params, env):
     expected_state = params.get("expected_state")
     test_obj = snapshot_base.SnapshotTest(vm, test, params)
 
+    libvirt_version.is_libvirt_feature_supported(params)
     try:
-        libvirt_version.is_libvirt_feature_supported(params)
         run_test()
-
     finally:
         teardown_test()

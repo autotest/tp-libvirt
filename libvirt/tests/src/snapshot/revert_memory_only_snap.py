@@ -71,9 +71,9 @@ def run(test, params, env):
     target_disk = params.get("target_disk")
     test_obj = snapshot_base.SnapshotTest(vm, test, params)
     disk_obj = disk_base.DiskBase(test, vm, params)
+    libvirt_version.is_libvirt_feature_supported(params)
 
     try:
-        libvirt_version.is_libvirt_feature_supported(params)
         run_test()
 
     finally:
