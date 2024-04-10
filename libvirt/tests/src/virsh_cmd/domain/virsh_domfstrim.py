@@ -197,7 +197,7 @@ def run(test, params, env):
         def _trim_completed():
             """
             Do empty fstrim check
-            :return: True of False
+            :return: True or False
             """
             cmd_result = virsh.domfstrim(vm_name, minimum, mountpoint, options,
                                          unprivileged_user=unprivileged_user,
