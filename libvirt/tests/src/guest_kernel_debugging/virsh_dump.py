@@ -12,6 +12,7 @@ from virttest import utils_config
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_package
+from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_test import libvirt
@@ -46,7 +47,7 @@ def run(test, params, env):
     options = params.get("dump_options")
     dump_file = params.get("dump_file", "vm.core")
     dump_dir = params.get("dump_dir", data_dir.get_tmp_dir())
-    if os.path.dirname(dump_file) is "":
+    if os.path.dirname(dump_file) == "":
         dump_file = os.path.join(dump_dir, dump_file)
     dump_image_format = params.get("dump_image_format")
     small_img = os.path.join(data_dir.get_tmp_dir(), "small.img")
@@ -267,7 +268,13 @@ def run(test, params, env):
 
         # Deal with bypass-cache option
         if options.find('bypass-cache') >= 0:
-            vm.wait_for_login()
+            #Improve memory usage in vm
+            session = vm.wait_for_login()
+            if not utils_package.package_install("gcc", session):
+                test.fail("Failed to install gcc in guest")
+            session.close()
+            params['stress_args'] = "--vm 2 --vm-bytes 256M --vm-keep --timeout 15"
+            utils_test.load_stress("stress_in_vms", params=params, vms=[vm])
             result_dict = multiprocessing.Manager().dict()
             child_process = multiprocessing.Process(target=check_bypass,
                                                     args=(dump_file, result_dict))
