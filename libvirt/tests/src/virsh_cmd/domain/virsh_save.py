@@ -131,7 +131,7 @@ def run(test, params, env):
         else:
             if status:
                 test.fail("virsh run failed with a "
-                          "correct command")
+                          "correct command: %s" % err_msg)
             if progress and not err_msg.count("Save:"):
                 test.fail("No progress information outputted!")
             if "--xml" in options and 'test.img' not in xml_after_save:
