@@ -12,6 +12,7 @@ from virttest import utils_libvirtd
 from virttest import test_setup
 from virttest import utils_params
 from virttest import libvirt_version
+from virttest.staging import utils_memory
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -201,8 +202,16 @@ def run(test, params, env):
     backup_list = []
     page_tuple = ('vmpage_size', 'vmpage_unit', 'vmpage_nodeset')
     page_list = handle_param(page_tuple, params)
-    nr_pagesize_total = params.get("nr_pagesize_total")
+    hugepage_mem_total = params.get("hugepage_mem_total")
     deallocate = False
+
+    # Calculate huge page number and change huge page size to
+    # default huge page size
+    if hugepage_mem_total and page_list:
+        default_mem_huge_page_size = utils_memory.get_huge_page_size()
+        hugepage_num = int(hugepage_mem_total) // default_mem_huge_page_size
+        for page in page_list:
+            page['size'] = str(default_mem_huge_page_size)
 
     if page_list:
         if not libvirt_version.version_compare(1, 2, 5):
@@ -221,7 +230,7 @@ def run(test, params, env):
         """
         Mount hugepage path, update qemu conf then restart libvirtd
         """
-        size_dict = {'2048': '2M', '1048576': '1G', '16384': '16M'}
+        size_dict = {'2048': '2M', '1048576': '1G', '16384': '16M', '524288': '512M'}
         for page in page_list:
             if page['size'] not in supported_hp_size:
                 test.cancel("Hugepage size [%s] isn't supported, "
@@ -268,11 +277,10 @@ def run(test, params, env):
         qemu_conf_restore = True
 
         # set hugepage with total number or per-node number
-        if nr_pagesize_total:
-            # Only set total 2M size huge page number as total 1G size runtime
-            # update not supported now.
+        if hugepage_mem_total and page_list:
+            # Only set default huge page memory
             deallocate = True
-            hp_cl.target_hugepages = int(nr_pagesize_total)
+            hp_cl.target_hugepages = hugepage_num
             hp_cl.set_hugepages()
         if page_list:
             hp_size = [h_list[p_size]['size'] for p_size in range(len(h_list))]
