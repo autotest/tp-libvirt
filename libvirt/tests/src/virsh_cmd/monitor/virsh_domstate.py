@@ -159,6 +159,7 @@ def run(test, params, env):
             vmxml.sync()
 
         if vm_action == "crash":
+            libvirt_version.is_libvirt_feature_supported(params)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
             vmxml.on_crash = vm_oncrash_action
