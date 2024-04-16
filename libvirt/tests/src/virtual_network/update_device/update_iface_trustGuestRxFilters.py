@@ -1,6 +1,7 @@
 import logging
 
 from avocado.utils import process
+from virttest import libvirt_version
 from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -18,6 +19,7 @@ def run(test, params, env):
     """
     Test live update trustGuestRxFilters for direct type interface
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     host_iface = params.get('host_iface')
@@ -48,6 +50,10 @@ def run(test, params, env):
         iface_update = network_base.get_iface_xml_inst(vm_name, 'after update')
         LOG.debug(f'iface trustGuestRxFilters after update: '
                   f'{iface_update.trustGuestRxFilters}')
+        if iface_update.trustGuestRxFilters != update_attrs[
+                'trustGuestRxFilters']:
+            test.fail(f'Interface trustGuestRxFilters not successfully updated '
+                      f'to {update_attrs["trustGuestRxFilters"]}')
 
         mac_host = utils_net.get_linux_iface_info(iface=target_dev)['address']
 
