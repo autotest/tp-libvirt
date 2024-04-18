@@ -518,8 +518,10 @@ def run(test, params, env):
         snapshot1 = "s1"
         snapshot2 = "s2"
         snapshot2_file = os.path.join(data_dir.get_data_dir(), "s2")
-        ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
-        libvirt.check_exit_status(ret)
+        # Skip internal snapshot for ovmf guest
+        if "os_firmware" not in vmxml.os.fetch_attrs():
+            ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
+            libvirt.check_exit_status(ret)
 
         ret = virsh.snapshot_create_as(vm_name, "%s --disk-only" % snapshot1,
                                        **virsh_dargs)
@@ -1364,6 +1366,8 @@ def run(test, params, env):
                 osxml.type = vmxml.os.type
                 osxml.arch = vmxml.os.arch
                 osxml.machine = vmxml.os.machine
+                if vmxml.os.fetch_attrs().get("os_firmware") == "efi":
+                    osxml.os_firmware = vmxml.os.os_firmware
                 if test_boot_console:
                     osxml.loader = "/usr/share/seabios/bios.bin"
                     osxml.bios_useserial = "yes"
