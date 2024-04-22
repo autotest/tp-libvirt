@@ -628,6 +628,17 @@ name = rhel9-appsource
                 elif re.search('nbdkit.*error', cmd.stdout_text):
                     test.fail('fail to test partition-sectorsize')
 
+    def ones_byte():
+        byte_size = params_get(params, "byte_size")
+        for size in list(byte_size.split(' ')):
+            cmd = process.run("nbdkit ones size=4M byte=%s  --run 'nbdinfo $uri'" % size, shell=True, ignore_status=True)
+            if size == '1' and not re.search(r'.*\\001\\001', cmd.stdout_text):
+                test.fail('fail to test ones plugin with byte=1')
+            if size == 'oxff' and not re.search('ISO-8859 text', cmd.stdout_text):
+                test.fail('fail to test ones plugin with byte=oxff')
+            if size == '256' and not re.search('could not parse number', cmd.stderr_text):
+                test.fail('fail to test ones plugin with byte=256')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -691,5 +702,7 @@ name = rhel9-appsource
         security_label()
     elif checkpoint == 'partition_sectorsize':
         partition_sectorsize()
+    elif checkpoint == 'ones_byte':
+        ones_byte()
     else:
         test.error('Not found testcase: %s' % checkpoint)
