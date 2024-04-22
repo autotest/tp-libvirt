@@ -63,7 +63,7 @@ def parse_funcs(action_during_mig, test, params):
                            "action_during_mig_again' is required")
             act_dict = {}
             func_param = one_action.get('func_param')
-            if func_param:
+            if func_param and isinstance(func_param, str):
                 func_param = eval(func_param)
 
             act_dict.update({'func': eval(one_action.get('func')),
@@ -513,14 +513,18 @@ def do_common_check(params):
     second_bandwidth = params.get("second_bandwidth")
     migration_obj = params.get("migration_obj")
     vm_name = params.get("main_vm")
+    remote_ip = params.get("server_ip")
+    postcopy_options = params.get("postcopy_options")
 
     if migration_options == "postcopy_bandwidth" and second_bandwidth:
         libvirt_domjobinfo.check_domjobinfo(migration_obj.vm, params)
 
     # check job info when migration is in paused status
-    expected_domjobinfo = '{"src_items": {"str_items": {"Job type": "Unbounded", "Operation": "Outgoing migration"}}}'
-    params.update({"expected_domjobinfo": expected_domjobinfo})
-    libvirt_monitor.check_domjobinfo_output(params)
+    expected_domjobinfo = {"src_items": {"str_items": {"Job type": "Unbounded", "Operation": "Outgoing migration"}}}
+    libvirt_monitor.check_domjobinfo_output(vm_name,
+                                            expected_domjobinfo=expected_domjobinfo,
+                                            postcopy_options=postcopy_options,
+                                            remote_ip=remote_ip)
 
     # check domain state with reason
     check_vm_state(params)
