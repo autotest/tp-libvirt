@@ -107,7 +107,9 @@ def run(test, params, env):
             check_model_controller(vm_name, pci_model, test)
 
         virsh.detach_device_alias(vm_name, alias_name,
-                                  wait_for_event=True, **VIRSH_ARGS)
+                                  wait_for_event=True,
+                                  event_timeout=20,
+                                  **VIRSH_ARGS)
         iflist = libvirt.get_interface_details(vm_name)
         test.log.debug(f"iflist of vm: {iflist}")
         if iflist:
