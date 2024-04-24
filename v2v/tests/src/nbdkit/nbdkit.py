@@ -606,6 +606,28 @@ name = rhel9-appsource
                                                                            test_inco_label.stderr_text):
             test.fail('fail to test security label of IP filter')
 
+    def partition_sectorsize():
+        sector_size = params_get(params, "sector_size")
+        guest_images = params_get(params, "guest_images")
+        with tempfile.TemporaryDirectory(prefix='guestimages_') as images_dir:
+            utils_misc.mount(guest_images, images_dir, 'nfs')
+            img_dir = data_dir.get_tmp_dir()
+            utils_misc.umount(guest_images, images_dir, 'nfs')
+            process.run('scp -r %s/* %s' % (images_dir, img_dir), shell=True, ignore_status=True)
+        image_list = process.run('ls %s' % img_dir, shell=True).stdout_text.strip('env').split('\n')[1:-1]
+        for image in image_list:
+            for size in list(sector_size.split(' ')):
+                cmd = process.run("nbdkit --filter=partition file %s/%s partition=1 partition-sectorsize=%s --run "
+                                  "'nbdinfo $uri'" % (img_dir, image, size), shell=True, ignore_status=True)
+                if 'non-efi' not in image and '512' in image and size == '4k' and \
+                        not re.search('.*try using partition-sectorsize=512', cmd.stderr_text):
+                    test.fail('fail to test 512 image and partition-sectorsize=4k')
+                if '4k' in image and size == '512' and \
+                        not re.search('.*try using partition-sectorsize=4k', cmd.stderr_text):
+                    test.fail('fail to test 4k image and partition-sectorsize=512')
+                elif re.search('nbdkit.*error', cmd.stdout_text):
+                    test.fail('fail to test partition-sectorsize')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -667,5 +689,7 @@ name = rhel9-appsource
         test_protect_filter()
     elif checkpoint == 'security_label':
         security_label()
+    elif checkpoint == 'partition_sectorsize':
+        partition_sectorsize()
     else:
         test.error('Not found testcase: %s' % checkpoint)
