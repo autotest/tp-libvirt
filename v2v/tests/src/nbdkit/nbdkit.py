@@ -11,6 +11,7 @@ from virttest.utils_conn import build_server_key, build_CA
 from virttest.utils_v2v import multiple_versions_compare
 from virttest.utils_v2v import params_get
 from virttest import utils_v2v
+from virttest.utils_conn import update_crypto_policy
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -361,23 +362,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
 
     def annocheck_test_nbdkit():
-        lines = """
-[rhel9-debug]
-baseurl = pattern
-enabled = 1
-gpgcheck = 0
-name = rhel9-debug
-        """
-        rhel9_debug_repo = os.path.join('/etc/yum.repos.d', 'rhel9-debug.repo')
-        with open(rhel9_debug_repo, "w") as f:
-            f.write(lines)
-        rhel9_debug_repo_url = params.get('rhel9_debug_repo_url')
-        process.run("sed -i 's/pattern/%s/' /etc/yum.repos.d/rhel9-debug.repo" % rhel9_debug_repo_url,
-                    shell=True, ignore_status=True)
         tmp_path = data_dir.get_tmp_dir()
         process.run('yum download nbdkit-server nbdkit-server-debuginfo --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
-        process.run('rm -rf /etc/yum.repos.d/rhel9-debug.repo', shell=True, ignore_status=True)
         cmd_3 = 'annocheck -v --skip-cf-protection --skip-glibcxx-assertions --skip-glibcxx-assertions ' \
                 '--skip-stack-realign --section-size=.gnu.build.attributes --ignore-gaps ' \
                 '%s/%s --debug-rpm=%s/%s' % (tmp_path, (process.run('ls %s/nbdkit-server-1*' % tmp_path,
@@ -405,11 +392,43 @@ name = rhel9-debug
         if re.search('error', cmd.stdout_text):
             test.fail('fail to test rate filter')
 
+    def enable_legacy_cryptography(hostname):
+        """
+        Enable the legacy sha1 algorithm.
+        """
+        ssh_config = ("Host %s\n"
+                      "  KexAlgorithms            +diffie-hellman-group14-sha1\n"
+                      "  MACs                     +hmac-sha1\n"
+                      "  HostKeyAlgorithms        +ssh-rsa\n"
+                      "  PubkeyAcceptedKeyTypes   +ssh-rsa\n"
+                      "  PubkeyAcceptedAlgorithms +ssh-rsa") % hostname
+
+        openssl_cnf = (".include /etc/ssl/openssl.cnf\n"
+                       "[openssl_init]\n"
+                       "alg_section = evp_properties\n"
+                       "[evp_properties]\n"
+                       "rh-allow-sha1-signatures = yes")
+
+        with open(os.path.expanduser('~/.ssh/config'), 'w') as fd:
+            fd.write(ssh_config)
+
+        with open(os.path.expanduser('~/openssl-sha1.cnf'), 'w') as fd:
+            fd.write(openssl_cnf)
+
+        # export the environment variable
+        os.environ['OPENSSL_CONF'] = os.path.expanduser('~/openssl-sha1.cnf')
+        LOG.debug('OPENSSL_CONF is %s' % os.getenv('OPENSSL_CONF'))
+
     def test_ssh_create_option():
         xen_host_user = params_get(params, "xen_host_user")
         xen_host_passwd = params_get(params, "xen_host_passwd")
         xen_host = params_get(params, "xen_host")
         # Setup ssh-agent access to xen hypervisor
+        support_ver = '[virt-v2v-2.0.7-4,)'
+        if utils_v2v.multiple_versions_compare(support_ver):
+            enable_legacy_cryptography(xen_host)
+        else:
+            update_crypto_policy("LEGACY")
         LOG.info('set up ssh-agent access ')
         xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
             xen_host, xen_host_user, xen_host_passwd, auto_close=False)
@@ -541,23 +560,10 @@ name = rhel9-debug
                 test.fail('fail to test cache-min-block-size option')
 
     def cve_starttls():
-        lines = """
-[rhel9-appsource]
-baseurl = pattern
-enabled = 1
-gpgcheck = 0
-name = rhel9-appsource
-        """
-        rhel9_appsource_repo = os.path.join('/etc/yum.repos.d', 'rhel9-appsource.repo')
-        with open(rhel9_appsource_repo, "w") as f:
-            f.write(lines)
-        rhel9_appsource_repo_url = params.get('rhel9_appsource_repo_url')
-        process.run("sed -i 's/pattern/%s/' /etc/yum.repos.d/rhel9-appsource.repo" % rhel9_appsource_repo_url,
-                    shell=True, ignore_status=True)
         tmp_path = data_dir.get_tmp_dir()
+        process.run("yum install libtool 'dnf-command(download)' -y", shell=True, ignore_status=True)
         process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
-        process.run('yum install libtool -y', shell=True, ignore_status=True)
         process.run('rm -rf /etc/yum.repos.d/rhel9-appsource.repo', shell=True, ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
@@ -575,13 +581,13 @@ name = rhel9-appsource
     def test_protect_filter():
         from subprocess import Popen, PIPE, STDOUT
         protect_data = '"AB" * 32768'
-        p1 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u nbd://localhost'" %
+        p1 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u $uri'" %
                    protect_data, shell=True, stdout=PIPE, stdin=PIPE, stderr=STDOUT)
 
         grep_stdout_1 = p1.communicate(input=b"buf=b'01'*256\nh.pwrite(buf,32768)\nprint(h.pread(512,32768))\n")[0]
         if re.search('AB', grep_stdout_1.decode()):
             test.fail('the data is incorrect when write data with protect filter')
-        p2 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u nbd://localhost'" %
+        p2 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u $uri'" %
                    protect_data, shell=True, stdout=PIPE, stdin=PIPE, stderr=STDOUT)
 
         grep_stdout_2 = p2.communicate(input=b"buf=b'01'*256\nh.pwrite(buf,32768)\nprint(h.pread(512,32768))\n"
