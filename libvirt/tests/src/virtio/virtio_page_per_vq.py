@@ -100,10 +100,15 @@ def run(test, params, env):
         Check the page_per_vq attribute after starting the guest
         """
         af_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        test.log.info("The current dumpxml is %s", virsh.dumpxml(af_vmxml))
+        test.log.info("The current dumpxml is %s", af_vmxml)
         # Keyboard and mouse input will be default in guest. So identify input device.
         if device_type == "input":
-            dev_xml = af_vmxml.get_devices(device_type)[2]
+            input_element = [x for x in af_vmxml.get_devices(device_type)
+                             if x['input_type'] == input_type
+                             and 'driver' in x.fetch_attrs()]
+            if not input_element:
+                test.fail("The expected input device was not found.")
+            dev_xml = input_element[0]
         # Guest has many controllers, so also need to identify it.
         elif device_type == "controller":
             dev_xml = af_vmxml.get_devices(device_type)
@@ -115,9 +120,13 @@ def run(test, params, env):
         if device_type == "controller":
             for controller in dev_xml:
                 if controller.type == controller_type:
-                    cur_dict = controller.fetch_attrs()["driver"]
+                    controller_attrs = controller.fetch_attrs()
+                    test.log.debug("controller attrs: %s", controller_attrs)
+                    cur_dict = controller_attrs["driver"]
         else:
-            cur_dict = dev_xml.fetch_attrs()["driver"]
+            dev_attrs = dev_xml.fetch_attrs()
+            test.log.debug("dev attrs: %s", dev_attrs)
+            cur_dict = dev_attrs["driver"]
         pre_dict = driver_dict["driver"]
         for key, value in pre_dict.items():
             if cur_dict.get(key) != value:
