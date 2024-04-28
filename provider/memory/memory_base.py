@@ -1,19 +1,20 @@
 import re
 import platform
 
+from avocado.utils import cpu
+from avocado.utils import memory as avocado_mem
+from avocado.core import exceptions
+
 from virttest import libvirt_version
 from virttest import utils_misc
 
 from virttest.libvirt_xml.devices import memory
 from virttest.utils_version import VersionInterval
 
-from avocado.core import exceptions
-
 
 def convert_data_size(current_size, dest_unit="KiB"):
     """
     Convert source value to expected value
-
     :param current_size: current size str, eg: 1024MB
     :param dest_unit: dest size unit, eg: KiB, MiB
     :return: dest_size: The size is converted, eg: 1(the dest unit is given,
@@ -131,3 +132,19 @@ def create_file_within_nvdimm_disk(test, vm_session, test_device, test_file,
     cmd = 'echo \"%s\" >%s' % (test_str, test_file)
     vm_session.cmd(cmd)
     vm_session.cmd_output('umount %s' % mount_point)
+
+
+def adjust_memory_size(params):
+    """
+    Adjust the memory device size for different arch hugepage size
+    :param params: a dict for parameters
+    eg: In arm, we need to consider:
+       2M on 4k kernel package.
+       512M on 64k kernel package.
+    """
+    default_pagesize_KiB = avocado_mem.get_huge_page_size()
+
+    if cpu.get_arch().startswith("aarch"):
+        params.update({'block_size': default_pagesize_KiB})
+        params.update({'request_size': default_pagesize_KiB})
+        params.update({'target_size': default_pagesize_KiB*2})
