@@ -159,12 +159,18 @@ def run(test, params, env):
                 tap_index = process.run(cmd_get_tap, shell=True, verbose=True).stdout_text.strip()
                 device_path = '/dev/tap{}'.format(tap_index)
                 logging.debug('device_path: {}'.format(device_path))
-                # Change owner and group for device
-                process.run('chown {user} {path};chgrp {user} {path}'.format(
-                    user=up_user, path=device_path),
-                    shell=True, verbose=True)
-                # Check if device owner is changed to unprivileged user
-                process.run('ls -l %s' % device_path, shell=True, verbose=True)
+                # Change owner and group for device and ensure it is changed successfully
+
+                def ensure_permission_ready():
+                    """
+                    check if the permission set ready
+                    """
+                    process.run('chown {user} {path};chgrp {user} {path}'.format(
+                        user=up_user, path=device_path), shell=True, verbose=True)
+                    res = process.run('ls -l %s' % device_path, shell=True, verbose=True)
+                    return "%s %s" % (up_user, up_user) in str(res)
+
+                utils_misc.wait_for(ensure_permission_ready, timeout=10)
 
             # Modify interface
             all_devices = upu_vmxml.devices
