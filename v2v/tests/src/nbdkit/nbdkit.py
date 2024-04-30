@@ -645,6 +645,45 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             if size == '256' and not re.search('could not parse number', cmd.stderr_text):
                 test.fail('fail to test ones plugin with byte=256')
 
+    def test_evil_filter():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        option_evil = params_get(params, "option_evil")
+        option_evil_probability = params_get(params, "option_evil_probability")
+        option_evil_seed = params_get(params, "option_evil_seed")
+        option_evil_stuck_probability = params_get(params, "option_evil_stuck_probability")
+        for mode in list(option_evil.split(' ')):
+            for probability in list(option_evil_probability.split(' ')):
+                for seed in list(option_evil_seed.split(' ')):
+                    for stuck_probability in list(option_evil_stuck_probability.split(' ')):
+                        cmd = process.run("nbdkit --filter=evil file %s evil=%s evil-probability=%s evil-seed=%s "
+                                          "evil-stuck-probability=%s --run 'nbdcopy -p $uri null:'" %
+                                          (image_path, mode, probability, seed, stuck_probability),
+                                          shell=True, ignore_status=True)
+                        output = cmd.stdout_text + cmd.stderr_text
+                        if re.search('nbdkit.*error', output):
+                            test.fail('fail to test evil filter')
+
+    def test_tar_filter():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        process.run('cd %s ; tar cvf latest-rhel9-image.tar latest-rhel9.img' % tmp_path, shell=True)
+        option_tar_limit = params_get(params, "option_tar_limit")
+        option_tar_entry = params_get(params, "option_tar_entry")
+        for limit in list(option_tar_limit.split(' ')):
+            for entry in list(option_tar_entry.split(' ')):
+                cmd = process.run(" nbdkit file %s/latest-rhel9-image.tar --filter=tar tar-entry=%s tar-limit=%s "
+                                  "--run 'nbdcopy -p $uri null:'" % (tmp_path, entry, limit), shell=True, ignore_status=True)
+                output = cmd.stdout_text + cmd.stderr_text
+                if entry == 'latest-rhel9.img' and re.search('nbdkit.*error', output):
+                    test.fail('fail to test tar filter')
+                elif entry != 'latest-rhel9.img' and not re.search('nbdkit.*error', output):
+                    test.fail('fail to test tar filter')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -710,5 +749,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         partition_sectorsize()
     elif checkpoint == 'ones_byte':
         ones_byte()
+    elif checkpoint == 'test_evil_filter':
+        test_evil_filter()
+    elif checkpoint == 'test_tar_filter':
+        test_tar_filter()
     else:
         test.error('Not found testcase: %s' % checkpoint)
