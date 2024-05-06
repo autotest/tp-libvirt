@@ -40,6 +40,23 @@ class NumaTest(object):
         self.online_nodes_withmem = self.host_numa_info.get_online_nodes_withmem().copy()
         self.virsh_dargs = {'ignore_status': False, 'debug': True}
 
+    def get_available_numa_nodes(self, expect_node_free_mem_min=None):
+        """
+        Get availbe host numa nodes accroding to min free memory
+
+        :param expect_node_free_mem_min: int, the minimum of the node free memory
+        :return: list, available host numa nodes
+        """
+        expected_numa_list = self.online_nodes_withmem.copy()
+        if expect_node_free_mem_min:
+            for a_node in self.online_nodes_withmem:
+                node_free_mem = self.host_numa_info.read_from_node_meminfo(a_node, 'MemFree')
+                if int(node_free_mem) < expect_node_free_mem_min:
+                    expected_numa_list.remove(a_node)
+                    self.test.log.debug("Host numa node '%s' free memory is %s"
+                                        "which doesn't meet requirement", a_node, node_free_mem)
+        return expected_numa_list
+
     def check_numa_nodes_availability(self, expect_nodes_num=2, expect_node_free_mem_min=None):
         """
         Check if the host numa nodes are available for testing
@@ -54,20 +71,17 @@ class NumaTest(object):
         self.test.log.debug("The number of host numa node with "
                             "memory is %s which meets the "
                             "requirement", len(self.online_nodes_withmem))
-        if expect_node_free_mem_min:
-            for a_node in self.online_nodes_withmem:
-                free_mem_min = self.host_numa_info.read_from_node_meminfo(a_node, 'MemFree')
-                if int(free_mem_min) < expect_node_free_mem_min:
-                    raise exceptions.TestError("Expect the numa node '%s' "
-                                               "free memory at least %s, "
-                                               "but found %s" % (a_node,
-                                                                 expect_node_free_mem_min,
-                                                                 free_mem_min))
-                self.test.log.debug("Host numa node '%s' free memory "
-                                    "is %s which meets the requirement", a_node, free_mem_min)
+        available_node_num = len(self.get_available_numa_nodes(expect_node_free_mem_min))
+        if available_node_num < expect_nodes_num:
+            self.test.cancel("Expect at least %s numa nodes have "
+                             "minimum free memory %s, "
+                             "but only found %s nodes" % (expect_nodes_num,
+                                                          expect_node_free_mem_min,
+                                                          available_node_num))
 
     def setup(self, expect_nodes_num=2, expect_node_free_mem_min=None):
         self.check_numa_nodes_availability(expect_nodes_num, expect_node_free_mem_min)
+        self.online_nodes_withmem = self.get_available_numa_nodes(expect_node_free_mem_min)
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.params['backup_vmxml'] = vmxml.copy()
 
