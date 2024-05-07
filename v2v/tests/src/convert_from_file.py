@@ -265,8 +265,9 @@ def run(test, params, env):
                 shutil.copy(src_dir, dest_dir)
             LOG.info('Copy ova from %s to %s', src_dir, dest_dir)
             if checkpoint == 'cpu_topology':
-                dest_ova = os.path.join(dest_dir, input_file)
-                process.run('tar xvf %s -C %s' % (dest_ova, dest_dir), shell=True)
+                ova_file = params.get('ova_file_name')
+                dest_ova = os.path.join(dest_dir, ova_file)
+                process.run('tar xvf %s -C %s' % (input_file, dest_dir), shell=True)
                 with open(dest_ova[:-1] + 'f') as fd:
                     buf = fd.read()
                 res = re.search('<rasd:ElementName>(\d+) virtual CPU', buf)
