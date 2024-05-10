@@ -19,6 +19,7 @@ def run(test, params, env):
         test.log.info(f"TEST_STEP: Check xml for node device - {dev_name}.")
         nodexml = nodedev_xml.NodedevXML.new_from_dumpxml(dev_name)
         nodedev_attrs = nodexml.fetch_attrs()
+        nodedev_attrs.update({"cap": {"chardev": nodexml.cap.get_chardev()}})
         idx = nodedev_attrs["path"][-1]
         exp_attrs = {"driver_name": "vhost_vdpa", "cap_type": "vdpa",
                      "cap": {"chardev": f"/dev/vhost-vdpa-{idx}"}}
