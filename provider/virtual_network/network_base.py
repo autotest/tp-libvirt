@@ -291,7 +291,7 @@ def get_ethtool_coalesce(iface):
     eth_out = re.sub("[\t ]+", "", eth_out)
     eth_out = re.sub("n/a", "0", eth_out)
     items = [x.split(':') for x in eth_out.splitlines() if x]
-    coalesce = {item[0]: item[1] for item in items[1:] if len(item) == 2}
+    coalesce = {item[0]: item[1].strip() for item in items[1:] if len(item) == 2}
 
     return coalesce
 
