@@ -24,10 +24,12 @@ def run(test, params, env):
     uuid = None
     chpids = None
 
+    plugmethod = params.get("plugmethod")
+
     try:
         ccw.assure_preconditions()
 
-        if vm.is_alive():
+        if vm.is_alive() and plugmethod == "coldplug":
             vm.destroy()
 
         schid, chpids = ccw.get_device_info(devid)
@@ -37,11 +39,17 @@ def run(test, params, env):
         ccw.start_device(uuid, schid)
         ccw.attach_hostdev(vm_name, uuid)
 
-        vm.start()
+        if vm.is_dead() and plugmethod == "coldplug":
+            vm.start()
         session = vm.wait_for_login()
 
         if not ccw.read_write_operations_work(session, chpids):
             test.fail("Read/write operation failing inside guest.")
+
+        if vm.is_alive() and plugmethod == "coldplug":
+            vm.destroy()
+
+        ccw.detach_hostdev(vm_name, uuid)
 
     finally:
         if uuid:
