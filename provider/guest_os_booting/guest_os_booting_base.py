@@ -22,11 +22,18 @@ def get_vm(params):
     vms = params.get('vms').split()
     firmware_type = params.get('firmware_type')
     detected_distro = distro.detect()
-    os_type_dict = {
-        ('ovmf' if any([vm_xml.VMXML.new_from_dumpxml(v).os.fetch_attrs().
-                        get('os_firmware') == "efi", vm_xml.VMXML.
-                        new_from_dumpxml(v).os.fetch_attrs().get('nvram')])
-            else 'seabios'): v for v in vms}
+    os_type_dict = {}
+    for _vm in vms:
+        if os_type_dict.get("seabios") and os_type_dict.get("ovmf"):
+            break
+        vm_os_attrs = vm_xml.VMXML.new_from_dumpxml(_vm).os.fetch_attrs()
+        is_ovmf = any([vm_os_attrs.get('os_firmware') == "efi", vm_os_attrs.get('nvram')])
+        if is_ovmf:
+            if not os_type_dict.get("ovmf"):
+                os_type_dict["ovmf"] = _vm
+        elif not os_type_dict.get("seabios"):
+            os_type_dict["seabios"] = _vm
+    LOG.debug(f"VMS: {os_type_dict}")
     if not firmware_type:
         LOG.debug("Get default vm")
         if detected_distro.name == 'rhel':
