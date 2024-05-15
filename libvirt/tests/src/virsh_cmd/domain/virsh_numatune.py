@@ -197,8 +197,7 @@ def dynamic_node_replacement(params, numa_info, test_obj):
     numa_nodeset_format = params.get('numa_nodeset')
     dynamic_nodeset = params.get('dynamic_nodeset', 'no') == 'yes'
     if dynamic_nodeset and 'numa_nodeset' in params:
-        params['numa_nodeset'] = libvirt_numa.parse_numa_nodeset_to_str(numa_nodeset_format,
-                                                                        node_list)
+        params['numa_nodeset'] = libvirt_numa.convert_all_nodes_to_string(node_list)
 
         logging.debug('The parameter "numa_nodeset" from config file is going to be replaced by: {} '
                       'available on this system'.format(params['numa_nodeset']))
