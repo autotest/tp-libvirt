@@ -179,7 +179,7 @@ def verify_cgroup(test_obj):
     """
     mem_mode = test_obj.params.get('mem_mode')
     nodeset = numa_base.convert_to_string_with_dash(test_obj.params.get('nodeset'))
-    online_nodes = libvirt_numa.parse_numa_nodeset_to_str('x-y', test_obj.online_nodes)
+    online_nodes = libvirt_numa.convert_all_nodes_to_string(test_obj.online_nodes)
     vm_pid = test_obj.vm.get_pid()
     cg = libvirt_cgroup.CgroupTest(vm_pid)
     surfix = 'emulator/cpuset.mems' if cg.is_cgroup_v2_enabled() else 'cpuset.mems'
