@@ -684,6 +684,13 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                 elif entry != 'latest-rhel9.img' and not re.search('nbdkit.*error', output):
                     test.fail('fail to test tar filter')
 
+    def check_curl_time_option():
+        image_url = params_get(params, 'external_image_url')
+        cmd = process.run("nbdkit -rvf -U - curl %s -D curl.times=1 -D curl.verbose=1 -D curl.verbose.ids=1 "
+                          "--run 'nbdcopy -p $uri null:'" % image_url, shell=True, ignore_status=True)
+        if not re.search(r'nbdkit: debug: times .*-D curl.times=1.*', cmd.stderr_text):
+            test.fail('fail to test curl.time option')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -753,5 +760,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_evil_filter()
     elif checkpoint == 'test_tar_filter':
         test_tar_filter()
+    elif checkpoint == 'check_curl_time_option':
+        check_curl_time_option()
     else:
         test.error('Not found testcase: %s' % checkpoint)
