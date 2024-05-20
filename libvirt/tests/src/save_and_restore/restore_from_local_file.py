@@ -57,7 +57,7 @@ def setup_bypass_cache(check_cmd, test):
     :param test: test instance
     :return: subprocess instance to run check command
     """
-    sm = software_manager.SoftwareManager()
+    sm = software_manager.manager.SoftwareManager()
     if not sm.check_installed('lsof'):
         test.error("Need to install lsof on host")
     sp = process.SubProcess(check_cmd, shell=True)
