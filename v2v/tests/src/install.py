@@ -23,7 +23,7 @@ def run(test, params, env):
     minor_failure = False
     minor_failure_reasons = []
 
-    sm = software_manager.SoftwareManager()
+    sm = software_manager.manager.SoftwareManager()
 
     for name in params.get("installers", "").split():
         installer_obj = installer.make_installer(name, params, test)
