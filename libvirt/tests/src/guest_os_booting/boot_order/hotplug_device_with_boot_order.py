@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.filesystem import Filesystem
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_test import libvirt
 
 from provider.virtual_disk import disk_base
 
@@ -20,6 +21,7 @@ def run(test, params, env):
     3) Check the dumpxml.
     4) Hot-unplug the device.
     """
+
     def prepare_device_xml(vm_xml, device_type):
         """
         Prepare the hot-plugged device xml.
@@ -28,11 +30,12 @@ def run(test, params, env):
         :params device_type: the device type
         :return: tuple, (device_xml, image_path) for the attached device
         """
-        image_path = ''
+        image_path = ""
         # Need to use shared memory for filesystem device
         if device_type == "filesystem_device":
-            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared",
-                                               hpgs=False)
+            vm_xml.VMXML.set_memoryBacking_tag(
+                vm_name, access_mode="shared", hpgs=False
+            )
             device_xml = Filesystem()
             device_xml.setup_attrs(**device_dict)
         else:
@@ -50,14 +53,16 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         test.log.debug(f"The current guest xml is: {vmxml}")
         if device_type == "filesystem_device":
-            device_status = vmxml.devices.by_device_tag('filesystem')
+            device_status = vmxml.devices.by_device_tag("filesystem")
         else:
             device_status = vm_xml.VMXML.check_disk_exist(vm_name, image_path)
         if exist:
             if not device_status:
                 test.fail(f"No {device_type} in guest xml after hotplug.")
             # To make sure the boot order is also in device xml
-            libvirt_vmxml.check_guest_xml_by_xpaths(vmxml, order_xpath, ignore_status=False)
+            libvirt_vmxml.check_guest_xml_by_xpaths(
+                vmxml, order_xpath, ignore_status=False
+            )
         else:
             if device_status:
                 test.fail(f"The {device_type} isn't detached successfully.")
@@ -66,9 +71,10 @@ def run(test, params, env):
     device_type = params.get("device_type")
     target_dev = params.get("target_dev")
     boot_order = params.get("boot_order", "1")
+    expected_error = params.get("expected_error", None)
     device_dict = eval(params.get("device_dict"))
     order_xpath = eval(params.get("order_xpath"))
-    virsh_dargs = {'debug': True, 'ignore_status': False}
+    virsh_dargs = {"debug": True, "ignore_status": False}
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -85,8 +91,15 @@ def run(test, params, env):
         device_xml, image_path = prepare_device_xml(vm_xml, device_type)
         if not vm.is_alive():
             virsh.start(vm_name, **virsh_dargs)
+
         vm.wait_for_login()
-        virsh.attach_device(vm_name, device_xml.xml, **virsh_dargs)
+        ret = virsh.attach_device(
+            vm_name, device_xml.xml, debug=True, ignore_status=True
+        )
+        libvirt.check_result(ret, expected_fails=expected_error)
+        if expected_error:
+            return
+
         check_dumpxml(device_type, image_path, exist=True)
 
         test.log.info(f"STEP3: Hot-unplug the {device_type}.")
