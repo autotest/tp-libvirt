@@ -5,11 +5,17 @@ from avocado.core import exceptions
 from avocado.utils import cpu
 from avocado.utils import memory as avocado_mem
 
+from virttest import virsh
 from virttest import libvirt_version
 from virttest import utils_misc
-
 from virttest.libvirt_xml.devices import memory
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 from virttest.utils_version import VersionInterval
+from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_libvirt import libvirt_misc
+
+virsh_dargs = {"ignore_status": False, "debug": True}
 
 
 def convert_data_size(current_size, dest_unit="KiB"):
@@ -149,3 +155,73 @@ def adjust_memory_size(params):
         params.update({'block_size': default_pagesize_KiB})
         params.update({'request_size': default_pagesize_KiB})
         params.update({'target_size': default_pagesize_KiB*2})
+
+
+def define_guest_with_memory_device(params, mem_attr_list, vm_attrs=None):
+    """
+    Define guest with specified memory device.
+
+    :param params: a dict for parameters.
+    :param mem_attr_list: memory device attributes list.
+    :param vm_attrs: basic vm attributes to define.
+    """
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(params.get("main_vm"))
+    if vm_attrs:
+        vmxml.setup_attrs(**vm_attrs)
+
+    if not isinstance(mem_attr_list, list):
+        mem_attr_list = [mem_attr_list]
+    for mem in mem_attr_list:
+        memory_object = libvirt_vmxml.create_vm_device_by_type('memory', mem)
+        vmxml.devices = vmxml.devices.append(memory_object)
+    vmxml.sync()
+
+
+def plug_memory_and_check_result(test, params, mem_dict, operation='attach',
+                                 expected_error='', expected_event='', **kwargs):
+    """
+    Hot plug or hot unplug memory and check event.
+
+    :param test: test object.
+    :param params: dictionary with the test parameters.
+    :param mem_dict: the memory dict to plug.
+    :param operation: the operation of plug or unplug.
+    :param expected_error: expected error after plug or unplug.
+    :param expected_event: expected event for plug or unplug.
+    """
+    vm_name = params.get('main_vm')
+    plug_dimm = libvirt_vmxml.create_vm_device_by_type('memory', mem_dict)
+
+    wait_event = True if expected_event else False
+    if operation == "attach":
+        res = virsh.attach_device(vm_name, plug_dimm.xml, wait_for_event=wait_event,
+                                  event_type=expected_event, debug=True, **kwargs)
+    elif operation == "detach":
+        res = virsh.detach_device(vm_name, plug_dimm.xml, wait_for_event=wait_event,
+                                  event_type=expected_event, debug=True, **kwargs)
+
+    if expected_error:
+        libvirt.check_result(res, expected_fails=expected_error)
+    else:
+        libvirt.check_exit_status(res)
+
+
+def check_dominfo(vm, test, expected_max, expected_used):
+    """
+    Check Max memory value and Used memory in virsh dominfo result.
+
+    :param vm: vm object.
+    :param test: test object.
+    :param params: dictionary with the test parameters.
+    :param expected_max: expected Max memory in virsh dominfo.
+    :param expected_used: expected Used memory in virsh dominfo.
+    """
+    result = virsh.dominfo(vm.name, **virsh_dargs).stdout_text.strip()
+
+    dominfo_dict = libvirt_misc.convert_to_dict(
+        result, pattern=r'(\S+ \S+):\s+(\S+)')
+    if dominfo_dict["Max memory"] != expected_max:
+        test.fail("Memory value should be %s " % expected_max)
+    if dominfo_dict["Used memory"] != expected_used:
+        test.fail("Current memory should be %s " % expected_used)
+    test.log.debug("Check virsh dominfo successfully.")
