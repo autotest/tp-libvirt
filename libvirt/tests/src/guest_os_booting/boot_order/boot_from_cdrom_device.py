@@ -1,4 +1,5 @@
 import os
+import platform
 
 from avocado.utils import download
 from avocado.utils import process
@@ -57,9 +58,10 @@ def update_vm_xml(vm, params, cdrom_attrs_list):
         vm_os.del_boots()
         vmxml.os = vm_os
     if "yes" == params.get("check_bootable_iso", "no"):
-        os_attrs.update({'bios_useserial': 'yes',
-                         'bootmenu_enable': 'yes',
+        os_attrs.update({'bootmenu_enable': 'yes',
                          'bootmenu_timeout': '3000'})
+        if platform.machine() == "x86_64":
+            os_attrs.update({'bios_useserial': 'yes'})
         vmxml.setup_attrs(os=os_attrs)
 
     index = 0
