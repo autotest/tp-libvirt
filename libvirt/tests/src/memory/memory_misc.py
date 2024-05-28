@@ -14,6 +14,8 @@ from virttest.libvirt_xml.devices.memory import Memory
 from virttest.staging import utils_memory
 from virttest.utils_test import libvirt
 
+from provider.memory import memory_base
+
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
 
@@ -176,6 +178,10 @@ def run(test, params, env):
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
         if case == 'no_mem_backing':
+            default_page_size = int(params.get('default_page_size'))
+            default_hugepage_size = params.get('default_hugepage_size')
+            memory_base.check_mem_page_sizes(
+                test, pg_size=default_page_size, hp_size=int(default_hugepage_size))
             vm_mem_size = vmxml.memory
             set_hugepage(vm_mem_size)
 
@@ -190,8 +196,11 @@ def run(test, params, env):
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
         if case == 'nodeset_specified':
+            default_page_size = int(params.get('default_page_size'))
             pagesize = int(params.get('pagesize'))
             pagenum = int(params.get('pagenum'))
+            memory_base.check_mem_page_sizes(
+                test, pg_size=default_page_size, hp_list=[pagesize])
             hp_cfg = test_setup.HugePageConfig(params)
             params['page_num_bk'] = hp_cfg.get_kernel_hugepages(pagesize)
             test.log.debug('Current number of pages: %s', params['page_num_bk'])
@@ -211,6 +220,9 @@ def run(test, params, env):
             # Setup hugepage
             pagesize = int(params.get('pagesize'))
             pagenum = int(params.get('pagenum'))
+            default_page_size = int(params.get('default_page_size'))
+            memory_base.check_mem_page_sizes(
+                test, pg_size=default_page_size, hp_size=pagesize)
             setup_hugepages(pagesize, pagenum * 2)
             hp_cfg = test_setup.HugePageConfig(params)
 
@@ -246,12 +258,16 @@ def run(test, params, env):
             test.log.debug(virsh.dumpxml(vm_name).stdout_text)
 
         if case == 'mount_hp_running_vm':
+            default_page_size = int(params.get('default_page_size'))
             pagesize = int(params.get('pagesize'))
             mount_pagesize = int(params.get('mount_pagesize'))
+            mem_device_size = int(params.get('mem_device_size'))
+            memory_base.check_mem_page_sizes(
+                test, pg_size=default_page_size, hp_size=pagesize, hp_list=[mount_pagesize])
             vm_mem_size = vmxml.memory
             hp_cfg = test_setup.HugePageConfig(params)
             hp_cfg.set_kernel_hugepages(pagesize, vm_mem_size // pagesize)
-            hp_cfg.set_kernel_hugepages(mount_pagesize, vm_mem_size // mount_pagesize)
+            hp_cfg.set_kernel_hugepages(mount_pagesize, mem_device_size // mount_pagesize)
             set_vmxml(vmxml, params)
             _setup_mbxml()
             vmxml.sync()
@@ -414,7 +430,7 @@ def run(test, params, env):
             # e.g. 100MiB less than free memory size
             free_mem = utils_memory.freememtotal(session)
             test.log.debug('Free mem on vm: %d kB', free_mem)
-            session.cmd('memhog %dM' % (free_mem // 1024 - 100))
+            session.cmd('memhog %dM' % (free_mem // 1024 * 2 // 3))
             vm.destroy()
             utils_libvirtd.Libvirtd('virtqemud').restart()
             virsh.start(vm_name, **VIRSH_ARGS)
@@ -436,7 +452,8 @@ def run(test, params, env):
         if case == 'mount_hp_running_vm':
             mount_path = params.get('mount_path')
             utils_disk.umount('hugetlbfs', mount_path, 'hugetlbfs')
-            os.rmdir(mount_path)
+            if os.path.exists(mount_path):
+                os.rmdir(mount_path)
 
     def run_test_edit_mem(case):
         """
