@@ -164,10 +164,7 @@ def verify_host_numa_memory_allocation(test_obj):
             else:
                 _check_values(True, 506, 506)
         elif not single_host_node and mem_mode in ['strict', 'restrictive']:
-            if platform.machine() == 'aarch64':
-                _check_values(True, 0, 0, 4)
-            else:
-                _check_values(True, 0, 0, 1012)
+            _check_values(True, 0, 0, int(mem_size/psize))
     test_obj.test.log.debug("Step: verify host numa node memory allocation PASS")
 
 
