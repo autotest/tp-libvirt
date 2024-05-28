@@ -22,6 +22,8 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_memory
 from virttest.staging import service
 
+from provider.memory import memory_base
+
 
 def run(test, params, env):
     """
@@ -33,7 +35,8 @@ def run(test, params, env):
         Set hugepage on host and prepare guest
         """
         test.log.info("TEST_SETUP: Set hugepage on host and prepare guest")
-
+        memory_base.check_mem_page_sizes(
+            test, default_page_size, int(set_pagesize_2), [int(set_pagesize_1)])
         hp_cfg = test_setup.HugePageConfig(params)
         if case == "customized":
             process.run("umount %s" % default_path, ignore_status=True)
@@ -162,6 +165,7 @@ def run(test, params, env):
     default_path = params.get("default_path")
     consume_value = int(params.get("consume_value"))
 
+    default_page_size = int(params.get('default_page_size'))
     mount_pagesize = params.get("mount_pagesize", '{}')
     set_pagesize_1 = params.get("set_pagesize_1")
     set_pagenum_1 = params.get("set_pagenum_1")
