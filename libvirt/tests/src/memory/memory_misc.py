@@ -514,38 +514,48 @@ def run(test, params, env):
             vm.start()
             session = vm.wait_for_login()
 
-            # Get info from virsh dommemstat command
-            dommemstat_output = virsh.dommemstat(
-                vm_name, debug=True).stdout_text.strip()
-            dommemstat = {}
-            for line in dommemstat_output.splitlines():
-                k, v = line.strip().split(' ')
-                dommemstat[k] = v
+            def _check():
+                """
+                Compare dommemstat on host with /proc/meminfo in guest
+                """
 
-            # Get info from vm
-            meminfo_keys = ['Buffers', 'Cached', 'SwapCached']
-            meminfo = {k: utils_misc.get_mem_info(session, k) for k in meminfo_keys}
+                # Get info from virsh dommemstat command
+                dommemstat_output = virsh.dommemstat(
+                    vm_name, debug=True).stdout_text.strip()
+                dommemstat = {}
+                for line in dommemstat_output.splitlines():
+                    k, v = line.strip().split(' ')
+                    dommemstat[k] = v
 
-            # from kernel commit: Buffers + Cached + SwapCached = disk_caches
-            tmp_sum = meminfo['Buffers'] + meminfo['Cached'] + meminfo['SwapCached']
-            test.log.info('Buffers %d + Cached %d + SwapCached %d = %d kb',
-                          meminfo['Buffers'],
-                          meminfo['Cached'],
-                          meminfo['SwapCached'],
-                          tmp_sum
-                          )
+                # Get info from vm
+                meminfo_keys = ['Buffers', 'Cached', 'SwapCached']
+                meminfo = {k: utils_misc.get_mem_info(session, k) for k in meminfo_keys}
 
-            # Compare and make sure error is within allowable range
-            test.log.info('disk_caches is %s', dommemstat['disk_caches'])
-            allow_error = int(params.get('allow_error', 15))
-            actual_error = (tmp_sum - int(dommemstat['disk_caches'])) / tmp_sum * 100
-            test.log.debug('Actual error: %.2f%%', actual_error)
-            if actual_error > allow_error:
-                test.fail('Buffers + Cached + SwapCached (%d) '
-                          'should be close to disk_caches (%s). '
-                          'Allowable error: %.2f%%' %
-                          (tmp_sum, dommemstat['disk_caches'], allow_error)
-                          )
+                # from kernel commit: Buffers + Cached + SwapCached = disk_caches
+                tmp_sum = meminfo['Buffers'] + meminfo['Cached'] + meminfo['SwapCached']
+                test.log.info('Buffers %d + Cached %d + SwapCached %d = %d kb',
+                              meminfo['Buffers'],
+                              meminfo['Cached'],
+                              meminfo['SwapCached'],
+                              tmp_sum
+                             )
+
+                # Compare and make sure error is within allowable range
+                test.log.info('disk_caches is %s', dommemstat['disk_caches'])
+                allow_error = int(params.get('allow_error', 15))
+                actual_error = (tmp_sum - int(dommemstat['disk_caches'])) / tmp_sum * 100
+                test.log.debug('Actual error: %.2f%%', actual_error)
+                if actual_error > allow_error:
+                    test.log.info('Buffers + Cached + SwapCached (%d) '
+                                  'should be close to disk_caches (%s). '
+                                  'Allowable error: %.2f%%' %
+                                  (tmp_sum, dommemstat['disk_caches'], allow_error)
+                                 )
+                    return False
+                return True
+            no_error = utils_misc.wait_for(_check, step=2, timeout=30)
+            if not no_error:
+                test.fail("disk_cache incorrect, please check logs")
 
     def setup_test_xml_check(case):
         """
