@@ -7,6 +7,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -332,10 +333,9 @@ def run(test, params, env):
     if not vm.is_alive():
         vm.start()
     session = vm.wait_for_login()
-    if session.cmd_status('dmidecode'):
-        # The physical memory size is in vm xml, use it when dmidecode not
-        # supported
-        unusable_mem = int(vmxml.max_mem) - get_vm_usable_mem(session)
+    if session.cmd_status('dmidecode') and not utils_package.package_install("dmidecode", session):
+        # if fail to install dmidecode then use memory size in vm xml
+        unusable_mem = int(vmxml.memory) - get_vm_usable_mem(session)
     else:
         unusable_mem = vm_unusable_mem(session)
     original_outside_mem = vm.get_used_mem()
