@@ -585,6 +585,7 @@ mdev
 mdevctl
 mellanox
 mem
+memoryBacking
 mems
 memballoon
 memhog
