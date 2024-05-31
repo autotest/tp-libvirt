@@ -989,10 +989,11 @@ def check_qemu_command_line(params):
     :param params: dict for parameters
     """
     check_qemu_pattern = params.get('check_qemu_pattern')
+    expect_exist = eval(params.get('expect_exist', 'True'))
     if check_qemu_pattern:
         logging.debug("Checking qemu command line with "
                       "pattern:%s", check_qemu_pattern)
-        libvirt.check_qemu_cmd_line(check_qemu_pattern)
+        libvirt.check_qemu_cmd_line(check_qemu_pattern, expect_exist=expect_exist)
 
 
 def handle_auto_filled_items(given_graphic_attrs, vm, params):
@@ -1590,6 +1591,17 @@ def cleanup(params):
     libvirtd.restart()
 
 
+def is_enable_fips():
+    """
+    Check FIPS status
+
+    :param return: True or False, True for enable FIPS
+    """
+    cmd = "cat /proc/sys/crypto/fips_enabled"
+    ret = process.run(cmd, shell=True)
+    return True if ret.stdout_text.strip() else False
+
+
 def run(test, params, env):
     """
     Test of libvirt SPICE related features.
@@ -1647,6 +1659,11 @@ def run(test, params, env):
     insecure_channels = params.get("insecure_channels", "not_set")
     autoport = params.get("spice_autoport", "yes")
     spice_tls = params.get("spice_tls", "not_set")
+    check_fips = params.get("check_fips", "no") == 'yes'
+
+    if check_fips:
+        if not is_enable_fips():
+            test.cancel("This test need to disable FIPS.")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
