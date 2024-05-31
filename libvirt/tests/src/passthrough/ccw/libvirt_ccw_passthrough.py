@@ -1,3 +1,4 @@
+from time import sleep
 from uuid import uuid4
 
 from virttest.utils_zchannels import ChannelPaths
@@ -56,6 +57,7 @@ def run(test, params, env):
             ccw.set_override(schid)
             ccw.start_device(uuid, schid)
 
+            sleep(2)
             vm.start()
             session = vm.wait_for_login()
 
