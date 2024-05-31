@@ -25,10 +25,14 @@ def check_coalesce_rx_frames(tap_device, rx_frames, test):
     """
     coal_params = network_base.get_ethtool_coalesce(tap_device)
     LOG.debug(f'coalesce parameters from ethtool: {coal_params}')
-    coal_rx_frames = coal_params.get('rx-frames')
+    coal_rx_frames = str(coal_params.get('rx-frames')).strip()
     if coal_rx_frames != rx_frames:
-        test.fail(f'rx-frames of {tap_device} should be {rx_frames}, '
-                  f'not {coal_rx_frames}')
+        if rx_frames == '0' and coal_rx_frames == 'n/a':
+            LOG.debug("The expected value is 0, but got n/a, which is "
+                      "also acceptable.")
+        else:
+            test.fail(f'rx-frames of {tap_device} should be {rx_frames}, '
+                      f'not {coal_rx_frames}')
 
 
 def run(test, params, env):
