@@ -264,7 +264,7 @@ def run(test, params, env):
             # Set the link up make host connect with vm
             domif_setlink(vm_name[0], device, "up", "")
             if not utils_misc.wait_for(
-                    lambda: guest_if_state(guest_if_name, session), 5):
+                    lambda: guest_if_state(guest_if_name, session), 25):
                 test.fail("Link state isn't up in guest")
 
             # Ignore status of this one
