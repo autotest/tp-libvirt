@@ -422,7 +422,7 @@ class VMChecker(object):
                 verbose=False)
             short_id_all = output.stdout_text.splitlines()
             if short_id not in [os_id.strip() for os_id in short_id_all]:
-                LOG.info("Not found shourt_id '%s' on host", short_id)
+                LOG.info("Not found short_id '%s' on host", short_id)
                 long_id = _guess_long_id(short_id)
             else:
                 cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
