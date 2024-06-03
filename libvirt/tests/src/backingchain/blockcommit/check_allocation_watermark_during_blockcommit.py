@@ -1,8 +1,7 @@
-import time
+import re
 
 from avocado.utils import lv_utils
 
-from virttest import data_dir
 from virttest import utils_disk
 from virttest import utils_misc
 from virttest import virsh
@@ -13,6 +12,8 @@ from virttest.utils_test import libvirt
 
 from provider.backingchain import blockcommand_base
 from provider.virtual_disk import disk_base
+
+virsh_debug = {'debug': True, 'ignore_status': False}
 
 
 def run(test, params, env):
@@ -29,7 +30,7 @@ def run(test, params, env):
 
     def setup_test():
         """
-        Set disk
+        Set disk.
         """
         test_obj.new_image_path = disk_obj.add_vm_disk(
             disk_type, disk_dict)
@@ -49,7 +50,6 @@ def run(test, params, env):
                                       snap_num=1, extra=extra_option,
                                       snap_path=path_list[index],
                                       clean_snap_file=False)
-
             alloc_new_dict_1 = get_alloc_result()
             write_file(format_disk, "/mnt/file_%s" % index)
             format_disk = False
@@ -63,42 +63,34 @@ def run(test, params, env):
                                                            test_obj.new_dev)
         test.log.debug("After creating snaps, The xml is:\n%s", vmxml)
 
-        # Manual case requires to sleep 5 seconds and check the domstats again
-        time.sleep(5)
-        test.log.info("TEST_STEP2: Check %s keep changing "
-                      "during blockcommit.", disappear_alloc)
-        cmd = "blockcommit %s %s %s " % (vm_name, target_disk,
-                                         commit_option)
+        test.log.info("TEST_STEP2: Check %s keep changing during blockcommit.", changing_alloc)
+        alloc_value = get_alloc_result().get(changing_index)
+        cmd = "blockcommit %s %s %s " % (vm_name, target_disk, commit_option)
         virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC,
                                            auto_close=True)
         virsh_session.sendline(cmd)
         test.log.debug("blockcommit cmd: %s", cmd)
 
-        alloc_dict = {}
-        for i in range(0, 2):
-            alloc_new_dict = get_alloc_result()
-            test.log.debug('Current alloc dict is:%s, last alloc dict is :%s',
-                           alloc_new_dict, alloc_dict)
-            if alloc_new_dict.get(disappear_index) == \
-                    alloc_dict.get(disappear_index, ""):
-                test.fail("%s should keep changing during blockcommit %s." % (
-                    disappear_alloc, virsh_session.get_stripped_output()))
-            alloc_dict = alloc_new_dict
-            time.sleep(1)
+        def _alloc_changed():
+            new_alloc = get_alloc_result()
+            test.log.debug("Commit result:%s",  virsh_session.get_stripped_output())
+            test.log.debug("Currently, %s changes from %s to %s" % (
+                    changing_alloc, alloc_value, new_alloc[changing_index]))
+            return new_alloc[changing_index] != alloc_value
+
+        if not utils_misc.wait_for(_alloc_changed, timeout=120, step=0.1):
+            test.fail("%s is not changing during blockcommit in 120s." % changing_alloc)
+        test.log.debug("Checked the %s changing successfully" % changing_alloc)
 
         test.log.info("TEST_STEP3: Check %s should disappear" % disappear_alloc)
-        if utils_misc.wait_for(lambda: commit_success_msg in
-                               virsh_session.get_stripped_output(), 40, step=0.01):
-            alloc_new_dict = get_alloc_result()
-            if disappear_alloc in alloc_new_dict:
-                test.fail("The % should not be in %s" % (disappear_alloc,
-                                                         alloc_new_dict))
-        else:
-            test.log.debug("Current commit result:%s ",
-                           virsh_session.get_stripped_output())
-            test.fail("Blockcommit still not finish in 40s, "
-                      "Please control commit speed to test :%s",
-                      (virsh_session.get_stripped_output()))
+        if not utils_misc.wait_for(
+                lambda: commit_success_msg in virsh_session.get_stripped_output(),
+                30, step=0.01):
+            virsh.blockjob(vm_name, target_disk, options=" --abort", **virsh_debug)
+        alloc_new_dict = get_alloc_result()
+        if disappear_alloc in alloc_new_dict:
+            test.fail("The % should not be in %s" % (disappear_alloc,
+                                                     alloc_new_dict))
 
     def teardown_test():
         """
@@ -125,8 +117,8 @@ def run(test, params, env):
                                           disk_format="qcow2")
                 path.append(source_path)
         elif disk_type == "nfs":
-            for item in range(0, snap_nums):
-                source_path = data_dir.get_data_dir() + "/images/snap_%s" % (
+            for item in range(1, snap_nums+1):
+                source_path = params.get("nfs_mount_dir") + "/snap_%s" % (
                     item)
                 path.append(source_path)
         return path
@@ -142,8 +134,7 @@ def run(test, params, env):
         if format_disk:
             cmd = "mkfs.ext4 /dev/%s;mount /dev/%s /mnt" % (target_disk, target_disk)
             session.cmd_status_output(cmd)
-        utils_disk.dd_data_to_vm_disk(session, file_name, bs='1M',
-                                      count='50')
+        utils_disk.dd_data_to_vm_disk(session, file_name, bs=bs, count=count)
         session.close()
 
     def get_alloc_result():
@@ -165,14 +156,14 @@ def run(test, params, env):
     disk_dict = eval(params.get('disk_dict', '{}'))
     target_disk = params.get('target_disk')
     commit_option = params.get('commit_option')
-    disappear_index = params.get('disappear_index')
     disappear_alloc = params.get('disappear_alloc')
+    changing_index = params.get('changing_index')
+    changing_alloc = params.get('changing_alloc')
     commit_success_msg = params.get('commit_success_msg')
     extra_option = params.get('extra_option')
     disk_type = params.get('disk_type')
     domstats_option = params.get('domstats_option')
     snap_nums = int(params.get('snap_nums'))
-    vg_name, lv_name, lv_size = 'vg0', 'lv', "200M"
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -180,7 +171,10 @@ def run(test, params, env):
 
     test_obj = blockcommand_base.BlockCommand(test, vm, params)
     disk_obj = disk_base.DiskBase(test, vm, params)
-
+    disk_obj.disk_size = "1G"
+    vg_name = disk_obj.vg_name
+    lv_name, lv_size = re.findall(r"\D+", disk_obj.lv_name)[0], params.get("lv_size")
+    bs, count = params.get("write_file_bs"), params.get("write_file_count")
     try:
         setup_test()
         run_test()
