@@ -1006,6 +1006,8 @@ def handle_auto_filled_items(given_graphic_attrs, vm, params):
     """
     vnc_listen_address = params.get("vnc_listen_address")
     vnc_listen_type = params.get("vnc_listen_type")
+    vnc_port = params.get("vnc_port")
+
     if vnc_listen_address == '':
         given_graphic_attrs['listen_attrs'].update({'address': '127.0.0.1'})
     elif vnc_listen_address == 'none':
@@ -1018,6 +1020,11 @@ def handle_auto_filled_items(given_graphic_attrs, vm, params):
             given_graphic_attrs['listen_attrs'].update({'address': utils_net.get_host_ip_address()})
         elif vnc_network_type == 'vnet':
             given_graphic_attrs['listen_attrs'].update({'address': params.get('vnet_address')})
+    if vnc_port and vnc_port == '0':
+        del given_graphic_attrs['port']
+        given_graphic_attrs.update({'listen_attrs': {'type': 'address'}})
+    if vnc_port and vnc_port == '65536':
+        given_graphic_attrs.update({'listen_attrs': {'type': 'address'}})
     return given_graphic_attrs
 
 
@@ -1705,6 +1712,7 @@ def run(test, params, env):
             vm.start()
             logging.debug("After starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
         except virt_vm.VMStartError as detail:
+            compare_guest_xml(vnc_graphic, vm, params, test)
             if not fail_patts:
                 test.fail(
                     "Expect VM can be started, but failed with: %s" % detail)

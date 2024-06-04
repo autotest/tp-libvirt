@@ -28,7 +28,7 @@ def run(test, params, env):
     firmware_type = params.get("firmware_type")
     loader_dict = eval(params.get("loader_dict", "{}"))
     loader_xpath = eval(params.get("loader_xpath", "[]"))
-    smm_state = params.get("smm_state", "off")
+    smm_state = params.get("smm_state")
     error_msg = params.get("error_msg")
     incorrect_loader_path = params.get("incorrect_loader_path", "")
     use_file = "yes" == params.get("use_file", "no")
@@ -40,7 +40,8 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
-        guest_os.prepare_smm_xml(vm_name, smm_state, "")
+        if smm_state:
+            guest_os.prepare_smm_xml(vm_name, smm_state, "")
         vmxml = guest_os.prepare_os_xml(vm_name, loader_dict, firmware_type)
         # stateless='yes' only use for AMD test, so here we only check the dumpxml for it to avoid the machine issue
         if stateless:

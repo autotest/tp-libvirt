@@ -27,7 +27,7 @@ def try_set_selinux_label(session):
 
     :param session: VM console session
     """
-    session.cmd_output("setsebool -P virt_qemu_ga_read_nonsecurity_files on")
+    session.cmd_output("setsebool -P virt_qemu_ga_read_nonsecurity_files on", timeout=120)
 
 
 def run(test, params, env):
@@ -197,7 +197,7 @@ def run(test, params, env):
         def _trim_completed():
             """
             Do empty fstrim check
-            :return: True of False
+            :return: True or False
             """
             cmd_result = virsh.domfstrim(vm_name, minimum, mountpoint, options,
                                          unprivileged_user=unprivileged_user,

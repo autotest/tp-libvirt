@@ -11,6 +11,8 @@ from virttest.utils_test import libvirt
 from provider.interface import interface_base
 from provider.virtual_network import network_base
 
+import time
+
 VIRSH_ARGS = {"ignore_status": False, "debug": True}
 
 
@@ -75,6 +77,7 @@ def run(test, params, env):
             if exp_link_state == test_states[-1][0]:
                 virsh_ins.domif_setlink(
                     vm_name, iface_mac, exp_domiflik_state, **VIRSH_ARGS)
+                time.sleep(3)
             link_info = virsh_ins.domif_getlink(
                 vm_name, iface_mac, **VIRSH_ARGS).stdout_text
             if exp_domiflik_state not in link_info:

@@ -4,7 +4,6 @@ import re
 import uuid
 import shutil
 import tempfile
-import ovirtsdk4
 import xml.etree.ElementTree as ET
 
 from virttest import data_dir
@@ -750,6 +749,7 @@ def run(test, params, env):
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
         if 'ovirtsdk4_pkg' in checkpoint:
+            import ovirtsdk4
             ovirt4_path = os.path.dirname(ovirtsdk4.__file__)
             dst_ovirt4_path = ovirt4_path + '.bak'
             os.rename(ovirt4_path, dst_ovirt4_path)

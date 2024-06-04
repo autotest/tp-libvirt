@@ -2,6 +2,7 @@ import os
 import time
 
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import utils_disk
 from virttest import virsh
 
@@ -311,6 +312,7 @@ def run(test, params, env):
     2.Perform test operation and verify checkpoints
     3.Recover test environment
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 

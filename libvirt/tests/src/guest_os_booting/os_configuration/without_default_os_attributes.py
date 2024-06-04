@@ -2,6 +2,8 @@
 #   SPDX-License-Identifier: GPL-2.0
 #   Author: Meina Li <meili@redhat.com>
 
+import platform
+
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -20,6 +22,7 @@ def run(test, params, env):
     vm_name = guest_os.get_vm(params)
     firmware_type = params.get("firmware_type")
     os_dict = eval(params.get("os_dict"))
+    host_arch = platform.machine()
     os_xpath = eval(params.get("os_xpath"))
 
     vm = env.get_vm(vm_name)

@@ -21,6 +21,7 @@ from virttest.utils_libvirt import libvirt_memory
 from virttest.utils_libvirt import libvirt_misc
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
+from virttest.staging import utils_memory
 
 
 from provider.numa import numa_base
@@ -77,7 +78,7 @@ def verify_host_numa_memory_allocation(test_obj, check_N0=False):
     :param test_obj: NumaTest object
     """
     mem_size = get_memory_in_vmxml(test_obj)
-    kernelpagesize_kB = test_obj.params.get('kernelpagesize_kB')
+    kernelpagesize_kB = utils_memory.getpagesize()
     out_numa_maps = numa_base.get_host_numa_memory_alloc_info(mem_size)
     all_nodes = test_obj.online_nodes_withmem
     N0_value = re.findall('N%s=(\d+)' % all_nodes[0], out_numa_maps)
