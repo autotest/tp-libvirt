@@ -24,10 +24,11 @@ from virttest import virsh
 from virttest.staging import utils_memory
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_config import LibvirtQemuConfig
+from virttest.utils_libvirt.libvirt_filesystem import check_idmap_xml_filesystem_device
 from virttest.utils_libvirt.libvirt_unprivileged import get_unprivileged_vm
 from virttest.utils_libvirt.libvirt_vmxml import create_vm_device_by_type
 
-LOG = logging.getLogger('avocado.' + __name__)
+LOG = logging.getLogger("avocado." + __name__)
 allow_all = stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO
 
 unpr_virsh = ""
@@ -61,13 +62,15 @@ def get_unprivileged_vms():
         "password": _params.get("password"),
     }
 
-    vms = [get_unprivileged_vm(vm_name, test_user, test_passwd, **unpr_vm_args)
-           for vm_name in vm_names]
+    vms = [
+        get_unprivileged_vm(vm_name, test_user, test_passwd, **unpr_vm_args)
+        for vm_name in vm_names
+    ]
 
     for vm_name in vm_names:
         vmxmls[vm_name] = VMXML.new_from_inactive_dumpxml(
-                vm_name,
-                virsh_instance=unpr_virsh,
+            vm_name,
+            virsh_instance=unpr_virsh,
         )
 
     backupxmls = [vmxmls[name].copy() for name in vmxmls]
@@ -83,8 +86,7 @@ def _initialize_unpr_virsh():
     unpr_virsh = virsh.VirshPersistent(uri=unpr_uri, safe=True)
 
     host_session = ShellSession("su")
-    remote.VMManager.set_ssh_auth(host_session, "localhost",
-                                  test_user, test_passwd)
+    remote.VMManager.set_ssh_auth(host_session, "localhost", test_user, test_passwd)
     host_session.close()
 
 
@@ -126,12 +128,11 @@ def configure_hugepages_for_unprivileged_user(mem):
     huge_pages_num = 0
     huge_pages_num += mem // host_hp_size + extra_hugepages
     utils_memory.set_num_huge_pages(huge_pages_num)
-    process.run(f"mkdir {hugepages_user_path}",
-                ignore_status=False)
-    process.run(f"mount -t hugetlbfs hugetlbfs {hugepages_user_path}",
-                ignore_status=False)
-    process.run(f"chmod a+wrx {hugepages_user_path}",
-                ignore_status=False)
+    process.run(f"mkdir {hugepages_user_path}", ignore_status=False)
+    process.run(
+        f"mount -t hugetlbfs hugetlbfs {hugepages_user_path}", ignore_status=False
+    )
+    process.run(f"chmod a+wrx {hugepages_user_path}", ignore_status=False)
     qemu_config = LibvirtQemuConfig(user_config_path)
     qemu_config.hugetlbfs_mount = [hugepages_user_path]
     process.run(f"killall --user {test_user} virtqemud", shell=True)
@@ -167,7 +168,7 @@ def add_memory_backing():
         if vmxml.max_mem < 1024000:
             vmxml.max_mem = 1024000
         if with_hugepages:
-            configure_hugepages_for_unprivileged_user(len(vms)*vmxml.max_mem)
+            configure_hugepages_for_unprivileged_user(len(vms) * vmxml.max_mem)
         numa_no = None
         if with_numa:
             numa_no = vmxml.vcpu // vcpus_per_cell if vmxml.vcpu != 1 else 1
@@ -175,19 +176,19 @@ def add_memory_backing():
         vmxml.remove_all_device_by_type("filesystem")
 
         VMXML.set_vm_vcpus(
-                vmxml.vm_name,
-                vmxml.vcpu,
-                numa_number=numa_no,
-                virsh_instance=None,
-                vmxml=vmxml,
+            vmxml.vm_name,
+            vmxml.vcpu,
+            numa_number=numa_no,
+            virsh_instance=None,
+            vmxml=vmxml,
         )
         VMXML.set_memoryBacking_tag(
-                vmxml.vm_name,
-                access_mode="shared",
-                hpgs=with_hugepages,
-                memfd=with_memfd,
-                virsh_instance=None,
-                vmxml=vmxml,
+            vmxml.vm_name,
+            access_mode="shared",
+            hpgs=with_hugepages,
+            memfd=with_memfd,
+            virsh_instance=None,
+            vmxml=vmxml,
         )
 
         _initialize_unpr_virsh()
@@ -220,11 +221,7 @@ def cold_or_hot_plug_filesystem():
             fs = create_vm_device_by_type("filesystem", fs_dict)
             os.chmod(fs.xml, allow_all)
             unpr_virsh.attach_device(
-                vm.name,
-                fs.xml,
-                flagstr="--current",
-                debug=True,
-                ignore_status=False
+                vm.name, fs.xml, flagstr="--current", debug=True, ignore_status=False
             )
 
         if not vm.is_alive():
@@ -241,7 +238,7 @@ def check_virtiofs_idmap():
     user_info = utils_ids.get_user_ids(test_user)
     for name in vmxmls:
         for fs in vmxmls[name].get_devices("filesystem"):
-            utils_ids.check_idmap_xml_filesystem_device(user_info, fs)
+            check_idmap_xml_filesystem_device(user_info, fs)
 
 
 def mount_fs(session):
@@ -268,7 +265,9 @@ def create_file(session):
     for fs_dict in fs_dicts:
         mount_tag = fs_dict["target"]["dir"]
         mount_dir = f"/mnt/{mount_tag}"
-        session.cmd_output_safe(f"dd if=/dev/zero of={mount_dir}/testfile bs=1M count=10")
+        session.cmd_output_safe(
+            f"dd if=/dev/zero of={mount_dir}/testfile bs=1M count=10"
+        )
         session.cmd_output_safe("sync")
 
 
@@ -351,11 +350,7 @@ def cold_or_hot_unplug_filesystem():
             fs = create_vm_device_by_type("filesystem", fs_dict)
             os.chmod(fs.xml, allow_all)
             unpr_virsh.detach_device(
-                vm.name,
-                fs.xml,
-                flagstr="--current",
-                debug=True,
-                ignore_status=False
+                vm.name, fs.xml, flagstr="--current", debug=True, ignore_status=False
             )
 
         if not vm.is_alive():
