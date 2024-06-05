@@ -16,6 +16,7 @@ import pwd
 import re
 import shutil
 import stat
+import platform
 
 from avocado.utils import process
 
@@ -134,7 +135,16 @@ def setup_with_unprivileged_user(vm, params, test):
     unprivileged_boot_disk_path = os.path.join(unprivileged_boot_disk_path, os.path.basename(first_disk_source))
     disk_attrs = {'source': {'attrs': {'file': unprivileged_boot_disk_path}}}
     libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_attrs)
+    os_attrs = {
+            "loader": vmxml.os.loader,
+            "loader_readonly": vmxml.os.loader_readonly,
+            "loader_type": vmxml.os.loader_type
+            }
     vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
+    if vmxml.xmltreefile.find('features'):
+        arch = platform.machine().lower()
+        if vmxml.features.has_feature('acpi') and 'aarch64' in arch:
+            vmxml.set_os_attrs(**os_attrs)
     test.log.debug('VM XML after updating:\n%s', vmxml)
 
     test.log.debug("Step: Prepare boot disk image in unprivileged user's home directory")
