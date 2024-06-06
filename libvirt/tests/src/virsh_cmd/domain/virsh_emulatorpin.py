@@ -38,7 +38,7 @@ def get_emulatorpin_from_cgroup(params, test):
         cpuset_file = os.path.join(cpuset_path, "cpuset.cpus")
 
     try:
-        with open(cpuset_file, "rU") as f_emulatorpin_params:
+        with open(cpuset_file, "r") as f_emulatorpin_params:
             emulatorpin_params_from_cgroup = f_emulatorpin_params.readline()
         return emulatorpin_params_from_cgroup
     except IOError:
