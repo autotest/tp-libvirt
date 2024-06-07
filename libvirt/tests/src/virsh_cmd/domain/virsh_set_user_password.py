@@ -11,7 +11,7 @@ from virttest.libvirt_xml import vm_xml
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
-logging = log.getLogger('avocado.' + __name__)
+logging = log.getLogger("avocado." + __name__)
 
 
 def run(test, params, env):
@@ -52,31 +52,42 @@ def run(test, params, env):
         if status_error == "yes":
             if err_domain:
                 vm_name = err_domain
-            ret = virsh.set_user_password(vm_name, set_user_name, new_passwd,
-                                          encrypted=encrypted, option=option, debug=True)
+            ret = virsh.set_user_password(
+                vm_name,
+                set_user_name,
+                new_passwd,
+                encrypted=encrypted,
+                option=option,
+                debug=True,
+            )
             libvirt.check_result(ret, err_msg)
 
         # Normal test
         else:
             # Get guest ip address
-            session = vm.wait_for_login(timeout=30, username="root", password=ori_passwd)
+            session = vm.wait_for_login(
+                timeout=30, username="root", password=ori_passwd
+            )
             vm_mac = vm.get_virsh_mac_address()
             vm_ip = utils_net.get_guest_ip_addr(session, vm_mac)
 
             # Add user
-            if add_user:
-                cmd = " rm -f /etc/gshadow.lock /etc/subgid.lock & useradd %s" % set_user_name
+            if add_user and session.cmd_status("id -u %s" % set_user_name):
+                cmd = (
+                    " rm -f /etc/gshadow.lock /etc/subgid.lock & useradd %s"
+                    % set_user_name
+                )
                 status, output = session.cmd_status_output(cmd)
                 if status:
-                    test.error("Adding user '%s' got failed: '%s'" %
-                               (set_user_name, output))
+                    test.error(
+                        "Adding user '%s' got failed: '%s'" % (set_user_name, output)
+                    )
                 session.close()
 
             # Set the user password in vm
             if encrypted:
-                openssl_version = process.run("openssl version",
-                                              ignore_status=False)
-                if "OpenSSL 3.0." in openssl_version.stdout_text:
+                openssl_version = process.run("openssl version", ignore_status=False)
+                if "OpenSSL 3" in openssl_version.stdout_text:
                     cmd = "openssl passwd %s" % new_passwd
                 else:
                     cmd = "openssl passwd -crypt %s" % new_passwd
@@ -85,35 +96,63 @@ def run(test, params, env):
                 en_passwd = str(ret.stdout_text.strip())
                 passwd = en_passwd
 
-            ret = virsh.set_user_password(vm_name, set_user_name, passwd,
-                                          encrypted=encrypted, option=option, debug=True)
+            ret = virsh.set_user_password(
+                vm_name,
+                set_user_name,
+                passwd,
+                encrypted=encrypted,
+                option=option,
+                debug=True,
+            )
             libvirt.check_exit_status(ret)
 
             # Login with new password
             try:
-                session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, new_passwd,
-                                                r"[\#\$]\s*$", timeout=30)
+                session = remote.wait_for_login(
+                    "ssh",
+                    vm_ip,
+                    "22",
+                    set_user_name,
+                    new_passwd,
+                    r"[\#\$]\s*$",
+                    timeout=30,
+                )
                 session.close()
             except remote.LoginAuthenticationError as e:
                 logging.debug(e)
 
             # Login with old password
             try:
-                session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, ori_passwd,
-                                                r"[\#\$]\s*$", timeout=10)
+                session = remote.wait_for_login(
+                    "ssh",
+                    vm_ip,
+                    "22",
+                    set_user_name,
+                    ori_passwd,
+                    r"[\#\$]\s*$",
+                    timeout=10,
+                )
                 session.close()
             except remote.LoginAuthenticationError:
                 logging.debug("Login with old password failed as expected.")
 
             # Change the password back in VM
-            ret = virsh.set_user_password(vm_name, set_user_name, ori_passwd, False,
-                                          option=option, debug=True)
+            ret = virsh.set_user_password(
+                vm_name, set_user_name, ori_passwd, False, option=option, debug=True
+            )
             libvirt.check_exit_status(ret)
 
             # Login with the original password
             try:
-                session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, ori_passwd,
-                                                r"[\#\$]\s*$", timeout=30)
+                session = remote.wait_for_login(
+                    "ssh",
+                    vm_ip,
+                    "22",
+                    set_user_name,
+                    ori_passwd,
+                    r"[\#\$]\s*$",
+                    timeout=30,
+                )
                 session.close()
             except remote.LoginAuthenticationError as e:
                 logging.debug(e)
@@ -124,12 +163,15 @@ def run(test, params, env):
 
             # Del user
             if add_user:
-                session = vm.wait_for_login(timeout=30, username="root", password=ori_passwd)
+                session = vm.wait_for_login(
+                    timeout=30, username="root", password=ori_passwd
+                )
                 cmd = "userdel -f -r %s" % set_user_name
                 status, output = session.cmd_status_output(cmd)
                 if status:
-                    test.error("Deleting user '%s' got failed: '%s'" %
-                               (set_user_name, output))
+                    test.error(
+                        "Deleting user '%s' got failed: '%s'" % (set_user_name, output)
+                    )
                 session.close()
     finally:
         vmxml_bak.sync()
