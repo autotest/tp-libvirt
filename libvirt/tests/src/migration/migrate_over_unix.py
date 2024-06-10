@@ -46,6 +46,15 @@ def run(test, params, env):
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment.
     """
+    def get_vm_did_list(session):
+        """
+        Get the list of newly attached disks
+
+        :param session: guest console session
+        """
+        info = libvirt_disk.get_non_root_disk_names(session, ignore_status=True)
+        return [x[0] for x in info]
+
     def update_disk(vm, params):
         """
         Update disk for testing.
@@ -56,7 +65,6 @@ def run(test, params, env):
         """
         local_image_list = []
         remote_image_list = []
-        vm_did_list = []
         # Change the disk of the vm
         if storage_type == "nfs":
             libvirt.set_vm_disk(vm, params)
@@ -103,10 +111,9 @@ def run(test, params, env):
                                          session=remote_session)
 
                 remote_image_list.append(disk_path)
-                vm_did_list.append(target_dev)
 
             remote_session.close()
-        return local_image_list, remote_image_list, vm_did_list
+        return local_image_list, remote_image_list
 
     def check_socket(params):
         """
@@ -166,7 +173,6 @@ def run(test, params, env):
     mig_result = None
     local_image_list = []
     remote_image_list = []
-    vm_did_list = []
 
     if not libvirt_version.version_compare(6, 6, 0):
         test.cancel("This libvirt version doesn't support "
@@ -214,7 +220,7 @@ def run(test, params, env):
         unix_obj.conn_setup()
         unix_obj.auto_recover = True
 
-        local_image_list, remote_image_list, vm_did_list = update_disk(vm, params)
+        local_image_list, remote_image_list = update_disk(vm, params)
 
         if not vm.is_alive():
             vm.start()
@@ -224,6 +230,7 @@ def run(test, params, env):
 
         vm_session = vm.wait_for_login()
 
+        vm_did_list = get_vm_did_list(vm_session)
         for did in vm_did_list:
             utils_disk.linux_disk_check(vm_session, did)
 
@@ -265,13 +272,13 @@ def run(test, params, env):
                lambda: virsh.is_alive(vm_name, uri=dest_uri_ssh,
                                       debug=True), 60):
                 test.fail("The migrated VM should be alive!")
-            if vm_did_list:
-                if vm.serial_console is None:
-                    vm.create_serial_console()
-                vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
-                for did in vm_did_list:
-                    vm_session_after_mig.cmd(
-                        "echo mytest >> /mnt/%s1/mytest" % did)
+            if vm.serial_console is None:
+                vm.create_serial_console()
+            vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
+            vm_did_list = get_vm_did_list(vm_session_after_mig)
+            for did in vm_did_list:
+                vm_session_after_mig.cmd(
+                    "echo mytest >> /mnt/%s1/mytest" % did)
     finally:
         logging.info("Recover test environment")
         vm.connect_uri = bk_uri
