@@ -59,13 +59,15 @@ def run(test, params, env):
         check_vm_state_in_dom_list(test, vm_name, vm_state="paused")
 
         test.log.info("TEST_STEP4: Revert snapshot to the first snap")
-        vars_hash1 = process.run("sha256sum %s" % vars_path, ignore_status=False)
+        if vars_path:
+            vars_hash1 = process.run("sha256sum %s" % vars_path, ignore_status=False)
         virsh.snapshot_revert(vm_name, snap_names[0],
                               options=revert_flags[1], **virsh_dargs)
-        vars_hash2 = process.run("sha256sum %s" % vars_path, ignore_status=False)
-        if vars_hash1 == vars_hash2:
-            test.fail("Expect to get different hash values for '%s', "
-                      "but got both '%s' " % (vars_path, vars_hash1))
+        if vars_path:
+            vars_hash2 = process.run("sha256sum %s" % vars_path, ignore_status=False)
+            if vars_hash1 == vars_hash2:
+                test.fail("Expect to get different hash values for '%s', "
+                          "but got both '%s' " % (vars_path, vars_hash1))
 
         test.log.info("TEST_STEP5: Revert snapshot to the second snap force")
         virsh.snapshot_revert(vm_name, snap_names[1],
