@@ -1,3 +1,4 @@
+import os
 import logging as log
 
 from avocado.utils import process
@@ -54,6 +55,9 @@ def check_auvirt_log(test, params):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     str_to_grep = params.get("auvirt_error_msg") % vm_name
     auvirt_log_file = params.get("tmp_auvirt_event_log")
+    if os.path.exists(auvirt_log_file):
+        cmd = f"truncate -s 0 {auvirt_log_file}"
+        process.run(cmd, ignore_status=True, shell=True, verbose=True)
     generate_virt_log_cmd = "auvirt --start recent --all-events|tee %s" % auvirt_log_file
     process.run(generate_virt_log_cmd, ignore_status=False, shell=True, verbose=True)
     if not libvirt.check_logfile(str_to_grep, auvirt_log_file, str_in_log=False):
