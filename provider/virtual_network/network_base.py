@@ -1,4 +1,5 @@
 import logging
+import math
 import re
 import shutil
 
@@ -336,3 +337,29 @@ def check_iface_attrs(iface, key, expect_val):
     if actual_val != expect_val:
         raise exceptions.TestFail(f'Updated {key} of iface should be '
                                   f'{expect_val}, NOT {actual_val}')
+
+
+def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type):
+    """
+    Check actual thoughput of network using netperf
+
+    :param serv_runner: runner of netserver
+    :param cli_runner: runner of netperf client
+    :param ip_addr: ip address
+    :param bw: bandwidth setting
+    :param th_type: inbound or outbound
+    """
+
+    serv_runner('netserver')
+    netperf_out = cli_runner(f'netperf -H {ip_addr}')
+    LOG.debug(netperf_out)
+    serv_runner('pkill netserver')
+
+    actual_throu = float(netperf_out.strip().splitlines()[-1].split()[-1])
+    expect_throu = int(bw) * 8 / 1024
+
+    msg = f'Expected {th_type}: {expect_throu}, actual {th_type}: {actual_throu}'
+    if not math.isclose(expect_throu, actual_throu, rel_tol=0.1):
+        raise exceptions.TestFail(f'Actual {th_type} is not close to expected '
+                                  f'{th_type}:\n{msg}')
+    LOG.debug(msg)
