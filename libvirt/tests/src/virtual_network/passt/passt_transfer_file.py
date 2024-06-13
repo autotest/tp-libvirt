@@ -120,10 +120,6 @@ def run(test, params, env):
     # related test if host has multipath route. When there is multipath route,
     # the utils_net.get_default_gateway() will return none.
     ip_ver = params.get('ip_ver')
-    if ip_ver == "ipv6":
-        if not utils_net.get_default_gateway(ip_ver=ip_ver):
-            test.cancel("Host has multipath route which can not be "
-                        "recognized by passt and passt will disable ipv6.")
 
     root = 'root_user' == params.get('user_type', '')
     if root:
@@ -154,7 +150,6 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
-    vm_iface = params.get('vm_iface', 'eno1')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_net_if(
         state="UP")[0]
@@ -186,6 +181,8 @@ def run(test, params, env):
         if direction == 'host_to_vm':
             transfer_host_to_vm(session, prot, ip_ver, params, test)
         if direction == 'vm_to_host':
+            mac = vm.get_virsh_mac_address()
+            vm_iface = utils_net.get_linux_ifname(session, mac)
             transfer_vm_to_host(session, prot, ip_ver, vm_iface, firewalld,
                                 params, test)
     finally:
