@@ -225,3 +225,26 @@ def check_dominfo(vm, test, expected_max, expected_used):
     if dominfo_dict["Used memory"] != expected_used:
         test.fail("Current memory should be %s " % expected_used)
     test.log.debug("Check virsh dominfo successfully.")
+
+
+def check_mem_page_sizes(test, pg_size=None, hp_size=None, hp_list=None):
+    """
+    Check host is suitable for various memory page sizes
+
+    :param test: test object
+    :param pg_size: int, default memory page size in KiB unit
+    :param hp_size: int, default memory huge page size in KiB unit
+    :param hp_list: list, huge page size int list in KiB unit
+    """
+    default_page_size = avocado_mem.get_page_size() / 1024
+    if pg_size and pg_size != default_page_size:
+        test.cancel("Expected host default page size is %s KiB, but get %s KiB" %
+                    (pg_size, default_page_size))
+    default_huge_page_size = avocado_mem.get_huge_page_size()
+    if hp_size and hp_size != default_huge_page_size:
+        test.cancel("Expected host default huge page size is %s KiB, but get %s KiB" %
+                    (hp_size, default_huge_page_size))
+    supported_hp_size_list = avocado_mem.get_supported_huge_pages_size()
+    if hp_list and not set(hp_list).issubset(set(supported_hp_size_list)):
+        test.cancel("Expected huge page size list is %s, but get %s" %
+                    (hp_list, supported_hp_size_list))

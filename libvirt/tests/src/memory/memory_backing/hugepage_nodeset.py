@@ -19,6 +19,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 
+from provider.memory import memory_base
+
 
 def check_numa_maps(test, params, result):
     """
@@ -69,6 +71,8 @@ def run(test, params, env):
         Allocate hugepage memory
         """
         test.log.info("TEST_SETUP: Allocate hugepage memory")
+        memory_base.check_mem_page_sizes(
+            test, pg_size=int(default_page_size), hp_size=int(set_pagesize))
         hp_cfg = test_setup.HugePageConfig(params)
         hp_cfg.set_kernel_hugepages(set_pagesize, set_pagenum)
 
@@ -127,6 +131,7 @@ def run(test, params, env):
     vm_attrs = eval(params.get('vm_attrs', '{}'))
 
     allocated_mem = params.get('allocated_mem')
+    default_page_size = params.get("default_page_size")
     set_pagesize = params.get("set_pagesize")
     set_pagenum = params.get("set_pagenum")
     expect_xpath = eval(params.get("expect_xpath"))
