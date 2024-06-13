@@ -116,17 +116,16 @@ def run(test, params, env):
             if start_ga:
                 # Stop guest agent in vm
                 vm.prepare_guest_agent(prepare_xml=False, channel=False, start=False)
-
-            # Del user
-            if add_user:
-                session = vm.wait_for_login(timeout=30, username="root", password=ori_passwd)
-                cmd = "userdel -f -r %s" % set_user_name
-                status, output = session.cmd_status_output(cmd)
-                if status:
-                    test.error("Deleting user '%s' got failed: '%s'" %
-                               (set_user_name, output))
-                session.close()
     finally:
+        # Del user
+        if add_user:
+            session = vm.wait_for_login(timeout=30, username="root", password=ori_passwd)
+            cmd = "userdel -f -r %s" % set_user_name
+            status, output = session.cmd_status_output(cmd)
+            if status:
+                test.error("Deleting user '%s' got failed: '%s'" %
+                           (set_user_name, output))
+            session.close()
         vmxml_bak.sync()
         # Recover VM
         if vm.is_alive():
