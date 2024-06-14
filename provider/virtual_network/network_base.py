@@ -16,6 +16,33 @@ VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 LOG = logging.getLogger('avocado.' + __name__)
 
 
+def get_vm_ip(session, mac, ip_ver="ipv4"):
+    """
+    Get vm ip address
+
+    :param session: vm session
+    :param mac: mac address of vm
+    :param ip_ver: ip version, defaults to "ipv4"
+    :return: ip address of given mac
+    """
+    iface_info = utils_net.get_linux_iface_info(mac=mac, session=session)
+    addr_list = iface_info['addr_info']
+    if ip_ver == "ipv4":
+        target_addr = [addr for addr in addr_list if addr['family'] == 'inet']
+    elif ip_ver == "ipv6":
+        target_addr = [addr for addr in addr_list if addr['family'] == 'inet6'
+                       and addr['scope'] == 'global'
+                       and addr.get('mngtmpaddr') is not True]
+
+    if len(target_addr) == 0:
+        raise exceptions.TestError(
+            f'Cannot find ip addr with given mac: {mac}')
+    elif len(target_addr) > 1:
+        LOG.warn(f'Multiple ip addr: {target_addr}')
+    else:
+        return target_addr[0]['local']
+
+
 def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
                  ip_ver='ipv4', host_iface=None):
     """
@@ -31,9 +58,8 @@ def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
     :return: a dict of ip addresses
     """
     ips = {}
-    ips['vm_ip'], ips['ep_vm_ip'] = [utils_net.get_guest_ip_addr(
-        sess, mac_ad, ip_version=ip_ver)
-        for sess, mac_ad in [(session, mac), (ep_session, ep_mac)]]
+    ips['vm_ip'] = get_vm_ip(session, mac, ip_ver=ip_ver)
+    ips['ep_vm_ip'] = get_vm_ip(ep_session, ep_mac, ip_ver=ip_ver)
     if not host_iface:
         host_public_ip = utils_net.get_host_ip_address(ip_ver=ip_ver)
     else:
