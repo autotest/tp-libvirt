@@ -191,6 +191,7 @@ desc
 dest
 desturi
 dev
+devid
 devname
 devno
 devnode
@@ -538,6 +539,7 @@ lspci
 lstat
 lstatlist
 lsusb
+lszcrypt
 lszdev
 luks
 Luks
