@@ -109,6 +109,7 @@ def run(test, params, env):
         Check whether the feature nested virt is enabled
         """
         vm.wait_for_login()
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         cpu_feature = vmxml.cpu.get_dict_type_feature()
         if cpu_feature['vmx'] != 'require':
             test.fail("The feature policy of 'vmx' should not be %s, but require." % cpu_feature['vmx'])

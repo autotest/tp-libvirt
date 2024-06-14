@@ -74,12 +74,7 @@ def run(test, params, env):
 
             # Set the user password in vm
             if encrypted:
-                openssl_version = process.run("openssl version",
-                                              ignore_status=False)
-                if "OpenSSL 3.0." in openssl_version.stdout_text:
-                    cmd = "openssl passwd %s" % new_passwd
-                else:
-                    cmd = "openssl passwd -crypt %s" % new_passwd
+                cmd = "openssl passwd %s" % new_passwd
                 ret = process.run(cmd, shell=True)
                 libvirt.check_exit_status(ret)
                 en_passwd = str(ret.stdout_text.strip())

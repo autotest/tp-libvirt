@@ -253,19 +253,18 @@ def check_default_gw(session, host_iface=None):
             'Host default ipv4 gateway not consistent with vm.')
 
     _host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
-                                                target_iface=host_iface)
+                                                target_iface=host_iface,
+                                                json=True)
     if not _host_gw_v6:
-        LOG.debug("Skip ipv6 route check as host has no default route or has "
-                  "multipath route which passt can not recognize!")
-        return
-    _vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6')
-    if not _vm_gw_v6:
         raise exceptions.TestFail('Guest has no ipv6 gateway!')
-    host_gw_v6 = _host_gw_v6.split()
-    vm_gw_v6 = _vm_gw_v6.split()
+    vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6',
+                                             json=True)
+    if not vm_gw_v6:
+        raise exceptions.TestFail('Guest has no ipv6 gateway!')
+    host_gw_v6 = _host_gw_v6 if isinstance(_host_gw_v6, list) else [_host_gw_v6]
     LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
 
-    if [x for x in vm_gw_v6 if x not in host_gw_v6]:
+    if vm_gw_v6 not in host_gw_v6:
         raise exceptions.TestFail(
             'Host default ipv6 gateway not consistent with vm.')
 
@@ -355,12 +354,13 @@ def check_connection(vm, vm_iface, protocols, host_iface=None):
     """
     default_gw = utils_net.get_default_gateway(force_dhcp=True,
                                                target_iface=host_iface)
-    default_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
-                                                  target_iface=host_iface)
+    vm_session = vm.wait_for_serial_login()
+    default_gw_v6_vm = utils_net.get_default_gateway(
+        session=vm_session, ip_ver='ipv6', json=True)
     for protocol in protocols:
         host_sess = aexpect.ShellSession('su')
         vm_sess = vm.wait_for_serial_login(timeout=60)
-        gw = default_gw if protocol[-1] == '4' else default_gw_v6
+        gw = default_gw if protocol[-1] == '4' else default_gw_v6_vm
         src_iface = None if protocol[-1] == '4' else vm_iface
         try:
             check_protocol_connection(vm_sess, host_sess, protocol, gw,

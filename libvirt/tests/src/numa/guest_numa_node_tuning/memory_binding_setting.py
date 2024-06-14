@@ -11,7 +11,6 @@
 
 import os
 import re
-import platform
 
 from avocado.utils import memory
 from avocado.utils import process
@@ -154,20 +153,14 @@ def verify_host_numa_memory_allocation(test_obj):
             mem_mode == 'prefered' and
                 not single_host_node) or \
              (mem_mode in ['interleave', 'preferred'] and single_host_node):
-            if platform.machine() == 'aarch64':
-                _check_values(True, 3, 1)
-            else:
-                _check_values(True, 512, 500)
+            hpc = test_setup.HugePageConfig(test_obj.params)
+            N0_expect = hpc.get_node_num_huge_pages(all_nodes[0], expected_hugepage_size)
+            _check_values(True, N0_expect, int(mem_size/psize)-N0_expect)
         elif not single_host_node and mem_mode == 'interleave':
-            if platform.machine() == 'aarch64':
-                _check_values(True, 2, 2)
-            else:
-                _check_values(True, 506, 506)
+            avg_value = int(mem_size/psize/2)
+            _check_values(True, avg_value, avg_value)
         elif not single_host_node and mem_mode in ['strict', 'restrictive']:
-            if platform.machine() == 'aarch64':
-                _check_values(True, 0, 0, 4)
-            else:
-                _check_values(True, 0, 0, 1012)
+            _check_values(True, 0, 0, int(mem_size/psize))
     test_obj.test.log.debug("Step: verify host numa node memory allocation PASS")
 
 
@@ -179,7 +172,7 @@ def verify_cgroup(test_obj):
     """
     mem_mode = test_obj.params.get('mem_mode')
     nodeset = numa_base.convert_to_string_with_dash(test_obj.params.get('nodeset'))
-    online_nodes = libvirt_numa.parse_numa_nodeset_to_str('x-y', test_obj.online_nodes)
+    online_nodes = libvirt_numa.convert_all_nodes_to_string(test_obj.online_nodes)
     vm_pid = test_obj.vm.get_pid()
     cg = libvirt_cgroup.CgroupTest(vm_pid)
     surfix = 'emulator/cpuset.mems' if cg.is_cgroup_v2_enabled() else 'cpuset.mems'

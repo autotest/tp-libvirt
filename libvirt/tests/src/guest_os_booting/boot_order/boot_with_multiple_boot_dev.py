@@ -70,6 +70,8 @@ def run(test, params, env):
     vm_name = guest_os.get_vm(params)
     check_prompt = eval(params.get("check_prompt", "[]"))
     bootable_device = params.get("bootable_device")
+    disk_image = ""
+    cdrom_path = ""
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)

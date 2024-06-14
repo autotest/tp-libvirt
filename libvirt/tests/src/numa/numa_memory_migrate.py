@@ -64,8 +64,7 @@ def run(test, params, env):
     try:
         if numa_memory.get('nodeset'):
             numa_nodeset_format = numa_memory.get('nodeset')
-            numa_memory['nodeset'] = libvirt_numa.parse_numa_nodeset_to_str(numa_nodeset_format,
-                                                                            node_list)
+            numa_memory['nodeset'] = libvirt_numa.convert_all_nodes_to_string(node_list)
             used_node = cpu.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
 

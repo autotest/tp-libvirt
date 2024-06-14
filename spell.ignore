@@ -587,6 +587,7 @@ mdev
 mdevctl
 mellanox
 mem
+memoryBacking
 mems
 memballoon
 memhog
@@ -1150,6 +1151,7 @@ vhbas
 vhost
 vhostuer
 vhostuser
+vhostvdpa
 vid
 viostor
 vir
