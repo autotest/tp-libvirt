@@ -74,11 +74,17 @@ def run(test, params, env):
                                                                  event_output))
 
         elif case == 'async':
+            def _check_path():
+                try:
+                    check_obj.check_backingchain_from_vmxml(
+                        disk_type, target_disk, [test_obj.copy_image])
+                    return True
+                except Exception as e:
+                    return False
+
             test.log.info("TEST_STEP2: Check expected chain")
-            expected_chain = test_obj.\
-                convert_expected_chain(expected_chain_index)
-            check_obj.check_backingchain_from_vmxml(disk_type, target_disk,
-                                                    expected_chain)
+            if not utils_misc.wait_for(_check_path, 60):
+                test.fail('Expect source file to be %s' % [test_obj.copy_image])
 
     def _get_session():
         """
