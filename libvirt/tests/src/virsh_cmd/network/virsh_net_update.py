@@ -13,6 +13,7 @@ from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml import vm_xml
 from avocado.utils import process
+from provider.virtual_network import network_base
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -832,9 +833,7 @@ def run(test, params, env):
                                        "then pkill dhclient; sleep 3; fi) " \
                                        "&& dhclient -%s -lf /dev/stdout" % ip_version[-1]
                         leases = session.cmd_output(dhclient_cmd)
-                        iface_ip = utils_net.get_guest_ip_addr(session, mac,
-                                                               ip_version=ip_version,
-                                                               timeout=10)
+                        iface_ip = network_base.get_vm_ip(session, mac, ip_ver=ip_version)
                     if net_section == "ip-dhcp-range":
                         if new_start_ip <= iface_ip <= new_end_ip:
                             logging.info("getting ip %s is in range [%s ~ %s]",
