@@ -572,6 +572,8 @@ def run(test, params, env):
         # Download test suite
         if tpm_testsuite_url.count("EXAMPLE"):
             test.error("Please provide the URL %s" % tpm_testsuite_url)
+        if not utils_package.package_install('wget', session, 60):
+            test.fail("Failed to install wget in guest OS.")
         download_cmd = "wget %s -O %s" % (tpm_testsuite_url, "/root/linux.tar.xz")
         output = session.cmd_output(download_cmd, timeout=480)
         logging.debug("Command output: %s", output)
