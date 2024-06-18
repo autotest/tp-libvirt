@@ -238,6 +238,9 @@ def run(test, params, env):
         vms = [vm]
 
         if stress_guest:
+            if libvirt_version.version_compare(10, 4, 0):
+                params.update({"stress_install_from_repo": "no"})
+                params.update({"stress_dependency_packages_list": "['gcc', 'make']"})
             migration_test.run_stress_in_vm(vm, params)
 
         migration_test.do_migration(vms, None, dest_uri, 'orderly',

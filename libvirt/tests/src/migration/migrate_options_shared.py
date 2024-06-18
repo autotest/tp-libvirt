@@ -1324,17 +1324,22 @@ def run(test, params, env):
                 test.error("Failed to install tpm2-tools in vm")
 
         if stress_in_vm:
-            pkg_name = 'stress'
-            logging.debug("Check if stress tool is installed")
-            pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
-            if not pkg_mgr.is_installed(pkg_name):
-                logging.debug("Stress tool will be installed")
-                if not pkg_mgr.install():
-                    test.error("Package '%s' installation fails" % pkg_name)
+            if libvirt_version.version_compare(10, 4, 0):
+                params.update({"stress_install_from_repo": "no"})
+                params.update({"stress_dependency_packages_list": "['gcc', 'make']"})
+                migration_test.run_stress_in_vm(vm, params)
+            else:
+                pkg_name = 'stress'
+                logging.debug("Check if stress tool is installed")
+                pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
+                if not pkg_mgr.is_installed(pkg_name):
+                    logging.debug("Stress tool will be installed")
+                    if not pkg_mgr.install():
+                        test.error("Package '%s' installation fails" % pkg_name)
 
-            stress_thread = threading.Thread(target=run_stress_in_vm,
-                                             args=())
-            stress_thread.start()
+                stress_thread = threading.Thread(target=run_stress_in_vm,
+                                                 args=())
+                stress_thread.start()
 
         # Check maxdowntime before migration
         if check_default_maxdowntime:

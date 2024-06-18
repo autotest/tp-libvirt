@@ -5,6 +5,7 @@ import re
 from six import itervalues, string_types
 from avocado.utils import process
 
+from virttest import libvirt_version
 from virttest import utils_selinux
 from virttest import virsh
 from virttest import utils_package
@@ -236,17 +237,22 @@ def run(test, params, env):
                 test.error("Can't get a vm session successfully")
 
             # Install package stress if it is not installed in vm
-            logging.debug("Check if stress tool is installed for postcopy migration")
-            pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
-            if not pkg_mgr.is_installed(pkg_name):
-                logging.debug("Stress tool will be installed")
-                if not pkg_mgr.install():
-                    test.error("Package '%s' installation fails" % pkg_name)
+            if libvirt_version.version_compare(10, 4, 0):
+                params.update({"stress_install_from_repo": "no"})
+                params.update({"stress_dependency_packages_list": "['gcc', 'make']"})
+                obj_migration.run_stress_in_vm(vm, params)
+            else:
+                logging.debug("Check if stress tool is installed for postcopy migration")
+                pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
+                if not pkg_mgr.is_installed(pkg_name):
+                    logging.debug("Stress tool will be installed")
+                    if not pkg_mgr.install():
+                        test.error("Package '%s' installation fails" % pkg_name)
 
-            # Run stress in vm
-            logging.debug("Run stress in vm")
-            stress_args = params.get("stress_args")
-            vm_session.cmd('stress %s' % stress_args)
+                    # Run stress in vm
+                    logging.debug("Run stress in vm")
+                    stress_args = params.get("stress_args")
+                    vm_session.cmd('stress %s' % stress_args)
 
         # Prepare for --xml <updated_xml_file>.
         if xml_option:

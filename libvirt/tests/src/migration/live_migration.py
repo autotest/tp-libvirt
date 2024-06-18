@@ -315,6 +315,9 @@ def run(test, params, env):
                                                            test, params)
 
         if stress_package:
+            if libvirt_version.version_compare(10, 4, 0):
+                params.update({"stress_install_from_repo": "no"})
+                params.update({"stress_dependency_packages_list": "['gcc', 'make']"})
             migration_test.run_stress_in_vm(vm, params)
         mode = 'both' if '--postcopy' in postcopy_options else 'precopy'
         if migrate_speed:

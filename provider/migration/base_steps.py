@@ -6,6 +6,7 @@ from six import itervalues
 from virttest import data_dir
 from virttest import migration
 from virttest import libvirt_remote
+from virttest import libvirt_version
 from virttest import libvirt_vm
 from virttest import remote
 from virttest import utils_config
@@ -165,6 +166,9 @@ class MigrationBase(object):
         if migrate_speed:
             self.migration_test.control_migrate_speed(vm_name, int(migrate_speed), mode)
         if stress_package:
+            if libvirt_version.version_compare(10, 4, 0):
+                self.params.update({"stress_install_from_repo": "no"})
+                self.params.update({"stress_dependency_packages_list": "['gcc', 'make']"})
             self.migration_test.run_stress_in_vm(self.vm, self.params)
 
         # Execute migration process
