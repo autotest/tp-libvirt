@@ -307,6 +307,28 @@ def execute_sve_stress_by_suite(length_list, session, params, test):
         test.log.debug("Verify sve stress test for length %s (in bytes) - PASS" % a_length)
 
 
+def run_sve_ptrace_test_in_guest(session, params, test):
+    """
+    Run sve_ptrace test suite within the guest
+
+    :param session: vm session
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    sve_ptrace_exec_cmd = params.get("sve_ptrace_exec_cmd")
+    output = session.cmd_output(sve_ptrace_exec_cmd)
+    results_lines = [result for result in output.splitlines() if
+                     result.startswith("# Totals:")]
+    pat = "fail:(\d+).*xfail:(\d+).*error:(\d+)"
+    match = re.findall(pat, results_lines[0])
+    if match:
+        if any([int(match[0][0]), int(match[0][1]), int(match[0][2])]):
+            test.fail("The sve-ptrace test fail with errors:%s" % results_lines[0])
+    else:
+        test.error("Can not get Totals: line from test result")
+    test.log.debug("Verify sve ptrace test - PASS")
+
+
 def verify_sve_length_by_suite(supported_list, session, params, test):
     """
     Verify the supported sve lengths are same with test suite output
@@ -331,6 +353,27 @@ def verify_sve_length_by_suite(supported_list, session, params, test):
     return results
 
 
+def prepare_kernel_selftest_in_guest(session, params, test):
+    """
+    Prepare the kernel self test repo in the guest
+
+    :param session: vm session
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    kernel_version = session.cmd_output("uname -r").rsplit('.', 1)[0]
+    srpm = "kernel-%s.src.rpm" % kernel_version
+    linux_name = "linux-%s.tar.xz" % kernel_version
+    kernel_download_cmd = params.get("kernel_download_cmd") % (srpm,
+                                                               srpm)
+    kernel_tar_cmd = params.get("kernel_tar_cmd") % linux_name
+    kernel_selftest_compile_cmd = params.get("kernel_selftest_compile_cmd")
+
+    execute_cmds(kernel_download_cmd, session, test)
+    execute_cmds(kernel_tar_cmd, session, test)
+    execute_cmds(kernel_selftest_compile_cmd, session, test)
+
+
 def run_sve_stress_test_in_guest(supported_list, session, params, test):
     """
     Run sve stress test suite within the guest
@@ -340,17 +383,6 @@ def run_sve_stress_test_in_guest(supported_list, session, params, test):
     :param params: dict, test parameters
     :param test: test object
     """
-    kernel_version = session.cmd_output("uname -r").rsplit('.', 1)[0]
-    srpm = "kernel-%s.src.rpm" % kernel_version
-    linux_name = "linux-%s.tar.xz" % kernel_version
-    sve_stress_download_cmd = params.get("sve_stress_download_cmd") % (srpm,
-                                                                       srpm)
-    sve_stress_tar_cmd = params.get("sve_stress_tar_cmd") % linux_name
-    sve_stress_compile_cmd = params.get("sve_stress_compile_cmd")
-
-    execute_cmds(sve_stress_download_cmd, session, test)
-    execute_cmds(sve_stress_tar_cmd, session, test)
-    execute_cmds(sve_stress_compile_cmd, session, test)
     sve_lengths = verify_sve_length_by_suite(supported_list, session, params, test)
     execute_sve_stress_by_suite(sve_lengths, session, params, test)
 
@@ -372,6 +404,7 @@ def run(test, params, env):
     expect_msg = params.get("expect_msg", "")
     vector_length = params.get("vector_length", "sve")
     sve_stress_exec_cmd = params.get("sve_stress_exec_cmd")
+    sve_ptrace_exec_cmd = params.get("sve_ptrace_exec_cmd")
     optimized_execute_cmd = params.get("optimized_execute_cmd")
     target_dir = params.get("target_dir")
 
@@ -431,8 +464,12 @@ def run(test, params, env):
 
                 if target_dir:
                     execute_cmds("mkdir -p %s" % target_dir, session, test)
+                    if params.get("kernel_testing_dir"):
+                        prepare_kernel_selftest_in_guest(session, params, test)
                     if sve_stress_exec_cmd:
                         run_sve_stress_test_in_guest(supported_list, session, params, test)
+                    if sve_ptrace_exec_cmd:
+                        run_sve_ptrace_test_in_guest(session, params, test)
                     if optimized_execute_cmd:
                         run_optimized_routines_in_guest(session, params, test)
                     execute_cmds("rm -rf %s" % target_dir, session, test)
