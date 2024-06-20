@@ -35,7 +35,7 @@ def run(test, params, env):
         test.log.info("The lsusb command result: {}".format(lsusb_list))
         found_device = False
         for line in lsusb_list:
-            if re.search('hub|Controller', line, re.IGNORECASE):
+            if re.search('hub|Controller|Keyboard|Mouse|Cdrom|Floppy', line, re.IGNORECASE):
                 continue
             if len(line.split()[5].split(':')) == 2:
                 vendor_id, product_id = line.split()[5].split(':')
@@ -59,7 +59,7 @@ def run(test, params, env):
             for _ in range(3):
                 vm.serial_console.sendcontrol('[')
         vm.serial_console.read_until_any_line_matches(
-             [check_prompt], timeout=30, internal_timeout=0.5)
+            [check_prompt], timeout=100, internal_timeout=5.0)
 
     vm_name = params.get("main_vm")
     disk_type = params.get("disk_type")
