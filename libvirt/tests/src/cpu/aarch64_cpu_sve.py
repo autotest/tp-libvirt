@@ -233,10 +233,16 @@ def update_cpu_xml(cpu_xml, params, test, supported_list, unsupported_list):
     :param supported_list: list, sve lengths supported
     :param unsupported_list: list, sve lengths unsupported
     """
-    # For sve, each SVE vector_length is a feature name
-    # E.g. sve128 sve256 sve512
-    # Test unsupported vector length
-    vector_list = gen_cpu_features(supported_list, unsupported_list, params, test)
+    if not supported_list and not unsupported_list:
+        # There is no sve support on the host.
+        # This is to expect an error message with sve=require
+        # when starting the vm.
+        vector_list = [{'sve': params.get("cpu_xml_policy")}]
+    else:
+        vector_list = gen_cpu_features(supported_list,
+                                       unsupported_list,
+                                       params,
+                                       test)
     for vector in vector_list:
         for length, policy in vector.items():
             cpu_xml.add_feature(length, policy)
@@ -407,9 +413,13 @@ def run(test, params, env):
     sve_ptrace_exec_cmd = params.get("sve_ptrace_exec_cmd")
     optimized_execute_cmd = params.get("optimized_execute_cmd")
     target_dir = params.get("target_dir")
+    host_without_sve = "yes" == params.get("host_without_sve")
+    supported_list = None
+    unsupported_list = None
 
     prepare_env(vm, params, test)
-    supported_list, unsupported_list = get_vector_lengths(vm_name)
+    if not host_without_sve:
+        supported_list, unsupported_list = get_vector_lengths(vm_name)
 
     if vm.is_alive():
         vm.destroy(gracefully=False)
