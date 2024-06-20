@@ -382,6 +382,12 @@ def run(test, params, env):
     """
     Test numa topology together with cpu topology
     """
+    default_pagesize = int(params.get("default_pagesize")) * 1024
+    default_kernel_pagesize = mem_utils.get_page_size()
+    if default_pagesize != default_kernel_pagesize:
+        test.cancel("The case does not support on "
+                    "current host kernel "
+                    "size %d" % default_kernel_pagesize)
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     numatest_obj = numa_base.NumaTest(vm, params, test)
