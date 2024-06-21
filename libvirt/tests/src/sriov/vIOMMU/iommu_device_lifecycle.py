@@ -1,7 +1,7 @@
 import os
 
-from virttest import libvirt_version
 from virttest import utils_misc
+from virttest import utils_net
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -9,7 +9,8 @@ from virttest.utils_libvirt import libvirt_vmxml
 
 from provider.save import save_base
 from provider.sriov import sriov_base
-from provider.sriov import check_points
+from provider.viommu import viommu_base
+from provider.sriov import check_points as sriov_check_points
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
@@ -18,18 +19,20 @@ def run(test, params, env):
     """
     Test lifecycle for vm with vIOMMU enabled with different devices.
     """
-    libvirt_version.is_libvirt_feature_supported(params)
     cleanup_ifaces = "yes" == params.get("cleanup_ifaces", "yes")
     ping_dest = params.get('ping_dest', "127.0.0.1")
     iommu_dict = eval(params.get('iommu_dict', '{}'))
     test_scenario = params.get("test_scenario")
+    need_sriov = "yes" == params.get("need_sriov", "no")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
     rand_id = utils_misc.generate_random_string(3)
     save_path = f'/var/tmp/{vm_name}_{rand_id}.save'
-    test_obj = sriov_base.SRIOVTest(vm, test, params)
+    test_obj = viommu_base.VIOMMUTest(vm, test, params)
+    if need_sriov:
+        sroiv_test_obj = sriov_base.SRIOVTest(vm, test, params)
     try:
         test.log.info("TEST_SETUP: Update VM XML.")
         test_obj.setup_iommu_test(iommu_dict=iommu_dict,
@@ -41,6 +44,10 @@ def run(test, params, env):
                 dev_dict = test_obj.update_disk_addr(dev_dict)
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(vm.name), dev, dev_dict)
+        if need_sriov:
+            iface_dicts = sroiv_test_obj.parse_iface_dict()
+            test.log.debug(iface_dicts)
+            test_obj.params["iface_dict"] = str(sroiv_test_obj.parse_iface_dict())
         iface_dict = test_obj.parse_iface_dict()
         if cleanup_ifaces:
             libvirt_vmxml.modify_vm_device(
@@ -64,7 +71,13 @@ def run(test, params, env):
 
             session = vm.wait_for_serial_login(
                 timeout=int(params.get('login_timeout')))
-            check_points.check_vm_network_accessed(session, ping_dest=ping_dest)
+
+            if need_sriov:
+                sriov_check_points.check_vm_network_accessed(session, ping_dest=ping_dest)
+            else:
+                s, o = utils_net.ping(ping_dest, count=5, timeout=10, session=session)
+                if s:
+                    test.fail("Failed to ping %s! status: %s, output: %s." % (ping_dest, s, o))
         else:
             pid_ping, upsince = save_base.pre_save_setup(vm, serial=True)
             if test_scenario == "save_restore":

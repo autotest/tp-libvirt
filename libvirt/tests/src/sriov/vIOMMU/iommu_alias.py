@@ -1,4 +1,4 @@
-from provider.sriov import sriov_base
+from provider.viommu import viommu_base
 
 from virttest.libvirt_xml import vm_xml
 
@@ -41,11 +41,11 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
-    sriov_test_obj = sriov_base.SRIOVTest(vm, test, params)
+    test_obj = viommu_base.VIOMMUTest(vm, test, params)
 
     try:
-        sriov_test_obj.setup_iommu_test(iommu_dict=iommu_dict)
+        test_obj.setup_iommu_test(iommu_dict=iommu_dict)
         vm.start()
         check_xml(vm, exp_alias, iommu_has_addr)
     finally:
-        sriov_test_obj.teardown_default()
+        test_obj.teardown_iommu_test()

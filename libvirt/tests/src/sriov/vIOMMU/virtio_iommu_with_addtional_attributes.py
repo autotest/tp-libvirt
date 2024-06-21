@@ -1,4 +1,4 @@
-from provider.sriov import sriov_base
+from provider.viommu import viommu_base
 
 from virttest.libvirt_xml import xcepts
 from virttest.utils_libvirt import libvirt_virtio
@@ -13,7 +13,7 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
-    sriov_test_obj = sriov_base.SRIOVTest(vm, test, params)
+    test_obj = viommu_base.VIOMMUTest(vm, test, params)
 
     try:
         libvirt_virtio.add_iommu_dev(vm, iommu_dict)
@@ -26,4 +26,4 @@ def run(test, params, env):
     else:
         test.fail("Defining the VM should fail, but run successfully!")
     finally:
-        sriov_test_obj.teardown_default()
+        test_obj.teardown_iommu_test()
