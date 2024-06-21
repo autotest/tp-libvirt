@@ -209,7 +209,7 @@ class EnvState(object):
             self.qemu_config.vnc_tls_x509_verify = tls_x509_verify
 
         if vnc_tls_x509_secret_uuid == "not_set":
-            del self.qemu_config.vnc_tls_x509_verify
+            del self.qemu_config.vnc_tls_x509_secret_uuid
         else:
             self.qemu_config.vnc_tls = "1"
             if vnc_secret_uuid == "invalid":
