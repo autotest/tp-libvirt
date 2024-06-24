@@ -62,6 +62,18 @@ class SnapshotTest(object):
         virsh.snapshot_create(self.vm.name, snap_options, **self.virsh_dargs)
         virsh.snapshot_dumpxml(self.vm.name, snap_dict['snap_name'], **self.virsh_dargs)
 
+    def check_current_snapshot(self, snap_name):
+        """
+        Check vm current snapshot name is expected
+
+        :param snap_name, expected snapshot name.
+        """
+        current_name = virsh.snapshot_current(
+            self.vm.name, **self.virsh_dargs).stdout.strip()
+        if current_name != snap_name:
+            self.test.fail("Current snapshot name is %s, should be %s" % (
+                current_name, snap_name))
+
     def delete_snapshot(self, snap_names, options=''):
         """
         Delete snapshots of the vm
