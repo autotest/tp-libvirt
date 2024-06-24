@@ -582,6 +582,12 @@ def run(test, params, env):
                 if not check_result:
                     test.fail(
                         'Not found disk or xml created by virt-v2v-copy-to-local')
+            if checkpoint == 'check_version':
+                get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
+                if (''.join(filter(str.isdigit, str(output_stdout)))[1:4] +
+                    ''.join(filter(str.isdigit, str(output_stdout)))[5]) != \
+                        ''.join(filter(str.isdigit, str(get_v2v_version.stdout)))[1:5]:
+                    test.fail('v2v version is incorrect in v2v version option')
 
         log_check = utils_v2v.check_log(params, output)
         if log_check:
