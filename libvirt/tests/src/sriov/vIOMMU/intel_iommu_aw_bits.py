@@ -3,7 +3,7 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
-from provider.sriov import sriov_base
+from provider.viommu import viommu_base
 
 
 def run(test, params, env):
@@ -17,7 +17,7 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
-    test_obj = sriov_base.SRIOVTest(vm, test, params)
+    test_obj = viommu_base.VIOMMUTest(vm, test, params)
     try:
         test_obj.setup_iommu_test(iommu_dict=iommu_dict)
 
