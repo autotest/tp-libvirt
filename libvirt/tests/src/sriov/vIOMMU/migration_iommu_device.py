@@ -1,11 +1,10 @@
-from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 
-from provider.sriov import sriov_base
 from provider.migration import base_steps
+from provider.viommu import viommu_base
 
 
 def run(test, params, env):
@@ -65,14 +64,13 @@ def run(test, params, env):
                     "interface", iface_dict)
         migration_obj.setup_default()
 
-    libvirt_version.is_libvirt_feature_supported(params)
     cleanup_ifaces = "yes" == params.get("cleanup_ifaces", "yes")
     iommu_dict = eval(params.get('iommu_dict', '{}'))
     iface_dict = eval(params.get('iface_dict', '{}'))
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
-    test_obj = sriov_base.SRIOVTest(vm, test, params)
+    test_obj = viommu_base.VIOMMUTest(vm, test, params)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
