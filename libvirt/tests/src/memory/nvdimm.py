@@ -133,6 +133,18 @@ def check_nvdimm_file(test_str, file_name, vm_session, test):
         test.fail('"%s" should be in output' % test_str)
 
 
+def is_pmem_supported(params):
+    """
+    check if pmem is supported by qemu-kvm
+
+    :param params: dict, test parameters
+    :return: whether pmem is supported
+    """
+    pmem_support_check_cmd = params.get('pmem_support_check_cmd')
+    cmd_result = process.run(pmem_support_check_cmd, ignore_status=True, shell=True)
+    return not cmd_result.exit_status
+
+
 def setup_test_pmem_alignsize(guest_xml, params):
     """
     Setup steps for pmem and alignsize test
@@ -143,6 +155,10 @@ def setup_test_pmem_alignsize(guest_xml, params):
     """
     vm_attrs = eval(params.get('vm_attrs', '{}'))
     mem_device_attrs = eval(params.get('mem_device_attrs', '{}'))
+    if not is_pmem_supported(params):
+        mem_device_attrs['source']['pmem'] = False
+        params.update({'qemu_checks': params.get('qemu_checks').replace('pmem', '')})
+
     if vm_attrs:
         guest_xml.setup_attrs(**vm_attrs)
     if mem_device_attrs:
