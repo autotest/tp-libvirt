@@ -515,6 +515,9 @@ def run(test, params, env):
             if checkpoint == 'no_dcpath':
                 if '--dcpath' in output:
                     test.fail('"--dcpath" is not removed')
+            if checkpoint == 'check_patch':
+                if not re.search('Fix off-by-one error causing rare crash.*', output):
+                    test.fail('required patch not found')
             if checkpoint == 'debug_overlays':
                 search = re.search('Overlay saved as(.*)', output)
                 if not search:
@@ -866,6 +869,9 @@ def run(test, params, env):
             # only set error to 'ignore' to avoid exception for RHEL7-84978
             if "guestfish" in cmd:
                 error_flag = "replace"
+            if "changelog" in cmd:
+                get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
+                cmd = cmd % to_text(get_v2v_version.stdout, errors=error_flag)
 
         # Set timeout to kill v2v process before conversion succeed
         if checkpoint == 'disk_not_exist':
