@@ -8,11 +8,10 @@
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 import re
-import time
 
-from avocado.utils import cpu
 from avocado.utils import memory
 
+from virttest import utils_misc
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -240,6 +239,28 @@ def update_and_check_memory_size(test, params, session, update_device,
     return new_mem_total
 
 
+def check_delayed_current(test, params, mem_index, expected_current_size):
+    """
+    Check the virtio memory current value.
+    :param test: test object.
+    :param params: dictionary with the test parameters.
+    :param expected_current_size, expected current size value.
+    :param mem_index, Check after or before attaching memory device.
+    """
+    vm_name = params.get("main_vm")
+
+    def _get_virtio_current():
+        return vm_xml.VMXML.new_from_dumpxml(
+            vm_name).devices.by_device_tag("memory")[
+            mem_index].target.current_size
+
+    if not utils_misc.wait_for(
+            lambda: expected_current_size == _get_virtio_current(), 20):
+        test.fail(
+            "Attached virtio memory current size should be %s" % expected_current_size)
+    test.log.debug("Checked attached virtio memory current size successfully")
+
+
 def run(test, params, env):
     """
     Verify virtio-mem memory device requested memory size could be changed
@@ -295,10 +316,9 @@ def run(test, params, env):
                                          params.get('request_size'),
                                          params.get('default_pagesize'))))
         virsh.attach_device(vm.name, mem_obj.xml, wait_for_event=True, **VIRSH_ARGS)
+        check_delayed_current(test, params, 1, int(params.get('request_size')))
 
         test.log.info("TEST_STEP4: Get the first time total memory in guest")
-        if cpu.get_arch().startswith("aarch"):
-            time.sleep(7)
         mem_total_1 = int(utils_memory.memtotal(session))
 
         test.log.info("TEST_STEP5,6: Change the first virtio-mem requested size"
