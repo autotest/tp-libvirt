@@ -20,6 +20,25 @@ from avocado.utils import process
 logging = log.getLogger('avocado.' + __name__)
 
 
+def cancel_if_cpu_controller_not_mounted(test):
+    """
+    Following is to deal the situation when realtime task existing.
+    In this situation, cpu controller cannot be enabled.
+    FYI: https://bugzilla.redhat.com/show_bug.cgi?id=1513930#c21
+
+    :param test: the test instance for failure reporting
+    """
+    with open('/proc/mounts', 'r') as mnts:
+        cg_mount_point = re.findall(r"\s(\S*cgroup)\s", mnts.read())[0]
+    cg_subtree_file = os.path.join(cg_mount_point,
+                                   "cgroup.subtree_control")
+    with open(cg_subtree_file, 'r') as cg_subtree:
+        if "cpu" not in cg_subtree.read().replace("cpuset", ""):
+            test.cancel("CPU controller not mounted. This is a "
+                        "limitation of cgroup v2 when realtime task "
+                        "existing on host.")
+
+
 def run(test, params, env):
     """
     Cgroup related cases in function 'guest resource control'
@@ -165,21 +184,9 @@ def run(test, params, env):
     vmxml_backup = vmxml.copy()
 
     cgtest = CgroupTest(None)
-    if cgtest.is_cgroup_v2_enabled():
+    is_cgroup_v2 = cgtest.is_cgroup_v2_enabled()
+    if is_cgroup_v2:
         logging.info("The case executed on cgroup v2 environment.")
-        # Following is to deal the situation when realtime task existing.
-        # In this situation, cpu controller cannot be enabled.
-        # FYI: https://bugzilla.redhat.com/show_bug.cgi?id=1513930#c21
-        if "schedinfo" in virsh_cmd:
-            with open('/proc/mounts', 'r') as mnts:
-                cg_mount_point = re.findall(r"\s(\S*cgroup)\s", mnts.read())[0]
-            cg_subtree_file = os.path.join(cg_mount_point,
-                                           "cgroup.subtree_control")
-            with open(cg_subtree_file, 'r') as cg_subtree:
-                if "cpu" not in cg_subtree.read().replace("cpuset", ""):
-                    test.cancel("CPU controller not mounted. This is a "
-                                "limitation of cgroup v2 when realtime task "
-                                "existing on host.")
     else:
         logging.info("The case executed on cgroup v1 environment.")
 
@@ -212,6 +219,8 @@ def run(test, params, env):
     try:
         if start_vm == "yes" and not vm.is_alive():
             vm.start()
+            if "schedinfo" in virsh_cmd and is_cgroup_v2:
+                cancel_if_cpu_controller_not_mounted(test)
             vm.wait_for_login().close()
         virsh_cmd_line = prepare_virsh_cmd(vm_name, virsh_cmd,
                                            virsh_cmd_param,
@@ -230,6 +239,8 @@ def run(test, params, env):
             if "--config" in virsh_cmd_options:
                 try:
                     vm.start()
+                    if "schedinfo" in virsh_cmd and is_cgroup_v2:
+                        cancel_if_cpu_controller_not_mounted(test)
                     vm.wait_for_login().close()
                     if "iothread" in virsh_cmd_line:
                         add_iothread(vm)
