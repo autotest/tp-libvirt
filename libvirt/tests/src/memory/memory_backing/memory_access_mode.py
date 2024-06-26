@@ -17,6 +17,8 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_memory
 
+from provider.memory import memory_base
+
 
 def get_vm_attrs(test, params):
     """
@@ -152,6 +154,8 @@ def run(test, params, env):
         """
         Setup pagesize
         """
+        memory_base.check_mem_page_sizes(
+            test, pg_size=int(default_page_size), hp_size=int(set_pagesize))
         hp_cfg.set_kernel_hugepages(set_pagesize, set_pagenum)
 
     def run_test():
@@ -220,6 +224,7 @@ def run(test, params, env):
     mem_backend = params.get("mem_backend")
     qemu_monitor_cmd = params.get('qemu_monitor_cmd')
     qemu_monitor_option = params.get('qemu_monitor_option')
+    default_page_size = params.get("default_page_size")
     set_pagesize = params.get("set_pagesize")
     set_pagenum = params.get("set_pagenum")
 

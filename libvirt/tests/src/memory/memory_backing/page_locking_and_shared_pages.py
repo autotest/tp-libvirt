@@ -17,6 +17,8 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_memory
 from virttest.staging import utils_memory
 
+from provider.memory import memory_base
+
 
 def run(test, params, env):
     """
@@ -47,6 +49,9 @@ def run(test, params, env):
         Prepare init xml
         """
         test.log.info("TEST_SETUP: Set hugepage")
+
+        memory_base.check_mem_page_sizes(
+            test, kernel_pagesize, int(pagesize))
         hp_cfg = test_setup.HugePageConfig(params)
         hp_cfg.set_kernel_hugepages(pagesize, pagenum)
 

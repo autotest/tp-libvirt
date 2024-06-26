@@ -15,6 +15,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 
+from provider.memory import memory_base
+
 
 def run(test, params, env):
     """
@@ -97,6 +99,8 @@ def run(test, params, env):
         Prepare memory device
         """
         test.log.info("TEST_SETUP: Set hugepage.")
+        memory_base.check_mem_page_sizes(
+            test, int(default_page_size), int(set_pagesize))
         hp_cfg.set_kernel_hugepages(set_pagesize, set_pagenum)
 
     def run_test():
@@ -140,6 +144,7 @@ def run(test, params, env):
     qemu_line = params.get("qemu_line")
     numa_discard = params.get("numa_discard")
     mem_discard = params.get("mem_discard")
+    default_page_size = params.get("default_page_size")
     set_pagesize = params.get("set_pagesize")
     set_pagenum = params.get("set_pagenum")
 
