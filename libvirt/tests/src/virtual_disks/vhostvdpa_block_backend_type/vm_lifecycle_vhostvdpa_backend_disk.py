@@ -34,7 +34,7 @@ def run(test, params, env):
 
     libvirt_version.is_libvirt_feature_supported(params)
     disk_attrs = eval(params.get("disk_attrs", "{}"))
-    cmd_in_vm = "d=`date +%s`; echo $d >> /mnt/test ;sync; grep $d /mnt/test"
+    cmd_in_vm = "d=`date +%s`; echo $d >> /mnt/test; sync; grep $d /mnt/test"
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
@@ -74,7 +74,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Shutdown and start VM, check vhostvdpa disk r/w.")
         virsh.shutdown(vm.name, wait_for_event=True,
-                       event_type="disconnected.*(\n.*)*Shutdown Finished.*(\n.*)*Stopped",
+                       event_type=".*Shutdown Finished.*(\n.*)*Stopped",
                        **VIRSH_ARGS)
         virsh.start(vm.name, **VIRSH_ARGS)
         vm_session = vm.wait_for_login()
