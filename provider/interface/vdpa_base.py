@@ -143,7 +143,7 @@ def get_multiplier(vm_session, pci_id):
     :return: The multiplier of VM's interface
     """
     cmd = "lspci -vvv -s %s | awk -F '=' '/multiplier=/ {print $NF}'" % pci_id
-    act_mul = vm_session.cmd_output(cmd).strip()
+    act_mul = vm_session.cmd_output(cmd).splitlines()[-1]
     LOG.debug("Actual multiplier: %s", act_mul)
     return act_mul
 
