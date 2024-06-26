@@ -317,8 +317,11 @@ def run(test, params, env):
         if checkpoint == 'permission':
             os.environ['LIBGUESTFS_BACKEND'] = ''
         process.run('echo $LIBGUESTFS_BACKEND', shell=True)
-
-        v2v_result = utils_v2v.v2v_cmd(v2v_params)
+        if checkpoint == 'special_character':
+            v2v_result = utils_v2v.cmd_run(str(utils_v2v.v2v_cmd(v2v_params, cmd_only=True)).replace('.vmx', '.vm*'),
+                                           params.get('v2v_dirty_resources'))
+        else:
+            v2v_result = utils_v2v.v2v_cmd(v2v_params)
 
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
