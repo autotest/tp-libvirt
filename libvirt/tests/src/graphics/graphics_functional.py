@@ -1020,6 +1020,9 @@ def handle_auto_filled_items(given_graphic_attrs, vm, params):
             given_graphic_attrs['listen_attrs'].update({'address': utils_net.get_host_ip_address()})
         elif vnc_network_type == 'vnet':
             given_graphic_attrs['listen_attrs'].update({'address': params.get('vnet_address')})
+    elif vnc_listen_type == 'not_exist':
+        given_graphic_attrs.update({'listen_attrs': {'type': 'address'}})
+
     if vnc_port and vnc_port == '0':
         del given_graphic_attrs['port']
         given_graphic_attrs.update({'listen_attrs': {'type': 'address'}})
@@ -1707,26 +1710,28 @@ def run(test, params, env):
         if spice_listen_type == "network" or vnc_listen_type == "network":
             for ip in all_ips:
                 ip.addr = ipaddress.ip_address(ip.addr).compressed
-        try:
-            logging.debug("Before starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
-            vm.start()
-            logging.debug("After starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
-        except virt_vm.VMStartError as detail:
-            compare_guest_xml(vnc_graphic, vm, params, test)
-            if not fail_patts:
+
+        logging.debug("Before starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
+        if vnc_listen_type != "not_exist":
+            try:
+                vm.start()
+                logging.debug("After starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
+            except virt_vm.VMStartError as detail:
+                compare_guest_xml(vnc_graphic, vm, params, test)
+                if not fail_patts:
+                    test.fail(
+                        "Expect VM can be started, but failed with: %s" % detail)
+                for patt in fail_patts:
+                    if re.search(patt, str(detail)):
+                        return
                 test.fail(
-                    "Expect VM can be started, but failed with: %s" % detail)
-            for patt in fail_patts:
-                if re.search(patt, str(detail)):
-                    return
-            test.fail(
-                "Expect fail with error in %s, but failed with: %s"
-                % (fail_patts, detail))
-        else:
-            if fail_patts:
-                test.fail(
-                    "Expect VM can't be started with %s, but started."
-                    % fail_patts)
+                    "Expect fail with error in %s, but failed with: %s"
+                    % (fail_patts, detail))
+            else:
+                if fail_patts:
+                    test.fail(
+                        "Expect VM can't be started with %s, but started."
+                        % fail_patts)
 
         if spice_xml:
             spice_opts, plaintext_channels, tls_channels = qemu_spice_options(vm)
