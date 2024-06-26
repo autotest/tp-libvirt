@@ -26,7 +26,6 @@ def run(test, params, env):
     1:byte/KB/KiB/MB/MiB/GB/GiB/invalid
     2:with numa/without numa
     """
-
     def run_positive_test():
         """
         Start guest
@@ -177,10 +176,10 @@ def run(test, params, env):
 
         1) When the operation is guest login, Verify the current memory
         value would change to the value set in defined xml and round up to a
-        multiple of 4KiB(default pagesize), other memory value same as 2):
+        multiple of 4KiB(default guest pagesize), other memory value same as 2):
 
-            2000000KB = 1953125 KiB, and divide default_pagesize = 488281.25
-            rounds up to 488282, than 488282 * default_page = 1953128 KiB
+            2000000KB = 1953125 KiB, and divide default guest pagesize = 488281.25
+            rounds up to 488282, than 488282 * default guest page = 1953128 KiB
 
         2) When the operation is guest start or login and non-current memory,
          Verify the memory value
@@ -195,13 +194,15 @@ def run(test, params, env):
             convert_size = memory_base.convert_data_size(source_size,
                                                          dest_unit)
             conf_page_size = session.cmd_output('getconf PAGE_SIZE')
+            balloon_pagesize = 4
             test.log.debug('The PAGE_SIZE of guest is %s', conf_page_size)
-            if int(conf_page_size) == 65536:
-                round_up_size = math.floor(convert_size/default_pagesize)
+            pagesize_kib = int(conf_page_size) // 1024
+            remainder = convert_size % pagesize_kib
+            if pagesize_kib - remainder < balloon_pagesize:
+                round_up_size = math.ceil(convert_size / pagesize_kib)
             else:
-                round_up_size = math.ceil(convert_size/default_pagesize)
-            dest_size = round_up_size * default_pagesize
-
+                round_up_size = math.floor(convert_size / pagesize_kib)
+            dest_size = round_up_size * pagesize_kib
         else:
             dest_unit = 'MiB'
             convert_size = memory_base.convert_data_size(source_size,
@@ -239,7 +240,6 @@ def run(test, params, env):
 
     case = params.get("case")
     error_msg = params.get("error_msg")
-    default_pagesize = int(params.get("default_pagesize"))
     mem_value = params.get("mem_value")
     mem_unit = params.get("mem_unit")
     current_mem = params.get("current_mem")
