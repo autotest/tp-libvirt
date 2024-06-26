@@ -172,6 +172,11 @@ def run(test, params, env):
     finally:
         libvirtd.exit()
         Libvirtd(daemon_name).stop()
+        # Remove pid file under /run dir
+        default_pid_path = "/run/" + daemon_name + ".pid"
+        if os.path.exists(default_pid_path):
+            os.remove(default_pid_path)
+        Libvirtd(daemon_name).stop()
         socket_name = daemon_name + ".socket"
         Libvirtd(socket_name).restart()
         Libvirtd(daemon_name).start()
