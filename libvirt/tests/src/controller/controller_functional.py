@@ -281,23 +281,24 @@ def run(test, params, env):
                     (cntlr_type is None or elem.type == cntlr_type) and
                     (model is None or elem.model == model) and
                     (index is None or elem.index == index)):
-                addr_elem = elem.address
-                if addr_elem is None:
-                    test.error("Can not find 'Address' "
-                               "element for the controller")
-                p4 = None
-                if 'ccw' == cntlr_bus:
-                    p1 = int(addr_elem.attrs.get('cssid'), 0)
-                    p2 = int(addr_elem.attrs.get('ssid'), 0)
-                    p3 = int(addr_elem.attrs.get('devno'), 0)
-                else:
-                    p1 = int(addr_elem.attrs.get('bus'), 0)
-                    p2 = int(addr_elem.attrs.get('slot'), 0)
-                    p3 = int(addr_elem.attrs.get('function'), 0)
-                    p4 = addr_elem.attrs.get('multifunction')
-                addr_str = '%02d:%02x.%1d' % (p1, p2, p3)
-                logging.debug("Controller address is %s", addr_str)
-                return (addr_str, p1, p2, p3, p4)
+                if elem._get_list("address"):
+                    addr_elem = elem.address
+                    if addr_elem is None:
+                        test.error("Can not find 'Address' "
+                                   "element for the controller")
+                    p4 = None
+                    if 'ccw' == cntlr_bus:
+                        p1 = int(addr_elem.attrs.get('cssid'), 0)
+                        p2 = int(addr_elem.attrs.get('ssid'), 0)
+                        p3 = int(addr_elem.attrs.get('devno'), 0)
+                    else:
+                        p1 = int(addr_elem.attrs.get('bus'), 0)
+                        p2 = int(addr_elem.attrs.get('slot'), 0)
+                        p3 = int(addr_elem.attrs.get('function'), 0)
+                        p4 = addr_elem.attrs.get('multifunction')
+                    addr_str = '%02d:%02x.%1d' % (p1, p2, p3)
+                    logging.debug("Controller address is %s", addr_str)
+                    return (addr_str, p1, p2, p3, p4)
 
         return (None, None, None, None, None)
 
