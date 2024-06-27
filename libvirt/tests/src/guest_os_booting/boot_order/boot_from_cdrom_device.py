@@ -98,7 +98,7 @@ def run(test, params, env):
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
 
         vm.start()
-        if check_bootable_iso:
+        if bootable_patterns:
             vm.serial_console.read_until_output_matches(
                 bootable_patterns, timeout=60, internal_timeout=0.5)
         else:
