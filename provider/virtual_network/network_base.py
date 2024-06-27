@@ -4,10 +4,11 @@ import shutil
 
 import aexpect
 from avocado.core import exceptions
-from avocado.utils import process
+from avocado.utils import process, distro
 from virttest import remote
 from virttest import utils_net
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
 
@@ -336,3 +337,29 @@ def check_iface_attrs(iface, key, expect_val):
     if actual_val != expect_val:
         raise exceptions.TestFail(f'Updated {key} of iface should be '
                                   f'{expect_val}, NOT {actual_val}')
+
+
+def check_firewall_backend():
+    """
+    Check host firewall_backend to determine to use nft or iptables cmd
+    """
+    firewall_backend = "iptables"
+    host_distro = distro.detect().name
+    host_version = distro.detect().version
+    from_rhel10 = (host_distro == 'rhel' and int(host_version) >= 10)
+    if from_rhel10:
+        firewall_backend = "nftables"
+        with open('/etc/libvirt/network.conf') as file:
+            for line in file.readlines():
+                if re.search('^firewall_backend\\s*=\\s*.iptables', line):
+                    firewall_backend = "iptables"
+                    break
+    elif libvirt_version.version_compare(10, 4, 0):
+        with open('/etc/libvirt/network.conf') as file:
+            for line in file.readlines():
+                if re.search('^firewall_backend\\s*=\\s*.nftables', line):
+                    LOG.debug(f'my values: {firewall_backend}')
+                    firewall_backend = "nftables"
+                    break
+    LOG.debug(f'The firewall_backend detected for libvirt network is: {firewall_backend}')
+    return firewall_backend
