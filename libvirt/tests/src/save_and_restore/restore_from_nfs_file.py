@@ -8,6 +8,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
+from avocado.utils import process
+
 from provider.save import save_base
 
 LOG = logging.getLogger('avocado.test.' + __name__)
@@ -48,6 +50,8 @@ def run(test, params, env):
     """
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
+    LOG.debug("----> begin debug -----")
+    process.run("systemctl status nfs-server", ignore_status=True, shell=True).stdout_text
 
     disk_seclabels = eval(params.get('disk_seclabels', '{}'))
     image_name = f'{vm_name}.img'
@@ -59,6 +63,11 @@ def run(test, params, env):
     try:
         save_path = setup_nfs_file(vmxml, image_name, disk_seclabels, uid, gid)
         LOG.debug(f'VM xml: {virsh.dumpxml(vm_name).stdout_text}')
+        process.run("ls -lZ /var/lib/avocado/data/avocado-vt/nfs-mount/avocado-vt-vm1.img",
+                    ignore_status=True, shell=True).stdout_text
+        process.run("getsebool virt_use_nfs", ignore_status=True, shell=True).stdout_text
+        process.run("getenforce", ignore_status=True, shell=True).stdout_text
+        process.run("systemctl status nfs-server", ignore_status=True, shell=True).stdout_text
 
         vm.start()
         vm.wait_for_login().close()
@@ -76,6 +85,10 @@ def run(test, params, env):
         save_base.check_ownership(save_path, uid, gid)
 
     finally:
+        process.run("ls -lZ /var/lib/avocado/data/avocado-vt/nfs-mount/avocado-vt-vm1.img",
+                    ignore_status=True, shell=True).stdout_text
+        process.run("ausearch -m AVC,USER_AVC -ts recent", ignore_status=True, shell=True).stdout_text
+        process.run("systemctl status nfs-server", ignore_status=True, shell=True).stdout_text
         bkxml.sync()
         if os.path.exists(save_path):
             os.remove(save_path)
