@@ -956,12 +956,15 @@ def run(test, params, env):
 
         return updated_conf
 
-    def time_diff_between_vm_host(localvm=True):
+    def time_diff_between_vm_host(vm, localvm=True):
         """
         check the time difference between vm and source host
+
+        :param vm: vm object
         :param localvm: True if vm is not migrated yet
         """
         if localvm:
+            vm.prepare_guest_agent()
             vm_time = virsh.domtime(vm_name, debug=True).stdout
             vm_time_value = int(vm_time.strip().split(":")[-1])
         else:
@@ -1347,7 +1350,7 @@ def run(test, params, env):
             check_maxdowntime(params)
 
         if timer_migration:
-            source_vm_host_time_diff = time_diff_between_vm_host(localvm=True)
+            source_vm_host_time_diff = time_diff_between_vm_host(vm, localvm=True)
 
         if extra.count("timeout-postcopy"):
             action_during_mig = check_timeout_postcopy
@@ -1589,7 +1592,7 @@ def run(test, params, env):
                 vm.connect_uri = bk_uri
 
         if timer_migration:
-            target_vm_host_time_diff = time_diff_between_vm_host(localvm=False)
+            target_vm_host_time_diff = time_diff_between_vm_host(vm, localvm=False)
             if abs(target_vm_host_time_diff - source_vm_host_time_diff) > 1:
                 test.fail("The difference of target_vm_host_time_diff and "
                           "source_vm_host_time_diff "
