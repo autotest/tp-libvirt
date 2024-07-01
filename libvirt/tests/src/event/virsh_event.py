@@ -543,7 +543,7 @@ def run(test, params, env):
                         test.fail("Failed to trigger watchdog: %s" % details)
                     session.close()
                     # watchdog acts slowly, waiting for it.
-                    time.sleep(30)
+                    time.sleep(60)
                     expected_events_list.append("'watchdog' for %s: " + "%s" % action)
                     if action == 'pause':
                         expected_events_list.append("'lifecycle' for %s: Suspended Watchdog")
