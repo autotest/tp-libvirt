@@ -48,6 +48,7 @@ class DiskBase(object):
         self.new_image_path = ''
         self.path_list = ''
         self.disk_backend = ''
+        self.disk_size = "50M"
 
     @staticmethod
     def get_source_list(vmxml, disk_type, target_dev):
@@ -129,6 +130,10 @@ class DiskBase(object):
             if not new_image_path:
                 new_image_path = self.create_lvm_disk_path(
                     vg_name=self.vg_name, lv_name=self.lv_name, **kwargs)
+                if self.params.get('convert_format'):
+                    process.run("qemu-img create -f %s /dev/%s/%s %s" % (
+                            self.params.get('convert_format'), self.vg_name,
+                            self.lv_name, self.disk_size), shell=True)
             disk_dict.update({'source': {'attrs': {'dev': new_image_path}}})
 
         elif disk_type == 'volume':
@@ -146,7 +151,7 @@ class DiskBase(object):
                 new_image_path = nfs_res['mount_dir'] + '/test.img'
 
                 libvirt.create_local_disk("file", path=new_image_path,
-                                          size='50M',
+                                          size=self.disk_size,
                                           disk_format="qcow2", **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
@@ -288,7 +293,7 @@ class DiskBase(object):
         if kwargs.get("size"):
             kwargs.pop("size")
         path = libvirt.create_local_disk("lvm", size=size, vgname=vg_name,
-                                         lvname=lv_name, **kwargs)
+                                         lvname=lv_name)
 
         return path
 
