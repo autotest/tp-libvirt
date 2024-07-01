@@ -612,6 +612,8 @@ def run(test, params, env):
     params.pop('boot_order')
 
     try:
+        # Load sg module
+        process.run("modprobe sg", shell=True, ignore_status=True, verbose=True)
         run_test_case(test, params, env)
         if coldplug:
             vm.start()
