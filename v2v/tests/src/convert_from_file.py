@@ -320,6 +320,12 @@ def run(test, params, env):
         if checkpoint == 'special_character':
             v2v_result = utils_v2v.cmd_run(str(utils_v2v.v2v_cmd(v2v_params, cmd_only=True)).replace('.vmx', '.vm*'),
                                            params.get('v2v_dirty_resources'))
+        elif checkpoint == 'no_ssh_agent':
+            esxi_passwd_file = "/tmp/v2v_esxi_passwd"
+            with open(esxi_passwd_file, 'w') as f:
+                f.write(esxi_password)
+            v2v_cmd = str(utils_v2v.v2v_cmd(v2v_params, cmd_only=True) + ' -ip %s' % esxi_passwd_file)
+            v2v_result = utils_v2v.cmd_run(v2v_cmd, params.get('v2v_dirty_resources'))
         else:
             v2v_result = utils_v2v.v2v_cmd(v2v_params)
 
