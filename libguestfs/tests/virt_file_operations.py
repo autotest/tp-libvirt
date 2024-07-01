@@ -75,7 +75,7 @@ def test_virt_tar_in(test, vm, params):
         test.fail(str(detail))
 
     try:
-        output = session.cmd_output("cat %s" % path, timeout=5)
+        output = session.cmd_output("cat %s; echo" % path, timeout=5)
         logging.debug(output)
         vm.destroy()
         vm.wait_for_shutdown()
@@ -203,7 +203,7 @@ def test_virt_copy_in(test, vm, params):
         test.fail(str(detail))
 
     try:
-        output = session.cmd_output("cat %s" % path, timeout=5)
+        output = session.cmd_output("cat %s; echo" % path, timeout=5)
         logging.debug(output)
         vm.destroy()
         vm.wait_for_shutdown()
@@ -267,7 +267,7 @@ def test_virt_copy_out(test, vm, params):
             test.fail("Catted file do not match.")
 
 
-def run_virt_file_operations(test, params, env):
+def run(test, params, env):
     """
     Test libguestfs with file commands: virt-tar-in, virt-tar-out,
                                         virt-copy-in, virt-copy-out
