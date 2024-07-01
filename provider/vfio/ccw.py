@@ -310,6 +310,24 @@ def assure_preconditions():
     utils_package.package_install(["mdevctl", "driverctl"])
 
 
+def select_first_available_device(device_ids):
+    """
+    Loops through the given device identifiers and selects
+    the first device that exists on the system.
+
+    :param device_ids: list of potential device identifiers.
+    :return device: device info as defined by SubchannelPaths
+    :raise TestError: if no available devices is found.
+    """
+    paths = SubchannelPaths()
+    paths.get_info()
+    for device in paths.devices:
+        for device_id in device_ids:
+            if device[paths.HEADER["Device"]] == device_id:
+                return device
+    raise TestError(f"None of the devices is available, {device_ids}")
+
+
 def get_device_info(devid=None):
     """
     Gets the device info for passthrough.
