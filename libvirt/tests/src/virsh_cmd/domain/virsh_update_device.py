@@ -10,7 +10,7 @@ from virttest import utils_misc
 from virttest import libvirt_version
 from virttest.libvirt_xml import VMXML
 from virttest.utils_test import libvirt
-
+from virttest.libvirt_xml.devices import disk
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -41,22 +41,28 @@ def create_disk(params, test, vm_name, orig_iso, disk_type, target_dev, disk_for
                 params["readonly"] = "yes"
             elif mode == "shareable":
                 params["shareable"] = "yes"
-            disk_xml = libvirt.create_disk_xml(params)
+            logging.info("Disk XML Params: {}".format(params))
+
+            disk_xml = disk.Disk(type_name="file")
+            disk_xml_tmp = libvirt.create_disk_xml(params)
+            disk_xml.xml = disk_xml_tmp
+            disk_xml = disk_xml.xml
         else:
             with open(orig_iso, 'wb') as _file:
                 _file.seek((1024 * 1024) - 1)
                 _file.write(str(0).encode())
     except IOError:
         test.fail("Create orig_iso failed!")
+
     options = "--type %s --sourcetype=file --config" % disk_type
     try:
         if mode:
             options += " --mode %s" % mode
         if slice_test:
             # Use attach_device to add cdrom file with slice to guest
-            virsh.attach_device(vm_name, disk_xml, flagstr="--config")
+            virsh.attach_device(vm_name, str(disk_xml), flagstr="--config", ignore_status=False)
         else:
-            virsh.attach_disk(vm_name, orig_iso, target_dev, options)
+            virsh.attach_disk(vm_name, orig_iso, target_dev, options, ignore_status=False)
     except Exception:
         os.remove(orig_iso)
         test.fail("Failed to attach")
@@ -209,7 +215,12 @@ def run(test, params, env):
     # Vm should be in 'shut off' status
     slice_test = params.get("disk_slice", "False")
     disk_format = params.get("driver_type")
-    utils_misc.wait_for(lambda: vm.state() == "shut off", 30)
+
+    # Insure vm is shutdown properly
+    utils_misc.wait_for(lambda: vm.state() == "shut off", 360)
+    if vm.state() != "shut off":
+        test.fail("Failed to shutdown VM")
+
     create_disk(params, test, vm_name, orig_iso, disk_type, target_dev, disk_format, disk_mode)
     inactive_vmxml = VMXML.new_from_dumpxml(vm_name,
                                             options="--inactive")
@@ -232,6 +243,9 @@ def run(test, params, env):
     vm_ref = params.get("updatedevice_vm_ref", "")
     status_error = "yes" == params.get("status_error", "no")
     extra = params.get("updatedevice_extra", "")
+
+    logging.debug("Pre test XML:")
+    logging.debug(str(VMXML.new_from_dumpxml(vm_name)))
 
     # OK let's give this a whirl...
     errmsg = ""
