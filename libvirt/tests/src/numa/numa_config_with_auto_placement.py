@@ -177,33 +177,19 @@ def check_iothreadinfo(vm_name, cpu_range, config=''):
                        'iothreadinfo command.'.format(cpu_range))
 
 
-def check_cgget_output(test, expected_value):
+def check_cgget_output(test, vm, expected_value):
     """
     Get the cgget output and check it for required value
 
     :param test: test object
+    :param vm: virtual machine
     :param cgget_message: expected message string in output
     """
-    # Find the slice and print it with the cgget
-    cpuset_slices = process.run('systemd-cgls cpuset')
-    machine_found = False
-    slice_line = None
-    cpuset_lines = re.split('\s', cpuset_slices.stdout_text)
-    for line in cpuset_lines:
-        if re.search('machine-qemu', line):
-            slice_line = line.strip()
-            # No more lines need to be checked
-            break
-    if not slice_line:
-        test.error("'machine-qemu' is not found in 'systemd-cgls cpuset' output")
-    slice_line = slice_line.replace('\\', '\\\\')[2:]
-
+    vm_pid = vm.get_pid()
+    cg = libvirt_cgroup.CgroupTest(vm_pid)
+    cg_path = cg.get_cgroup_path(controller='cpuset').split('emulator')[0]
     for item in ['emulator', 'vcpu0']:
-        if libvirt_cgroup.CgroupTest('').is_cgroup_v2_enabled():
-            cmd = 'cat /sys/fs/cgroup/machine.slice/{}/libvirt/{}/cpuset.mems'.format(slice_line, item)
-        else:
-            cmd = 'cat /sys/fs/cgroup/cpuset/machine.slice/{}/libvirt/{}/cpuset.mems'.format(slice_line, item)
-
+        cmd = 'cat {}{}/cpuset.mems'.format(re.escape(cg_path), item)
         result = process.run(cmd, shell=True, ignore_status=False, verbose=True)
         if expected_value != result.stdout_text.strip():
             test.fail('{} is not found in the cpuset.mems file'.format(expected_value))
@@ -257,7 +243,7 @@ def run(test, params, env):
                 test.fail("The used nodeset is not the same after the libvirtd "
                           "restart.{} is not as expected: {}".
                           format(nodeset_after, nodeset))
-            check_cgget_output(test, nodeset)
+            check_cgget_output(test, vm, nodeset)
 
     except Exception as e:
         test.fail('Unexpected failure during the test: {}'.format(e))
