@@ -88,12 +88,6 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
     :param force_ipv4: whether to force ping with ipv4
     :param args: other kwargs
     """
-    outside_ip = ips.get('outside_ip')
-    vm_ip = ips.get('vm_ip')
-    ep_vm_ip = ips.get('ep_vm_ip')
-    host_public_ip = ips.get('host_public_ip')
-    host_virbr_ip = ips.get('host_virbr_ip')
-    outside_ip = ips.get('outside_ip')
     ping_patterns = {k: v for k, v in params.items() if '_ping_' in k}
 
     for pattern, expect_result in ping_patterns.items():
@@ -101,7 +95,7 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
         if destination == 'outside' and not force_ipv4:
             LOG.debug('No need to test ping outside with ipv6')
             continue
-        dest_ip = eval(f'{destination}_ip')
+        dest_ip = ips.get(f'{destination}_ip')
         if dest_ip is None:
             raise exceptions.TestError(f'IP of {destination} is None')
 
