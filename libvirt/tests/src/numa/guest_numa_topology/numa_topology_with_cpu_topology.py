@@ -67,6 +67,9 @@ def verify_vm_cpu_info(vm_session, test_obj, cpu_info_type, cmd):
     if cpu_info_type == 'cores':
         dies = eval(test_obj.params.get('cpu_topology'))['dies']
         cpu_info = str(int(cpu_info) * int(dies))
+    if cpu_info_type == 'dies':
+        sockets = eval(test_obj.params.get('cpu_topology'))['sockets']
+        cpu_info = str(int(cpu_info) * int(sockets))
     if cpu_info != output.strip():
         test_obj.test.fail('Guest cpu %s is expected '
                            'to be %s, but found %s' % (cpu_info_type,
@@ -165,7 +168,10 @@ def run_default(test_obj):
     vm_session = test_obj.vm.wait_for_login()
     cmds = {'sockets': 'cat /proc/cpuinfo|grep "physical id"|sort -u|wc -l',
             'cores': 'cat /proc/cpuinfo|grep "core id"|sort|uniq|wc -l',
-            'dies': 'cat /sys/devices/system/cpu/cpu*/topology/die_id|sort|uniq|wc -l',
+            'dies': 'let num=$(cat /proc/cpuinfo | grep "processor" | wc -l); i=0 ; \
+                while [ $i -lt $num ] ; \
+                do cat /sys/devices/system/cpu/cpu${i}/topology/{physical_package_id,die_id}; \
+                let i++ ; done | paste - - | sort | uniq | wc -l',
             'threads': 'lscpu|grep Thread|cut -d":" -f2'}
     for cpu_info_type, cpu_cmd in cmds.items():
         verify_vm_cpu_info(vm_session, test_obj, cpu_info_type, cpu_cmd)
