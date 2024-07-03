@@ -293,7 +293,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP3: Check the virtio-mem memory device config")
         converted_req = int(memory_base.convert_data_size(update_request_size, requested_unit))
         check_list = [(target_size, 'size'), (converted_req, 'requested_size'),
-                      (basic_node, 'node'), (block_size, 'block_size')]
+                      (basic_node, 'node'), (params.get('default_pagesize'), 'block_size')]
         for items in check_list:
             check_various_size(test, vm_name, items[0], check_item=items[1])
 
@@ -349,13 +349,11 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
     vm = env.get_vm(vm_name)
-    memory_base.adjust_memory_size(params)
 
     allocate_huge_pages = re.findall(r'\d+', params.get("allocate_huge_pages"))[0]
     guest_state = params.get("guest_state")
     basic_node = params.get("basic_node")
     target_size = int(params.get("target_size"))
-    block_size = params.get("block_size")
     mem_basic = params.get("mem_basic", "{}")
     mem_attach = params.get("mem_attach", "{}")
     attached_device = params.get("attached_device")
