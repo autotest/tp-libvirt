@@ -39,8 +39,8 @@ def get_vm_ip(session, mac, ip_ver="ipv4"):
             f'Cannot find ip addr with given mac: {mac}')
     elif len(target_addr) > 1:
         LOG.warn(f'Multiple ip addr: {target_addr}')
-    else:
-        return target_addr[0]['local']
+
+    return target_addr[0]['local']
 
 
 def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
