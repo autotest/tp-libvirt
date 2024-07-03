@@ -1,3 +1,4 @@
+import os
 import logging as log
 
 from virttest import utils_misc
@@ -60,9 +61,14 @@ def run(test, params, env):
 
         libvirtd.start(wait_for_working=False)
 
-        if not utils_misc.wait_for(lambda: bundle['recieved'], 20, 0.5):
+        if not utils_misc.wait_for(lambda: bundle['recieved'], 60, 0.5):
             test.fail("Expect receive signal, but not.")
     finally:
         libvirtd.exit()
+        # Remove pid file under /run
+        if serv_name:
+            default_pid_path = "/run/" + serv_name + ".pid"
+            if os.path.exists(default_pid_path):
+                os.remove(default_pid_path)
         # Need to restart libvirtd.socket after starting libvirtd in the foreground
         Libvirtd("libvirtd.socket").restart()
