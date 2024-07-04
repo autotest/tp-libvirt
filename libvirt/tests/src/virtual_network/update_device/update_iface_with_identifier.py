@@ -95,9 +95,10 @@ def run(test, params, env):
                           f'{update_attrs["link_state"]}')
 
         elif operation == 'hotunplug':
+            vm.wait_for_serial_login().close()
             dt_result = virsh.detach_device(vm_name, iface.xml,
                                             wait_for_event=True,
-                                            event_timeout=20,
+                                            event_timeout=120,
                                             debug=True)
             check_cmd_result(dt_result, status_error, err_msg)
             if status_error:
