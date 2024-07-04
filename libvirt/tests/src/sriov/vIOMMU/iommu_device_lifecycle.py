@@ -65,8 +65,8 @@ def run(test, params, env):
                 session = vm.wait_for_serial_login(
                     timeout=int(params.get('login_timeout')))
                 session.sendline(params.get("reboot_command"))
-                _match, _text = session.read_until_last_line_matches(
-                    [r"[Ll]ogin:\s*$"], timeout=240, internal_timeout=0.5)
+                _match, _text = session.read_until_output_matches(
+                    [r"[Ll]ogin:\s*"], timeout=240, internal_timeout=0.5)
                 session.close()
 
             session = vm.wait_for_serial_login(
