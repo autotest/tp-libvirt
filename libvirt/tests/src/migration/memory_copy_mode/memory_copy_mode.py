@@ -22,6 +22,7 @@ def run(test, params, env):
         migration_obj.verify_default()
 
         if libvirt_version.version_compare(10, 1, 0):
+            remote.run_remote_cmd("yum install lsof -y", params)
             # Check libvirt pass userfaultfd in vm namespace and qemu can access
             # this file correctly after postcopy migration on target host.
             cmd = "nsenter -a -t `pidof qemu-kvm` lsof /dev/userfaultfd"
