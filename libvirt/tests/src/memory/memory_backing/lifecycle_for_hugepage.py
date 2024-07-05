@@ -157,6 +157,7 @@ def run_test(vm, params, test):
     libvirt.check_result(ret, expected_fails=start_error)
     if start_error:
         return
+    vm.wait_for_login().close()
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
     test.log.debug("After start vm, get vmxml is :%s", vmxml)
 
