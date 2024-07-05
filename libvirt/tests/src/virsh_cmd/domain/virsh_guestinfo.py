@@ -304,7 +304,7 @@ def run(test, params, env):
         if_info = {}
         session = vm.wait_for_login()
         try:
-            ip_cmd = 'ip a'
+            ip_cmd = 'ip -c=never a'
             ip_lines = session.cmd_output(ip_cmd).strip().splitlines()
             if_info = parse_interface_info(ip_lines)
         finally:
