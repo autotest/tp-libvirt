@@ -38,6 +38,7 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    snap_options = params.get("snap_options")
 
     def check_rng_xml(xml_set, exists=True):
         """
@@ -272,7 +273,8 @@ def run(test, params, env):
         snapshot_name2 = "snap.s2"
         if not snapshot_vm_running:
             vm.destroy(gracefully=False)
-        ret = virsh.snapshot_create_as(vm_name, snapshot_name1, debug=True)
+        ret = virsh.snapshot_create_as(
+            vm_name, options=snap_options % snapshot_name1, debug=True)
         libvirt.check_exit_status(ret)
         snap_lists = virsh.snapshot_list(vm_name, debug=True)
         if snapshot_name not in snap_lists:
@@ -548,7 +550,8 @@ def run(test, params, env):
             if snapshot_vm_running:
                 vm.start()
                 vm.wait_for_login().close()
-            ret = virsh.snapshot_create_as(vm_name, snapshot_name, debug=True)
+            ret = virsh.snapshot_create_as(
+                vm_name, options=snap_options % snapshot_name, debug=True)
             libvirt.check_exit_status(ret)
 
         # Destroy VM first
