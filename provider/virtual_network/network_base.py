@@ -291,7 +291,7 @@ def set_static_ip(iface, ip, netmask, session):
     session.cmd(f'ifconfig {iface} {ip}/{netmask}')
 
 
-def get_iface_xml_inst(vm_name, comment, index=0, options=''):
+def get_iface_xml_inst(vm_name, comment, index=0, options='', virsh_ins=virsh):
     """
     Get iface xml instance with given vm and index
 
@@ -300,7 +300,8 @@ def get_iface_xml_inst(vm_name, comment, index=0, options=''):
     :param index: index of interface on vm, defaults to 0
     :return: xml instance of interface
     """
-    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name, options=options)
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name, options=options,
+                                          virsh_instance=virsh_ins)
     iface = vmxml.get_devices('interface')[index]
     LOG.debug(f'Interface xml ({comment}):\n{iface}')
     return iface
