@@ -1164,6 +1164,7 @@ virtiofs
 virtiofsd
 virtlogd
 virtnet
+virtnetworkd
 virtproxyd
 virtqemud
 virttype
