@@ -120,9 +120,10 @@ class DiskBase(object):
                 size = kwargs.get("size", "50M")
                 if kwargs.get("size"):
                     kwargs.pop("size")
-                libvirt.create_local_disk("file", path=new_image_path, size=size,
-                                          disk_format=self.params.get("disk_image_format", 'qcow2'),
-                                          **kwargs)
+                libvirt.create_local_disk(
+                    "file", path=new_image_path, size=size,
+                    disk_format=self.params.get("disk_image_format", 'qcow2'),
+                    **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
         elif disk_type == 'block':
@@ -163,6 +164,17 @@ class DiskBase(object):
                     "auth": {"auth_user": auth_username,
                              "secret_usage": "cephlibvirt",
                              "secret_type": "ceph"}}})
+        elif disk_type == 'rbd_with_luks_and_auth':
+            mon_host, auth_username, new_image_path, _ = \
+                self.create_rbd_disk_path(self.params, create_img_by_qemu_cmd=True)
+            disk_dict.update({'source': {
+                'attrs': {'protocol': "rbd", "name": new_image_path},
+                "hosts": [{"name": mon_host}],
+                "auth": {"auth_user": auth_username,
+                         "secret_usage": self.params.get("ceph_usage_name"),
+                         "secret_type": "ceph"}}})
+            self.add_luks_encryption_to_disk_dict(
+                disk_dict, self.params.get("luks_sec_dict") % new_image_path)
 
         elif disk_type == "nbd":
             nbd_server_host = process.run('hostname', ignore_status=False,
@@ -198,6 +210,22 @@ class DiskBase(object):
 
         return disk_obj, new_image_path
 
+    def add_luks_encryption_to_disk_dict(self, disk_dict, secret_dict):
+        """
+        Add luks encryption to disk dict.
+
+        :param disk_dict: disk dict.
+        :param secret_dict: secret dict to define a secret.
+        """
+        sec_uuid = libvirt_secret.create_secret(sec_dict=eval(secret_dict))
+        virsh.secret_set_value(sec_uuid, self.params.get("secret_pwd"),
+                               debug=True, ignore_status=False)
+        disk_source = disk_dict["source"]
+        disk_source.update(
+            {"encryption": {"secret": {"type": "passphrase", "uuid": sec_uuid},
+                            "encryption": "luks", "attrs": {"engine": "librbd"}}})
+        return disk_dict
+
     def cleanup_disk_preparation(self, disk_type):
         """
         Clean up the preparation of different type disk
@@ -219,7 +247,7 @@ class DiskBase(object):
         elif disk_type == 'nfs':
             libvirt.setup_or_cleanup_nfs(is_setup=False)
 
-        elif disk_type == "rbd_with_auth":
+        elif disk_type in ["rbd_with_auth", "rbd_with_luks_and_auth"]:
             self.cleanup_rbd_disk_path(self.params)
 
         elif disk_type == "nbd":
@@ -311,11 +339,13 @@ class DiskBase(object):
             os.remove(params.get('configfile'))
 
     @staticmethod
-    def create_rbd_disk_path(params):
+    def create_rbd_disk_path(params, create_img_by_qemu_cmd=False):
         """
         Prepare rbd type disk image path
 
         :params params: Dict with the test parameters.
+        :params create_img_by_qemu_cmd: The flag for whether creating rbd type
+        image by qemu, default False
         :return: tuple, include monitor host, auth username,
                         new image path and secret uuid
         """
@@ -337,10 +367,17 @@ class DiskBase(object):
         sec_uuid = libvirt_secret.create_secret(sec_dict=sec_dict)
         virsh.secret_set_value(sec_uuid, auth_key, debug=True)
 
-        ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
-                          new_image_path.split("/")[1])
-        ceph.rbd_image_create(mon_host, new_image_path.split("/")[0],
-                              new_image_path.split("/")[1], rbd_image_size)
+        if not create_img_by_qemu_cmd:
+            ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
+                              new_image_path.split("/")[1])
+            ceph.rbd_image_create(mon_host, new_image_path.split("/")[0],
+                                  new_image_path.split("/")[1], rbd_image_size)
+        else:
+            libvirt.create_local_disk(
+                disk_type="file", path='',
+                extra=params.get("rbd_image_parameter").format(
+                    new_image_path, auth_username, auth_key, mon_host),
+                disk_format=params.get("rbd_image_format"), size=rbd_image_size)
 
         return mon_host, auth_username, new_image_path, sec_uuid
 
