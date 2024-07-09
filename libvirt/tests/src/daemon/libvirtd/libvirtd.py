@@ -323,6 +323,7 @@ def test_check_max_anonymous_clients(params, test):
         except utils_config.ConfigNoOptionError:
             test.log.info("No '%s' in config file.", item)
 
+    process.run('setenforce 0', ignore_status=False)
     daemon_conf.log_level = log_level
     daemon_conf.log_outputs = "1:file:%s" % log_file
     daemon_conf.log_filters = log_filters
@@ -367,3 +368,4 @@ def run(test, params, env):
         run_test(params, test)
     finally:
         teardown_test(params, test)
+        process.run('setenforce 1 ', ignore_status=False)
