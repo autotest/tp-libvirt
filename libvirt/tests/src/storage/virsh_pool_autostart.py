@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import logging as log
 
 from avocado.utils import process
@@ -159,9 +160,10 @@ def run(test, params, env):
                 pool = pool_ins.get_pool_uuid(pool_name)
             if destroy_pool_used_by_guest:
                 virsh.pool_start(pool_name, debug=True, ignore_status=False)
+                # Avoid running vol_list too quickly
+                time.sleep(3)
                 res = virsh.vol_list(pool_name, debug=True,
                                      ignore_status=False).stdout_text
-
                 vol = re.findall(r"(\S+)\ +(\S+)", str(res.strip()))[1]
                 if not vol:
                     test.fail('Expect to get vol in %s pool' % pool_name)
