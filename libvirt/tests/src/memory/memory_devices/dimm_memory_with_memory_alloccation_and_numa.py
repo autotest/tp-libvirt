@@ -96,7 +96,10 @@ def check_coldplug_result(params, result):
     coldplug_error_2 = params.get("coldplug_error_2")
 
     if mem_alloc == "with_slot":
-        libvirt.check_exit_status(result)
+        if device_operation == "coldplug_without_node":
+            libvirt.check_result(result, coldplug_error_2)
+        else:
+            libvirt.check_exit_status(result)
     elif mem_alloc == "no_slot":
         libvirt.check_result(result, coldplug_error)
     elif mem_alloc == "no_maxmemory":
