@@ -149,6 +149,7 @@ def run(test, params, env):
         _check_errors()
     finally:
         logging.info('Recovering services status')
+        process.run("rm -rf /run/virtnetworkd.pid", ignore_status=True)
         #Restart socket service after starting process at foreground
         utils_libvirtd.Libvirtd("virtnetworkd.socket").restart()
         # If service do not exists, then backup status and current status
