@@ -68,6 +68,7 @@ def run(test, params, env):
     device_attrs = eval(params.get("device_attrs", "{}"))
     port_num = params.get("port_num")
     check_prompt = params.get("check_prompt")
+    required_cmds = eval(params.get("required_cmds", "[]"))
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -77,8 +78,9 @@ def run(test, params, env):
     disk_obj = disk_base.DiskBase(test, vm, params)
 
     try:
-        if not (shutil.which("lsusb") and shutil.which("usbredirserver")):
-            test.error("Package related with usb command is not installed. Please install it.")
+        for cmd in required_cmds:
+            if not (shutil.which(cmd)):
+                test.fail("Command '{}' is not available. Please install the relevant package(s)".format(cmd))
         vmxml = guest_os.prepare_os_xml(vm_name, bootmenu_dict)
         vmxml.remove_all_boots()
 
