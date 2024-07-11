@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import time
 
 import aexpect
 from virttest import libvirt_version
@@ -122,6 +123,8 @@ def run(test, params, env):
             if not os.path.exists(log_file):
                 test.fail(f'Logfile of passt "{log_file}" not created')
 
+            # wait for the vm boot before first time to try serial login
+            time.sleep(5)
             session = vm.wait_for_serial_login(timeout=60)
             vm_iface = utils_net.get_linux_ifname(session, mac)
             passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
