@@ -10,6 +10,7 @@
 import re
 import json
 
+from avocado.utils import memory
 from avocado.utils import process
 
 from virttest import utils_test
@@ -17,6 +18,8 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirtd import Libvirtd
 from virttest.utils_libvirt import libvirt_vmxml
+
+virsh_dargs = {"ignore_status": False, "debug": True}
 
 
 def get_vm_attrs(test, params):
@@ -44,20 +47,21 @@ def get_vm_attrs(test, params):
     return vm_attrs
 
 
-def create_dimm_mem_list(test, params):
+def create_dimm_objects(test, params):
     """
-    Get 6 basic different dimm memory devices.
+    Get 6 basic different dimm memory devices object.
 
     :param test: test object.
     :param params: dictionary with the test parameters.
-    :return mem_list: dimm memory attr dict list.
+    :return mem_list: dimm memory device object list.
     """
+    default_hugepage_size = memory.get_huge_page_size()
     mem_list = []
     for item in [(None, None, 0), ('shared', 'yes', 0),
                  (None, None, 1), ('private', 'no', 1),
                  (None, None, 2), ('shared', 'yes', 2)]:
 
-        single_mem = eval(params.get("dimm_basic"))
+        single_mem = eval(params.get("dimm_basic") % default_hugepage_size)
         target = single_mem['target']
         target.update({'node': item[2]})
 
@@ -65,10 +69,42 @@ def create_dimm_mem_list(test, params):
             single_mem.update({'mem_access': item[0]})
         if item[1] is not None:
             single_mem.update({'mem_discard': item[1]})
-        mem_list.append(single_mem)
+        test.log.debug("Get one dimm dict is:'%s'\n", single_mem)
 
-    test.log.debug("Get all dimm list:'%s'", mem_list)
+        dimm_obj = libvirt_vmxml.create_vm_device_by_type(
+            'memory', single_mem)
+        mem_list.append(dimm_obj)
+
     return mem_list
+
+
+def plug_dimm(test, params, vm, operation):
+    """
+    Hot plug or Cold plug dimm
+
+    :param test: test object.
+    :param params: dictionary with the test parameters.
+    :param vm: vm object.
+    :param operation: flag for hot plugging or cold plugging.
+    """
+    vm_name = params.get("main_vm")
+    attach_option = params.get("attach_option")
+
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml.remove_all_device_by_type("memory")
+
+    all_dimms = create_dimm_objects(test, params)
+    if operation == "cold_plug":
+        pass
+    elif operation == "hot_plug":
+        vm.start()
+        vm.wait_for_login().close()
+        Libvirtd().restart()
+
+    for mem in all_dimms:
+        virsh.attach_device(vm_name, mem.xml,
+                            flagstr=attach_option,
+                            **virsh_dargs)
 
 
 def check_access_and_discard(test, params, vm,
@@ -87,6 +123,8 @@ def check_access_and_discard(test, params, vm,
     discard_error_msg = params.get("discard_error_msg")
     mem_name_list = []
 
+    if not vm.is_alive():
+        vm.start()
     # Check access share setting
     ret = virsh.qemu_monitor_command(vm.name, "info memdev", "--hmp",
                                      debug=True).stdout_text.replace("\r\n", "")
@@ -140,66 +178,39 @@ def run(test, params, env):
         3.Define vm without dimm memory device and restart service, and hotplug
         dimm device.
         """
-        test.log.info("TEST_STEP1: Define vm with dimm memory")
+        test.log.info("TEST_STEP1: Define vm with numa")
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        vmxml.remove_all_device_by_type("memory")
-
         vm_attrs = get_vm_attrs(test, params)
         vmxml.setup_attrs(**vm_attrs)
-
-        all_dimms = create_dimm_mem_list(test, params)
-        dimm_objs = []
-        for mem in all_dimms:
-            dimm = libvirt_vmxml.create_vm_device_by_type('memory', mem)
-            vmxml.devices = vmxml.devices.append(dimm)
-            dimm_objs.append(dimm)
         vmxml.sync()
 
-        test.log.info("TEST_STEP2: Start guest")
-        vm.start()
-        vm.wait_for_login().close()
+        test.log.info("TEST_STEP2-5: Plug dimm memory devices")
+        plug_dimm(test, params, vm, operation)
 
-        test.log.info("TEST_STEP3,4: Check dimm memory access and discard")
+        test.log.info("TEST_STEP6,7: Check dimm memory access and discard")
         check_access_and_discard(test, params, vm, expected_share,
                                  expected_discard)
 
-        test.log.info("TEST_STEP5: Hot unplug all dimm memory device")
-        for dimm in dimm_objs:
-            virsh.detach_device(vm_name, dimm.xml,
-                                debug=True, ignore_status=False)
+        test.log.info("TEST_STEP8:Hot unplug all dimm memory device")
+        for dimm in create_dimm_objects(test, params):
+            virsh.detach_device(vm_name, dimm.xml, **virsh_dargs)
 
-        test.log.info("TEST_STEP6: Destroy vm")
+        test.log.info("TEST_STEP9: Destroy vm")
         vm.destroy()
 
-        test.log.info("TEST_STEP7: Check the host path for memory file backing")
+        test.log.info("TEST_STEP10: Check the host path for memory file backing")
         res = process.run(check_path % vm_name, shell=True, ignore_status=True).stderr_text
         if not re.search(path_error, res):
             test.fail("Expected '%s', but got '%s'" % (path_error, res))
-
-        test.log.info("TEST_STEP8: Define guest without any dimm memory")
-        original_xml.setup_attrs(**vm_attrs)
-        original_xml.sync()
-        vm.start()
-
-        test.log.info("TEST_STEP8: Restart service")
-        Libvirtd().restart()
-
-        test.log.info("TEST_STEP9: Hot plug all dimm memory device")
-        for dimm in dimm_objs:
-            virsh.attach_device(vm_name, dimm.xml,
-                                debug=True, ignore_status=False)
-
-        test.log.info("TEST_STEP10: Check dimm discard and access again.")
-        check_access_and_discard(test, params, vm,
-                                 expected_share, expected_discard)
 
     def teardown_test():
         """
         Clean data.
         """
         test.log.info("TEST_TEARDOWN: Clean up env.")
-        utils_test.update_boot_option(vm, args_removed=kernel_params_add,
-                                      need_reboot=True)
+        if not vm.is_alive():
+            vm.start()
+        utils_test.update_boot_option(vm, args_removed=kernel_params_add)
         bkxml.sync()
 
     vm_name = params.get("main_vm")
@@ -207,6 +218,7 @@ def run(test, params, env):
     bkxml = original_xml.copy()
     vm = env.get_vm(vm_name)
 
+    operation = params.get("operation")
     kernel_params_add = params.get("kernel_params_add")
     expected_share = eval(params.get("expected_share"))
     expected_discard = eval(params.get("expected_discard"))
