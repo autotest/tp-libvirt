@@ -4,6 +4,7 @@ import platform
 import aexpect
 
 from avocado.utils import process
+from aexpect.remote import handle_prompts
 
 from virttest import utils_test
 from virttest import libvirt_version
@@ -132,25 +133,7 @@ def check_disconnect_on_shutdown(vm, command, status_error, login_user,
         log = ""
         console_cmd = "shutdown -h now"
         try:
-            while True:
-                match, text = session.read_until_last_line_matches(
-                    [r"[E|e]scape character is", r"login:",
-                     r"[P|p]assword:", session.prompt],
-                    10, internal_timeout=1)
-
-                if match == 0:
-                    logging.debug("Got '^]', sending '\\n'")
-                    session.sendline()
-                elif match == 1:
-                    logging.debug("Got 'login:', sending '%s'", login_user)
-                    session.sendline(login_user)
-                elif match == 2:
-                    logging.debug("Got 'Password:', sending '%s'", login_passwd)
-                    session.sendline(login_passwd)
-                elif match == 3:
-                    logging.debug("Got Shell prompt -- logged in")
-                    break
-
+            handle_prompts(session, login_user, login_passwd, debug=True)
             session.cmd_output(console_cmd, timeout=120)
             # On newer OS like RHEL7, 'shutdown -h now' will not exit before
             # machine shutdown. But on RHEL6, 'shutdown -h now' will exit and
