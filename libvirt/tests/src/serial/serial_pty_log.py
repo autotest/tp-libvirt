@@ -27,10 +27,10 @@ def check_pty_log_file(file_path, boot_prompt):
     with open(file_path, errors='ignore') as fp:
         contents = fp.read()
     logging.debug("The contents of log file are : %s" % contents)
-    ret = contents.find(boot_prompt)
-    if ret == -1:
-        return False
-    return True
+    ret = []
+    for prompt in boot_prompt.split(','):
+        ret.append(contents.find(prompt) != -1)
+    return any(ret)
 
 
 def run(test, params, env):
