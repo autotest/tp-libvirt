@@ -1462,7 +1462,7 @@ def check_xml(vm_name, filetransfer, test):
         test.fail('The attribute of filetransfer error.')
 
 
-def check_domdisplay_result(graphic_type, vm_name, expected_result, test):
+def check_domdisplay_result(graphic_type, vm_name, expected_result, test, options="", passwd=None):
     """
     Check domdisplay result
 
@@ -1470,8 +1470,10 @@ def check_domdisplay_result(graphic_type, vm_name, expected_result, test):
     :param vm_name: name of the VM domain
     :param expected_result: expected result
     :param test: test object
+    :param options: domdisplay options
+    :param passwd: graphic password
     """
-    domdisplay_out = virsh.domdisplay(vm_name, debug=True)
+    domdisplay_out = virsh.domdisplay(vm_name, options=options, debug=True)
     if domdisplay_out.exit_status:
         test.fail("Fail to get domain display info. Error:"
                   "%s." % domdisplay_out.stderr.strip())
@@ -1482,8 +1484,10 @@ def check_domdisplay_result(graphic_type, vm_name, expected_result, test):
         if expected_result['spice_tls_port'] != 'not_set':
             expected_uri += "?tls-port=%s" % expected_result['spice_tls_port']
     if graphic_type == 'vnc':
+        if "include-password" in options:
+            expected_uri += ":%s@" % passwd
         expected_uri += "%s:" % expected_result['vnc_options']['addr']
-        expected_uri += "%s" % expected_result['vnc_port']
+        expected_uri += "%s" % str(int(expected_result['vnc_port']) - 5900)
     if domdisplay_out.stdout.strip() != expected_uri:
         test.fail("Use domdisplay to check URI failed. Expected uri: %s" % expected_uri)
 
@@ -1647,6 +1651,7 @@ def run(test, params, env):
     insecure_channels = params.get("insecure_channels", "not_set")
     autoport = params.get("spice_autoport", "yes")
     spice_tls = params.get("spice_tls", "not_set")
+    check_with_domdisplay = params.get("check_with_domdisplay", "no") == 'yes'
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1759,6 +1764,10 @@ def run(test, params, env):
             check_qemu_command_line(params)
             vnc_opts = qemu_vnc_options(vm, params)
             check_vnc_result(vnc_opts, expected_result, all_ips, test)
+            if check_with_domdisplay:
+                domdisplay_options = params.get("domdisplay_options", "")
+                check_domdisplay_result('vnc', vm_name, expected_result, test,
+                                        options=domdisplay_options, passwd=graphic_passwd)
             if params.get("hook_path"):
                 test_passwd_hook(params, vm, test)
 
