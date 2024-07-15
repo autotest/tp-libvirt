@@ -160,7 +160,10 @@ def run_default(test_obj):
     test_obj.vm.wait_for_login().close()
     online_cpus = cpuutils.online_list()
     host_online_cpu_num = len(online_cpus)
-    verify_vcpuinfo(test_obj, online_cpus, host_online_cpu_num)
+    # For vcpuinfo would be impacted by numad changing cpu affinity of guest process,
+    # so we skip testing the numad impact.
+    if test_obj.params.get('numad_active') == 'no':
+        verify_vcpuinfo(test_obj, online_cpus, host_online_cpu_num)
     verify_vcpupin(test_obj, online_cpus, host_online_cpu_num)
 
 
