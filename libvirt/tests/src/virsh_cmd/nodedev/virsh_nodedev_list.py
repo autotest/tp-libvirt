@@ -145,6 +145,9 @@ def get_ccw_io_devices():
                                    timeout=5, ignore_status=True,
                                    shell=True).stdout_text
         is_online = "1" == online_value.strip()
+        # After libvirt version 10.5.0, virsh nodedev list will list all of ccw devices regardless of its state
+        if libvirt_version.version_compare(10, 5, 0):
+            is_online = True
         if is_online:
             dev_name = re.sub(r'\W', '_', 'ccw_' + device)
             devices.append(dev_name)
