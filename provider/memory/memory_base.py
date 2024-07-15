@@ -178,7 +178,8 @@ def define_guest_with_memory_device(params, mem_attr_list, vm_attrs=None):
 
 
 def plug_memory_and_check_result(test, params, mem_dict, operation='attach',
-                                 expected_error='', expected_event='', **kwargs):
+                                 expected_error='', expected_event='',
+                                 alias='', **kwargs):
     """
     Hot plug or hot unplug memory and check event.
 
@@ -188,17 +189,22 @@ def plug_memory_and_check_result(test, params, mem_dict, operation='attach',
     :param operation: the operation of plug or unplug.
     :param expected_error: expected error after plug or unplug.
     :param expected_event: expected event for plug or unplug.
+    :param alias: the plugged device alias
     """
     vm_name = params.get('main_vm')
-    plug_dimm = libvirt_vmxml.create_vm_device_by_type('memory', mem_dict)
+    plug_mem = libvirt_vmxml.create_vm_device_by_type('memory', mem_dict)
 
     wait_event = True if expected_event else False
     if operation == "attach":
-        res = virsh.attach_device(vm_name, plug_dimm.xml, wait_for_event=wait_event,
+        res = virsh.attach_device(vm_name, plug_mem.xml, wait_for_event=wait_event,
                                   event_type=expected_event, debug=True, **kwargs)
     elif operation == "detach":
-        res = virsh.detach_device(vm_name, plug_dimm.xml, wait_for_event=wait_event,
+        res = virsh.detach_device(vm_name, plug_mem.xml, wait_for_event=wait_event,
                                   event_type=expected_event, debug=True, **kwargs)
+    elif operation == "detach_alias":
+        res = virsh.detach_device_alias(
+            vm_name, alias=alias, wait_for_event=wait_event,
+            event_type=expected_event, debug=True, **kwargs)
 
     if expected_error:
         libvirt.check_result(res, expected_fails=expected_error)
