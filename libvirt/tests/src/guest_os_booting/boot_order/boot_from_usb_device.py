@@ -5,6 +5,7 @@
 import re
 import shutil
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import virsh
@@ -68,7 +69,9 @@ def run(test, params, env):
     device_attrs = eval(params.get("device_attrs", "{}"))
     port_num = params.get("port_num")
     check_prompt = params.get("check_prompt")
-    required_cmds = eval(params.get("required_cmds", "[]"))
+    usb_cmd = "usbredirserver" if int(distro.detect().version) <= 9 \
+        else "usbredirect"
+    required_cmds = eval(params.get("required_cmds", "[]")) + [usb_cmd]
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -90,10 +93,16 @@ def run(test, params, env):
             vendor_id, product_id = get_usb_source()
             device_xml = redirdev.Redirdev()
             device_xml.setup_attrs(**device_attrs)
-            # start usbredirserver
-            ps = process.SubProcess("usbredirserver -p {} {}:{}".format
-                                    (port_num, vendor_id, product_id),
-                                    shell=True)
+            if usb_cmd == "usbredirserver":
+                # start usbredirserver
+                ps = process.SubProcess("usbredirserver -p {} {}:{}".format
+                                        (port_num, vendor_id, product_id),
+                                        shell=True)
+            elif usb_cmd == "usbredirect":
+                ps = process.SubProcess(
+                    "usbredirect --device {}:{} --as {}:{}".format
+                    (vendor_id, product_id, "127.0.0.1", port_num),
+                    shell=True)
             server_id = ps.start()
         if usb_device == "hostdev_device":
             vendor_id, product_id = get_usb_source()
@@ -116,4 +125,4 @@ def run(test, params, env):
         disk_obj.cleanup_disk_preparation(disk_type)
         bkxml.sync()
         if 'server_id' in locals():
-            process.run("killall usbredirserver")
+            process.run("killall {}".format(usb_cmd), ignore_status=True)

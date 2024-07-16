@@ -1,6 +1,7 @@
 import re
 import logging as log
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import virsh
@@ -57,6 +58,15 @@ def run(test, params, env):
     device_type = params.get("device_type", "")
     device_mode = params.get("device_mode", "")
     port_num = params.get("port_num", "")
+    if device_name == "redirdev":
+        if int(distro.detect().version) <= 9:
+            add_pkg = params.get("pkgs_host_rhel9", "")
+            usb_cmd = "usbredirserver"
+        else:
+            add_pkg = params.get("pkgs_host_rhel10", "")
+            usb_cmd = "usbredirect"
+
+        pkgs_host = params.get("pkgs_host", "") + add_pkg
     pkgs_host = params.get("pkgs_host", "")
     pkgs_guest = params.get("pkgs_guest", "")
     usb_hub = "yes" == params.get("usb_hub", "no")
@@ -321,9 +331,15 @@ def run(test, params, env):
                     # start usbredirserver
                     vendor_id = addr['vendor_id'].lstrip("0x")
                     product_id = addr['product_id'].lstrip("0x")
-                    ps = process.SubProcess("usbredirserver -p {} {}:{}".format
-                                            (port, vendor_id, product_id),
-                                            shell=True)
+                    if usb_cmd == "usbredirserver":
+                        ps = process.SubProcess("usbredirserver -p {} {}:{}".format
+                                                (port, vendor_id, product_id),
+                                                shell=True)
+                    elif usb_cmd == "usbredirect":
+                        ps = process.SubProcess(
+                            "usbredirect --device {}:{} --as {}:{}".format
+                            (vendor_id, product_id, "127.0.0.1", port_num),
+                            shell=True)
                     server_id = ps.start()
                 if redirdev_alias:
                     alias_str = "ua-redir" + str(i) + random_id
@@ -401,5 +417,5 @@ def run(test, params, env):
         if 'session' in locals():
             session.close()
         if 'server_id' in locals():
-            process.run("killall usbredirserver")
+            process.run("killall {}".format(usb_cmd), ignore_status=True)
         vmxml_backup.sync()
