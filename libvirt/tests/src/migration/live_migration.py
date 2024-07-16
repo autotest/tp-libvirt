@@ -325,7 +325,7 @@ def run(test, params, env):
         do_mig_param = {"vm": vm, "mig_test": migration_test, "src_uri": None, "dest_uri": dest_uri,
                         "options": options, "virsh_options": virsh_options, "extra": extra,
                         "action_during_mig": action_during_mig, "extra_args": extra_args}
-        migration_base.do_migration(do_mig_param)
+        migration_base.do_migration(**do_mig_param)
 
         func_returns = dict(migration_test.func_ret)
         migration_test.func_ret.clear()
@@ -370,7 +370,7 @@ def run(test, params, env):
             do_mig_param = {"vm": vm, "mig_test": migration_test, "src_uri": None, "dest_uri": dest_uri,
                             "options": options, "virsh_options": virsh_options, "extra": extra,
                             "action_during_mig": action_during_mig, "extra_args": extra_args}
-            migration_base.do_migration(do_mig_param)
+            migration_base.do_migration(**do_mig_param)
             if return_port:
                 func_returns = dict(migration_test.func_ret)
                 logging.debug("Migration returns function "

@@ -81,24 +81,24 @@ def parse_funcs(action_during_mig, test, params):
                    "function name and list are supported")
 
 
-def do_migration(do_mig_param):
+def do_migration(**kwargs):
     """
     The wrapper function to call migration
 
-    :param do_mig_param: do migration parameters, dict, contains vm object,
-                         MigrationTest object, source uri, target uri, migration
-                         options, virsh options, extra options for migration, list
-                         or single function to run during migration, arguments for test
+    :param kwargs: do migration parameters, dict, contains vm object,
+                   MigrationTest object, source uri, target uri, migration
+                   options, virsh options, extra options for migration, list
+                   or single function to run during migration, arguments for test
     """
-    vm = do_mig_param['vm']
-    mig_test = do_mig_param['mig_test']
-    src_uri = do_mig_param['src_uri']
-    dest_uri = do_mig_param['dest_uri']
-    options = do_mig_param['options']
-    virsh_options = do_mig_param['virsh_options']
-    extra = do_mig_param['extra']
-    action_during_mig = do_mig_param['action_during_mig']
-    extra_args = do_mig_param['extra_args']
+    vm = kwargs.get('vm')
+    mig_test = kwargs.get('mig_test')
+    src_uri = kwargs.get('src_uri')
+    dest_uri = kwargs.get('dest_uri')
+    options = kwargs.get('options')
+    virsh_options = kwargs.get('virsh_options')
+    extra = kwargs.get('extra')
+    action_during_mig = kwargs.get('action_during_mig')
+    extra_args = kwargs.get('extra_args')
     vm_name = None
 
     if extra and "--dname" in extra:
@@ -571,7 +571,7 @@ def resume_migration_again(params):
     do_mig_param = {"vm": migration_obj.vm, "mig_test": migration_obj.migration_test, "src_uri": None,
                     "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                     "extra": extra_twice_during_mig, "action_during_mig": None, "extra_args": extra_args_twice_during_mig}
-    do_migration(do_mig_param)
+    do_migration(**do_mig_param)
 
 
 def check_event_before_unattended(params):
