@@ -564,7 +564,6 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         process.run("yum install libtool 'dnf-command(download)' -y", shell=True, ignore_status=True)
         process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
-        process.run('rm -rf /etc/yum.repos.d/rhel9-appsource.repo', shell=True, ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
         check_file = process.run('ls /root/rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
@@ -617,14 +616,13 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         guest_images = params_get(params, "guest_images")
         with tempfile.TemporaryDirectory(prefix='guestimages_') as images_dir:
             utils_misc.mount(guest_images, images_dir, 'nfs')
-            img_dir = data_dir.get_tmp_dir()
-            process.run('cp -R %s/* %s' % (images_dir, img_dir), shell=True, ignore_status=True)
+            process.run('cp -R %s/* %s' % (images_dir, '/home'), shell=True, ignore_status=True)
             utils_misc.umount(guest_images, images_dir, 'nfs')
-        image_list = process.run('ls %s' % img_dir, shell=True).stdout_text.strip('env').split('\n')[1:-1]
+        image_list = process.run('ls %s/rhel*sector*' % '/home', shell=True).stdout_text.strip(' ').split('\n')[:-1]
         for image in image_list:
             for size in list(sector_size.split(' ')):
-                cmd = process.run("nbdkit --filter=partition file %s/%s partition=1 partition-sectorsize=%s --run "
-                                  "'nbdinfo $uri'" % (img_dir, image, size), shell=True, ignore_status=True)
+                cmd = process.run("nbdkit --filter=partition file %s partition=1 partition-sectorsize=%s --run "
+                                  "'nbdinfo $uri'" % (image, size), shell=True, ignore_status=True)
                 if 'non-efi' not in image and '512' in image and size == '4k' and \
                         not re.search('.*try using partition-sectorsize=512', cmd.stderr_text):
                     test.fail('fail to test 512 image and partition-sectorsize=4k')
