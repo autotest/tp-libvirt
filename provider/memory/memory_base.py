@@ -248,3 +248,19 @@ def check_mem_page_sizes(test, pg_size=None, hp_size=None, hp_list=None):
     if hp_list and not set(hp_list).issubset(set(supported_hp_size_list)):
         test.cancel("Expected huge page size list is %s, but get %s" %
                     (hp_list, supported_hp_size_list))
+
+
+def compare_values(test, expected, actual, check_item=''):
+    """
+    Compare two values are the same.
+
+    :params test, test object.
+    :params expected, expected value.
+    :params actual, actual value.
+    :params check_item, the item to be checked.
+    """
+    if expected != actual:
+        test.fail("Expect %s to get '%s' instead of '%s' " % (
+            check_item, expected, actual))
+    else:
+        test.log.debug("Check %s %s PASS", check_item, actual)
