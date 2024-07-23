@@ -1,3 +1,5 @@
+import os
+
 from avocado.core import exceptions
 
 from virttest import libvirt_version
@@ -16,6 +18,7 @@ def check_vm_iommu_group(vm_session, test_devices):
     :param vm_session: VM session
     :param test_devices: test devices to check
     """
+    result = {}
     for dev in test_devices:
         s, o = vm_session.cmd_status_output(
             "lspci | awk 'BEGIN{IGNORECASE=1} /%s/ {print $1}'" % dev)
@@ -23,13 +26,16 @@ def check_vm_iommu_group(vm_session, test_devices):
             exceptions.TestFail("Failed to get pci address!")
 
         cmd = ("find /sys/kernel/iommu_groups/ -type l | xargs ls -l | awk -F "
-               "'/' '/%s / {print(\"\",$2,$3,$4,$5,$6)}' OFS='/' " % o.strip())
+               "'/' '/%s / {print(\"\",$2,$3,$4,$5,$6)}' OFS='/' " % o.splitlines()[0])
         s, o = vm_session.cmd_status_output(cmd)
         if s:
             exceptions.TestFail("Failed to find iommu group!")
-        s, o = vm_session.cmd_status_output("ls %s" % o)
+        device_dir = o.strip().splitlines()[-1]
+        s, dev_pci = vm_session.cmd_status_output("ls %s" % device_dir)
         if s:
             exceptions.TestFail("Failed to get the device in the iommu group!")
+        result.update({dev: os.path.join(device_dir, dev_pci.strip())})
+    return result
 
 
 class VIOMMUTest(object):
@@ -40,6 +46,7 @@ class VIOMMUTest(object):
         self.session = session
         self.remote_virsh_dargs = None
         self.controller_dicts = eval(self.params.get("controller_dicts", "[]"))
+        self.dev_slot = 0
 
         libvirt_version.is_libvirt_feature_supported(self.params)
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
