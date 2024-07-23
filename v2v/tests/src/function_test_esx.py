@@ -498,7 +498,7 @@ def run(test, params, env):
                 test.fail('%s of rhsrvany.exe is not correct' % key)
 
     def verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vcenter_ip):
-        process.run('yum install ca-certificates -y | update-ca-trust enable',  shell=True)
+        process.run('yum install ca-certificates -y | update-ca-trust',  shell=True)
         mount_cert_dir = utils_v2v.v2v_mount(certs_src_dir, 'certs_src_dir')
         if not os.path.exists(certs_dest_dir):
             os.makedirs(certs_dest_dir)
