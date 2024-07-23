@@ -171,7 +171,7 @@ class MigrationBase(object):
         do_mig_param = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
                         "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                         "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args}
-        migration_base.do_migration(do_mig_param)
+        migration_base.do_migration(**do_mig_param)
 
     def run_migration_again(self):
         """
@@ -222,7 +222,7 @@ class MigrationBase(object):
         do_mig_param = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
                         "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                         "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args}
-        migration_base.do_migration(do_mig_param)
+        migration_base.do_migration(**do_mig_param)
 
     def run_migration_back(self):
         """
