@@ -37,26 +37,23 @@ def run(test, params, env):
     5.Lifecycle for guest with virtiofs filesystem device.
     """
 
-    def generate_expected_process_option(expected_results):
+    def generate_expected_process_option():
         """
         Generate expected virtiofsd process option
         """
+        expected_results = ""
         if cache_mode != "auto":
-            expected_results = "cache=%s" % cache_mode
+            expected_results += "cache(\s|=)%s" % cache_mode
         if xattr == "on":
-            expected_results += ",xattr"
-        elif xattr == "off":
+            expected_results += "(\s--|,)xattr"
+        elif xattr == "off" and not libvirt_version.version_compare(10, 5, 0):
             expected_results += ",no_xattr"
-        if flock == "on":
-            expected_results += ",flock"
-        else:
-            expected_results += ",no_flock"
-        if lock_posix == "on":
-            expected_results += ",posix_lock"
-        else:
-            expected_results += ",no_posix_lock"
         if thread_pool_size:
-            expected_results += " --thread-pool-size=%s" % thread_pool_size
+            # Even through there is a equal mark between --thread-pool-size and
+            # its value for libvirt format. But there is no equal mark in
+            # virtiofsd man pages. Add another kind of pattern here to avoid
+            # possible change in the future again.
+            expected_results += " --thread-pool-size(\s|=)%s" % thread_pool_size
         logging.debug(expected_results)
         return expected_results
 
@@ -223,8 +220,6 @@ def run(test, params, env):
     vm_names = params.get("vms", "avocado-vt-vm1").split()
     cache_mode = params.get("cache_mode", "none")
     xattr = params.get("xattr", "on")
-    lock_posix = params.get("lock_posix", "on")
-    flock = params.get("flock", "on")
     xattr = params.get("xattr", "on")
     path = params.get("virtiofsd_path", "/usr/libexec/virtiofsd")
     thread_pool_size = params.get("thread_pool_size")
@@ -260,7 +255,6 @@ def run(test, params, env):
     vms = []
     vmxml_backups = []
     expected_fails_msg = []
-    expected_results = ""
     host_hp_size = utils_memory.get_huge_page_size()
     backup_huge_pages_num = utils_memory.get_num_huge_pages()
     huge_pages_num = 0
@@ -292,10 +286,8 @@ def run(test, params, env):
             source = {'socket': source_socket}
             target = {'dir': target_dir}
             if launched_mode == "auto":
-                binary_keys = ['path', 'cache_mode', 'xattr', 'lock_posix',
-                               'flock', 'thread_pool_size']
-                binary_values = [path, cache_mode, xattr, lock_posix,
-                                 flock, thread_pool_size]
+                binary_keys = ['path', 'cache_mode', 'xattr', 'thread_pool_size']
+                binary_values = [path, cache_mode, xattr, thread_pool_size]
                 binary_dict = dict(zip(binary_keys, binary_values))
                 source = {'dir': source_dir}
                 accessmode = "passthrough"
@@ -318,6 +310,7 @@ def run(test, params, env):
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
             vmxml_backup = vmxml.copy()
             vmxml_backups.append(vmxml_backup)
+            logging.debug(fs_dev)
             if vmxml.max_mem < 1024000:
                 vmxml.max_mem = 1024000
             if with_hugepages:
@@ -365,7 +358,7 @@ def run(test, params, env):
                 return
             else:
                 utils_test.libvirt.check_exit_status(result, expect_error=False)
-            expected_results = generate_expected_process_option(expected_results)
+            expected_results = generate_expected_process_option()
             if launched_mode == "auto":
                 cmd = 'ps aux | grep /usr/libexec/virtiofsd'
                 utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
