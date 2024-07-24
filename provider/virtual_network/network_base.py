@@ -6,6 +6,7 @@ import aexpect
 from avocado.core import exceptions
 from avocado.utils import process
 from virttest import remote
+from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import network_xml
@@ -16,7 +17,7 @@ VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 LOG = logging.getLogger('avocado.' + __name__)
 
 
-def get_vm_ip(session, mac, ip_ver="ipv4"):
+def get_vm_ip(session, mac, ip_ver="ipv4", timeout=5):
     """
     Get vm ip address
 
@@ -25,22 +26,31 @@ def get_vm_ip(session, mac, ip_ver="ipv4"):
     :param ip_ver: ip version, defaults to "ipv4"
     :return: ip address of given mac
     """
-    iface_info = utils_net.get_linux_iface_info(mac=mac, session=session)
-    addr_list = iface_info['addr_info']
-    if ip_ver == "ipv4":
-        target_addr = [addr for addr in addr_list if addr['family'] == 'inet']
-    elif ip_ver == "ipv6":
-        target_addr = [addr for addr in addr_list if addr['family'] == 'inet6'
-                       and addr['scope'] == 'global'
-                       and addr.get('mngtmpaddr') is not True]
+    def _get_vm_ip():
+        iface_info = utils_net.get_linux_iface_info(mac=mac, session=session)
+        addr_list = iface_info['addr_info']
+        if ip_ver == "ipv4":
+            target_addr = [addr for addr in addr_list if addr['family'] == 'inet']
+        elif ip_ver == "ipv6":
+            target_addr = [addr for addr in addr_list if addr['family'] == 'inet6'
+                           and addr['scope'] == 'global'
+                           and addr.get('mngtmpaddr') is not True]
 
-    if len(target_addr) == 0:
+        if len(target_addr) == 0:
+            LOG.warn(f'No ip addr of given mac: {mac}')
+            return
+        elif len(target_addr) > 1:
+            LOG.warn(f'Multiple ip addr: {target_addr}')
+
+        return target_addr[0]['local']
+
+    vm_ip = utils_misc.wait_for(_get_vm_ip, timeout, ignore_errors=True)
+
+    if not vm_ip:
         raise exceptions.TestError(
-            f'Cannot find ip addr with given mac: {mac}')
-    elif len(target_addr) > 1:
-        LOG.warn(f'Multiple ip addr: {target_addr}')
+            f'Cannot find {ip_ver} addr with given mac: {mac}')
 
-    return target_addr[0]['local']
+    return vm_ip
 
 
 def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
