@@ -85,6 +85,7 @@ def run(test, params, env):
         """
         Do start/stop operation and check the results.
         """
+        release_reason = params.get("release_reason", "-")
         logging.info("Try to test start/stop hooks...")
         hook_para = "%s %s" % (hook_file, vm_name)
         prepare_hook_file(hook_script %
@@ -102,7 +103,7 @@ def run(test, params, env):
             vm.destroy()
             hook_str = hook_para + " stopped end -"
             assert check_hooks(hook_str)
-            hook_str = hook_para + " release end -"
+            hook_str = hook_para + " release end " + release_reason
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()
