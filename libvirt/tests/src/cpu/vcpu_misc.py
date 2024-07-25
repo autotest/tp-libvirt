@@ -243,7 +243,7 @@ def run(test, params, env):
     bkxml = vmxml.copy()
     managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
     maxphysaddr = params.get('maxphysaddr')
-    mem_file = params.get('mem_file')
+    mem_file = params.get('mem_file', "")
 
     try:
         if check_vendor_id:
