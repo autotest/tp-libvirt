@@ -15,6 +15,7 @@ from virttest.staging import service
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
+from provider.virtual_network import network_base
 from provider.virtual_network import passt
 
 LOG = logging.getLogger('avocado.' + __name__)
@@ -111,6 +112,9 @@ def run(test, params, env):
         else:
             return
 
+        vm_iface = network_base.get_iface_xml_inst(
+            vmxml.vm_name, '', virsh_ins=virsh_ins)
+        iface_attrs.update({'mac_address': vm_iface.mac_address})
         vmxml.del_device('interface', by_tag=True)
         iface_device = libvirt_vmxml.create_vm_device_by_type('interface',
                                                               iface_attrs)

@@ -1,7 +1,6 @@
 import logging
 import os
 import shutil
-import time
 
 import aexpect
 from virttest import libvirt_version
@@ -92,6 +91,9 @@ def run(test, params, env):
         if root:
             passt.make_log_dir(user_id, log_dir)
 
+        vm_iface = network_base.get_iface_xml_inst(
+            vmxml.vm_name, '', virsh_ins=virsh_ins)
+        iface_attrs.update({'mac_address': vm_iface.mac_address})
         vmxml.del_device('interface', by_tag=True)
         iface_device = libvirt_vmxml.create_vm_device_by_type('interface',
                                                               iface_attrs)
@@ -109,7 +111,6 @@ def run(test, params, env):
                                                   virsh_instance=virsh_ins)
             iface_after_at = vmxml.get_devices(device_type='interface')[0]
             LOG.debug(f'iface device after detach: {iface_after_at}')
-            iface_after_at.del_mac_address()
             iface_after_at.del_address()
             if iface_after_at != iface_device:
                 test.fail('iface xml changed after attach')
@@ -123,8 +124,6 @@ def run(test, params, env):
             if not os.path.exists(log_file):
                 test.fail(f'Logfile of passt "{log_file}" not created')
 
-            # wait for the vm boot before first time to try serial login
-            time.sleep(5)
             session = vm.wait_for_serial_login(timeout=60)
             vm_iface = utils_net.get_linux_ifname(session, mac)
             passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)

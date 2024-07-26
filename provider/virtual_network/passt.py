@@ -1,7 +1,7 @@
 import logging
 import os
-import re
 import random
+import re
 import time
 from socket import socket
 
@@ -12,6 +12,8 @@ from virttest import utils_misc
 from virttest import utils_net
 from virttest import utils_selinux
 from virttest.utils_libvirt import libvirt_vmxml
+
+from provider.virtual_network.network_base import get_iface_xml_inst
 
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 IPV6_LENGTH = 128
@@ -71,6 +73,8 @@ def vm_add_iface(vmxml, iface_attrs, virsh_ins):
     :param iface_attrs: attributes of iface
     :param virsh_ins: virsh instance
     """
+    vm_iface = get_iface_xml_inst(vmxml.vm_name, '', virsh_ins=virsh_ins)
+    iface_attrs.update({'mac_address': vm_iface.mac_address})
     vmxml.del_device('interface', by_tag=True)
     iface_device = libvirt_vmxml.create_vm_device_by_type('interface',
                                                           iface_attrs)

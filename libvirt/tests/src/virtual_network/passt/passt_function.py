@@ -11,7 +11,6 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
 from virttest.utils_libvirt import libvirt_unprivileged
-from virttest.utils_libvirt import libvirt_vmxml
 
 from provider.virtual_network import network_base
 from provider.virtual_network import passt
@@ -81,10 +80,7 @@ def run(test, params, env):
         default_gw = utils_net.get_default_gateway()
         default_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6')
 
-        vmxml.del_device('interface', by_tag=True)
-        vmxml.sync(virsh_instance=virsh_ins)
-        libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
-                                       virsh_instance=virsh_ins)
+        passt.vm_add_iface(vmxml, iface_attrs, virsh_ins)
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
         mac = vm.get_virsh_mac_address()
 

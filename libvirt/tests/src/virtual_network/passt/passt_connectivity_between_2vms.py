@@ -1,6 +1,5 @@
 import logging
 import shutil
-import time
 
 import aexpect
 from virttest import libvirt_version
@@ -96,8 +95,6 @@ def run(test, params, env):
         [LOG.debug(virsh.dumpxml(vm_name, uri=virsh_uri).stdout_text)
          for vm_name in (vm_name, vm_c.name)]
 
-        # wait for the vm boot before first time to try serial login
-        time.sleep(5)
         server_session = vm.wait_for_serial_login(60)
         client_session = vm_c.wait_for_serial_login(60)
 
