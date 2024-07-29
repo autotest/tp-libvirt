@@ -10,6 +10,7 @@ from virttest import libvirt_vm
 from virttest import remote
 from virttest import utils_config
 from virttest import utils_conn
+from virttest import utils_disk
 from virttest import utils_libvirtd
 from virttest import utils_iptables
 from virttest import utils_misc
@@ -292,6 +293,8 @@ class MigrationBase(object):
 
         dest_uri = self.params.get("virsh_migrate_desturi")
         set_remote_libvirtd_log = "yes" == self.params.get("set_remote_libvirtd_log", "no")
+        mnt_path_name = self.params.get("mnt_path_name")
+        nfs_mount_src = self.params.get("nfs_mount_src")
 
         self.test.log.debug("Recover test environment")
         if set_remote_libvirtd_log and self.remote_libvirtd_log:
@@ -299,6 +302,8 @@ class MigrationBase(object):
         # Clean VM on destination and source
         self.migration_test.cleanup_vm(self.vm, dest_uri)
         self.orig_config_xml.sync()
+        if mnt_path_name:
+            utils_disk.umount("127.0.0.1:%s" % nfs_mount_src, mnt_path_name)
 
     def setup_connection(self):
         """
