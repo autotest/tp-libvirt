@@ -6,6 +6,7 @@ import aexpect
 from avocado.core import exceptions
 from avocado.utils import process
 from virttest import remote
+from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import network_xml
@@ -110,15 +111,23 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
         LOG.info(f'TEST_STEP: Ping from {source} to {destination} '
                  f'(ip: {dest_ip})')
         ping_session = session if source == 'vm' else None
-        status, _ = utils_net.ping(dest=dest_ip, count=5,
-                                   timeout=10,
-                                   session=ping_session,
-                                   force_ipv4=force_ipv4,
-                                   **ping_args)
+
+        def _ping():
+            """ Helper function to make use of wait_for """
+            status, output = utils_net.ping(dest=dest_ip, count=5,
+                                            timeout=10,
+                                            session=ping_session,
+                                            force_ipv4=force_ipv4,
+                                            **ping_args)
+            if status and "unreachable" in output and expect_result == 'pass':
+                return False
+            return status == 0
+
+        status = utils_misc.wait_for(_ping, timeout=15)
+        ping_result = (status is True) == (expect_result == 'pass')
         msg = f'Expect ping from {source} to {destination} should ' \
               f'{expect_result.upper()}, actual result is ' \
-              f'{"PASS" if status == 0 else "FAIL"}'
-        ping_result = (status == 0) == (expect_result == 'pass')
+              f'{"PASS" if ping_result else "FAIL"}'
         if ping_result:
             LOG.debug(msg)
         else:
