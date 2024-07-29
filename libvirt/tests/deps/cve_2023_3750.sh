@@ -7,7 +7,7 @@ POOL=$1
 VOL=$2
 function test_run() {
  while true;do
-   parallel -N0 "virsh -r 'pool-list; vol-info --pool $1 $2'" ::: {1..100}
+   seq 1 100 | xargs -n 1 -P 10 -I {} sh -c 'virsh -r "pool-list; vol-info --pool $1 --vol $2"' -- $1 $2
  done
 }
 
