@@ -45,8 +45,10 @@ def run(test, params, env):
         elif br_type == 'ovs_br':
             utils_net.create_ovs_bridge(br_name)
 
+        mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
         vmxml.del_device('interface', by_tag=True)
-        iface = libvirt_vmxml.create_vm_device_by_type('interface', iface_attrs)
+        iface = libvirt_vmxml.create_vm_device_by_type(
+            'interface', {**iface_attrs, **{'mac_address': mac}})
         vmxml.add_device(iface)
         LOG.debug(f'Interface to add to vm:\n{iface}')
 

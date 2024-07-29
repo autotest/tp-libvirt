@@ -65,8 +65,10 @@ def run(test, params, env):
             utils_net.create_ovs_bridge(br_name)
 
         LOG.info('Setup interface on vm.')
+        mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
         vmxml.del_device('interface', by_tag=True)
-        libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs)
+        libvirt_vmxml.modify_vm_device(
+            vmxml, 'interface', {**iface_attrs, **{'mac_address': mac}})
         LOG.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
 
         vm.start()

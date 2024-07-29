@@ -64,6 +64,7 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
+        mac_addr = vm_xml.VMXML.get_first_mac_by_name(vm_name, virsh_ins)
 
         if tap_type:
             if tap_type == 'tap':
@@ -72,11 +73,10 @@ def run(test, params, env):
             elif tap_type == 'macvtap':
                 mac_addr = network_base.create_macvtap(tap_name, host_iface,
                                                        test_user)
-                iface_attrs['mac_address'] = mac_addr
-
             if tap_mtu:
                 network_base.set_tap_mtu(tap_name, tap_mtu)
 
+        iface_attrs['mac_address'] = mac_addr
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
             vm_name, virsh_instance=virsh_ins)
         vmxml.del_device('interface', by_tag=True)
