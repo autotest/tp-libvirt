@@ -39,6 +39,20 @@ def get_dev_dict(device_type, params):
     return dev_dict, seclabel_attr
 
 
+def attach_device(vm, test_device, dev_dict):
+    """
+    Attaches the device as specified to the VM.
+
+    :param vm: VM instance
+    :param test_device: the device type, e.g. disk
+    :param dev_dict: the device definition
+    """
+
+    dev_obj = libvirt_vmxml.create_vm_device_by_type(test_device, dev_dict)
+    dev_obj.setup_attrs(**dev_dict)
+    return virsh.attach_device(vm.name, dev_obj.xml, flagstr="--current", debug=True)
+
+
 def run(test, params, env):
     """
     Start VM or hotplug a device with per-device selinux <seclabel> setting
@@ -67,12 +81,16 @@ def run(test, params, env):
         if test_scenario != "hot_plug":
             test.log.info("TEST_STEP: Start VM with per-device dac setting.")
             try:
-                libvirt_vmxml.modify_vm_device(vmxml, test_device, dev_dict)
+                if test_device != 'disk':
+                    libvirt_vmxml.modify_vm_device(vmxml, test_device, dev_dict)
+                else:
+                    res = attach_device(vm, test_device, dev_dict)
             except xcepts.LibvirtXMLError as details:
                 if not status_error:
                     test.fail(details)
             test.log.debug("VM XML: %s.", VMXML.new_from_inactive_dumpxml(vm_name))
-            res = virsh.start(vm.name)
+            if res.exit_status == 0:
+                res = virsh.start(vm.name)
         else:
             test.log.info("TEST_STEP: Hot plug a device with dac setting.")
             if test_device == 'serial':
@@ -81,9 +99,7 @@ def run(test, params, env):
             vm.start()
             vm.wait_for_login().close()
 
-            dev_obj = libvirt_vmxml.create_vm_device_by_type(test_device, dev_dict)
-            dev_obj.setup_attrs(**dev_dict)
-            res = virsh.attach_device(vm.name, dev_obj.xml, debug=True)
+            res = attach_device(vm, test_device, dev_dict)
         libvirt.check_exit_status(res, status_error)
 
         if seclabel_attr.get("label") and not status_error:
