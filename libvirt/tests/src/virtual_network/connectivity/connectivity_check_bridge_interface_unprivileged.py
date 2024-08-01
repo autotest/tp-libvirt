@@ -29,8 +29,8 @@ def run(test, params, env):
     linux_bridge = 'br_' + rand_id
     br_conf_file = '/etc/qemu-kvm/bridge.conf'
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
 
     unpr_user = params.get('unpr_user', 'test_unpr') + rand_id
 

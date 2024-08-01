@@ -27,8 +27,8 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs', '{}'))
     iface_type = params.get('iface_type')
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state='UP')[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     net_attrs = eval(params.get('net_attrs', '{}'))
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)

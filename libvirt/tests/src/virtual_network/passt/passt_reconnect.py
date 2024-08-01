@@ -64,8 +64,8 @@ def run(test, params, env):
     qemu_cmd_check = params.get('qemu_cmd_check')
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface

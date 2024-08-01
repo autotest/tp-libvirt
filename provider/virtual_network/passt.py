@@ -1,7 +1,7 @@
 import logging
 import os
-import re
 import random
+import re
 import time
 from socket import socket
 
@@ -138,8 +138,8 @@ def check_proc_info(params, log_file, mac):
     socket_dir = params.get('socket_dir')
 
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
 
     proc_info = get_proc_info('passt')
     LOG.debug(proc_info)

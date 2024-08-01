@@ -67,8 +67,8 @@ def run(test, params, env):
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
     vm_c_iface = params.get('vm_c_iface', 'eno1')
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     iface_attrs['backend']['logFile'] = log_file
     iface_c_attrs['backend']['logFile'] = log_file_c
     iface_attrs['source']['dev'] = host_iface
