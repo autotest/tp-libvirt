@@ -134,7 +134,7 @@ def run(test, params, env):
                           "got '%s'" % (pre_dict, cur_dict))
             else:
                 test.log.debug("Driver XML compare successfully. The '%s' matches"
-                               " the '%s'", (pre_dict, cur_dict))
+                               " the '%s'", pre_dict, cur_dict)
 
     def start_guest():
         """
