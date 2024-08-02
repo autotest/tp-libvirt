@@ -126,6 +126,31 @@ def run_test_hotplug_disk(vm, params, test):
         test.fail("The target disk % can't be detached in guest." % target_dev)
 
 
+def run_test_update_negative(vm, params, test):
+    """
+    Scenario: update device for guest with discard_no_unref attribute
+
+    :param vm: vm instance
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    vm_name = params.get("main_vm")
+    expect_error = params.get("expect_error")
+
+    test.log.debug("STEP1: start a guest.")
+    if not vm.is_alive():
+        vm.start()
+    test.log.debug("STEP2: prepare the disk xml.")
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    disk = vmxml.get_devices(device_type="disk")[0]
+    disk_driver = disk['driver']
+    disk_driver.update({'discard_no_unref': 'on'})
+    disk['driver'] = disk_driver
+    test.log.debug("STEP3: update the disk device.")
+    result = virsh.update_device(vm_name, disk.xml, debug=True)
+    libvirt.check_result(result, expect_error)
+
+
 def teardown_test(vm, vmxml, params, test):
     """
     :param vm: vm instance
