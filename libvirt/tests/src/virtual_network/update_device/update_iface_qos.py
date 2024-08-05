@@ -139,7 +139,7 @@ def run(test, params, env):
         if operation == 'delete':
             out_c = process.run(f'tc class show dev {tap_device}'
                                 ).stdout_text.strip()
-            out_f = process.run(f'tc filter show dev {tap_device} parent ffff'
+            out_f = process.run(f'tc filter show dev {tap_device} parent ffff:'
                                 ).stdout_text.strip()
             if any([out_c, out_f]):
                 test.fail('There should not be output of tc class/filter '
