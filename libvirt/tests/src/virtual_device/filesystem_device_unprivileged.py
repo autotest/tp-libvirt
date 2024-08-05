@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import stat
+import time
 
 from aexpect import ShellSession
 
@@ -226,6 +227,7 @@ def cold_or_hot_plug_filesystem():
 
         if not vm.is_alive():
             vm.start()
+            time.sleep(10)
     _refresh_vmxmls()
 
 
