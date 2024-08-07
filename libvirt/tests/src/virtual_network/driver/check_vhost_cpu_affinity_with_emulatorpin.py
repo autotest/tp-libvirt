@@ -89,16 +89,20 @@ def run(test, params, env):
             test.fail(f'Incorrect cpu affinity (vcpu): {cpu_affi["0"]},'
                       f'Should be {vcpu_set}.')
 
-        pid = process.run(
-            "ps -eL|awk '/vhost/{print $2}'", shell=True).stdout_text.strip()
+        process.run("ps -eL | grep vhost", shell=True)
+        pids = process.run(
+            "ps -eL|awk '/vhost/{print $2}'", shell=True
+        ).stdout_text.strip().split()
 
-        check_cpu_affinity(vm_name, pid, epin_set)
+        for pid in pids:
+            check_cpu_affinity(vm_name, pid, epin_set)
 
         # Update the emulator pin to other cpu,
         # and check the vhost thread's cpu affinity
         virsh.emulatorpin(vm_name, epin_reset, **VIRSH_ARGS)
 
-        check_cpu_affinity(vm_name, pid, epin_reset)
+        for pid in pids:
+            check_cpu_affinity(vm_name, pid, epin_reset)
 
     finally:
         bkxml.sync()
