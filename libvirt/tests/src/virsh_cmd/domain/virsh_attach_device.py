@@ -463,12 +463,12 @@ class SerialPipe(SerialFile):
 
     identifier = None
     type_name = "pipe"
-    pipe_suffixes=[".in",".out"]
-
+    
     @staticmethod
     def make_source(filepath):
+        pipe_suffixes= [".in",".out"]
         for suffix in pipe_suffixes:
-            pipe_path=filepath+suffix
+            pipe_path = filepath + suffix
             try:
                 os.unlink(pipe_path)
             except OSError:
