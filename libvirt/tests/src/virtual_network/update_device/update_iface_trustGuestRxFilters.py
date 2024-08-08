@@ -32,8 +32,10 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
+        mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
         vmxml.del_device('interface', by_tag=True)
-        libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs)
+        libvirt_vmxml.modify_vm_device(
+            vmxml, 'interface', {**iface_attrs, **{'mac_address': mac}})
         LOG.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
 
         vm.start()

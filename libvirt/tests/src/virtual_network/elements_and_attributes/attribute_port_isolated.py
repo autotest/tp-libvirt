@@ -55,7 +55,7 @@ def run(test, params, env):
                 net_attrs = {**net_attrs, **port_attrs}
 
         if not (set_iface and cli_iface_attrs):
-            cli_iface_attrs = iface_attrs
+            cli_iface_attrs = iface_attrs.copy()
 
         if create_linux_br:
             LOG.info(f'Create linux bridge: {linux_br}')
@@ -65,9 +65,14 @@ def run(test, params, env):
             LOG.debug(f'Network xml:\n'
                       f'{virsh.net_dumpxml(net_attrs["name"]).stdout_text}')
 
+        mac, cli_mac = list(map(vm_xml.VMXML.get_first_mac_by_name, vms))
+
         vmxml, cli_vmxml = list(map(vm_xml.VMXML.new_from_inactive_dumpxml, vms))
         [vmxml_i.del_device('interface', by_tag=True) for vmxml_i in
          [vmxml, cli_vmxml]]
+
+        iface_attrs.update({'mac_address': mac})
+        cli_iface_attrs.update({'mac_address': cli_mac})
 
         [libvirt_vmxml.modify_vm_device(vmxml_i, 'interface', attrs)
          for vmxml_i, attrs in [(vmxml, iface_attrs),

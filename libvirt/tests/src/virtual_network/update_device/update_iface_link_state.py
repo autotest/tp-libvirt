@@ -47,8 +47,10 @@ def run(test, params, env):
             utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
             network_base.create_tap(tap_name, bridge_name, "root")
 
+        mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
         vmxml.del_device('interface', by_tag=True)
-        libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs)
+        libvirt_vmxml.modify_vm_device(
+            vmxml, 'interface', {**iface_attrs, **{'mac_address': mac}})
         test.log.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
         vm.start()
         session = vm.wait_for_serial_login()
