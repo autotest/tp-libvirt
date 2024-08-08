@@ -463,10 +463,10 @@ class SerialPipe(SerialFile):
 
     identifier = None
     type_name = "pipe"
-    
+
     @staticmethod
     def make_source(filepath):
-        pipe_suffixes= [".in",".out"]
+        pipe_suffixes = [".in", ".out"]
         for suffix in pipe_suffixes:
             pipe_path = filepath + suffix
             try:
