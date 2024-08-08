@@ -817,6 +817,7 @@ qed
 qem
 qemu
 qmp
+QE
 QMP
 quiesce
 qxl
