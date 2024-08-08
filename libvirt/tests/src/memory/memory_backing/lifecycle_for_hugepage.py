@@ -121,7 +121,6 @@ def setup_test(vm_name, params, test):
     hp_cfg.hugepage_size = mount_size
     hp_cfg.mount_hugepage_fs()
     utils_libvirtd.Libvirtd().restart()
-    virsh.destroy(vm_name)
 
 
 def run_test(vm, params, test):
