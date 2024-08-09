@@ -11,6 +11,7 @@ import re
 
 from avocado.utils import memory
 
+from virttest import utils_misc
 from virttest import virsh
 from virttest import test_setup
 from virttest.libvirt_xml import vm_xml
@@ -46,6 +47,19 @@ def run(test, params, env):
     """
     Verify dynamic memory slots attribute works with virtio-mem memory device
     """
+    def check_current_mem_size(mem_index, expect_current_size):
+        """
+        Check if virtio-mem memory of mem_index has expected current memory size
+
+        :param mem_index (int): index of the virtio-mem device
+        :param expect_current_size (int): expected current memory size of the virtio-mem device
+
+        :return (bool): true virtio-mem memory of index has expected current memory size
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        memory_devices = vmxml.devices.by_device_tag('memory')
+        return memory_devices[mem_index].target.current_size == expect_current_size
+
     def setup_test():
         """
         Allocate huge page memory
@@ -76,6 +90,9 @@ def run(test, params, env):
         mem_obj = libvirt_vmxml.create_vm_device_by_type("memory", virtio_mem_dict)
         virsh.attach_device(
             vm.name, mem_obj.xml, wait_for_event=True, **virsh_dargs)
+        if not utils_misc.wait_for(lambda: check_current_mem_size(1, request_size), 20):
+            test.fail('Hot-plugged virtio-mem mem device should have '
+                      'current memory size %d' % request_size)
 
         test.log.info("TEST_SETUP4: Check qemu-monitor-command")
         output = virsh.qemu_monitor_command(
@@ -104,6 +121,7 @@ def run(test, params, env):
 
     default_hugepage_size = memory.get_huge_page_size()
     allocate_size = int(params.get("allocate_size"))
+    request_size = int(params.get("request_size"))
     memory_backing = params.get("memory_backing")
     machine_version = params.get("machine_version")
     monitor_cmd = params.get("monitor_cmd")
