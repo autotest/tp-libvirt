@@ -65,7 +65,6 @@ def run(test, params, env):
     iface_c_attrs = eval(params.get('iface_c_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
-    vm_c_iface = params.get('vm_c_iface', 'eno1')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
         iface_name=True, force_dhcp=True).split()[0]
@@ -100,6 +99,8 @@ def run(test, params, env):
         time.sleep(5)
         server_session = vm.wait_for_serial_login(60)
         client_session = vm_c.wait_for_serial_login(60)
+        mac = vm_c.get_virsh_mac_address()
+        vm_c_iface = utils_net.get_linux_ifname(client_session, mac)
 
         [LOG.debug(session.cmd_output('ip a'))
          for session in (server_session, client_session)]
