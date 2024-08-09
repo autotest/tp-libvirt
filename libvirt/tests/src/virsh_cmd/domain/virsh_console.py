@@ -132,6 +132,10 @@ def check_disconnect_on_shutdown(vm, command, status_error, login_user,
         log = ""
         console_cmd = "shutdown -h now"
         try:
+            # Do not use remote.handle_prompts here because it will inhibit
+            # errors.
+            # Login will fail if extra kernel messages are printed after login
+            # prompt. We should keep the failure to force QE do the check.
             while True:
                 match, text = session.read_until_last_line_matches(
                     [r"[E|e]scape character is", r"login:",
