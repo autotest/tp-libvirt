@@ -11,8 +11,6 @@ from avocado.utils import stacktrace
 
 from aexpect.exceptions import ExpectTimeoutError
 
-from provider.virtual_network import network_base
-
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_net
@@ -47,7 +45,6 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     host_arch = platform.machine()
-    firewall_backend = network_base.check_firewall_backend()
 
     def prepare_pxe_boot():
         """
@@ -449,20 +446,12 @@ TIMEOUT 3"""
             if "mode" in net_forward and net_forward["mode"] == "nat" \
                     and nat_attrs.get('ipv6') == 'yes':
 
-                if firewall_backend == "nftables":
-                    v6_nat_rules = [
-                                 "tcp ip6 saddr {0} ip6 daddr != {0}.*masquerade to".format(net_ipv6),
-                                 "udp ip6 saddr {0} ip6 daddr != {0}.*masquerade to".format(net_ipv6),
-                                 "ip6 saddr {0} ip6 daddr != {0}.*masquerade".format(net_ipv6),
-                                ]
-                    v6_output = process.run('nft list chain  ip6 libvirt_network  guest_nat', shell=True).stdout_text
-                else:
-                    v6_nat_rules = [
-                                 "MASQUERADE.*tcp.*{0}.*!{0}".format(net_ipv6),
-                                 "MASQUERADE.*udp.*{0}.*!{0}".format(net_ipv6),
-                                 "MASQUERADE.*all.*{0}.*!{0}".format(net_ipv6)
-                                ]
-                    v6_output = process.run('ip6tables -t nat -L', shell=True).stdout_text
+                v6_nat_rules = [
+                             "MASQUERADE.*tcp.*{0}.*!{0}".format(net_ipv6),
+                             "MASQUERADE.*udp.*{0}.*!{0}".format(net_ipv6),
+                             "MASQUERADE.*all.*{0}.*!{0}".format(net_ipv6)
+                            ]
+                v6_output = process.run('ip6tables -t nat -L', shell=True).stdout_text
                 for rule in v6_nat_rules:
                     if not re.search(rule, v6_output):
                         test.fail('Rule %s missing from ip6tables output.' % rule)
