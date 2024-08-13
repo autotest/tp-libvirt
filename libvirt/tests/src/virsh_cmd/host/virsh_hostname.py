@@ -30,7 +30,7 @@ def run(test, params, env):
     remote_uri = params.get("remote_uri", None)
 
     if remote_uri and remote_ip.count("EXAMPLE"):
-        test.cancel("Pls configure rempte_ip first")
+        test.cancel("Pls configure remote_ip first")
 
     session = None
     if remote_uri:
