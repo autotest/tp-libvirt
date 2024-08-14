@@ -41,12 +41,16 @@ def run(test, params, env):
         """
         Generate expected virtiofsd process option
         """
+        since_10_5 = libvirt_version.version_compare(10, 5, 0)
         expected_results = ""
         if cache_mode != "auto":
-            expected_results += "cache(\s|=)%s" % cache_mode
+            _cache_mode = cache_mode
+            if since_10_5 and _cache_mode == "none":
+                _cache_mode = "never"
+            expected_results += "cache(\s|=)%s" % _cache_mode
         if xattr == "on":
             expected_results += "(\s--|,)xattr"
-        elif xattr == "off" and not libvirt_version.version_compare(10, 5, 0):
+        elif xattr == "off" and not since_10_5:
             expected_results += ",no_xattr"
         if thread_pool_size:
             # Even through there is a equal mark between --thread-pool-size and
