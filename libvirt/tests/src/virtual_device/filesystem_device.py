@@ -43,7 +43,10 @@ def run(test, params, env):
         """
         expected_results = ""
         if cache_mode != "auto":
-            expected_results += "cache(\s|=)%s" % cache_mode
+            if cache_mode == "none":
+                expected_results += "cache(\s|=)(none|never)"
+            else:
+                expected_results += "cache(\s|=)%s" % cache_mode
         if xattr == "on":
             expected_results += "(\s--|,)xattr"
         elif xattr == "off" and not libvirt_version.version_compare(10, 5, 0):
