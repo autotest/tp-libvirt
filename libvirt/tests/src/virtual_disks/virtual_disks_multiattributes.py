@@ -44,8 +44,7 @@ def update_bootable_disk(vm, vmxml, disk_obj, params):
         disk_obj.add_vm_disk(disk_type, disk1_dict, bootable_raw_image)
         image_list.append(bootable_raw_image)
     if disk_type == "block":
-        device = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                image_size='10G')
+        device = libvirt.create_scsi_disk(scsi_option="", scsi_size="10240")
         cmd = "qemu-img convert -f qcow2 %s -O raw %s; sync" % (bootable_image, device)
         process.run(cmd, ignore_status=False, shell=True)
         disk_dict.update({'source': {'attrs': {'dev': device}}})
@@ -115,7 +114,7 @@ def run(test, params, env):
     finally:
         bkxml.sync()
         if disk_type == "block":
-            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            libvirt.delete_scsi_disk()
         if image_list:
             for image in image_list:
                 if os.path.exists(image):
