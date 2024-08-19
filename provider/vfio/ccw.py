@@ -178,6 +178,17 @@ def set_device_online(device_id, session=None):
         raise TestError("Could not set device online. %s" % out)
 
 
+def get_subchannel_info(session=None):
+    """
+    Gets the subchannel path info
+
+    :param session: if given, get info inside guest
+    """
+    paths = SubchannelPaths(session)
+    paths.get_info()
+    return paths
+
+
 def get_first_device_identifiers(chpids, session):
     """
     Gets the usual device identifier cssid.ssid.devno
@@ -188,8 +199,7 @@ def get_first_device_identifiers(chpids, session):
     :raises TestError: if the device can't be found inside guest
     """
 
-    paths = SubchannelPaths(session)
-    paths.get_info()
+    paths = get_subchannel_info(session)
     devices_inside_guest = [
         x for x in paths.devices if x[paths.HEADER["CHPIDs"]] == chpids
     ]
@@ -209,8 +219,7 @@ def device_is_listed(session, chpids):
     :return: True if device is listed
     """
 
-    paths = SubchannelPaths(session)
-    paths.get_info()
+    paths = get_subchannel_info(session)
     devices_inside_guest = [
         x for x in paths.devices if x[paths.HEADER["CHPIDs"]] == chpids
     ]
@@ -319,8 +328,7 @@ def select_first_available_device(device_ids):
     :return device: device info as defined by SubchannelPaths
     :raise TestError: if no available devices is found.
     """
-    paths = SubchannelPaths()
-    paths.get_info()
+    paths = get_subchannel_info()
     for device in paths.devices:
         for device_id in device_ids:
             if device[paths.HEADER["Device"]] == device_id:
@@ -338,8 +346,7 @@ def get_device_info(devid=None):
     :return: Subchannel and Channel path ids (schid, chpids)
     """
 
-    paths = SubchannelPaths()
-    paths.get_info()
+    paths = get_subchannel_info()
     device = None
     if devid:
         device = paths.get_device(devid)
