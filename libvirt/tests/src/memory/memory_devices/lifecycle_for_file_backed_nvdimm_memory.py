@@ -22,6 +22,22 @@ from virttest.utils_libvirt import libvirt_vmxml
 from provider.memory import memory_base
 
 
+def delete_extra_attr(dict1, dict2):
+    """
+    Delete extra different attributes between two dictionaries.
+
+    :param dict1, first dictionary.
+    :param dict2, second dictionary.
+    """
+    keys_to_remove = set(dict1.keys()).symmetric_difference(set(dict2.keys()))
+    for key in keys_to_remove:
+        if key in dict1:
+            del dict1[key]
+        if key in dict2:
+            del dict2[key]
+    return dict1, dict2
+
+
 def check_nvdimm_config(params, test, mem_index=0):
     """
     Check nvdimm memory devices xml config.
@@ -31,6 +47,7 @@ def check_nvdimm_config(params, test, mem_index=0):
     :param mem_index: memory index in memory list, default 0.
     """
     address_config = params.get("address_config")
+    expected_access = params.get("access")
     addr_slot = [params.get("addr_slot"), params.get("addr_slot_attach")]
     addr_base = [params.get("addr_base"), params.get("addr_base_attach")]
     alias_name = eval(params.get("alias_name", "[]"))
@@ -42,18 +59,25 @@ def check_nvdimm_config(params, test, mem_index=0):
     vmxml = vm_xml.VMXML.new_from_dumpxml(params.get("main_vm"))
     actual_attrs = vmxml.devices.by_device_tag('memory')[mem_index].fetch_attrs()
     test.log.debug("Get actual memory attrs: %s", actual_attrs)
+    delete_extra_attr(source[mem_index], actual_attrs['source'])
+    delete_extra_attr(target[mem_index], actual_attrs['target'])
 
-    def _compare_values(expected, actual):
+    def _compare_values(expected, actual, check_item=''):
         if expected != actual:
             test.fail("Expect to get '%s' instead of '%s' " % (expected, actual))
         else:
-            test.log.debug("Check %s PASS", actual)
-    _compare_values(source[mem_index], actual_attrs['source'])
-    _compare_values(target[mem_index], actual_attrs['target'])
-    _compare_values(alias_name[mem_index], actual_attrs['alias']['name'])
+            test.log.debug("Check %s=%s PASS", check_item, actual)
+
+    # check nvdimm memory device source and target config
+    _compare_values(source[mem_index], actual_attrs['source'], 'source attrs')
+    _compare_values(target[mem_index], actual_attrs['target'], 'target attrs')
+
+    # check nvdimm memory device alias, access mode and address config
+    _compare_values(alias_name[mem_index], actual_attrs['alias']['name'], 'alias')
+    _compare_values(expected_access, actual_attrs['mem_access'], 'access mode')
     if address_config != "addr_undefined":
-        _compare_values(addr_slot[mem_index], actual_attrs['address']['attrs']['slot'])
-        _compare_values(addr_base[mem_index], actual_attrs['address']['attrs']['base'])
+        _compare_values(addr_slot[mem_index], actual_attrs['address']['attrs']['slot'], 'addr slot')
+        _compare_values(addr_base[mem_index], actual_attrs['address']['attrs']['base'], 'addr base')
 
 
 def check_nvdimm_device_content(test, params, session, expected_content,
