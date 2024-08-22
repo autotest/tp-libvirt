@@ -130,6 +130,7 @@ def setup_with_unprivileged_user(vm, params, test):
     test.log.debug("Remove 'dac' security driver for unprivileged user")
     vmxml.del_seclabel(by_attr=[('model', 'dac')])
     libvirt_vmxml.modify_vm_device(vmxml, 'interface', interface_attrs)
+    vmxml.xmltreefile.remove_by_xpath("/devices/interface/driver", True)
     boot_disk = vmxml.devices.by_device_tag('disk')[0]
     first_disk_source = boot_disk.fetch_attrs()['source']['attrs']['file']
     unprivileged_boot_disk_path = os.path.join(unprivileged_boot_disk_path, os.path.basename(first_disk_source))
