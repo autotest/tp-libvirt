@@ -1,5 +1,4 @@
 import logging
-import time
 from virttest import virsh
 from virttest import utils_misc
 
@@ -23,10 +22,10 @@ def power_cycle_vm(test, vm, vm_name, login_timeout, startup_wait, resume_wait):
     """
 
     virsh.start(vm_name, options="--paused", ignore_status=False)
-    time.sleep(startup_wait)
+    utils_misc.wait_for(lambda: vm.state() == "paused", startup_wait)
 
     virsh.resume(vm_name, ignore_status=False)
-    time.sleep(resume_wait)
+    utils_misc.wait_for(lambda: vm.state() == "running", resume_wait)
 
     session = vm.wait_for_login(timeout=login_timeout)
     session.close()
@@ -51,10 +50,12 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     num_cycles = int(params.get("num_cycles"))                  # Parameter to control the number of times to start/restart the vm
     login_timeout = float(params.get("login_timeout", 240))     # Controls vm.wait_for_login() timeout
-    startup_wait = float(params.get("startup_wait", 2))         # Controls wait time for virsh.start()
-    resume_wait = float(params.get("resume_wait", 40))          # Controls wait for virsh.resume()
+    startup_wait = float(params.get("startup_wait", 240))       # Controls wait time for virsh.start()
+    resume_wait = float(params.get("resume_wait", 240))          # Controls wait for virsh.resume()
 
     for i in range(num_cycles):
         logging.info("Starting vm '%s' -- attempt #%d", vm_name, i+1)
+
         power_cycle_vm(test, vm, vm_name, login_timeout, startup_wait, resume_wait)
-        logging.info("\t-> Completed vm '%s' power cycle #%d", vm_name, i+1)
+
+        logging.info("Completed vm '%s' power cycle #%d", vm_name, i+1)
