@@ -37,9 +37,9 @@ def prepare_vm_xml(test_obj):
     cpu_topology = eval(test_obj.params.get('cpu_topology', '{}'))
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(test_obj.vm.name)
     if numa_cells:
-        if vmxml.xmltreefile.find('cpu'):
+        if vmxml.xmltreefile.find('cpu') is not None:
             cpuxml = vmxml.cpu
-            if cpuxml.xmltreefile.find('topology'):
+            if cpuxml.xmltreefile.find('topology') is not None:
                 del cpuxml.topology
         else:
             cpuxml = vm_xml.VMCPUXML()
