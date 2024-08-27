@@ -54,10 +54,10 @@ def check_guest_virsh_dominfo(vm, test, params, unplugged=False):
 
     target_size = adjust_size_unit(params)
     if unplugged:
-        expected_mem = str(mem_value)
+        expected_mem = str(mem_value - target_size)
         expected_curr = str(current_mem - target_size)
     else:
-        expected_mem = str(mem_value + target_size)
+        expected_mem = str(mem_value)
         expected_curr = str(current_mem)
 
     memory_base.check_dominfo(vm, test, expected_mem, expected_curr)
@@ -86,7 +86,7 @@ def check_after_detach(vm, test, params):
 
     target_size = adjust_size_unit(params)
     libvirtd_log_file = os.path.join(test.debugdir, "libvirtd.log")
-    ausearch_check = params.get("ausearch_check") % (mem_value+target_size, mem_value)
+    ausearch_check = params.get("ausearch_check") % (mem_value, mem_value - target_size)
 
     # Check the audit log by ausearch.
     ausearch_result = process.run(audit_cmd, shell=True)
@@ -102,7 +102,7 @@ def check_after_detach(vm, test, params):
     # Check the memory allocation and memory device config.
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
     libvirt_vmxml.check_guest_xml_by_xpaths(
-        vmxml, eval(base_xpath % (mem_value, current_mem-target_size)))
+        vmxml, eval(base_xpath % (mem_value - target_size, current_mem - target_size)))
     if vmxml.devices.by_device_tag("memory"):
         test.fail("Dimm memory still exist after unplugging")
 
@@ -153,7 +153,7 @@ def run(test, params, env):
         target_size = adjust_size_unit(params)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         libvirt_vmxml.check_guest_xml_by_xpaths(
-            vmxml, eval(base_xpath % (mem_value + target_size, current_mem)))
+            vmxml, eval(base_xpath % (mem_value, current_mem)))
         libvirt_vmxml.check_guest_xml_by_xpaths(
             vmxml.devices.by_device_tag("memory")[0], eval(dimm_xpath % (target_size, slot)))
 
