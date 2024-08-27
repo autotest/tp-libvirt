@@ -86,6 +86,7 @@ def run(test, params, env):
     remove_pcrbank = ('yes' == params.get("remove_pcrbank", "no"))
     pcrbank_change = params.get("pcrbank_change")
     test_rsaencypt = ('yes' == params.get("test_rsaencypt", "no"))
+    test_sign = ('yes' == params.get("test_sign", "no"))
     active_pcr_banks = params.get("active_pcr_banks")
     statedir = params.get("statedir")
     audit_cmd = params.get("audit_cmd")
@@ -608,19 +609,28 @@ def run(test, params, env):
                     test.fail("test suite check failed.")
         logging.info("------PASS on kernel test suite check------")
 
+    def prepare_rsa_key(session, test_msg="my message"):
+        """
+        Create RSA key and load it, also prepare data file.
+
+        :param session: Guest session to be tested
+        :param test_msg: message to put in data file
+        """
+        if not utils_package.package_install(["tpm2-tools"], session, 360):
+            test.error("Failed to install tpm2-tools package in guest")
+        session.cmd_status_output("tpm2_createprimary -C e -c primary.ctx")
+        session.cmd("tpm2_create -C primary.ctx -G rsa2048 -u key.pub -r key.priv")
+        session.cmd("tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx")
+        session.cmd("echo %s > msg.dat" % test_msg)
+
     def test_rsaencypt_in_guest(session):
         """
         Test tpm RSA encryption in guest.
 
         :param session: Guest session to be tested
         """
-        if not utils_package.package_install(["tpm2-tools"], session, 360):
-            test.error("Failed to install tpm2-tools package in guest")
-        session.cmd_status_output("tpm2_createprimary -c primary.ctx")
-        session.cmd("tpm2_create -C primary.ctx -Grsa2048 -u key.pub -r key.priv")
-        session.cmd("tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx")
-        test_msg = 'my message'
-        session.cmd("echo %s > msg.dat" % test_msg)
+        test_msg = 'my encrypt decrypt test message'
+        prepare_rsa_key(session, test_msg)
         for padding_scheme in ['oaep', 'rsaes', 'null']:
             status, output = session.cmd_status_output("tpm2_rsaencrypt -c key.ctx -o msg.enc -s %s msg.dat" % padding_scheme)
             if status:
@@ -634,6 +644,19 @@ def run(test, params, env):
                 test.fail("Data decrypted '%s' with %s padding scheme does not match original '%s'" % (output, padding_scheme, test_msg))
             session.cmd("rm -f msg.enc msg.ptext")
         session.cmd("rm -f primary.ctx key.pub key.priv key.ctx msg.dat")
+
+    def test_sign_in_guest(session):
+        """
+        Test tpm signature in guest.
+
+        :param session: Guest session to be tested
+        """
+        prepare_rsa_key(session)
+        for hash_algorithm in ['sha1', 'sha256', 'sha384', 'sha512']:
+            status, output = session.cmd_status_output("tpm2_sign -c key.ctx -g %s -o sig.rssa msg.dat" % hash_algorithm)
+            if status:
+                test.fail("tpm2_sign failed with %s hash algorithm: %s" % (hash_algorithm, output))
+        session.cmd("rm -f primary.ctx key.pub key.priv key.ctx msg.dat sig.rssa")
 
     def persistent_test(vm, vm_xml):
         """
@@ -939,6 +962,8 @@ def run(test, params, env):
                 run_test_suite_in_guest(session)
             elif test_rsaencypt:
                 test_rsaencypt_in_guest(session)
+            elif test_sign:
+                test_sign_in_guest(session)
             else:
                 test_guest_tpm(expect_version, session, expect_fail)
             session.close()
