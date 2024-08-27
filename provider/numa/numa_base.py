@@ -192,7 +192,7 @@ def get_host_numa_memory_alloc_info(mem_size):
     :param mem_size: int, the vm memory size
     :return: str, the matched output in numa_maps
     """
-    cmd = 'grep -B1 %s /proc/`pidof qemu-kvm`/smaps' % mem_size
+    cmd = 'grep -B1 "%s " /proc/`pidof qemu-kvm`/smaps' % mem_size
     out = process.run(cmd, shell=True, verbose=True).stdout_text.strip()
     matches = re.findall('(\w+)-', out)
     if not matches:
