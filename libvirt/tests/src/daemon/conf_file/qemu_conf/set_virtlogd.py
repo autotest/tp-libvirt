@@ -13,6 +13,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_package
 from virttest import utils_split_daemons
+from virttest import utils_misc
 from virttest import virt_vm
 from virttest import virsh
 
@@ -232,6 +233,12 @@ def run(test, params, env):
         Configure virtlogd using specific config file.
 
         """
+        virtlogd_config_file = params.get("virtlogd_config_file")
+        virtlogd_config_bak_file = params.get("virtlogd_config_bak_file")
+        if os.path.exists(virtlogd_config_file):
+            # backup config file
+            os.rename(virtlogd_config_file, virtlogd_config_bak_file)
+        virtlogd_config_file_new = params.get("virtlogd_config_file_new")
         with open(virtlogd_config_file, "w") as fd:
             fd.write('VIRTLOGD_ARGS="--config /etc/libvirt/virtlogd-new.conf"')
             fd.write('\n')
@@ -255,6 +262,7 @@ def run(test, params, env):
         """
         cmd = "ps -fC 'virtlogd'"
         cmd_result = process.run(cmd, shell=True).stdout_text.strip()
+        virtlogd_config_file_new = params.get("virtlogd_config_file_new")
         matched_message = "--config %s" % virtlogd_config_file_new
         if matched_message not in cmd_result:
             test.fail("Check virtlogd is started with config :%s failed in output:%s"
@@ -272,6 +280,12 @@ def run(test, params, env):
         Configure virtlogd using timeout parameter.
 
         """
+        virtlogd_config_file = params.get("virtlogd_config_file")
+        virtlogd_config_bak_file = params.get("virtlogd_config_bak_file")
+        if os.path.exists(virtlogd_config_file):
+            # backup config file
+            os.rename(virtlogd_config_file, virtlogd_config_bak_file)
+
         with open(virtlogd_config_file, "w") as fd:
             fd.write('VIRTLOGD_ARGS="--timeout=30"')
             fd.write('\n')
@@ -542,6 +556,314 @@ def run(test, params, env):
             test.fail("Check VM save and restore message log:%s failed in log file:%s"
                       % (vm_save_restore_msg, guest_log_file))
 
+    def set_valid_max_clients(max_clients, check_max_clients=True):
+        """
+        set valid max clients in virtlogd config file
+
+        :param max_clients: max clients in integer
+        :param check_max_clients: boolean value indicating whether need check max clients value
+        """
+        virtlogd_log_file = params.get("virtlogd_log_file")
+        if os.path.exists(virtlogd_log_file):
+            truncate_log_file(virtlogd_log_file, '0')
+        virtlogd_config.log_level = 1
+        virtlogd_config.log_outputs = f"1:file:{virtlogd_log_file}"
+        virtlogd_config.max_clients = max_clients
+        action = params.get("action")
+        process.run("systemctl %s virtlogd" % action, ignore_status=True, shell=True)
+        cmd = ("systemctl status virtlogd | grep 'Active: active'")
+        ret = process.run(cmd, **debug_param)
+        if ret.exit_status != 0:
+            test.fail("virtlogd is not in active from log:%s" % ret.stdout_text.strip())
+
+        if check_max_clients:
+            vm.start()
+            vm.wait_for_login().close()
+            nclients_max_msg = "nclients_max=%s" % max_clients
+            if not libvirt.check_logfile(nclients_max_msg, virtlogd_log_file):
+                test.fail("Check VM nclients max value :%s failed in log file:%s"
+                          % (nclients_max_msg, virtlogd_log_file))
+
+    def check_valid_max_clients():
+        """
+        Check whether virtlogd can work normally when set valid max clients
+
+        """
+        max_clients = params.get("max_clients")
+        set_valid_max_clients(max_clients)
+
+    def check_valid_boundary_max_clients():
+        """
+        Check whether virtlogd can work normally when set valid boundary max clients
+
+        """
+        max_clients = params.get("low_max_clients")
+        set_valid_max_clients(max_clients, check_max_clients=False)
+        max_clients = params.get("high_max_clients")
+        set_valid_max_clients(max_clients)
+
+    def check_nclients_occupied_released():
+        """
+        Check connection clients value can be reflected when VM is different life cycle state
+
+        """
+        max_clients = params.get("max_clients")
+        set_valid_max_clients(max_clients)
+
+        save_path = params.get("save_vm_path")
+        virsh.save(vm_name, save_path)
+        nclients_msg = params.get("nclients")
+        virtlogd_log_file = params.get("virtlogd_log_file")
+        if not libvirt.check_logfile(nclients_msg, virtlogd_log_file):
+            test.fail("Check nclients value after save :%s failed in log file:%s"
+                      % (nclients_msg, virtlogd_log_file))
+
+        truncate_log_file(virtlogd_log_file, '0')
+        virsh.restore(save_path)
+        vm.wait_for_login().close()
+        if not libvirt.check_logfile(nclients_msg, virtlogd_log_file):
+            test.fail("Check nclients value after restore :%s failed in log file:%s"
+                      % (nclients_msg, virtlogd_log_file))
+
+    def check_invalid_boundary_max_clients():
+        """
+        Check whether virtlogd can work normally when set invalid boundary max clients
+
+        """
+        virtlogd_config.max_clients = params.get("low_max_clients")
+        cmd = ("systemctl status virtlogd | grep 'Active: active'")
+        ret = process.run(cmd, **debug_param)
+        if ret.exit_status != 0:
+            test.fail("virtlogd is not in active from log:%s" % ret.stdout_text.strip())
+
+        def _restart_virtlogd():
+            """
+            restart virtlogd and check its state
+            """
+            action = params.get("action")
+            process.run("systemctl %s virtlogd" % action, ignore_status=True, shell=True)
+            time.sleep(4)
+            cmd = ("systemctl status virtlogd | grep 'Active: failed'")
+            result = process.run(cmd, ignore_status=True, shell=True, verbose=True)
+            if result.exit_status != 0:
+                test.fail("virtlogd is not in failed state from output: %s" % result.stdout_text.strip())
+
+        _restart_virtlogd()
+        virtlogd_config.max_clients = params.get("high_max_clients")
+        _restart_virtlogd()
+
+    def check_guest_runnning_after_virtlogd_crash():
+        """
+        Check whether guest still in running after virtlogd crash
+
+        """
+        vm.start()
+        vm.wait_for_login().close()
+        utils_package.package_install(['lsof'])
+        lsof_output = lsof_qemu_log_file()
+        if "virtlogd" not in lsof_output:
+            test.fail("virtlogd does not open qemu log file:%s"
+                      % guest_log_file)
+
+        before_pid_virtlogd = process.getoutput("pidof virtlogd")
+        process.run(f'kill -9 {before_pid_virtlogd}', **debug_param)
+
+        after_pid_virtlogd = process.getoutput("pidof virtlogd")
+        if after_pid_virtlogd:
+            test.fail(f"virtlogd: {after_pid_virtlogd} is not killed as expected")
+        vm.wait_for_login().close()
+
+    def check_reload_new_config(virtlogd_config):
+        """
+        Check whether new virtlogd configuration can be reloaded
+
+        :param virtlogd_config: virtlogd configuration file
+        """
+        virtlogd_file_new = params.get("virtlogd_file_new")
+        virtlogd_log_file = params.get("virtlogd_log_file")
+        virtlogd_config.log_level = 2
+        virtlogd_config.log_filters = "1:+rpc"
+        virtlogd_config.log_outputs = f"1:file:{virtlogd_file_new}"
+
+        action = params.get("action")
+        process.run("systemctl %s virtlogd" % action, ignore_status=True, shell=True)
+        time.sleep(4)
+
+        if not os.path.exists(virtlogd_file_new):
+            test.fail(f"Failed to reload new virtlogd file: {virtlogd_file_new} specified in config")
+
+        vm.start()
+        vm.wait_for_login().close()
+        rpm_msg = "debug.*virNetSocketNew"
+        if not libvirt.check_logfile(rpm_msg, virtlogd_file_new):
+            test.fail("Check rpc message :%s failed in log file:%s"
+                      % (rpm_msg, virtlogd_log_file))
+
+    def check_log_filters_not_same_with_loglevel():
+        """
+        Check whether new virtlogd filter configuration can work as expected
+
+        """
+        virtlogd_file = params.get("virtlogd_file")
+        virtlogd_service = service.Factory.create_service("virtlogd")
+        virtlogd_service.stop()
+        if os.path.exists(virtlogd_file):
+            truncate_log_file(virtlogd_file, '0')
+
+        virtlogd_config.log_level = params.get("log_level")
+        virtlogd_config.log_filters = params.get("log_filters")
+        virtlogd_config.log_outputs = f"1:file:{virtlogd_file}"
+
+        action = params.get("action")
+        process.run("systemctl %s virtlogd" % action, ignore_status=True, shell=True)
+        time.sleep(4)
+
+        vm.start()
+        vm.wait_for_login().close()
+
+        filter_loglevel_1 = params.get("filter_loglevel_1")
+        filter_loglevel_2 = params.get("filter_loglevel_2")
+        filter_loglevel_4 = params.get("filter_loglevel_4")
+        process.run("virtlogd", ignore_status=True, shell=True)
+        for log_level in [filter_loglevel_1, filter_loglevel_2, filter_loglevel_4]:
+            if not libvirt.check_logfile(log_level, virtlogd_file):
+                test.fail("Check related message :%s failed in log file:%s"
+                          % (log_level, virtlogd_file))
+
+        filter_loglevel_3 = params.get("filter_loglevel_3")
+        if not libvirt.check_logfile(filter_loglevel_3, virtlogd_file, str_in_log=False):
+            test.fail("Find unexpected event message:%s in log file:%s"
+                      % (filter_loglevel_3, virtlogd_file))
+
+    def remove_backup_logfiles():
+        """
+        Clean up backup log files
+
+        """
+        file_list = glob.glob('%s/%s.log.*' % (QEMU_LOG_PATH, vm_name))
+        for file_name in file_list:
+            if os.path.exists(file_name):
+                os.remove(file_name)
+
+    def set_max_size_in_virtlogd_config():
+        """
+        set max_size in virtlogd config
+
+        """
+        max_size = params.get("max_size")
+        max_backups = params.get("max_backups", 3)
+        virtlogd_config.__option_types__.update({'max_size': 'int'})
+        virtlogd_config.__option_types__.update({'max_backups': 'int'})
+        if max_size:
+            virtlogd_config.max_size = max_size
+        virtlogd_config.max_backups = max_backups
+
+        logging.info("take actions to make new virtlogd config effective")
+        action = params.get("action")
+        process.run("systemctl %s virtlogd" % action, **debug_param)
+
+    def wait_until_file_present(file_path):
+        """
+        wait for certain time until file is present
+
+        :param file_path: file path
+        """
+        def _file_present():
+            vm.start()
+            vm.wait_for_login().close()
+            vm.destroy()
+            return os.path.exists(file_path)
+
+        utils_misc.wait_for(lambda: _file_present(), timeout=300)
+
+    def check_reload_max_size_config():
+        """
+        Check whether new max size configuration can take effect after reload
+
+        """
+        vm.start()
+        vm.wait_for_login().close()
+        vm.destroy()
+
+        remove_backup_logfiles()
+        truncate_log_file(guest_log_file, '180K')
+
+        set_max_size_in_virtlogd_config()
+
+        guest_log = "%s/%s.log.0" % (QEMU_LOG_PATH, vm_name)
+        wait_until_file_present(guest_log)
+
+        ls_file_size_cmd = "ls -lh %s/%s.log*" % (QEMU_LOG_PATH, vm_name)
+        output = process.run(ls_file_size_cmd, **debug_param).stdout_text
+        if "200K" not in output:
+            test.fail(f"max size not take effect after reload")
+
+    def check_set_max_size_config():
+        """
+        Check whether new max size configuration can take effect after set
+
+        """
+        check_reload_max_size_config()
+
+    def ls_log_files():
+        """
+        ls all logs files,and check total numbers
+
+        """
+        max_backups = int(params.get("max_backups"))
+        time_start = 0
+        time_end = 60
+        max_backup_plus_one = max_backups + 1
+        while time_start <= time_end:
+            ls_logfile_number_cmd = "ls -lh %s/%s.log* | wc -l" % (QEMU_LOG_PATH, vm_name)
+            number = process.run(ls_logfile_number_cmd, **debug_param).stdout_text.strip()
+            if max_backup_plus_one != int(number):
+                test.fail(f"actual logs files number: {number} is not equals to expected:{max_backup_plus_one}")
+            time.sleep(10)
+            time_start += 20
+
+    def check_set_max_backups():
+        """
+        Check whether backup files has exact numbers as described in max_backup
+
+        """
+        vm.start()
+        vm.wait_for_login().close()
+        vm.destroy()
+
+        remove_backup_logfiles()
+        truncate_log_file(guest_log_file, '3M')
+
+        set_max_size_in_virtlogd_config()
+
+        max_backups = int(params.get("max_backups"))
+        for index in range(max_backups):
+            guest_log = "%s/%s.log.%d" % (QEMU_LOG_PATH, vm_name, index)
+            wait_until_file_present(guest_log)
+            truncate_log_file(guest_log_file, '3M')
+        ls_log_files()
+
+    def check_reload_max_backups():
+        """
+        Check whether backup files has exact numbers as reloading configuration
+
+        """
+        vm.start()
+        vm.wait_for_login().close()
+        vm.destroy()
+
+        remove_backup_logfiles()
+        truncate_log_file(guest_log_file, '180K')
+
+        set_max_size_in_virtlogd_config()
+
+        max_backups = int(params.get("max_backups"))
+        for index in range(max_backups):
+            guest_log = "%s/%s.log.%d" % (QEMU_LOG_PATH, vm_name, index)
+            wait_until_file_present(guest_log)
+            truncate_log_file(guest_log_file, '180K')
+        ls_log_files()
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "virtlogd_disabled")
     stdio_handler = params.get("stdio_handler", "not_set")
@@ -552,6 +874,8 @@ def run(test, params, env):
     stop_libvirtd = "yes" == params.get("stop_libvirtd", "no")
     with_spice = "yes" == params.get("with_spice", "no")
     with_console_log = "yes" == params.get("with_console_log", "no")
+    pipe_node = None
+    debug_param = {'ignore_status': True, 'shell': True, 'verbose': True}
 
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
@@ -586,6 +910,8 @@ def run(test, params, env):
                       'with stdio_handler=%s' % stdio_handler)
 
         if not start_vm:
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
             if reload_virtlogd:
                 reload_and_check_virtlogd()
             elif expected_result == 'virtlogd_restart':
@@ -619,13 +945,6 @@ def run(test, params, env):
                 ret = process.run(cmd, ignore_status=True, shell=True)
                 if not ret.exit_status:
                     test.fail("virtlogd still exist.")
-            elif expected_result in ['virtlogd_specific_config_file_enable', 'specific_timeout']:
-                virtlogd_config_file = params.get("virtlogd_config_file")
-                virtlogd_config_bak_file = params.get("virtlogd_config_bak_file")
-                if os.path.exists(virtlogd_config_file):
-                    # backup config file
-                    os.rename(virtlogd_config_file, virtlogd_config_bak_file)
-                virtlogd_config_file_new = params.get("virtlogd_config_file_new")
             elif expected_result == 'virtlogd_specific_config_file_enable':
                 enable_virtlogd_specific_config_file()
                 check_virtlogd_started_with_config()
@@ -654,6 +973,14 @@ def run(test, params, env):
                 check_start_vm_twice_log_into_qemu_log_file()
             elif expected_result == "record_save_restore_guest_log":
                 check_record_save_restore_guest_log()
+            elif expected_result in ["valid_max_clients", "valid_boundary_max_clients", "nclients_occupied_released",
+                                     "invalid_boundary_max_clients", "guest_runnning_after_virtlogd_crash"
+                                     "log_filters_not_same_with_loglevel", "reload_max_size_config", "set_max_size_config",
+                                     "set_max_backups", "reload_max_backups"]:
+                check_test = eval("check_%s" % expected_result)
+                check_test()
+            elif expected_result == "reload_new_config":
+                check_reload_new_config(virtlogd_config)
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
@@ -781,8 +1108,13 @@ def run(test, params, env):
     finally:
         config.restore()
         libvirtd.restart()
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
         vm_xml_backup.sync()
         if expected_result in ['virtlogd_specific_config_file_enable', 'specific_timeout']:
+            virtlogd_config_file = params.get("virtlogd_config_file")
+            virtlogd_config_bak_file = params.get("virtlogd_config_bak_file")
+            virtlogd_config_file_new = params.get("virtlogd_config_file_new")
             if os.path.exists(virtlogd_config_file):
                 os.remove(virtlogd_config_file)
             if os.path.exists(virtlogd_config_file_new):
@@ -791,6 +1123,11 @@ def run(test, params, env):
                 if os.path.exists(virtlogd_config_file):
                     os.rename(virtlogd_config_bak_file, virtlogd_config_file)
                 service.Factory.create_service("virtlogd").restart()
-        if expected_result == "invalid_virtlogd_conf":
+        if expected_result in ["invalid_virtlogd_conf", "valid_max_clients",
+                               "valid_boundary_max_clients", "nclients_occupied_released",
+                               "invalid_boundary_max_clients", "reload_new_config",
+                               "log_filters_not_same_with_loglevel", "reload_max_size_config",
+                               "set_max_size_config",
+                               "set_max_backups", "reload_max_backups"]:
             virtlogd_config.restore()
             service.Factory.create_service("virtlogd").restart()
