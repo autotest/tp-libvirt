@@ -117,7 +117,7 @@ def setup_test(vm_name, params, test):
 
     utils_memory.set_num_huge_pages(int(vm_nr_hugepages))
     hp_cfg = test_setup.HugePageConfig(params)
-    hp_cfg.set_kernel_hugepages(set_pagesize, set_pagenum)
+    hp_cfg.set_kernel_hugepages(set_pagesize, set_pagenum, False)
     hp_cfg.hugepage_size = mount_size
     hp_cfg.mount_hugepage_fs()
     utils_libvirtd.Libvirtd().restart()
