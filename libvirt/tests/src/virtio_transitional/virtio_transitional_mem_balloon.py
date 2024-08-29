@@ -45,6 +45,7 @@ def run(test, params, env):
     os_variant = params.get("os_variant", "")
     params["disk_model"] = virtio_model
     set_crypto_policy = params.get("set_crypto_policy")
+    vm_memory = int(params.get("vm_memory"))
 
     if not libvirt_version.version_compare(5, 0, 0):
         test.cancel("This libvirt version doesn't support "
@@ -68,6 +69,8 @@ def run(test, params, env):
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
             # Remove nvram setting for rhel6 guest
             virtio_transitional_base.remove_rhel6_nvram(vm_name)
+        vmxml.memory = vm_memory
+        vmxml.sync()
         libvirt.set_vm_disk(vm, params)
         # The local variable "vmxml" will not be updated since set_vm_disk
         # sync with another dumped xml inside the function
