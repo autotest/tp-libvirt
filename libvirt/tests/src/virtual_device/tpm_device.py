@@ -833,7 +833,7 @@ def run(test, params, env):
             try:
                 vm.start()
             except VMStartError as detail:
-                if secret_value == 'none' or secret_uuid == 'nonexist' or not source_socket:
+                if secret_value == 'none' or secret_uuid == 'nonexist' or (source_attrs_str and not source_socket):
                     logging.debug("Expected failure: %s", detail)
                     return
                 else:
