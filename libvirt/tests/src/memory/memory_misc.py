@@ -266,8 +266,8 @@ def run(test, params, env):
                 test, pg_size=default_page_size, hp_size=pagesize, hp_list=[mount_pagesize])
             vm_mem_size = vmxml.memory
             hp_cfg = test_setup.HugePageConfig(params)
-            hp_cfg.set_kernel_hugepages(pagesize, vm_mem_size // pagesize)
-            hp_cfg.set_kernel_hugepages(mount_pagesize, mem_device_size // mount_pagesize)
+            hp_cfg.set_kernel_hugepages(pagesize, vm_mem_size // pagesize, False)
+            hp_cfg.set_kernel_hugepages(mount_pagesize, mem_device_size // mount_pagesize, False)
             set_vmxml(vmxml, params)
             _setup_mbxml()
             vmxml.sync()
