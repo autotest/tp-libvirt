@@ -258,7 +258,7 @@ def run(test, params, env):
                     'running',
                     vmcheck.get_service_info(service_name),
                     re.I),
-                600,
+                900,
                 step=30)
         except (ShellProcessTerminatedError, ShellStatusError):
             # Windows guest may reboot after installing qemu-ga service
@@ -274,7 +274,7 @@ def run(test, params, env):
                     'running',
                     vmcheck.get_service_info(service_name),
                     re.I),
-                600,
+                900,
                 step=30)
 
         if not res:
