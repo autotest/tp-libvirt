@@ -52,18 +52,21 @@ def run(test, params, env):
     iface_driver = params.get("iface_driver")
     model_type = params.get("model_type")
     check_pci_model = params.get("check_pci_model", "yes") == "yes"
+    bridge_controller_needed = params.get("bridge_controller_needed", "yes") == "yes"
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
 
     try:
-        pci_controllers = vmxml.get_controllers("pci")
-        for controller in pci_controllers:
-            if controller.get("model") == "pcie-to-pci-bridge":
-                break
-        else:
-            controller_dict = {"model": "pcie-to-pci-bridge"}
-            libvirt_vmxml.modify_vm_device(vmxml, "controller", controller_dict, 50)
+        if bridge_controller_needed:
+            pci_controllers = vmxml.get_controllers("pci")
+            for controller in pci_controllers:
+                if controller.get("model") == "pcie-to-pci-bridge":
+                    break
+            else:
+                controller_dict = {"model": "pcie-to-pci-bridge"}
+                libvirt_vmxml.modify_vm_device(vmxml, "controller", controller_dict, 50)
+
         libvirt_vmxml.remove_vm_devices_by_type(vm, "interface")
         test.log.debug(f"VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}")
 
