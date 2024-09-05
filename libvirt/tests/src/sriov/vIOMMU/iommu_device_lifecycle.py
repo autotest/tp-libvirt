@@ -57,17 +57,26 @@ def run(test, params, env):
         test.log.info("TEST_STEP: Start the VM.")
         vm.start()
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
-        if test_scenario == "reboot_many_times":
+        if test_scenario in ["reboot_many_times", "reset"]:
             vm.cleanup_serial_console()
             vm.create_serial_console()
-            for _ in range(int(params.get('loop_time', '5'))):
-                test.log.info("TEST_STEP: Reboot the VM.")
+            if test_scenario == "reset":
+                test.log.info("TEST_STEP: Reset the VM.")
                 session = vm.wait_for_serial_login(
                     timeout=int(params.get('login_timeout')))
-                session.sendline(params.get("reboot_command"))
-                _match, _text = session.read_until_output_matches(
+                virsh.reset(vm.name, **VIRSH_ARGS)
+                _match, _text = session.read_until_last_line_matches(
                     [r"[Ll]ogin:\s*"], timeout=240, internal_timeout=0.5)
                 session.close()
+            else:
+                for _ in range(int(params.get('loop_time', '5'))):
+                    test.log.info("TEST_STEP: Reboot the VM.")
+                    session = vm.wait_for_serial_login(
+                        timeout=int(params.get('login_timeout')))
+                    session.sendline(params.get("reboot_command"))
+                    _match, _text = session.read_until_last_line_matches(
+                        [r"[Ll]ogin:\s*"], timeout=240, internal_timeout=0.5)
+                    session.close()
 
             session = vm.wait_for_serial_login(
                 timeout=int(params.get('login_timeout')))
