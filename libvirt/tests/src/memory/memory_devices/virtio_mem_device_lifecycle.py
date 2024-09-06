@@ -11,7 +11,7 @@
 
 import os
 
-from virttest import utils_libvirtd
+from virttest.utils_libvirtd import Libvirtd
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -49,6 +49,7 @@ def run(test, params, env):
                                   like {"alias_name":[xpath1, xpath2]},...}
         """
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        test.log.debug("Current guest config xml is:\n%s", vmxml)
         memory_devices = vmxml.devices.by_device_tag('memory')
         target_memory_num = 0
         for alias_name, xpath_list in xpath_dict.items():
@@ -173,7 +174,9 @@ def run(test, params, env):
         vm.wait_for_login().close()
         check_virtio_mem_device_xml({init_alias_name: init_xpath_list, plug_alias_name: plug_xpath_list})
 
-        utils_libvirtd.libvirtd_restart()
+        libvirt_daemon = Libvirtd()
+        if not libvirt_daemon.restart(reset_failed=False):
+            test.fail('libvirt deamon restarts failed or is not working properly')
         check_virtio_mem_device_xml({init_alias_name: init_xpath_list, plug_alias_name: plug_xpath_list})
 
     def teardown_test():
