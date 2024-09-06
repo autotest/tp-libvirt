@@ -89,7 +89,7 @@ def run(test, params, env):
                 if not status_error:
                     test.fail(details)
             test.log.debug("VM XML: %s.", VMXML.new_from_inactive_dumpxml(vm_name))
-            if res.exit_status == 0:
+            if not ('res' in locals() and res.exit_status != 0):
                 res = virsh.start(vm.name)
         else:
             test.log.info("TEST_STEP: Hot plug a device with dac setting.")
