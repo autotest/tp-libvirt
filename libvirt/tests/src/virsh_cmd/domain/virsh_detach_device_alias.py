@@ -270,7 +270,7 @@ def run(test, params, env):
         if input_type == "passthrough":
             event = process.run("ls /dev/input/event*", shell=True, ignore_status=True).stdout
             if len(event) == 0:
-                test.error("Not found any input devices")
+                test.skip("Not found any input devices")
             input_dict.update({"source_evdev": event.decode('utf-8').split()[0]})
 
         input_obj = Input(type_name=input_type)
