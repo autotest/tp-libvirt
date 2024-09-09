@@ -35,7 +35,7 @@ default linux
 label linux
 kernel kernel.img
 initrd initrd.img
-append ip=dhcp inst.repo=%s inst.ks=%s
+append ip=dhcp inst.repo=%s inst.ks=%s inst.noverifyssl
 """ % (install_tree_url, kickstart_url)
 
     with open(os.path.join(tftp_dir, boot_file), "w") as f:
