@@ -232,18 +232,32 @@ def run(test, params, env):
 
         :param vmcheck: VMCheck object for vm checking
         """
-        def _get_vmware_info(cmd):
+        def _get_vmtools_info(cmd):
             _, res = vmcheck.run_cmd(cmd)
-            if res and not re.search('vmtools', res, re.I):
-                return True
-            return False
+            exit_code = re.search(r'uninstalling VMware Tools\s+.*exit code\s+(\d+)', res).group(1)
+            return int(exit_code)
 
-        cmds = ['tasklist', 'sc query vmtools']
-        for cmd in cmds:
-            res = utils_misc.wait_for(
-                lambda: _get_vmware_info(cmd), 600, step=30)
-            if not res:
-                test.fail("Failed to verification vmtools uninstallation")
+        cmd = r'type "C:\Program Files\Guestfs\Firstboot\log.txt"'
+
+        try:
+            res = utils_misc.wait_for(lambda: _get_vmtools_info(cmd), 900, step=30)
+        except (ShellProcessTerminatedError, ShellStatusError):
+            # Windows guest may reboot after installing qemu-ga service
+            LOG.debug('Windows guest is rebooting')
+            if vmcheck.session:
+                vmcheck.session.close()
+                vmcheck.session = None
+            # VM boots up is extremely slow when all testing in running on
+            # rhv server simultaneously, so set timeout to 1200.
+            vmcheck.create_session(timeout=1200)
+            res = utils_misc.wait_for(lambda: _get_vmtools_info(cmd), 900, step=30)
+
+        if res:
+            if os_version in ['win2025', 'win2019'] and str(res) == '1603':
+                #Some windows guests fail to uninstall vmware tools due to bug RHEL-51169
+                LOG.info('%s guest fail to unintall VMware tools with exit code 1603 which is known issue' % os_version)
+            else:
+                test.fail("Fail to uninstall VMware-tools with exit code %s" % res)
 
     def check_windows_service(vmcheck, service_name):
         """
