@@ -73,6 +73,7 @@ def check_host_cpu_topology(cap_xml, test):
     current_arch = platform.machine()
     is_x8664 = True if current_arch == "x86_64" else False
     is_aarch64 = True if current_arch == "aarch64" else False
+    is_s390x = True if current_arch == "s390x" else False
     prefix_cmd = "cat /sys/devices/system/cpu/cpu%s/topology/%s"
     file_name_key_mapping = {"physical_package_id": "socket_id",
                              "cluster_id": "cluster_id",
@@ -82,6 +83,8 @@ def check_host_cpu_topology(cap_xml, test):
         file_name_key_mapping.update({"die_id": "die_id"})
     if is_aarch64 or is_x8664:
         file_name_key_mapping.update({"cluster_id": "cluster_id"})
+    if is_s390x:
+        del file_name_key_mapping["cluster_id"]
     for a_cell in cell_list:
         cpu_list = a_cell.cpu
         for a_cpu in cpu_list:
