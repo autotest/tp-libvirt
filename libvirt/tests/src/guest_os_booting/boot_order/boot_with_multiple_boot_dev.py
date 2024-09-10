@@ -47,7 +47,7 @@ def prepare_device(params, vm_name, bootable_device):
         libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_dict)
     if bootable_device == "cdrom_bootable":
         cdrom_path = os.path.join(data_dir.get_data_dir(), 'images', 'boot.iso')
-        cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {print $NF}'"
+        cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {res=$NF} END{print res}'"
         repo_url = process.run(cmd, shell=True).stdout_text.strip()
         boot_img_url = os.path.join(repo_url, 'images', 'boot.iso')
         download.get_file(boot_img_url, cdrom_path)

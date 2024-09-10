@@ -30,7 +30,7 @@ def parse_cdroms_attrs(params):
         cdrom_attrs_list.append(cdrom2_attrs)
 
     if cdrom1_attrs.get('source') or cdrom2_attrs.get('source'):
-        cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {print $NF}'"
+        cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {res=$NF} END{print res}'"
         repo_url = process.run(cmd, shell=True).stdout_text.strip()
         boot_img_url = os.path.join(repo_url, 'images', 'boot.iso')
         if os.path.exists(boot_img_path):
