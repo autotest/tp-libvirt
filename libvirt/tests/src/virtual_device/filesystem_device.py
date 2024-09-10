@@ -263,10 +263,10 @@ def run(test, params, env):
     huge_pages_num = 0
 
     if hotplug_unplug and not utils_path.find_command("lsof", default=False):
-        test.cancel("Lsof command is required to run test, but not installed")
+        test.error("Lsof command is required to run test, but not installed")
 
     if len(vm_names) != guest_num:
-        test.cancel("This test needs exactly %d vms." % guest_num)
+        test.error("This test needs exactly %d vms." % guest_num)
 
     if not libvirt_version.version_compare(7, 0, 0) and not with_numa:
         test.cancel("Not supported without NUMA before 7.0.0")
