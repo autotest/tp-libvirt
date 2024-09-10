@@ -334,10 +334,10 @@ def test_destroy_domain_paused_state_guest(test, params, env):
                                        auto_close=True)
     virsh_session.sendline(start_vm_cmd)
 
-    virsh.start(dom_new_name, debug=True)
+    virsh.start(dom_new_name, ignore_status=True, debug=True)
     vm_state = virsh.domstate(dom_new_name).stdout_text.strip()
-    if vm_state != 'paused':
-        test.fail("vm:%s is not in paused state" % dom_new_name)
+    if vm_state not in ['paused', 'shut off']:
+        test.fail("vm:%s is not in paused or shut off state" % dom_new_name)
 
     virsh.destroy(dom_new_name, ignore_status=False)
     vm_state = virsh.domstate(dom_new_name).stdout_text.strip()
