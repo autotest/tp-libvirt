@@ -47,6 +47,7 @@ def run(test, params, env):
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         # Prepare device xml by using device function, for example, Disk().
         device_obj = device_type.capitalize()
+        disk_image_path = None
         if device_type == "disk" and hotplug:
             disk_image_path = os.path.join(os.path.dirname(disk_image), "base.qcow2")
             libvirt.create_local_disk(
@@ -58,7 +59,7 @@ def run(test, params, env):
         else:
             device_xml = eval(device_obj)()
         device_xml.setup_attrs(**device_dict)
-        return device_xml, vmxml
+        return device_xml, vmxml, disk_image_path
 
     def run_test(device_xml, vmxml):
         """
@@ -87,13 +88,13 @@ def run(test, params, env):
         test.log.info("TEST_STEP3: check the network by ping")
         utils_net.ping(dest=ping_outside, count='3', timeout=10, session=vm.session, force_ipv4=True)
 
-    def teardown_test():
+    def teardown_test(disk_image_path):
         """
         Clean up the test environment.
         """
         bkxml.sync()
-        if hotplug and os.path.exists(disk_image):
-            os.remove(disk_image)
+        if disk_image_path and os.path.exists(disk_image_path):
+            os.remove(disk_image_path)
 
     def check_attribute():
         """
@@ -160,7 +161,7 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
-        device_xml, vmxml = prepare_test(vmxml)
+        device_xml, vmxml, disk_image_path = prepare_test(vmxml)
         run_test(device_xml, vmxml)
     finally:
-        teardown_test()
+        teardown_test(disk_image_path)
