@@ -10,6 +10,7 @@ from virttest import utils_net
 from virttest import utils_misc
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 
@@ -160,6 +161,9 @@ def run(test, params, env):
     # generate a new one suitable for the model
     if vm.is_alive():
         vm.destroy()
+    if model_type != 'virtio':
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        libvirt_vmxml.modify_vm_device(vmxml, 'interface', {'driver': None})
     iface_dict = {'model': model_type, 'del_addr': 'yes'}
     libvirt.modify_vm_iface(vm_name[0], "update_iface", iface_dict)
     # Vm status
