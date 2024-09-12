@@ -2,7 +2,6 @@ import re
 import os
 import shutil
 import logging as log
-import platform
 import time
 import signal
 
@@ -166,12 +165,6 @@ def run(test, params, env):
             if not vmxml.xmltreefile.find('devices').findall('panic'):
                 # Add <panic> device to domain
                 panic_dev = Panic()
-                if "ppc" not in platform.machine():
-                    panic_dev.addr_type = "isa"
-                    panic_dev.addr_iobase = "0x505"
-                if platform.machine() == 'aarch64':
-                    panic_dev.model = "pvpanic"
-                    panic_dev.addr_type = "pci"
                 vmxml.add_device(panic_dev)
             vmxml.sync()
             # Config auto_dump_path in qemu.conf
