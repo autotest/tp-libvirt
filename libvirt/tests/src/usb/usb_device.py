@@ -10,6 +10,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml.devices.hub import Hub
 
+from provider.usb import usb_base
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -57,6 +59,9 @@ def run(test, params, env):
     device_type = params.get("device_type", "")
     device_mode = params.get("device_mode", "")
     port_num = params.get("port_num", "")
+    if device_name == "redirdev":
+        add_pkg, usb_cmd = usb_base.get_host_pkg_and_cmd()
+        pkgs_host = params.get("pkgs_host", "") + add_pkg
     pkgs_host = params.get("pkgs_host", "")
     pkgs_guest = params.get("pkgs_guest", "")
     usb_hub = "yes" == params.get("usb_hub", "no")
@@ -321,10 +326,8 @@ def run(test, params, env):
                     # start usbredirserver
                     vendor_id = addr['vendor_id'].lstrip("0x")
                     product_id = addr['product_id'].lstrip("0x")
-                    ps = process.SubProcess("usbredirserver -p {} {}:{}".format
-                                            (port, vendor_id, product_id),
-                                            shell=True)
-                    server_id = ps.start()
+                    usb_base.start_redirect_server(params, usb_cmd,
+                                                   vendor_id, product_id)
                 if redirdev_alias:
                     alias_str = "ua-redir" + str(i) + random_id
                     device_alias[port] = alias_str
@@ -400,6 +403,5 @@ def run(test, params, env):
     finally:
         if 'session' in locals():
             session.close()
-        if 'server_id' in locals():
-            process.run("killall usbredirserver")
+        usb_base.kill_redirect_server(usb_cmd)
         vmxml_backup.sync()

@@ -15,6 +15,7 @@ from virttest.utils_test import libvirt
 
 from provider.guest_os_booting import guest_os_booting_base as guest_os
 from provider.backingchain import blockcommand_base
+from provider.usb import usb_base
 from provider.virtual_disk import disk_base
 
 
@@ -66,9 +67,7 @@ def run(test, params, env):
     usb_device = params.get("usb_device")
     bootmenu_dict = eval(params.get("bootmenu_dict", "{}"))
     device_attrs = eval(params.get("device_attrs", "{}"))
-    port_num = params.get("port_num")
     check_prompt = params.get("check_prompt")
-    required_cmds = eval(params.get("required_cmds", "[]"))
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -76,6 +75,8 @@ def run(test, params, env):
 
     test_obj = blockcommand_base.BlockCommand(test, vm, params)
     disk_obj = disk_base.DiskBase(test, vm, params)
+    extra_usb_cmd = usb_base.get_host_pkg_and_cmd()[1]
+    required_cmds = eval(params.get("required_cmds", "[]")) + [extra_usb_cmd]
 
     try:
         for cmd in required_cmds:
@@ -90,11 +91,7 @@ def run(test, params, env):
             vendor_id, product_id = get_usb_source()
             device_xml = redirdev.Redirdev()
             device_xml.setup_attrs(**device_attrs)
-            # start usbredirserver
-            ps = process.SubProcess("usbredirserver -p {} {}:{}".format
-                                    (port_num, vendor_id, product_id),
-                                    shell=True)
-            server_id = ps.start()
+            usb_base.start_redirect_server(params, extra_usb_cmd, vendor_id, product_id)
         if usb_device == "hostdev_device":
             vendor_id, product_id = get_usb_source()
             vendor_id = "0x" + vendor_id
@@ -115,5 +112,4 @@ def run(test, params, env):
             virsh.destroy(vm_name)
         disk_obj.cleanup_disk_preparation(disk_type)
         bkxml.sync()
-        if 'server_id' in locals():
-            process.run("killall usbredirserver")
+        usb_base.kill_redirect_server(extra_usb_cmd)
