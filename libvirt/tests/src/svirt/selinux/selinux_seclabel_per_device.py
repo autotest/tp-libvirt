@@ -88,6 +88,8 @@ def run(test, params, env):
             except xcepts.LibvirtXMLError as details:
                 if not status_error:
                     test.fail(details)
+                else:
+                    return
             test.log.debug("VM XML: %s.", VMXML.new_from_inactive_dumpxml(vm_name))
             if not ('res' in locals() and res.exit_status != 0):
                 res = virsh.start(vm.name)
