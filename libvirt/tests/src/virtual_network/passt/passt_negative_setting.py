@@ -17,6 +17,7 @@ from virttest.utils_test import libvirt
 
 from provider.virtual_network import passt
 
+VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 LOG = logging.getLogger('avocado.' + __name__)
 DOWN_IFACE_NAME = "br1234"
 
@@ -119,9 +120,14 @@ def run(test, params, env):
         if operation == 'start_vm':
             vmxml.add_device(iface_device)
             vmxml.sync(virsh_instance=virsh_ins)
+            LOG.debug(
+                f'VMXML: {virsh.dumpxml(vm_name, uri=virsh_uri).stdout_text}')
             result = virsh.start(vm_name, uri=virsh_uri, debug=True)
         if operation == 'hotplug':
-            virsh.start(vm_name, uri=virsh_uri)
+            vmxml.sync(virsh_instance=virsh_ins)
+            LOG.debug(
+                f'VMXML: {virsh.dumpxml(vm_name, uri=virsh_uri).stdout_text}')
+            virsh.start(vm_name, uri=virsh_uri, **VIRSH_ARGS)
             result = virsh.attach_device(vm_name, iface_device.xml,
                                          uri=virsh_uri, debug=True)
 
