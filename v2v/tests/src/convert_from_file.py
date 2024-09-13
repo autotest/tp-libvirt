@@ -288,6 +288,11 @@ def run(test, params, env):
                 log_fail('fail to download guest image from libvirt-ci resource')
             image_name = re.search(r'RHEL-\S*\w*.qcow2', params.get('image_url')).group()
             v2v_params.update({'input_file': os.path.join(tmp_path, image_name)})
+            if checkpoint == 'virt_v2v_in_place':
+                output = utils_v2v.cmd_run('/usr/libexec/virt-v2v-in-place -i disk %s/%s' % (tmp_path, image_name))
+                log_check = utils_v2v.check_log(params, output.stdout_text)
+                if log_check:
+                    log_fail(log_check)
         if output_format:
             v2v_params.update({'of_format': output_format})
         # Create libvirt dir pool
@@ -331,8 +336,8 @@ def run(test, params, env):
 
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
-
-        check_result(v2v_result, status_error)
+        if checkpoint != 'virt_v2v_in_place':
+            check_result(v2v_result, status_error)
     finally:
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
