@@ -34,6 +34,7 @@ def run(test, params, env):
                 vmxml.sync()
             err_msg = ''
 
+        libvirt_vmxml.remove_vm_devices_by_type(vm, 'iommu')
         iommu_dev = libvirt_vmxml.create_vm_device_by_type('iommu', iommu_dict)
         test.log.debug(f"iommu device: {iommu_dev}")
         res = virsh.attach_device(vm.name, iommu_dev.xml, debug=True,
