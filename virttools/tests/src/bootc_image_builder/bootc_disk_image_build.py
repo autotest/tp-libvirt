@@ -37,6 +37,8 @@ def validate_bib_output(params, test):
         if formatted_group_user != ownership:
             test.fail(f"The output folder:{base_folder} has wrong setting in group and user ids: {formatted_group_user}")
 
+    # bib_utils.check_bootc_image_version_id(params)
+
 
 def prepare_env_and_execute_bib(params, test):
     """
@@ -52,10 +54,12 @@ def prepare_env_and_execute_bib(params, test):
     container_url = params.get("container_url")
     local_container = "yes" == params.get("local_container")
     build_container = params.get("build_container")
+    signed_container = "yes" == params.get("signed_container")
 
     enable_tls_verify = params.get("enable_tls_verify")
     config_json = params.get("config_json")
     config_json_file = None
+    use_toml_config = "yes" == params.get("use_toml_config")
 
     ownership = params.get("ownership")
     key_store_mounted = params.get("key_store_mounted")
@@ -70,26 +74,41 @@ def prepare_env_and_execute_bib(params, test):
 
     bib_utils.install_bib_packages()
     if config_json == "use_config_json":
-        config_json_file = bib_utils.create_config_json_file(params)
+        if use_toml_config:
+            config_json_file = bib_utils.create_config_toml_file(params)
+        else:
+            config_json_file = bib_utils.create_config_json_file(params)
     if disk_image_type in ["ami"]:
         bib_utils.prepare_aws_env(params)
 
-    if bib_ref in ["upstream_bib", "rhel_9.4_nightly_bib", "rhel_9.5_nightly_bib", "rhel_10.0_bib"]:
+    if bib_ref in ["upstream_bib", "rhel_9.4_nightly_bib", "rhel_9.5_nightly_bib", "rhel_9.6_nightly_bib", "rhel_10.0_bib"]:
         auth_file = bib_utils.create_auth_json_file(params)
-        bib_utils.podman_login_with_auth(auth_file, params.get("redhat_registry"))
-        options = auth_file
+        bib_utils.podman_login_with_auth(auth_file, params.get("redhat_stage_registry"))
+        options = " -v %s:/run/containers/0/auth.json " % auth_file
         bib_utils.podman_login(params.get("podman_stage_username"), params.get("podman_stage_password"),
-                               params.get("redhat_registry"))
+                               params.get("redhat_stage_registry"))
 
     # pull base image and build local image after change
     if build_container:
-        if bib_ref == "rhel_9.4_bib":
+        if bib_ref in ["rhel_9.4_bib", "rhel_9.5_bib"]:
             bib_utils.podman_login(params.get("podman_redhat_username"), params.get("podman_redhat_password"),
                                    params.get("redhat_registry"))
         bib_utils.create_and_build_container_file(params)
-    if bib_ref == "rhel_9.4_bib":
+
+    if bib_ref in ["rhel_9.4_bib", "rhel_9.5_bib"]:
         bib_utils.podman_push(params.get("podman_quay_username"), params.get("podman_quay_password"),
                               params.get("registry"), container_url)
+
+    # sign the container image if needed
+    if signed_container:
+        LOG.debug(f"Begin sign container image: {container_url}")
+        container_url = bib_utils.sign_image(params)
+        LOG.debug(f"End sign container image: {container_url}")
+        if options is None:
+            options = " "
+        root_dir = params.get("config_file_path")
+        options += f" -v {root_dir}/policy.json:/etc/containers/policy.json -v {root_dir}/bib_lookaside.yaml:/etc/containers/registries.d/bib_lookaside.yaml "
+        options += f" -v /var/lib/containers/sigstore:/var/lib/containers/sigstore -v {root_dir}/key.gpg:{root_dir}key.gpg "
 
     result = bib_utils.podman_command_build(bib_image_url, disk_image_type, container_url, config_json_file,
                                             local_container, enable_tls_verify, ownership,
