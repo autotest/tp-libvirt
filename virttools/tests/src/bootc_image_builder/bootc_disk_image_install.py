@@ -45,6 +45,15 @@ def update_bib_env_info(params, test):
     params.update({'vm_disk_image_path': full_path_dest})
     params.update({'vm_name_bootc': disk_name})
 
+    if params.get("disk_image_type") == "vhd":
+        converted_image_from_vhd_qcow2 = bib_utils.convert_vhd_to_qcow2(params)
+        params.update({'vm_disk_image_path': converted_image_from_vhd_qcow2})
+
+    if params.get("disk_image_type") == "gce":
+        untar_raw_image = bib_utils.untar_tgz_to_raw(params)
+        params.update({'vm_disk_image_path': untar_raw_image})
+        cleanup_files.append(untar_raw_image)
+
     iso_install_path = os.path.join(libvirt_base_folder, f"{disk_name}_{firmware}.qcow2")
     params.update({'iso_install_path': iso_install_path})
     cleanup_files.append(iso_install_path)
@@ -128,7 +137,11 @@ def run(test, params, env):
         update_bib_env_info(params, test)
         if disk_image_type in ["vmdk"]:
             bib_utils.create_and_start_vmware_vm(params)
-        elif disk_image_type in ["qcow2", "raw", "anaconda-iso"]:
+        elif disk_image_type in ["qcow2", "raw", "anaconda-iso", "vhd", "gce"]:
+            # clean up dirty VM if existed
+            vm_name = params.get("vm_name_bootc")
+            if vm_name and vm_name in virsh.dom_list().stdout_text:
+                virsh.undefine(vm_name, options="--nvram", ignore_status=True)
             bib_utils.create_qemu_vm(params, env, test)
         elif disk_image_type in ["ami"]:
             if len(aws_config_dict) != 0:
