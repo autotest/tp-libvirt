@@ -120,7 +120,8 @@ def run_test_hotplug_disk(vm, params, test):
     test.log.debug("STEP4: check the result.")
     check_result(vm, params, test)
     test.log.debug("STEP5: detach disk.")
-    virsh.detach_device(vm_name, disk_xml.xml, debug=True, ignore_status=False)
+    virsh.detach_device(vm_name, disk_xml.xml, debug=True,
+                        wait_for_event=True, ignore_status=False)
     domblklist_result = virsh.domblklist(vm_name, debug=True).stdout_text.strip()
     if target_dev in domblklist_result:
         test.fail("The target disk % can't be detached in guest." % target_dev)
