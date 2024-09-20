@@ -59,6 +59,7 @@ def run(test, params, env):
     device_type = params.get("device_type", "")
     device_mode = params.get("device_mode", "")
     port_num = params.get("port_num", "")
+    usb_cmd = None
     if device_name == "redirdev":
         add_pkg, usb_cmd = usb_base.get_host_pkg_and_cmd()
         pkgs_host = params.get("pkgs_host", "") + add_pkg
@@ -403,5 +404,6 @@ def run(test, params, env):
     finally:
         if 'session' in locals():
             session.close()
-        usb_base.kill_redirect_server(usb_cmd)
+        if usb_cmd:
+            usb_base.kill_redirect_server(usb_cmd)
         vmxml_backup.sync()
