@@ -46,6 +46,7 @@ def attach_device(vm, test_device, dev_dict):
     :param vm: VM instance
     :param test_device: the device type, e.g. disk
     :param dev_dict: the device definition
+    :return: CmdResult object    
     """
 
     dev_obj = libvirt_vmxml.create_vm_device_by_type(test_device, dev_dict)
@@ -78,6 +79,7 @@ def run(test, params, env):
     dev_dict, seclabel_attr = get_dev_dict(test_device, params)
     test.log.debug("The device setting will be updated to %s.", dev_dict)
     try:
+        res = None
         if test_scenario != "hot_plug":
             test.log.info("TEST_STEP: Start VM with per-device dac setting.")
             try:
@@ -89,7 +91,9 @@ def run(test, params, env):
                 if not status_error:
                     test.fail(details)
             test.log.debug("VM XML: %s.", VMXML.new_from_inactive_dumpxml(vm_name))
-            if res.exit_status == 0:
+            # res is None in case of non disk device and the VM should be started
+            # in case of disk, the VM should be started only in successful attach.
+            if res is None or res.exit_status == 0:
                 res = virsh.start(vm.name)
         else:
             test.log.info("TEST_STEP: Hot plug a device with dac setting.")
