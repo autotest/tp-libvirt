@@ -24,6 +24,7 @@ from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 from virttest.utils_libvirt import libvirt_bios
 from virttest.utils_libvirt import libvirt_vmxml
 
@@ -136,11 +137,14 @@ def setup_with_unprivileged_user(vm, params, test):
     unprivileged_boot_disk_path = os.path.join(unprivileged_boot_disk_path, os.path.basename(first_disk_source))
     disk_attrs = {'source': {'attrs': {'file': unprivileged_boot_disk_path}}}
     libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_attrs)
-    os_attrs = {
-            "loader": vmxml.os.loader,
-            "loader_readonly": vmxml.os.loader_readonly,
-            "loader_type": vmxml.os.loader_type
-            }
+    try:
+        os_attrs = {
+                "loader": vmxml.os.loader,
+                "loader_readonly": vmxml.os.loader_readonly,
+                "loader_type": vmxml.os.loader_type
+                }
+    except LibvirtXMLNotFoundError:
+        pass
     vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
     if vmxml.xmltreefile.find('features'):
         arch = platform.machine().lower()
