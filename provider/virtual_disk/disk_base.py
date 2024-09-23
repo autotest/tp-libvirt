@@ -1,5 +1,7 @@
 import logging
 import os
+import re
+import time
 
 from avocado.utils import lv_utils
 from avocado.utils import process
@@ -129,7 +131,8 @@ class DiskBase(object):
         elif disk_type == 'block':
             if not new_image_path:
                 new_image_path = self.create_lvm_disk_path(
-                    vg_name=self.vg_name, lv_name=self.lv_name, **kwargs)
+                    vg_name=self.vg_name, lv_name=self.lv_name,
+                    simulated_iscsi=self.params.get("simulated_iscsi"), **kwargs)
                 if self.params.get('convert_format'):
                     process.run("qemu-img create -f %s /dev/%s/%s %s" % (
                             self.params.get('convert_format'), self.vg_name,
@@ -210,7 +213,9 @@ class DiskBase(object):
         :param disk_type: disk type
         """
         if disk_type == 'block':
-            self.cleanup_block_disk_preparation(self.vg_name, self.lv_name)
+            self.cleanup_block_disk_preparation(
+                self.vg_name, self.lv_name,
+                simulated_iscsi=self.params.get("simulated_iscsi"))
 
         elif disk_type == 'file':
             if os.path.exists(self.new_image_path):
@@ -234,18 +239,24 @@ class DiskBase(object):
                 self.test.log.debug("Clean Up nbd failed: %s", str(ndbEx))
 
     @staticmethod
-    def cleanup_block_disk_preparation(vg_name, lv_name):
+    def cleanup_block_disk_preparation(vg_name, lv_name, **kwargs):
         """
         Clean up volume group, logical volume, iscsi target.
 
-        :params vg_name: volume group name
-        :params lv_name: volume name
+        :param vg_name: volume group name
+        :param lv_name: volume name
+        :param kwargs: optional keyword arguments.
         """
         lv_utils.lv_remove(vg_name, lv_name)
         lv_utils.vg_remove(vg_name)
-        libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        if os.path.exists('/dev/%s' % vg_name):
-            os.rmdir('/dev/%s' % vg_name)
+        if kwargs.get("simulated_iscsi"):
+            time.sleep(3)
+            process.run("modprobe %s -r" % re.findall(
+                r"modprobe (\S+)", kwargs.get("simulated_iscsi"))[0])
+        else:
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            if os.path.exists('/dev/%s' % vg_name):
+                os.rmdir('/dev/%s' % vg_name)
 
     @staticmethod
     def create_volume_for_disk_path(test, params, pool_name='pool_name',
@@ -287,7 +298,11 @@ class DiskBase(object):
         :params lv_name: volume name
         :return path: path for disk image
         """
-        device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
+        if kwargs.get("simulated_iscsi"):
+            process.run(kwargs.get("simulated_iscsi"), shell=True)
+            device_name = get_simulated_iscsi()
+        else:
+            device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
         lv_utils.vg_create(vg_name, device_name)
         size = kwargs.get("size", "200M")
         if kwargs.get("size"):
@@ -488,3 +503,14 @@ class DiskBase(object):
         process.run(backing_cmd, shell=True, verbose=True)
 
         return based_image, backing_file
+
+
+def get_simulated_iscsi():
+    """
+    Get simulated iscsi device.
+
+    :return simulated iscsi device name.
+    """
+    res = process.run("lsscsi", shell=True).stdout_text.strip()
+    device_name = re.findall(r"Linux\s*scsi_debug\s*\d+\s+(\S+)\s*", res)[0]
+    return device_name
