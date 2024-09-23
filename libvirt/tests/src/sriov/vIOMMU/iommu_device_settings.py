@@ -35,8 +35,11 @@ def run(test, params, env):
 
         for dev in ["disk", "video"]:
             dev_dict = eval(params.get('%s_dict' % dev, '{}'))
-            if dev == "disk":
+            if dev == "disk" and dev_dict:
                 dev_dict = test_obj.update_disk_addr(dev_dict)
+                if dev_dict["target"].get("bus") != "virtio":
+                    libvirt_vmxml.modify_vm_device(
+                            vm_xml.VMXML.new_from_dumpxml(vm.name), dev, {'driver': None})
 
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(vm.name), dev, dev_dict)
