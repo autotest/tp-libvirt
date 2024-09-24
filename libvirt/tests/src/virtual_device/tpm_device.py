@@ -830,6 +830,12 @@ def run(test, params, env):
             return
         if tpm_model and backend_version != 'default':
             expect_fail = False
+            if ausearch_check:
+                cmd = "truncate -s 0  /var/log/audit/audit.log*"
+                process.run(cmd, shell=True)
+                ausearch_ret = process.run(audit_cmd, verbose=True, shell=True, ignore_status=True)
+                if not ausearch_ret:
+                    test.fail('audit log is not cleaned well.')
             try:
                 vm.start()
             except VMStartError as detail:
@@ -838,10 +844,6 @@ def run(test, params, env):
                     return
                 else:
                     test.fail(detail)
-            if ausearch_check:
-                process.run("echo > /var/log/audit/audit.log", ignore_status=True)
-                ausearch_result = process.run(audit_cmd, verbose=True, shell=True)
-                libvirt.check_result(ausearch_result, expected_match=ausearch_check)
             if undefine_flag:
                 time.sleep(5)
                 vm.destroy()
@@ -946,6 +948,9 @@ def run(test, params, env):
                         return
             domid = vm.get_id()
             check_qemu_cmd_line(vm, vm_name, domid)
+            if ausearch_check:
+                ausearch_result = process.run(audit_cmd, verbose=True, shell=True)
+                libvirt.check_result(ausearch_result, expected_match=ausearch_check)
             if backend_type == "passthrough":
                 if tpm_real_v == "1.2" and tpm_model == "tpm-crb":
                     expect_fail = True
