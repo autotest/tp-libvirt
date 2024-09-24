@@ -4,6 +4,7 @@ import re
 import uuid
 import shutil
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 
 from virttest import data_dir
@@ -522,6 +523,40 @@ def run(test, params, env):
         with open('/etc/hosts', "w") as f:
             f.write('%s %s' % (vcenter_ip, vcenter_fdqn))
 
+    def check_online_disks(vmcheck):
+        """
+        Check if status of disks are online in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        """
+        def _get_disk_status(cmd):
+
+            for i in range(9):
+                _, res = vmcheck.run_cmd(cmd)
+                if re.search('Offline', res):
+                    time.sleep(100)
+                else:
+                    return res
+            return res
+
+        cmd = r'cmd /c echo list disk^> "%temp%\answer.tmp" ^& (diskpart ^< "%temp%\answer.tmp") ^& ' \
+              r'del "%temp%\answer.tmp"'
+        try:
+            res = utils_misc.wait_for(lambda: _get_disk_status(cmd), 900)
+        except (ShellProcessTerminatedError, ShellStatusError):
+            # Windows guest may reboot after installing qemu-ga service
+            LOG.debug('Windows guest is rebooting')
+            if vmcheck.session:
+                vmcheck.session.close()
+                vmcheck.session = None
+            # VM boots up is extremely slow when all testing in running on
+            # rhv server simultaneously, so set timeout to 1200.
+            vmcheck.create_session(timeout=1200)
+            res = utils_misc.wait_for(lambda: _get_disk_status(cmd), 900)
+        LOG.info('disk status is %s', res)
+        if re.search('Offline', res):
+            test.fail("there is offline additional disk")
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -603,6 +638,8 @@ def run(test, params, env):
                 check_ubuntools(vmchecker.checker)
             if 'vmware_tools' in checkpoint:
                 check_windows_vmware_tools(vmchecker.checker)
+            if 'check_online_disks' in checkpoint:
+                check_online_disks(vmchecker.checker)
             if 'without_default_net' in checkpoint:
                 if virsh.net_state_dict()[net_name]['active']:
                     log_fail("Bridge virbr0 already started during conversion")
