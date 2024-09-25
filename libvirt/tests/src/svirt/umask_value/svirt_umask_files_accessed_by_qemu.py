@@ -7,6 +7,7 @@ from virttest import test_setup
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.vm_xml import VMXML
+from avocado.utils import memory as avocado_mem
 
 
 def run(test, params, env):
@@ -30,6 +31,19 @@ def run(test, params, env):
         if os.path.exists(hp_path):
             shutil.rmtree(hp_path)
             utils_libvirtd.Libvirtd().restart()
+
+        # verify test runs on machine with expected hugepagesize
+        # and recalculate the target_hugepage if necessary
+        default_hp_size = int(params.get("default_hp_size", 2048))
+        target_hugepages = int(params.get("target_hugepages", 1024))
+        actual_hp_size = avocado_mem.get_huge_page_size()
+        if actual_hp_size != default_hp_size:
+            # actual hp size is different that is expected for defined number of hupages
+            # as the size is not the main focus of the test, we have to recalculate and replace
+            new_target_hugepages = int((default_hp_size * target_hugepages) / actual_hp_size)
+            test.log.warn(f"Default HP size is different than expected. Parameter 'target_hugepagees' was updated: {new_target_hugepages}")
+            params["target_hugepages"] = new_target_hugepages
+
         hp_cfg = test_setup.HugePageConfig(params)
         hp_cfg.set_hugepages()
 
