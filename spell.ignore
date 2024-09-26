@@ -482,6 +482,7 @@ kallsysm
 kb
 kconfig
 kdump
+keepalive
 kexec
 keycodes
 keypresses
