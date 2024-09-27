@@ -598,7 +598,7 @@ def run(test, params, env):
 
             # Check guest following the checkpoint document after conversion
             LOG.info('Checking common checkpoints for v2v')
-            if 'ogac' in checkpoint:
+            if 'ogac_balloon' in checkpoint:
                 # windows guests will reboot at any time after qemu-ga is
                 # installed. The process cannot be controlled. In order to
                 # don't break vmchecker.run() process, It's better to put
@@ -606,7 +606,7 @@ def run(test, params, env):
                 # check_windows_ogac, it waits until rebooting completes.
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
-                    services = ['qemu-ga']
+                    services = ['qemu-ga', 'balloon']
                     virtio_win_env = os.getenv('VIRTIO_WIN')
                     if virtio_win_env and 'rhv-guest-tools' in virtio_win_env:
                         services.append('spice-ga')
@@ -804,7 +804,7 @@ def run(test, params, env):
             ovirt4_path = os.path.dirname(ovirtsdk4.__file__)
             dst_ovirt4_path = ovirt4_path + '.bak'
             os.rename(ovirt4_path, dst_ovirt4_path)
-        if 'ogac' in checkpoint:
+        if 'ogac_balloon' in checkpoint:
             os.environ['VIRTIO_WIN'] = virtio_win_path
             if os_type == 'linux' and not utils_v2v.multiple_versions_compare(implementation_change_ver) and os.path.isdir(os.getenv('VIRTIO_WIN')):
                 export_path = os.getenv('VIRTIO_WIN')
