@@ -598,7 +598,7 @@ def run(test, params, env):
 
             # Check guest following the checkpoint document after conversion
             LOG.info('Checking common checkpoints for v2v')
-            if 'ogac_balloon' in checkpoint:
+            if checkpoint[0].startswith('ogac'):
                 # windows guests will reboot at any time after qemu-ga is
                 # installed. The process cannot be controlled. In order to
                 # don't break vmchecker.run() process, It's better to put
@@ -804,9 +804,10 @@ def run(test, params, env):
             ovirt4_path = os.path.dirname(ovirtsdk4.__file__)
             dst_ovirt4_path = ovirt4_path + '.bak'
             os.rename(ovirt4_path, dst_ovirt4_path)
-        if 'ogac_balloon' in checkpoint:
+        if checkpoint[0].startswith('ogac'):
             os.environ['VIRTIO_WIN'] = virtio_win_path
-            if os_type == 'linux' and not utils_v2v.multiple_versions_compare(implementation_change_ver) and os.path.isdir(os.getenv('VIRTIO_WIN')):
+            if os_type == 'linux' and not utils_v2v.multiple_versions_compare(implementation_change_ver) and \
+                    os.path.isdir(os.getenv('VIRTIO_WIN')):
                 export_path = os.getenv('VIRTIO_WIN')
                 qemu_guest_agent_dir = os.path.join(export_path, qa_path)
                 if not os.path.exists(qemu_guest_agent_dir) and os.access(
