@@ -201,7 +201,7 @@ def run(test, params, env):
                 if kill_action == "stop_libvirtd":
                     libvirtd.stop()
                     time.sleep(1)
-                    utils_misc.kill_process_by_pattern(vm_name)
+                    process.run('pkill -9 qemu-kvm', ignore_status=True, shell=True)
                     time.sleep(1)
                     libvirtd.restart()
                 elif kill_action == "reboot_vm":
