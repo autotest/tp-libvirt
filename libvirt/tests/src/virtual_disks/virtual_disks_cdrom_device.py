@@ -8,16 +8,22 @@ import time
 
 from avocado.utils import linux_modules
 from avocado.utils import process
+from avocado.utils import service
 
 from virttest import libvirt_version
 from virttest import virt_vm, utils_misc
 from virttest import virsh
 from virttest import utils_split_daemons
+from virttest import utils_libvirtd
 
 from virttest.libvirt_xml import vm_xml, xcepts
 
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
+
+from virttest.utils_config import LibvirtdConfig
+from virttest.utils_config import VirtQemudConfig
+
 
 LOG = logging.getLogger('avocado.' + __name__)
 CLEANUP_FILES = []
@@ -512,6 +518,113 @@ def check_empty_source_cdrom(vm, params, test):
     check_source_in_cdrom_device(vm, None, test)
 
 
+def check_dropped_changed_events_startuppolicy_backend(vm, params, virsh_session, test):
+    """
+    Check changed event for cdrom, and dropped event for disk
+
+    :param vm: one object representing VM
+    :param params: wrapped parameters in dictionary format
+    :param virsh_session: virsh session
+    :param test: test assert object
+    """
+    # check tray-change event
+    virsh_session.send_ctrl("^C")
+    ret_output = virsh_session.get_stripped_output().replace("\n", "").strip()
+    LOG.debug("dropped and changed events:\n%s", ret_output)
+    event_keywords = ["changed", "dropped"]
+
+    for keyword in event_keywords:
+        event_pattern = r"event 'disk-change' for domain '%s' disk .*%s" % (vm.name, keyword)
+        if not re.search(event_pattern, ret_output):
+            test.fail("Can not find matched event: %s from event output: %s" % (event_pattern, ret_output))
+
+
+def create_block_cdrom_disk(params):
+    """
+
+    Create one block cdrom device
+    :param params: dict wrapped with parameter
+    """
+    source_disk = libvirt.create_scsi_disk(scsi_option="",
+                                           scsi_size="100")
+    params.update({'virt_disk_device_source': source_disk})
+
+    block_cdrom_disk = create_customized_disk(params)
+    return block_cdrom_disk
+
+
+def check_block_cdrom_log(vm, params, test):
+    """
+    Check matched information in vm.log
+
+    :param vm: one object representing VM
+    :param params: wrapped parameters in dictionary format
+    :param test: test assert object
+    """
+    qemu_log = "/var/log/libvirt/qemu/%s.log" % vm.name
+    libvirt.check_logfile(" tainted: cdrom-passthrough", qemu_log, str_in_log=False)
+
+
+def create_disconnect_audit_cdrom(params):
+    """
+
+    Create one file cdrom device
+    :param params: dict wrapped with parameter
+    """
+    libvirtd_config = VirtQemudConfig() if utils_split_daemons.is_modular_daemon() else LibvirtdConfig()
+    libvirtd_config.audit_level = 1
+    libvirtd_config.audit_logging = 1
+    utils_libvirtd.Libvirtd('virtqemud').restart()
+
+    # Clean up audit message in log file
+    cmd = "truncate -s 0  /var/log/audit/audit.log*"
+    process.run(cmd, shell=True)
+
+    # ensure audit service is started
+    service_name = 'auditd'
+    service_mgr = service.ServiceManager()
+    status = service_mgr.status(service_name)
+    LOG.debug('Service status is %s', status)
+
+    if not status:
+        service_mgr.start(service_name)
+
+    block_cdrom_disk = create_iso_cdrom_disk(params)
+    return block_cdrom_disk
+
+
+def check_disconnect_audit_cdrom(params, test):
+    """
+
+    check audit log when cdrom is disconnected
+    :param params: dict wrapped with parameter
+    :param test: test assert object
+    """
+    source_file_path = params.get("virt_disk_device_source")
+    if os.path.exists(source_file_path):
+        os.remove(source_file_path)
+
+    def _check_disk_message_from_audit_log():
+        """
+        Check whether disk related message in /var/log/audit/audit.log
+        """
+        cmd = 'ausearch --start today -m VIRT_RESOURCE -i | grep update'
+        return process.system(cmd, ignore_status=True, shell=True)
+
+    result = utils_misc.wait_for(lambda: _check_disk_message_from_audit_log(), timeout=30)
+    if not result:
+        test.fail("Failed to get expected messages: virt resource update from log file: /var/log/audit/audit.log.")
+
+
+def restore_libvirtd_config():
+    """
+    restore to previous libvirtd config
+    """
+    libvirtd_config = VirtQemudConfig() if utils_split_daemons.is_modular_daemon() else LibvirtdConfig()
+    libvirtd_config.restore()
+    utils_libvirtd.Libvirtd('virtqemud').restart()
+
+
 def run(test, params, env):
     """
     Test attach cdrom device with option.
@@ -579,6 +692,23 @@ def run(test, params, env):
         if backend_device == "empty_source_cdrom_backend":
             device_obj = create_customized_disk(params)
             params.update({'cdrom_xml': device_obj})
+        if backend_device == "dropped_changed_events_startuppolicy":
+            # First create cdrom disk, then create one more file disk
+            device_obj1 = create_customized_disk(params)
+            vmxml.add_device(device_obj1)
+            vmxml.sync()
+            params.update({'virt_disk_device_source': params.get("virt_disk_device_source_second")})
+            params.update({'target_dev': "sdd"})
+            params.update({'device_type': 'disk'})
+            device_obj = create_customized_disk(params)
+            # start loop to wait for disk change event
+            virsh_session = aexpect.ShellSession(virsh.VIRSH_EXEC, auto_close=True)
+            event_cmd = "event --domain %s --event disk-change --loop" % vm.name
+            virsh_session.sendline(event_cmd)
+        if backend_device == "block_cdrom_tainted":
+            device_obj = create_block_cdrom_disk(params)
+        if backend_device == "disconnect_audit_cdrom_backend":
+            device_obj = create_disconnect_audit_cdrom(params)
         if not hotplug:
             # Sync VM xml.
             vmxml.add_device(device_obj)
@@ -638,6 +768,12 @@ def run(test, params, env):
             check_scsi_cdrom_hot_eject(vm, params, test)
         elif backend_device == "empty_source_cdrom_backend":
             check_empty_source_cdrom(vm, params, test)
+        elif backend_device == "dropped_changed_events_startuppolicy":
+            check_dropped_changed_events_startuppolicy_backend(vm, params, virsh_session, test)
+        elif backend_device == "block_cdrom_tainted":
+            check_block_cdrom_log(vm, params, test)
+        elif backend_device == "disconnect_audit_cdrom_backend":
+            check_disconnect_audit_cdrom(params, test)
     finally:
         # Recover VM.
         if vm.is_alive():
@@ -648,11 +784,13 @@ def run(test, params, env):
         for file_path in CLEANUP_FILES:
             if os.path.exists(file_path):
                 os.remove(file_path)
-        if backend_device == "change_startuppolicy_cdrom_backend":
+        if backend_device in ["change_startuppolicy_cdrom_backend", "block_cdrom_tainted"]:
             # unload scsi_debug module if loaded
             def _unload():
                 linux_modules.unload_module("scsi_debug")
                 return True
             utils_misc.wait_for(_unload, timeout=20, ignore_errors=True)
+        if backend_device in ["disconnect_audit_cdrom_backend"]:
+            restore_libvirtd_config()
         if backend_device == "block_lun_source":
             process.run("losetup -D", shell=True)
