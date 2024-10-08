@@ -735,3 +735,21 @@ def get_vm_serial_session_on_dest(params):
     vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
     params.update({"vm_session": vm_session})
     migration_obj.vm.connect_uri = backup_uri
+
+
+def check_resume(params):
+    """
+    Check resume result
+
+    :param params: dictionary with the test parameter, get vm name, dest uri
+                   and error message.
+    """
+    vm_name = params.get("main_vm")
+    desturi = params.get("virsh_migrate_desturi")
+    resume_err_msg_src = params.get("resume_err_msg_src")
+    resume_err_msg_target = params.get("resume_err_msg_target")
+
+    ret = virsh.resume(vm_name, debug=True)
+    libvirt.check_result(ret, expected_fails=resume_err_msg_src, check_both_on_error=True)
+    ret = virsh.resume(vm_name, debug=True, uri=desturi)
+    libvirt.check_result(ret, expected_fails=resume_err_msg_target, check_both_on_error=True)
