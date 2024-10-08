@@ -21,6 +21,7 @@ def mdev_listed(uuid):
         """
         cmd = "lsmdev"
         _, o = cmd_status_output(cmd)
+        LOG.debug(o)
         return uuid in o
 
     return _mdev_listed
