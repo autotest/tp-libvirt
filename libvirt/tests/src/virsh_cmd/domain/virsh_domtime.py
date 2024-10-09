@@ -74,7 +74,7 @@ def run(test, params, env):
                      cmd, duration, output.strip())
         return output, duration
 
-    def get_guest_times(session):
+    def get_guest_times(session, get_local_hw):
         """
         Retrieve different guest time as a dict for checking.
         Keys:
@@ -84,34 +84,37 @@ def run(test, params, env):
             domtime: Guest system time in UTC got from virsh domtime command
 
         :param session: Session from which to access guest
+        :param get_local_hw: if to use hwclock to get info
         """
         times = {}
         get_begin = time.time()
-        # Guest RTC local timezone time
-        output, _ = run_cmd(session, 'hwclock')
-        try:
-            time_str, _ = re.search(r"(.+)  (\S+ seconds)", output).groups()
 
+        # Guest RTC local timezone time
+        if get_local_hw:
+            output, _ = run_cmd(session, 'hwclock')
             try:
-                # output format 1: Tue 01 Mar 2016 01:53:46 PM CST
-                # Remove timezone info from output
-                new_str = re.sub(r'\s+\S+$', '', time_str)
-                times['local_hw'] = datetime.datetime.strptime(
-                    new_str, r"%a %d %b %Y %I:%M:%S %p")
-            except ValueError:
-                # There are known three possible output format for `hwclock`
-                # output format 2: Sat Feb 14 07:31:33 2009
-                times['local_hw'] = datetime.datetime.strptime(
-                    time_str, r"%a %b %d %H:%M:%S %Y")
-        except AttributeError:
-            try:  # output format 3: 2019-03-22 05:16:18.224511-04:00
-                time_str = output.split(".")[0]
-                times['local_hw'] = datetime.datetime.strptime(
-                    time_str, r"%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                test.fail("Unknown hwclock output format in guest: %s", output)
-        delta = time.time() - get_begin
-        times['local_hw'] -= datetime.timedelta(seconds=delta)
+                time_str, _ = re.search(r"(.+)  (\S+ seconds)", output).groups()
+
+                try:
+                    # output format 1: Tue 01 Mar 2016 01:53:46 PM CST
+                    # Remove timezone info from output
+                    new_str = re.sub(r'\s+\S+$', '', time_str)
+                    times['local_hw'] = datetime.datetime.strptime(
+                        new_str, r"%a %d %b %Y %I:%M:%S %p")
+                except ValueError:
+                    # There are known three possible output format for `hwclock`
+                    # output format 2: Sat Feb 14 07:31:33 2009
+                    times['local_hw'] = datetime.datetime.strptime(
+                        time_str, r"%a %b %d %H:%M:%S %Y")
+            except AttributeError:
+                try:  # output format 3: 2019-03-22 05:16:18.224511-04:00
+                    time_str = output.split(".")[0]
+                    times['local_hw'] = datetime.datetime.strptime(
+                        time_str, r"%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    test.fail("Unknown hwclock output format in guest: %s", output)
+            delta = time.time() - get_begin
+            times['local_hw'] -= datetime.timedelta(seconds=delta)
 
         # Guest system local timezone time
         try:
@@ -353,6 +356,9 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     readonly = (params.get("readonly_test", "no") == "yes")
 
+    restore_time = "yes" == params.get("restore_time", "yes")
+    get_local_hw = "yes" == params.get("get_local_hw", "yes")
+
     # Backup domain XML
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
@@ -365,7 +371,7 @@ def run(test, params, env):
         # have day light savings, to affect the time
         session.cmd("timedatectl set-timezone Asia/Kolkata")
         try:
-            init_guest_times, _ = get_guest_times(session)
+            init_guest_times, _ = get_guest_times(session, get_local_hw)
             guest_tz_diff = init_guest_times['local_sys'] - init_guest_times['utc_sys']
             logging.debug("Timezone diff on guest is %d hours.",
                           (guest_tz_diff.total_seconds() // 3600))
@@ -393,7 +399,7 @@ def run(test, params, env):
             org_host_loc_time = datetime.datetime.strptime(time_st, r"%a %b %d %H:%M:%S %Y")
 
             # Get original guest times
-            org_times, guest_duration = get_guest_times(session)
+            org_times, guest_duration = get_guest_times(session, get_local_hw)
 
             # Run some operations to stop guest system
             stop_time = stop_vm()
@@ -410,7 +416,7 @@ def run(test, params, env):
 
             if not shutdown:
                 # Get current guest times
-                cur_times, _ = get_guest_times(session)
+                cur_times, _ = get_guest_times(session, get_local_hw)
 
                 check_time(res, org_times, cur_times)
         finally:
@@ -420,7 +426,7 @@ def run(test, params, env):
             utils_time.sync_timezone_linux(vm)
             # Sync guest time with host
             if channel and agent and not shutdown:
-                res = virsh.domtime(vm_name, now=True)
+                res = virsh.domtime(vm_name, now=restore_time)
                 if res.exit_status:
                     session.close()
                     test.error("Failed to recover guest time:\n%s"
