@@ -1,5 +1,7 @@
 import logging as log
 
+from avocado.utils import cpu
+
 from virttest import utils_stress
 from virttest import error_context
 from virttest import utils_test
@@ -59,8 +61,7 @@ def run(test, params, env):
 
     try:
         # Get host online cpu number
-        host_cpu_info = cpuutil.get_cpu_info()
-        host_online_cpus = int(host_cpu_info["On-line CPU(s) list"].split("-")[1]) + 1
+        host_online_cpus = cpu.online_count()
         LOG.debug("Host online CPU number: %s", str(host_online_cpus))
 
         # Prepare 3 vms and each vm has even vcpus number which is about 2/3 of # host_online_cpu 
