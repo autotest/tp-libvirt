@@ -2,6 +2,8 @@ import logging
 
 from avocado.core import exceptions
 from avocado.utils import distro
+from avocado.utils import download
+from avocado.utils import process
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -102,3 +104,14 @@ def check_vm_startup(vm, vm_name, error_msg=None):
         vm.wait_for_login().close()
         LOG.debug("Succeed to boot %s", vm_name)
     return vmxml
+
+
+def test_file_download(url, path):
+    """
+    Returns true if the file could be successfully downloaded
+
+    :param url: source URL
+    :param path: destination path
+    """
+    download.get_file(url, path)
+    return process.run('ls -d ' + path, ignore_status="yes").exit_status == 0

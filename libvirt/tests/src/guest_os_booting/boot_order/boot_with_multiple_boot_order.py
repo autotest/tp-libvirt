@@ -4,10 +4,10 @@
 
 import os
 
-from avocado.utils import download
 from avocado.utils import process
 
 from virttest import data_dir
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
@@ -18,10 +18,11 @@ from provider.guest_os_booting import guest_os_booting_base as guest_os
 file_list = []
 
 
-def prepare_device_attrs(params, vm_name, bootable_device):
+def prepare_device_attrs(test, params, vm_name, bootable_device):
     """
     Prepare the device xml based on different test matrix.
 
+    :params test: test object
     :params params: wrapped dict with all parameters
     :params vm_name: the guest name
     :params bootable_device: the bootable device
@@ -45,7 +46,8 @@ def prepare_device_attrs(params, vm_name, bootable_device):
         cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {res=$NF} END{print res}'"
         repo_url = process.run(cmd, shell=True).stdout_text.strip()
         boot_img_url = os.path.join(repo_url, 'images', 'boot.iso')
-        download.get_file(boot_img_url, cdrom_path)
+        if not utils_misc.wait_for(lambda: guest_os.test_file_download(boot_img_url, cdrom_path), 60):
+            test.fail('Unable to download boot image')
     else:
         cdrom_path = os.path.join(data_dir.get_data_dir(), 'images', 'test.iso')
         libvirt.create_local_disk("file", path=cdrom_path, size="500M", disk_format="raw")
@@ -79,7 +81,7 @@ def run(test, params, env):
 
     try:
         test.log.info("TEST_SETUP: prepare a guest with necessary attributes.")
-        prepare_device_attrs(params, vm_name, bootable_device)
+        prepare_device_attrs(test, params, vm_name, bootable_device)
         test.log.info("TEST_STEP1: start the guest.")
         if not vm.is_alive():
             vm.start()
