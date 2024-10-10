@@ -40,15 +40,10 @@ def allocate_memory_on_host_nodes(test_obj):
         with open("/proc/sys/vm/compact_memory", "w") as memory:
             memory.write('1')
         hpc.set_node_num_huge_pages(page_num, node_id, page_size, ignore_error=True)
-        allocated_num = hpc.get_node_num_huge_pages(node_id, page_size)
-        if allocated_num < 1:
-            test_obj.test.cancel("Can not set at least one page "
-                                 "with pagesize '%s' on "
-                                 "node '%s'" % (page_size,
-                                                node_id))
-        return allocated_num
+        return hpc.get_node_num_huge_pages(node_id, page_size)
 
     ret = {}
+    sum_page_num = {}
     all_nodes = test_obj.online_nodes_withmem
     allocate_dict = eval(test_obj.params.get('allocate_dict'))
     hpc = test_setup.HugePageConfig(test_obj.params)
@@ -60,9 +55,12 @@ def allocate_memory_on_host_nodes(test_obj):
             test_obj.test.log.debug("To allocate %s %s pages on node %s", allocate_dict[pagesize], pagesize, one_node)
             allocated_num = _allocate_test(allocate_dict[pagesize], one_node, pagesize)
             allocated_info.update({pagesize: allocated_num})
+            sum_page_num[pagesize] = sum_page_num[pagesize] + allocated_num if sum_page_num.get(pagesize) else allocated_num
         ret.update({one_node: allocated_info})
         test_obj.test.log.debug("Get allocated information for node %s: '%s'", one_node, allocated_info)
     test_obj.test.log.debug("Get allocated information '%s'", ret)
+    if not all(sum_page_num.values()):
+        test_obj.test.cancel("At least one page size memory could not be allocated")
     test_obj.params['allocate_result'] = ret
     return ret
 
