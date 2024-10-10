@@ -103,7 +103,10 @@ def run(test, params, env):
             vm.destroy()
             hook_str = hook_para + " stopped end -"
             assert check_hooks(hook_str)
-            hook_str = hook_para + " release end " + release_reason
+            if libvirt_version.version_compare(10, 5, 0):
+                hook_str = hook_para + " release end " + release_reason
+            else:
+                hook_str = hook_para + " release end -"
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()
