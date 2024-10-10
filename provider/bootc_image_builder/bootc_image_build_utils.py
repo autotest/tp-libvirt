@@ -838,6 +838,37 @@ def cleanup_aws_ami_and_snapshot(params):
     aws_utils.delete_aws_ami_snapshot_id(params)
 
 
+def convert_vhd_to_qcow2(params):
+    """
+    Convert vhd disk format into qcow2
+
+    @param params: one dictionary wrapping various parameter
+    """
+    original_image_path = params.get('vm_disk_image_path')
+    converted_image_path = original_image_path.replace("vhd", "qcow2")
+    LOG.debug(f"converted vhd to qcow2 output is : {converted_image_path}")
+
+    convert_cmd = f"qemu-img convert -p -f vpc  -O qcow2 {original_image_path} {converted_image_path}"
+    process.run(convert_cmd, shell=True, verbose=True, ignore_status=False)
+    return converted_image_path
+
+
+def untar_tgz_to_raw(params):
+    """
+    extract image.tgz for GCP format to raw format:disk.raw
+
+    @param params: one dictionary wrapping various parameter
+    """
+    original_image_path = params.get('vm_disk_image_path')
+    untar_image_path = original_image_path.replace("tgz", "raw").replace("image", "disk")
+    tar_image_folder = os.path.dirname(original_image_path)
+    LOG.debug(f"untar image.tgz to gce output is : {untar_image_path}")
+
+    tar_cmd = f"tar -xvzf {original_image_path}  -C {converted_image_path}"
+    process.run(tar_cmd, shell=True, verbose=True, ignore_status=False)
+    return untar_image_path
+
+
 def get_baseurl_from_repo_file(repo_file_path):
     """
     One method to get compose url from current repository file
