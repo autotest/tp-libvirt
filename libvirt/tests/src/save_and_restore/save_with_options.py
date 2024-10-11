@@ -3,7 +3,6 @@ import os
 import re
 
 from avocado.utils import process
-
 from virttest import utils_misc
 from virttest import utils_package
 from virttest import virsh
@@ -17,6 +16,12 @@ VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
 
 def run(test, params, env):
+
+    def check_output(pattern, output, cmd):
+        msg = f'to find [{pattern}] in {cmd} output'
+        LOG.debug(f'Expect {msg}')
+        if not re.search(pattern, output):
+            test.fail(f'Failed {msg}')
 
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
@@ -33,7 +38,14 @@ def run(test, params, env):
     rand_id = utils_misc.generate_random_string(3)
     save_path = f'/var/tmp/{vm_name}_{rand_id}.save'
     check_cmd = params.get('check_cmd', '')
-    check_cmd = check_cmd.format(save_path, save_path) if check_cmd else check_cmd
+    check_cmd = check_cmd.format(
+        save_path, save_path) if check_cmd else check_cmd
+    check_reason = 'yes' == params.get('check_reason', 'no')
+    check_reason = check_reason and not status_error
+    check_reason_cmd = params.get('check_reason_cmd')
+    pattern_running = params.get('pattern_running')
+    pattern_completed = params.get('pattern_completed')
+    domst_reason = params.get('domst_reason')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -60,9 +72,23 @@ def run(test, params, env):
             sp = process.SubProcess(check_cmd, shell=True)
             sp.start()
 
+        if check_reason:
+            monitor_sp = process.SubProcess(check_reason_cmd, shell=True)
+            monitor_sp.start()
+
         save_result = virsh.save(vm_name, save_path, options=options,
                                  debug=True, virsh_opt=virsh_options)
         libvirt.check_exit_status(save_result, status_error)
+
+        if check_reason:
+            domjobinfo_output = monitor_sp.get_stdout().decode()
+            monitor_sp.terminate()
+            LOG.debug(f'domjobinfo output:\n{domjobinfo_output}')
+            check_output(pattern_running, domjobinfo_output, 'domjobinfo')
+
+            domjobinfo_completed = virsh.domjobinfo(
+                vm_name, '--completed', **VIRSH_ARGS).stdout_text
+            check_output(pattern_completed, domjobinfo_completed, 'domjobinfo')
 
         if status_error:
             libvirt.check_result(save_result, error_msg)
@@ -79,6 +105,12 @@ def run(test, params, env):
                 if not re.search(expect_msg, save_output):
                     test.fail(f'Expect content "{expect_msg}" not in output: '
                               f'{save_output}')
+
+        if check_reason:
+            domst_save = virsh.domstate(
+                vm_name, '--reason', **VIRSH_ARGS).stdout_text
+            pattern_save = 'shut off \(saved\)'
+            check_output(pattern_save, domst_save, 'domstate')
 
         if scenario == 'bypass_cache_opt':
             output = sp.get_stdout().decode()
@@ -103,6 +135,11 @@ def run(test, params, env):
                                    timeout=timeout):
             test.fail(f'VM should be {after_state} after restore, but current '
                       f'state is {vm.state()}')
+        if check_reason:
+            domst_restore = virsh.domstate(
+                vm_name, '--reason', **VIRSH_ARGS).stdout_text
+            pattern_restore = f'{pre_state}\s*\({domst_reason}\)'
+            check_output(pattern_restore, domst_restore, 'domstate')
 
         if vm.state() == 'paused':
             virsh.resume(vm_name, **VIRSH_ARGS)
