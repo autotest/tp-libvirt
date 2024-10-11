@@ -1,3 +1,4 @@
+from virttest import libvirt_version
 from virttest import utils_disk
 from virttest import utils_net
 
@@ -30,6 +31,8 @@ def run(test, params, env):
         sroiv_test_obj = sriov_base.SRIOVTest(vm, test, params)
 
     try:
+        if libvirt_version.version_compare(10, 7, 0) and iommu_dict['model'] == 'intel':
+            iommu_dict['driver']['dma_translation'] = 'on'
         test_obj.setup_iommu_test(iommu_dict=iommu_dict, cleanup_ifaces=cleanup_ifaces)
         test_obj.prepare_controller()
 
