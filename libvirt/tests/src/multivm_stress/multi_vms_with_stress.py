@@ -2,6 +2,8 @@ import logging as log
 
 from avocado.utils import cpu
 
+from virttest import virsh
+from virttest import utils_libguestfs
 from virttest import utils_stress
 from virttest import error_context
 from virttest import utils_test
@@ -20,45 +22,32 @@ def run(test, params, env):
     main_vm = env.get_vm(main_vm_name)
     stress_args = params.get("stress_args", "--cpu 4 --io 4 --vm 2 --vm-bytes 128M &")
 
-    main_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(main_vm_name)
-    main_vmxml_backup = main_vmxml.copy()
-
+    LOG.debug("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     vm_names = params.get("vm_names").split()
-    vms = []
-
-
-
-# virt-install --connect qemu:///system -n avocado-vt-vm1 --hvm --accelerate -r 2048 --vcpus=2 
-# --os-variant rhel9.5 --import --noreboot --noautoconsole --serial pty --debug  
-# --disk path=/var/lib/avocado/data/avocado-vt/images/jeos-27-aarch64.qcow2,bus=virtio,format=qcow2,cache=none,driver.discard=unmap,driver.io=native 
-# --network network=default,model=virtio,driver.queues=2  --memballoon model=virtio --graphics vnc --boot uefi
-
-    for vm_name in vm_names:
-        disk_path = "path=/var/lib/avocado/data/avocado-vt/images/jeos-27-aarch64.qcow2,bus=virtio,format=qcow2,cache=none,driver.discard=unmap,driver.io=native"
-        cmd = ("virt-install --name %s"
-                " --disk %s"
-                " --connect qemu:///system"
-                " --hvm --accelerate"
-                " -r 2048"
-                " --os-variant rhel9.5"
-                " --import"
-                " --noreboot --noautoconsole --nographics"
-                " --serial pty"
-                " --network network=default,model=virtio,driver.queues=2"
-                " --memballoon model=virtio"
-                " --boot uefi"
-                " --check path_in_use=off"
-                " --debug" %
-                (vm_name, disk_path))
-
-        cmd_status_output(cmd, shell=True, timeout=600)
-        LOG.debug("Installation finished for %s", vm_name)
-        env.create_vm(vm_type='libvirt', target=None, name=vm_name, params=params, bindir=test.bindir)
-        vms.append(env.get_vm(vm_name))
-        LOG.debug("vms %s", vms)
+    vms = [main_vm]
+    vmxml_backups = []
     
-    # env_vms = env.get_all_vms()
-    # LOG.debug("vms %s and %s", (vms, env_vms))
+    for i, vm_name in enumerate(vm_names):
+        vms.append(main_vm.clone(vm_name))
+        LOG.debug("Now the vms is: %s", [dom.name for dom in vms])
+        LOG.debug(vms[i])
+        LOG.debug(vms[i].state())
+    
+
+    LOG.debug("all vms: %s", vms)
+
+    # Back up domain XMLs
+    for vm in vms:
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+        vmxml_backups.append(vmxml.copy())
+
+    # for i, name in enumerate(vm_names):
+    #     LOG.debug("guest_name : %s", name)
+    #     utils_libguestfs.virt_clone_cmd(main_vm_name, name,
+    #                                     True, timeout=360,
+    #                                     ignore_status=False)
+    #     vms.append(main_vm.clone(name))
+    #     LOG.debug("Now the vms is: %s", [dom.name for dom in vms])
 
     try:
         # Get host online cpu number
@@ -78,23 +67,23 @@ def run(test, params, env):
             if (vcpus_num % 2 != 0):
                 vcpus_num += 1
             vm_xml.VMXML.new_from_inactive_dumpxml(vm.name).set_vm_vcpus(vm.name, vcpus_num, vcpus_num, topology_correction=True)
-            LOG.debug("vmxml for %s: %s", vm.name, vm.get_xml())
+            # LOG.debug("vmxml for %s: %s", vm.name, vm.get_xml())
 
 
         # Start stress workload on the host
         # utils_test.load_stress("stress_on_host", params=params)
 
 
-        # Start all vms and verify vms could be logged in normally
+        # # Start all vms and verify vms could be logged in normally
         for vm in vms:
             LOG.debug("state before login %s", vm.state())
             vm.prepare_guest_agent()
             vm.wait_for_login()
-            LOG.debug("state afer login %s", vm.state())
+            LOG.debug("state after login %s", vm.state())
 
 
 
-        # Verify all vms could be gracefully shutdown successfully
+        # # Verify all vms could be gracefully shutdown successfully
         for vm in vms:
             vm.wait_for_shutdown()
             LOG.debug("state after shutdown %s", vm.state())
@@ -103,9 +92,9 @@ def run(test, params, env):
 
     finally:
         LOG.info("in finally")
-        # # Recover VM
-        # for i, vm in enumerate(vms):
-        #     if vm.is_alive():
-        #         vm.destroy(gracefully=False)
-        #     LOG.info("Restoring vm %s...", vm.name)
-        #     vmxml_backup[i].sync()
+        # Recover VM
+        for i, vm in enumerate(vms):
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            LOG.info("Restoring vm %s...", vm.name)
+            vmxml_backups[i].sync()
