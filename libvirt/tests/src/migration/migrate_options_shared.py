@@ -7,6 +7,7 @@ import platform
 import tempfile
 import copy
 import datetime
+import shutil
 import subprocess
 
 from avocado.utils import process
@@ -38,6 +39,8 @@ from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.utils_libvirt import libvirt_config
 from virttest.libvirt_xml.devices.controller import Controller
+
+from provider.migration import base_steps
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -991,6 +994,17 @@ def run(test, params, env):
         logging.debug("status:[%d], stdout:[%s], stderr:[%s]",
                       p.returncode, stdout, stderr)
 
+    def check_ownership(expected_ownership):
+        """
+        Check ownership
+
+        :param expected_ownership: Expected ownership
+        """
+        cmd = "ls -lZ %s" % swtpm_log
+        ret = process.run(cmd, shell=True).stdout_text.strip()
+        if expected_ownership not in ret:
+            test.fail("Swtpm log ownership not correct: %s" % ret)
+
     migration_test = migration.MigrationTest()
     migration_test.check_parameters(params)
 
@@ -1065,6 +1079,10 @@ def run(test, params, env):
     break_network_connection = "yes" == params.get("break_network_connection",
                                                    "no")
     pause_vm_before_mig = "yes" == params.get("pause_vm_before_migration", "no")
+
+    swtpm_log = params.get("swtpm_log")
+    swtpm_path = params.get("swtpm_path")
+    tpm_negative = params.get("tpm_negative")
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -1266,6 +1284,9 @@ def run(test, params, env):
                                .format(loc))
             remote_session.close()
 
+        if tpm_negative or not tpm_args:
+            base_steps.prepare_cpu_for_mig(params)
+
         # Change the disk of the vm to shared disk and then start VM
         libvirt.set_vm_disk(vm, params)
 
@@ -1401,6 +1422,9 @@ def run(test, params, env):
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
+            if not mig_result.exit_status:
+                if tpm_args and not tpm_negative and "Migration: [100.00 %]" in mig_result.stderr_text.strip():
+                    logging.error("Maybe need to use machines with different cpu to test this case.")
             migration_test.check_result(mig_result, params)
         else:
 
@@ -1414,6 +1438,8 @@ def run(test, params, env):
                                             **extra_args)
                 mig_result = migration_test.ret
             except exceptions.TestFail as fail_detail:
+                if tpm_args and not tpm_negative:
+                    logging.error("Maybe need to use machines with different cpu to test this case.")
                 test.fail(fail_detail)
             except exceptions.TestCancel as cancel_detail:
                 test.cancel(cancel_detail)
@@ -1422,6 +1448,19 @@ def run(test, params, env):
             except Exception as details:
                 mig_result = migration_test.ret
                 logging.error(details)
+
+        if tpm_args and not tpm_negative:
+            check_ownership("svirt_image_t")
+            virsh.shutdown(vm_name, debug=True)
+            if not vm.wait_for_shutdown():
+                test.error('VM failed to shutdown in 60s')
+            check_ownership("virt_log_t")
+            base_steps.prepare_cpu_for_mig(params)
+            vm.start()
+            vm.wait_for_login().close()
+            params.update({"status_error": params.get("status_error_again")})
+            mig_result = do_migration(vm, dest_uri, options, extra)
+            migration_test.check_result(mig_result, params)
 
         if add_channel:
             # Get the channel device source path of remote guest
@@ -1714,6 +1753,10 @@ def run(test, params, env):
                 for obj in objs_list:
                     logging.debug("Clean up local objs")
                     obj.__del__()
+
+            if tpm_args:
+                if os.path.exists(swtpm_path):
+                    shutil.rmtree(swtpm_path)
 
         except Exception as exception_detail:
             if (not test_exception and not is_TestError and
