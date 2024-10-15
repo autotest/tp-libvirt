@@ -24,11 +24,11 @@ def run(test, params, env):
     vm_names = params.get("vm_names").split()
     vms = [main_vm]
     vmxml_backups = []
-    
+
     # Get vms
     for i, vm_name in enumerate(vm_names):
         vms.append(main_vm.clone(vm_name))
-    
+
     for vm in vms:
         # Back up domain XMLs
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
@@ -43,7 +43,7 @@ def run(test, params, env):
         host_online_cpus = cpu.online_count()
         LOG.debug("Host online CPU number: %s", str(host_online_cpus))
 
-        # Prepare 3 vms and each vm has even vcpus number which is about 2/3 of # host_online_cpu 
+        # Prepare 3 vms and each vm has even vcpus number which is about 2/3 of # host_online_cpu
         for i, vm in enumerate(vms):
             if vm.is_alive():
                 vm.destroy()
