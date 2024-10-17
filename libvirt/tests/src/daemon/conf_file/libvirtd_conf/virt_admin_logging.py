@@ -21,6 +21,7 @@ from virttest import virt_admin
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_test import libvirt
 from virttest.staging import service
 
 
@@ -82,6 +83,10 @@ def create_customized_disk(params):
     source_dict.update({"file": source_file})
     disk_src_dict = {"attrs": source_dict}
 
+    libvirt.create_local_disk("file", source_file, 1, disk_format="qcow2")
+
+    cleanup_files.append(source_file)
+
     customized_disk = libvirt_disk.create_primitive_disk_xml(
         type_name, disk_device,
         device_target, device_bus,
@@ -131,6 +136,11 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+
+    # Clear log file
+    log_config_path = params.get("log_file_path")
+    truncate_log = "truncate -s 0 %s" % log_config_path
+    process.run(truncate_log, ignore_status=True, shell=True, verbose=True)
 
     # Back up xml file
     if vm.is_alive():
