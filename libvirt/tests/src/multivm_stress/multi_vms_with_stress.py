@@ -18,7 +18,7 @@ def run(test, params, env):
     3. Start all vms and verify vms could be logged in normally
     4. Verify all vms could be gracefully shutdown successfully
     """
-    memory = params.get("memory", "4000000")
+    memory = params.get("memory", "4194304")
     main_vm_name = params.get("main_vm")
     main_vm = env.get_vm(main_vm_name)
     vm_names = params.get("vm_names").split()
