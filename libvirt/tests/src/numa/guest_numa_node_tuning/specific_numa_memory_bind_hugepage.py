@@ -32,6 +32,8 @@ def setup_default(test_obj):
     utils_libvirtd.Libvirtd().restart()
     test_obj.params['hpc_list'] = [hpc]
     test_obj.test.log.debug("Step: setup is done")
+    test_obj.test.log.debug("Host memory page status is:\n%s"
+                            % virsh.freepages(options='--all').stdout_text)
 
 
 def prepare_vm_xml(test_obj):
