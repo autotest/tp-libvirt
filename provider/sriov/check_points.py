@@ -2,6 +2,7 @@ import aexpect
 import logging
 import platform
 import re
+import time
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -140,10 +141,16 @@ def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
     :raise: test.fail when ping fails.
     :return: Output of ping command
     """
-    if platform.machine() != "x86_64":
-        return
     if not ping_dest:
-        ping_dest = sriov_base.get_ping_dest(vm_session)
+        if platform.machine() != "x86_64":
+            if sriov_base.SKIP_CHECKS:
+                return
+            else:
+                ping_dest = "8.8.8.8"
+                time.sleep(30)
+                vm_session.cmd_output_safe("dhclient --no-pid", timeout=360)
+        else:
+            ping_dest = sriov_base.get_ping_dest(vm_session)
     if tcpdump_iface:
         cmd = "tcpdump  -i %s icmp" % tcpdump_iface
         tcpdump_session = aexpect.ShellSession('bash')
