@@ -8,7 +8,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import migration
 from virttest import ssh_key
-
+from virttest import utils_package
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -32,6 +32,20 @@ def run(test, params, env):
     start_vm = params.get("start_vm")
     pre_vm_state = params.get("pre_vm_state", "start")
     readonly = ("yes" == params.get("readonly", "no"))
+
+    action = params.get("jobabort_action", "dump")
+    dump_opt = params.get("dump_opt", None)
+    status_error = params.get("status_error", "no")
+    job = params.get("jobabort_job", "yes")
+    tmp_file = os.path.join(data_dir.get_tmp_dir(), "domjobabort.tmp")
+    tmp_pipe = os.path.join(data_dir.get_tmp_dir(), "domjobabort.fifo")
+    vm_ref = params.get("jobabort_vm_ref")
+    remote_uri = params.get("jobabort_remote_uri")
+    remote_host = params.get("migrate_dest_host")
+    remote_user = params.get("migrate_dest_user", "root")
+    remote_pwd = params.get("migrate_dest_pwd")
+    saved_data = None
+
     if start_vm == "no" and vm.is_alive():
         vm.destroy()
 
@@ -39,7 +53,15 @@ def run(test, params, env):
     # After start the VM, wait for some time to make sure the job
     # can be created on this domain.
     if start_vm == "yes":
-        vm.wait_for_login()
+        vm_session = vm.wait_for_login()
+        if action == 'snapshot-create-as':
+            stress_args = params.get("stress_cmd", "--cpu 8 --io 4 --vm 2 --vm-bytes 128M --vm-keep > /dev/null &")
+            pkg_mgr = utils_package.package_manager(vm_session, 'stress')
+            if not pkg_mgr.is_installed('stress'):
+                logging.debug("Stress tool will be installed")
+                if not pkg_mgr.install():
+                    test.error("Package '%s' installation fails" % 'stress')
+            vm_session.cmd('stress %s' % stress_args)
         if params.get("pre_vm_state") == "suspend":
             vm.pause()
 
@@ -63,24 +85,15 @@ def run(test, params, env):
             virsh.migrate_setspeed(vm_name, "1")
             file = remote_uri
             args = "--unsafe"
+        elif action == "snapshot-create-as":
+            memspec_path = os.path.join(data_dir.get_data_dir(), 'foo.image')
+            file = 'snaopshot1'
+            args = "--memspec file=%s" % memspec_path
         command = "virsh %s %s %s %s" % (action, vm_name, file, args)
         logging.debug("Action: %s", command)
         p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         return p
-
-    action = params.get("jobabort_action", "dump")
-    dump_opt = params.get("dump_opt", None)
-    status_error = params.get("status_error", "no")
-    job = params.get("jobabort_job", "yes")
-    tmp_file = os.path.join(data_dir.get_tmp_dir(), "domjobabort.tmp")
-    tmp_pipe = os.path.join(data_dir.get_tmp_dir(), "domjobabort.fifo")
-    vm_ref = params.get("jobabort_vm_ref")
-    remote_uri = params.get("jobabort_remote_uri")
-    remote_host = params.get("migrate_dest_host")
-    remote_user = params.get("migrate_dest_user", "root")
-    remote_pwd = params.get("migrate_dest_pwd")
-    saved_data = None
 
     # Build job action
     if dump_opt:
@@ -122,7 +135,7 @@ def run(test, params, env):
         os.mkfifo(tmp_pipe)
 
         process = get_subprocess(action, vm_name, tmp_pipe, remote_uri)
-
+        logging.debug("1")
         saved_data = None
         if action == "restore":
             with open(tmp_file, 'r') as tmp_f:
@@ -131,14 +144,19 @@ def run(test, params, env):
             f.write(saved_data[:1024 * 1024])
         elif action == "migrate":
             f = None
+        elif action == "snapshot-create-as":
+            logging.debug("02")
+            f = None
         else:
             f = open(tmp_pipe, 'rb')
+            logging.debug("2")
             dummy = f.read(1024 * 1024).decode(locale.getpreferredencoding(), 'ignore')
-
+            logging.debug("3")
     # Give enough time for starting job
     t = 0
     while t < 5:
         jobtype = vm.get_job_type()
+        logging.debug("4")
         if "None" == jobtype:
             t += 1
             time.sleep(1)
@@ -155,13 +173,17 @@ def run(test, params, env):
     ret = virsh.domjobabort(vm_ref, **virsh_dargs)
     status = ret.exit_status
 
+    if action == "snapshot-create-as":
+        stdout, stderr = process.communicate()
+        logging.debug("status:[%d], stdout:[%s], stderr:[%s]",
+                      process.returncode, stdout, stderr)
     if process and f:
         if saved_data:
             f.write(saved_data[1024 * 1024:])
         else:
             dummy = f.read()
         f.close()
-
+        # Get the output from the process
         try:
             os.unlink(tmp_pipe)
         except OSError as detail:
