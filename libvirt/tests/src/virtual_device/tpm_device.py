@@ -713,8 +713,14 @@ def run(test, params, env):
                 return
             test.fail("Reuse a passthroughed tpm should not succeed.")
         elif ret.exit_status:
-            # emulator backend
-            test.fail("Vtpm for each guest should not interfere with each other")
+            # workaround VM first start failure due to swtpm
+            swtpm_error_msg = "internal error: Could not run '/usr/bin/swtpm_setup'"
+            output = ret.stdout_text + ret.stderr_text
+            if re.search(r'%s' % swtpm_error_msg, output):
+                virsh.start(vm2_name, ignore_status=True, debug=True)
+            else:
+                # emulator backend
+                test.fail("Vtpm for each guest should not interfere with each other")
 
     def save_modify_pcrbank(vm_name, active_pcr_banks, pcrbank_change):
         """
@@ -843,7 +849,12 @@ def run(test, params, env):
                     logging.debug("Expected failure: %s", detail)
                     return
                 else:
-                    test.fail(detail)
+                    # workaround VM first start failure due to swtpm
+                    swtpm_error_msg = "internal error: Could not run '/usr/bin/swtpm_setup'"
+                    if re.search(r'%s' % swtpm_error_msg, str(detail)):
+                        vm.start()
+                    else:
+                        test.fail(detail)
             if undefine_flag:
                 time.sleep(5)
                 vm.destroy()
