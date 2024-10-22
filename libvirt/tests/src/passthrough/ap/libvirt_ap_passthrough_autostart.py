@@ -38,7 +38,8 @@ def confirm_device_is_running(uuid, session=None):
         """Parameterless helper function to use with wait_for"""
         cmd = "mdevctl list -u %s" % uuid
         err, out = cmd_status_output(cmd, shell=True, session=session)
-        LOG.debug(err, out)
+        LOG.debug(err)
+        LOG.debug(out)
         return uuid in out
     if not wait_for(_is_listed, timeout=5):
         raise TestFail("Mediated device UUID(%s) not listed" % uuid)
