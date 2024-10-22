@@ -187,6 +187,7 @@ def run(test, params, env):
                 unpr_vmxml.del_device('interface', by_tag=True)
                 libvirt_vmxml.modify_vm_device(unpr_vmxml, 'interface',
                                                iface_attrs)
+                unpr_vmxml.del_seclabel(by_attr=[('model', 'dac')])
                 network_base.define_vm_for_unprivileged_user(unpr_user,
                                                              unpr_vmxml)
                 unpr_vm_name = unpr_vmxml.vm_name
