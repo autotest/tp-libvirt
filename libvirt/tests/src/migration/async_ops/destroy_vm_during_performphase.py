@@ -25,7 +25,7 @@ def run(test, params, env):
 
         test.log.info("Verify steps.")
         if not libvirt.check_vm_state(vm.name, expected_src_state, uri=migration_obj.src_uri):
-            test.faile("Check vm state on source host fail.")
+            test.fail(f"Check of expected VM state ({expected_src_state}) on source host failed.")
         dest_vm_list = virsh.dom_list(options="--all --persistent", debug=True, uri=dest_uri)
         if expected_dest_state == "nonexist":
             if vm_name in dest_vm_list.stdout.strip():
