@@ -33,6 +33,8 @@ def run(test, params, env):
                 vmxml.features = features
                 vmxml.sync()
             err_msg = ''
+        if libvirt_version.version_compare(10, 7, 0) and iommu_dict['model'] == 'intel':
+            iommu_dict['driver']['dma_translation'] = 'on'
 
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'iommu')
         iommu_dev = libvirt_vmxml.create_vm_device_by_type('iommu', iommu_dict)
