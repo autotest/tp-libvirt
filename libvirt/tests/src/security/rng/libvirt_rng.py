@@ -604,6 +604,8 @@ def run(test, params, env):
                                           wait_remove_event=True,
                                           debug=True, ignore_status=True)
                 libvirt.check_exit_status(ret, status_error)
+                vm_xml.VMXML.new_from_dumpxml(vm_name).sync()
+                vm.start()
                 if status_error:
                     return
                 if not check_rng_xml(rng_xml, True):
