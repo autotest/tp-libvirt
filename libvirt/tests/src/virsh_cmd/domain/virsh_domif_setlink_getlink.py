@@ -254,6 +254,9 @@ def run(test, params, env):
 
         error_msg = None
         if status_error == "no" and not post_action:
+            # Close then establish a connection with the serial console
+            vm.cleanup_serial_console()
+            vm.create_serial_console()
             # Serial login the vm to check link status
             # Start vm check the link statue
             session = vm.wait_for_serial_login(username=username,
