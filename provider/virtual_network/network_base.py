@@ -9,6 +9,7 @@ from avocado.utils import process
 from virttest import remote
 from virttest import utils_misc
 from virttest import utils_net
+from virttest import utils_package
 from virttest import virsh
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
@@ -376,3 +377,77 @@ def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type):
         raise exceptions.TestFail(f'Actual {th_type} is not close to expected '
                                   f'{th_type}:\n{msg}')
     LOG.debug(msg)
+
+
+def exec_netperf_test(params, env):
+    """
+    Verify the guest can work well under the netperf stress test
+
+    :param params: Dictionary with the test parameters.
+    :param env: Dictionary with test environment.
+    """
+    netperf_client = params.get("netperf_client")
+    netperf_server = params.get("netperf_server")
+    extra_cmd_opts = params.get("extra_cmd_opts", "")
+    netperf_timeout = params.get("netperf_timeout", "60")
+    test_protocol = params.get("test_protocol")
+    vms = params.get('vms').split()
+    vm_objs = {vm_i: env.get_vm(vm_i) for vm_i in vms}
+    before_test_cores = process.run("coredumpctl list", ignore_status=True, verbose=True).stdout_text
+
+    def _get_access_info(netperf_address):
+        LOG.debug(f"check {netperf_address}...")
+        session = None
+        if re.match(r"((\d){1,3}\.){3}(\d){1,3}", netperf_address):
+            func = process.run
+            test_ip = netperf_address
+        else:
+            if netperf_address not in vms:
+                raise exceptions.TestError(f"Unable to get {netperf_address} from {vms}!")
+            vm = vm_objs.get(netperf_address)
+            if not vm.is_alive():
+                vm.start()
+            session = vm.wait_for_login()
+            test_ip = vm.get_address()
+            func = session.cmd
+        return func, test_ip, session
+
+    c_func, c_ip, c_session = _get_access_info(netperf_client)
+    s_func, s_ip, s_session = _get_access_info(netperf_server)
+
+    try:
+        if not utils_package.package_install("netperf", c_session):
+            raise exceptions.TestError("Unable to install netperf in the client host!")
+        if not utils_package.package_install("netperf", s_session):
+            raise exceptions.TestError("Unable to install netperf in the server host!")
+        c_func("systemctl stop firewalld")
+        s_func("systemctl stop firewalld")
+
+        LOG.debug("Start netserver...")
+        if s_ip == netperf_server:
+            s_func("killall netserver", ignore_status=True)
+        s_func("netserver")
+
+        LOG.debug("Run netperf command...")
+        test_cmd = f"netperf -H {s_ip} -l {netperf_timeout} -C -c -t {test_protocol} {extra_cmd_opts}"
+        c_func(test_cmd, timeout=120)
+
+        for vm in vm_objs.values():
+            try:
+                vm.wait_for_login().close()
+            except (remote.LoginError, aexpect.ShellError) as e:
+                LOG.error(f"Unable to access to {vm.name}, guest os may have crashed - {e}")
+                vm.destroy()
+                vm.start()
+                vm.wait_for_login().close()
+        after_test_cores = process.run("coredumpctl list",
+                                       ignore_status=True, verbose=True).stdout_text
+        if after_test_cores != before_test_cores:
+            raise exceptions.TestFail("There are coredump files during the test!")
+
+    finally:
+        LOG.info("Test teardown: Cleanup env.")
+        s_func("killall netserver")
+        s_func("systemctl start firewalld")
+        # TODO: Start firewalld on guest
+        process.run("systemctl start firewalld", ignore_status=True)
