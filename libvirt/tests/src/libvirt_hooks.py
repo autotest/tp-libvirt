@@ -492,11 +492,11 @@ def run(test, params, env):
                 lxc_hook()
 
         except virt_vm.VMStartError as e:
-            logging.info(str(e))
             if start_error:
+                logging.info(str(e))
                 pass
             else:
-                test.fail('VM Failed to start for some reason!')
+                test.fail(f"VM Failed to start: {str(e)}")
         else:
             if start_error:
                 test.fail('VM started unexpected')
