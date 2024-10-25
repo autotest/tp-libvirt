@@ -135,8 +135,8 @@ def run(test, params, env):
     set_pagesize = params.get("set_pagesize")
     set_pagenum = params.get("set_pagenum")
     expect_xpath = eval(params.get("expect_xpath"))
-    config = params.get("config")
-    globals()["config_error"] = params.get("%s_error" % config, None)
+    numa_config = params.get("numa_config")
+    globals()["config_error"] = params.get("%s_error" % numa_config, None)
 
     try:
         setup_test()
