@@ -65,7 +65,10 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
         os.makedirs("/var/lib/libvirt/images/output")
     cmd = "sudo podman run --rm -it --privileged --pull=newer --security-opt label=type:unconfined_t -v /var/lib/libvirt/images/output:/output"
     if config:
-        cmd += " -v %s:/config.json  " % config
+        if "toml" in config:
+            cmd += " -v %s:/config.toml  " % config
+        else:
+            cmd += " -v %s:/config.json  " % config
 
     if local_container:
         cmd += " -v /var/lib/containers/storage:/var/lib/containers/storage "
@@ -83,7 +86,10 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
         " --type %s --tls-verify=%s " % (bib_image_url, disk_image_type, tls_verify)
 
     if config:
-        cmd += " --config /config.json "
+        if "toml" in config:
+            cmd += " --config /config.toml "
+        else:
+            cmd += " --config /config.json "
 
     if target_arch:
         cmd += " --target-arch=%s " % target_arch
@@ -173,6 +179,19 @@ def create_config_json_file(params):
     password = params.get("os_password")
     kickstart = "yes" == params.get("kickstart")
     public_key_path = os.path.join(os.path.expanduser("~/.ssh/"), "id_rsa.pub")
+    filesystem_size_set = "yes" == params.get("filesystem_size_set")
+
+    filesystem_dict = {"filesystem": [
+        {
+            "mountpoint": "/",
+            "minsize": "10 GiB"
+        },
+        {
+            "mountpoint": "/var/data",
+            "minsize": "15 GiB"
+        }
+        ]
+    }
     if not os.path.exists(public_key_path):
         LOG.debug("public key doesn't exist, will help create one")
         key_gen_cmd = "ssh-keygen -q -t rsa -N '' <<< $'\ny' >/dev/null 2>&1"
@@ -222,10 +241,82 @@ def create_config_json_file(params):
             }
         }
 
+    if filesystem_size_set:
+        cfg['blueprint']['customizations'].update(filesystem_dict)
+
     LOG.debug("what is cfg:%s", cfg)
     config_json_path = pathlib.Path(folder) / "config.json"
     config_json_path.write_text(json.dumps(cfg), encoding="utf-8")
     return os.path.join(folder, "config.json")
+
+
+def create_config_toml_file(params):
+    """
+    create toml configuration file
+
+    :param params: one dictionary to pass in configuration
+    """
+    folder = params.get("config_file_path")
+    username = params.get("os_username")
+    password = params.get("os_password")
+    kickstart = "yes" == params.get("kickstart")
+    public_key_path = os.path.join(os.path.expanduser("~/.ssh/"), "id_rsa.pub")
+    filesystem_size_set = "yes" == params.get("filesystem_size_set")
+    filesystem_size_str = ""
+
+    if not os.path.exists(public_key_path):
+        LOG.debug("public key doesn't exist, will help create one")
+        key_gen_cmd = "ssh-keygen -q -t rsa -N '' <<< $'\ny' >/dev/null 2>&1"
+        process.run(key_gen_cmd, shell=True, ignore_status=False)
+
+    with open(public_key_path, 'r') as ssh:
+        key_value = ssh.read().rstrip()
+
+    if filesystem_size_set:
+        filesystem_size_str = f"""
+            [[customizations.filesystem]]
+            mountpoint = "/"
+            minsize = "10 GiB"
+
+            [[customizations.filesystem]]
+            mountpoint = "/var/data"
+            minsize = "20 GiB"
+            """
+    if not kickstart:
+        container_file_content = f"""\n
+            [[customizations.user]]
+            name = "{username}"
+            password = "{password}"
+            key = "{key_value}"
+            groups = ["wheel"]
+            {filesystem_size_str}
+            [customizations.kernel]
+            append = "mitigations=auto,nosmt"
+            """
+    else:
+        kick_start = {"contents": "user --name %s --password %s --groups wheel\n"
+                      "sshkey --username %s \"%s\"\ntext --non-interactive\nzerombr\n"
+                      "clearpart --all --initlabel --disklabel=gpt\nautopart --noswap --type=lvm\n"
+                      "network --bootproto=dhcp --device=link --activate --onboot=on\n reboot" % (username, password, username, key_value)
+                      }
+        container_file_content = f"""\n
+            [customizations.kernel]
+            append = "mitigations=auto,nosmt"
+            [customizations.installer.modules]
+            enable = [
+              "org.fedoraproject.Anaconda.Modules.Localization"
+            ]
+            disable = [
+              "org.fedoraproject.Anaconda.Modules.Users"
+            ]
+            {filesystem_size_str}
+            [customizations.installer.kickstart]
+            contents = \"""{kick_start.get("contents")}\"""
+            """
+    LOG.debug("what is cfg:%s", cfg)
+    config_toml_path = pathlib.Path(folder) / "config.toml"
+    config_toml_path.write_text(textwrap.dedent(container_file_content), encoding="utf8")
+    return os.path.join(folder, "config.toml")
 
 
 def create_auth_json_file(params):
@@ -279,9 +370,12 @@ def create_and_build_container_file(params):
     folder = params.get("container_base_folder")
     build_container = params.get("build_container")
     container_tag = params.get("container_url")
+    manifest = params.get("manifest")
 
     # clean up existed image
     clean_image_cmd = "sudo podman rmi %s" % container_tag
+    if manifest:
+        clean_image_cmd = "sudo podman manifest rm %s" % container_tag
     process.run(clean_image_cmd, shell=True, ignore_status=True)
     etc_config = ''
     dnf_vmware_tool = ''
@@ -308,8 +402,10 @@ def create_and_build_container_file(params):
                            "update-crypto-policies --no-reload --set FIPS "
 
     container_path = pathlib.Path(folder) / "Containerfile_tmp"
-    shutil.copy("/etc/yum.repos.d/beaker-BaseOS.repo", folder)
-    shutil.copy("/etc/yum.repos.d/beaker-AppStream.repo", folder)
+    if os.path.exists("/etc/yum.repos.d/beaker-BaseOS.repo"):
+        shutil.copy("/etc/yum.repos.d/beaker-BaseOS.repo", folder)
+    if os.path.exists("/etc/yum.repos.d/beaker-AppStream.repo"):
+        shutil.copy("/etc/yum.repos.d/beaker-AppStream.repo", folder)
 
     create_sudo_file = "RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-passwordless-sudo"
     enable_root_ssh = "RUN echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config.d/01-permitrootlogin.conf"
@@ -382,9 +478,16 @@ def create_and_build_container_file(params):
         {dnf_fips_install}
         Run dnf clean all
         """
+    build_cmd = "sudo podman build -t %s -f %s" % (container_tag, str(container_path))
+    if manifest:
+        container_file_content = f"""\n
+        FROM {build_container}
+        {create_sudo_file}
+        {enable_root_ssh}
+        """
+        build_cmd = "sudo podman build  --platform linux/arm64,linux/amd64 --manifest %s -f %s" % (manifest, str(container_path))
 
     container_path.write_text(textwrap.dedent(container_file_content), encoding="utf8")
-    build_cmd = "sudo podman build -t %s -f %s" % (container_tag, str(container_path))
     process.run(build_cmd, shell=True, ignore_status=False)
 
 
@@ -774,7 +877,12 @@ def create_qemu_vm(params, env, test):
         vm = env.get_vm(vm_name)
         if vm.is_dead():
             LOG.debug("VM is dead, starting")
-            vm.start()
+            # workaround VM can not start in the first time on rhel10
+            try:
+                vm.start()
+            except Exception as ex:
+                LOG.debug("start vm in retries")
+                vm.start()
         ip_address = vm.wait_for_get_address(nic_index=0)
         params.update({"ip_address": ip_address.strip()})
         remote_vm_obj = verify_ssh_login_vm(params)
@@ -814,7 +922,9 @@ def prepare_aws_env(params):
     create_aws_secret_file(aws_secret_folder, aws_access_key_id, aws_access_key)
     aws_utils.create_aws_credentials_file(aws_access_key_id, aws_access_key)
     aws_utils.create_aws_config_file(aws_region)
-    aws_utils.install_aws_cli_tool(params)
+    vm_arch_name = params.get("vm_arch_name", "x86_64")
+    if "s390x" not in vm_arch_name:
+        aws_utils.install_aws_cli_tool(params)
 
 
 def cleanup_aws_env(params):
@@ -836,6 +946,38 @@ def cleanup_aws_ami_and_snapshot(params):
     """
     aws_utils.delete_aws_ami_id(params)
     aws_utils.delete_aws_ami_snapshot_id(params)
+
+
+def convert_vhd_to_qcow2(params):
+    """
+    Convert vhd disk format into qcow2
+
+    @param params: one dictionary wrapping various parameter
+    :return: Converted image path
+    """
+    original_image_path = params.get('vm_disk_image_path')
+    converted_image_path = original_image_path.replace("vhd", "qcow2")
+    LOG.debug(f"converted vhd to qcow2 output is : {converted_image_path}")
+
+    convert_cmd = f"qemu-img convert -p -f vpc  -O qcow2 {original_image_path} {converted_image_path}"
+    process.run(convert_cmd, shell=True, verbose=True, ignore_status=False)
+    return converted_image_path
+
+
+def untar_tgz_to_raw(params):
+    """
+    extract image.tgz for GCP format to raw format:disk.raw
+
+    @param params: one dictionary wrapping various parameter
+    """
+    original_image_path = params.get('vm_disk_image_path')
+    tar_image_folder = os.path.dirname(original_image_path)
+    untar_image_path = os.path.join(tar_image_folder, "disk.raw")
+    LOG.debug(f"untar image.tgz to gce output is : {tar_image_folder}")
+
+    tar_cmd = f"tar -xvzf {original_image_path}  -C {tar_image_folder}"
+    process.run(tar_cmd, shell=True, verbose=True, ignore_status=False)
+    return untar_image_path
 
 
 def get_baseurl_from_repo_file(repo_file_path):
