@@ -107,7 +107,7 @@ def check_various_size(test, vm_name, expected_size,
         test.fail("Expect to get '%s':'%s', but got:'%s' in '%sth' "
                   "memory" % (check_item, str(expected_size), actual_size, index+1))
     else:
-        test.log.debug("Check '%s' is '%s' successfully", (check_item, expected_size))
+        test.log.debug("Check '%s' is '%s' successfully", check_item, expected_size)
 
 
 def update_virtio_mem_request_size(test, params, vm_name, device_opt, target_requested):
