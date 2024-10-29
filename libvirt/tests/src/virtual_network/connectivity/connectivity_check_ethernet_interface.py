@@ -70,13 +70,22 @@ def run(test, params, env):
 
     try:
         mac_addr = vm_xml.VMXML.get_first_mac_by_name(vm_name, virsh_ins)
+        tap_flag = ''
+        for attr in (iface_attrs, iface_attrs_2):
+            if attr.get('driver', {}).get('driver_attr', {}).get('queues'):
+                tap_flag = 'multi_queue'
+                break
+        if params.get('tap_flag') is not None:
+            tap_flag = params.get('tap_flag')
 
         if tap_type:
             if tap_type == 'tap':
                 utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
-                network_base.create_tap(tap_name, bridge_name, test_user)
+                network_base.create_tap(
+                    tap_name, bridge_name, test_user, flag=tap_flag)
                 if iface_amount == 'two_ifaces':
-                    network_base.create_tap(tap_name_2, 'virbr0', test_user)
+                    network_base.create_tap(
+                        tap_name_2, 'virbr0', test_user, flag=tap_flag)
             elif tap_type == 'macvtap':
                 mac_addr = network_base.create_macvtap(tap_name, host_iface,
                                                        test_user)
