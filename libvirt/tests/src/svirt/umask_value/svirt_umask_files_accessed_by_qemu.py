@@ -7,6 +7,7 @@ from virttest import test_setup
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.vm_xml import VMXML
+from avocado.utils import memory as avocado_mem
 
 
 def run(test, params, env):
@@ -30,6 +31,13 @@ def run(test, params, env):
         if os.path.exists(hp_path):
             shutil.rmtree(hp_path)
             utils_libvirtd.Libvirtd().restart()
+
+        # calculate the target_hugepage  from VM memory and actual HP size
+        actual_hp_size = avocado_mem.get_huge_page_size()
+        target_hugepages = int(vmxml.memory / actual_hp_size)
+        params["target_hugepages"] = target_hugepages
+        test.log.debug(f"Requred VM memory {vmxml.memory}, calculated tareget_hugepages: {target_hugepages}")
+
         hp_cfg = test_setup.HugePageConfig(params)
         hp_cfg.set_hugepages()
 
