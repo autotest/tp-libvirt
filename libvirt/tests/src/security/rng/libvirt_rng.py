@@ -16,6 +16,7 @@ from virttest import utils_package
 from virttest import utils_misc
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
+from virttest.utils_version import VersionInterval
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import rng
@@ -315,6 +316,20 @@ def run(test, params, env):
             else:
                 logging.info("Hexdump do not fail with error")
 
+    def check_guest_rng_file(session):
+        """
+        Check random device no longer on guest
+
+        :param session: ssh session to guest
+        """
+        rng_file = "/sys/devices/virtual/misc/hw_random/rng_available"
+        rng_avail = session.cmd_output("cat %s" % rng_file,
+                                       timeout=timeout).strip()
+        logging.debug("rng avail:%s", rng_avail)
+        if rng_avail.count("virtio"):
+            test.fail("Failed to check rng file on guest."
+                      " The virtio device should no longer be an available rng device.")
+
     def check_guest(session, expect_fail=False,
                     set_virtio_current=False):
         """
@@ -334,6 +349,10 @@ def run(test, params, env):
         if not rng_avail.count("virtio"):
             test.fail("Failed to check rng file on guest."
                       " The virtio device is not available.")
+        guest_required_kernel = params.get('guest_required_kernel', '')
+        if guest_required_kernel and not set_virtio_current:
+            vm_kerv = session.cmd_output('uname -r').strip().split('-')[0]
+            set_virtio_current = vm_kerv in VersionInterval(guest_required_kernel)
         if set_virtio_current:
             virtio_dev = re.findall('virtio_rng.\d+', rng_avail)[0]
             _ = session.cmd_output(("echo -n %s > %s" %
@@ -453,6 +472,7 @@ def run(test, params, env):
     expected_audit_message = params.get("expected_audit_message", "VIRT_RESOURCE")
     set_virtio_current = "yes" == params.get("set_virtio_current", "no")
     test_guest_dump = "yes" == params.get("test_guest_dump", "no")
+    test_guest_rng_file = "yes" == params.get("test_guest_rng_file", "no")
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
     test_snapshot = "yes" == params.get("test_snapshot", "no")
     snapshot_vm_running = "yes" == params.get("snapshot_vm_running",
@@ -669,7 +689,9 @@ def run(test, params, env):
                 else:
                     test.fail("Rng device still exists after detach!")
 
-                if test_guest_dump:
+                if test_guest_rng_file:
+                    check_guest_rng_file(session)
+                elif test_guest_dump:
                     check_guest_dump(session, False)
 
             session.close()
