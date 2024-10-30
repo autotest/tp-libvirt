@@ -56,9 +56,7 @@ def update_vm_xml(vm, params, cdrom_attrs_list):
         os_attrs = {'boots': os_attrs_boots}
         vmxml.setup_attrs(os=os_attrs)
     else:
-        vm_os = vmxml.os
-        vm_os.del_boots()
-        vmxml.os = vm_os
+        vmxml.remove_all_boots()
     if "yes" == params.get("check_bootable_iso", "no"):
         os_attrs.update({'bootmenu_enable': 'yes',
                          'bootmenu_timeout': '3000'})

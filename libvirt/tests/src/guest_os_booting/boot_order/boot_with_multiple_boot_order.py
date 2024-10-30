@@ -3,6 +3,7 @@
 #   Author: Meina Li <meili@redhat.com>
 
 import os
+import re
 
 from avocado.utils import process
 
@@ -74,10 +75,13 @@ def run(test, params, env):
     check_prompt = eval(params.get("check_prompt", "[]"))
     bootable_device = params.get("bootable_device")
     os_dict = eval(params.get("os_dict"))
+    test_cmd = params.get("test_cmd", None)
+    expected_output = params.get("expected_output", None)
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     bkxml = vmxml.copy()
+    session = None
 
     try:
         test.log.info("TEST_SETUP: prepare a guest with necessary attributes.")
@@ -89,12 +93,20 @@ def run(test, params, env):
         test.log.debug(f"The current guest xml is: {vmxml}")
         test.log.info("TEST_STEP2: check the guest boot from expected device.")
         if bootable_device == "hd_bootable":
-            vm.wait_for_login(timeout=360).close()
+            session = vm.wait_for_login(timeout=360)
             test.log.debug("Succeed to boot %s", vm_name)
+            if test_cmd is not None:
+                output = session.cmd(test_cmd)
+                if not re.search(expected_output, output):
+                    test.fail(f"Couldn't get {expected_output}, got instead {output}")
+                test.log.debug("Succeed to set %s", expected_output)
+            session.close()
         else:
             vm.serial_console.read_until_output_matches(check_prompt, timeout=300,
                                                         internal_timeout=0.5)
     finally:
+        if session:
+            session.close()
         bkxml.sync()
         for file in file_list:
             if os.path.exists(file):
