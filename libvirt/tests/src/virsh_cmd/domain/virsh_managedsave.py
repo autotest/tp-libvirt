@@ -1,22 +1,21 @@
+import logging as log
 import os
 import re
 import time
-import logging as log
 
 from avocado.utils import process
 from avocado.utils import software_manager
-
-from virttest import virsh
-from virttest import utils_libvirtd
-from virttest import utils_config
-from virttest import utils_misc
-from virttest import utils_libguestfs
 from virttest import libvirt_version
+from virttest import utils_config
+from virttest import utils_libguestfs
+from virttest import utils_libvirtd
+from virttest import utils_misc
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging.utils_memory import drop_caches
-
+from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_test import libvirt
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -363,6 +362,10 @@ def run(test, params, env):
         # Destroy vm first for setting configuration file
         if vm.state() == "running":
             vm.destroy(gracefully=False)
+
+        # Workaround bug: Remove multi-queue setting
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        libvirt_vmxml.modify_vm_device(vmxml, 'interface', {'driver': None})
         # Prepare test environment.
         if libvirtd_state == "off":
             libvirtd.stop()

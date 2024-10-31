@@ -7,6 +7,7 @@ from virttest import utils_libvirtd
 from virttest import utils_selinux
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 from provider.save import save_base
@@ -33,6 +34,9 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
 
     try:
+        # Workaround bug: Remove multi-queue setting
+        libvirt_vmxml.modify_vm_device(vmxml, 'interface', {'driver': None})
+
         selinux_status = passt.ensure_selinux_enforcing()
         if namespaces:
             qemu_conf.namespaces = eval(namespaces)
