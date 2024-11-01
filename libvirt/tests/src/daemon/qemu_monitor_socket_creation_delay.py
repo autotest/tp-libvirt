@@ -29,7 +29,6 @@ def run(test, params, env):
         os.chmod(tmp_qemu_wrapper_path, 0o755)
         process.run("chcon system_u:object_r:qemu_exec_t:s0 %s" % tmp_qemu_wrapper_path, shell=True)
 
-        emulator_dict = {"path": "%s" % tmp_qemu_wrapper_path}
         libvirt_vmxml.modify_vm_device(vmxml, "emulator", emulator_dict)
         vm.start()
     except virt_vm.VMStartError as e:
