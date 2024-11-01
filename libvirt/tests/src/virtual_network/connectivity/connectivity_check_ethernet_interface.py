@@ -55,7 +55,7 @@ def run(test, params, env):
     iface_mtu = params.get('iface_mtu')
     iface_mtu_2 = params.get('iface_mtu_2')
     iface_attrs = eval(params.get('iface_attrs'))
-    iface_attrs_2 = eval(params.get('iface_attrs_2'))
+    iface_attrs_2 = eval(params.get('iface_attrs_2', '{}'))
     iface_amount = params.get('iface_amount')
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
