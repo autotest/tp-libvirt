@@ -13,10 +13,7 @@ import datetime
 import locale
 import base64
 import ipaddress
-try:
-    import queue as Queue
-except ImportError:
-    import Queue
+import queue
 
 import stat
 
@@ -39,7 +36,7 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_test import libvirt
 
 
-q = Queue.Queue()
+q = queue.Queue()
 
 
 # Using as lower capital is not the best way to do, but this is just a

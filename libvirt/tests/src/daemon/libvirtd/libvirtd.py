@@ -5,10 +5,7 @@ import os.path
 import re
 import threading
 
-try:
-    import queue as Queue
-except ImportError:
-    import Queue
+import queue
 
 from avocado.utils import process
 
@@ -23,7 +20,7 @@ from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt
 
 
-msg_queue = Queue.Queue()
+msg_queue = queue.Queue()
 daemon_conf = None
 daemon = None
 
