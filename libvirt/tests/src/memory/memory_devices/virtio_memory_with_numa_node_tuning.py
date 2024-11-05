@@ -430,8 +430,8 @@ def run(test, params, env):
         """
         test.log.info("TEST_TEARDOWN: Clean up env.")
         bkxml.sync()
-        for file in params.get("cleanup_file"):
-            process.run("echo 0 > %s" % file)
+        for file in params.get("cleanup_file", []):
+            process.run("echo 0 > %s" % file, ignore_status=True)
         hg_path = params.get("hg_path")
         if hg_path:
             process.run("umount %s; rm %s" % (hg_path, hg_path), ignore_status=True)
