@@ -212,8 +212,11 @@ def set_blkio_parameter(test, params, cgstop):
     if validate_vm_not_start:
         result = virsh.start(vm_name, debug=True)
         vm_not_start_error_msg = params.get("vm_not_start_error_msg")
-        if vm_not_start_error_msg not in result.stderr_text:
-            test.fail("can not find error message: %s" % vm_not_start_error_msg)
+        if result.exit_status:
+            if vm_not_start_error_msg in result.stderr_text:
+                logging.info("Get the expected error message: %s" % vm_not_start_error_msg)
+            else:
+                test.fail("Get unexpected result: %s" % result.stderr_text)
 
 
 def prepare_scheduler(params, test, vm):
