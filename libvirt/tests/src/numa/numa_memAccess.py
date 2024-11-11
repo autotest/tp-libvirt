@@ -26,7 +26,7 @@ def define_and_check_xml(vmxml, params):
         if "cell_id" in key:
             numa_cells.append(eval(params[key]))
     pages = [eval(params["page_id_0"])]
-    logging.debug(numa_cells, pages)
+    logging.debug("numa cell is: %s, pages are: %s", numa_cells, pages)
 
     del vmxml.numa_memory
     vmcpuxml = libvirt_xml.vm_xml.VMCPUXML()

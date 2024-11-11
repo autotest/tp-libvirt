@@ -52,7 +52,7 @@ def run(test, params, env):
         session.send('ZZ')
         _, text = session.read_until_any_line_matches(
             [r"%s" % error_msg], timeout=10, internal_timeout=1)
-        test.log.debug("Checked '%s' exists in '%s'", (error_msg, text))
+        test.log.debug("Checked '%s' exists in '%s'", error_msg, text)
         test.log.debug("Input 'i' to turn off validation")
         session.sendline('i')
 
@@ -60,8 +60,7 @@ def run(test, params, env):
         _, text = session.read_until_any_line_matches(
             [r"%s" % (success_msg % vm_name)], timeout=10, internal_timeout=1)
         session.close()
-        test.log.debug("Checked '%s' exists in '%s'", (success_msg % vm_name,
-                                                       text))
+        test.log.debug("Checked '%s' exists in '%s'", success_msg % vm_name, text)
 
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         libvirt_vmxml.check_guest_xml_by_xpaths(
