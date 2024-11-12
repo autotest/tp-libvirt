@@ -453,23 +453,23 @@ def set_bandwidth(params):
         virsh.migrate_getspeed(vm_name, debug=True)
 
 
-def check_vm_status_during_mig(params):
+def check_vm_status_during_mig(vm_name, dest_state=None, src_state=None, dest_uri=None, src_reason=None):
     """
     Check vm status during migration
 
-    :param params: dict, get expected status of vm, vm name, destination uri, source uri and timeout value
+    :param vm_name: vm name
+    :param dest_state: expected status of vm on target host
+    :param src_state: expected status of vm on source host
+    :param dest_uri: destination uri
+    :param src_reason: expected reason of vm state on source host
     :raise: test fail when check vm status failed
     """
-    vm_status_during_mig = params.get("vm_status_during_mig")
-    vm_name = params.get("migrate_main_vm")
-    dest_uri = params.get("virsh_migrate_desturi")
-    src_uri = params.get("virsh_migrate_connect_uri")
-    timeout_value = params.get("timeout_value")
-    if timeout_value:
-        time.sleep(int(timeout_value))
-    for uri in [dest_uri, src_uri]:
-        if not libvirt.check_vm_state(vm_name, vm_status_during_mig, uri=uri):
-            raise exceptions.TestFail("VM status is not '%s' during migration on %s." % (vm_status_during_mig, uri))
+    if dest_state:
+        if not libvirt.check_vm_state(vm_name, dest_state, uri=dest_uri):
+            raise exceptions.TestFail("VM status is not '%s' during migration on target." % dest_state)
+    if src_state:
+        if not libvirt.check_vm_state(vm_name, src_state, src_reason):
+            raise exceptions.TestFail("VM status is not '%s' during migration on source." % src_state)
 
 
 def check_vm_state(params):

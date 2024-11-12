@@ -30,10 +30,17 @@ def run(test, params, env):
         if expected_src_state:
             if not libvirt.check_vm_state(vm.name, expected_src_state, uri=migration_obj.src_uri):
                 test.fail("Migrated VM failed to be in %s state at source." % expected_src_state)
-        if expected_dest_state and expected_dest_state == "nonexist":
-            virsh.domstate(vm_name, uri=dest_uri, debug=True)
-            if virsh.domain_exists(vm_name, uri=dest_uri):
-                test.fail("The domain on target host is found, but expected not")
+        if expected_dest_state:
+            if expected_dest_state == "nonexist":
+                virsh.domstate(vm_name, uri=dest_uri, debug=True)
+                if virsh.domain_exists(vm_name, uri=dest_uri):
+                    test.fail("The domain on target host is found, but expected not")
+            else:
+                if not libvirt.check_vm_state(vm.name, expected_dest_state, uri=dest_uri):
+                    test.fail("Migrated VM failed to be in %s state at dest." % expected_dest_state)
+
+        if expected_dest_state == "running":
+            virsh.destroy(vm_name, uri=dest_uri)
         if expected_src_state == "shut off":
             vm.start()
             vm.wait_for_login().close()
@@ -41,9 +48,6 @@ def run(test, params, env):
             vm.destroy()
             vm.start()
             vm.wait_for_login().close()
-
-        if expected_dest_state == "running":
-            virsh.destroy(vm_name, uri=dest_uri)
 
     vm_name = params.get("migrate_main_vm")
     test_case = params.get("test_case", "")
