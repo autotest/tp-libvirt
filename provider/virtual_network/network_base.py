@@ -139,7 +139,7 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
             raise exceptions.TestFail(msg)
 
 
-def create_tap(tap_name, bridge_name, user):
+def create_tap(tap_name, bridge_name, user, flag=''):
     """
     Create tap device
 
@@ -149,7 +149,7 @@ def create_tap(tap_name, bridge_name, user):
     """
     # Create tap device with ip command
     tap_cmd = f'ip tuntap add mode tap user {user} group {user} name ' \
-              f'{tap_name};ip link set {tap_name} up;' \
+              f'{tap_name} {flag};ip link set {tap_name} up;' \
               f'ip link set {tap_name} master {bridge_name}'
     # Execute command as root
     process.run(tap_cmd, shell=True, verbose=True)
