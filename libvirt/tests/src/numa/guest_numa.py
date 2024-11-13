@@ -282,6 +282,18 @@ def run(test, params, env):
             deallocate = True
             hp_cl.target_hugepages = hugepage_num
             hp_cl.set_hugepages()
+            # For numatune memnode strict mode, we must allocate enough huge page size
+            if numa_memnode and numa_memnode[0]['mode'] == 'strict' and numa_cell:
+                target_host_node = numa_memnode[0]['nodeset']
+                guest_node = numa_memnode[0]['cellid']
+                require_memory = 0
+                for cell in numa_cell:
+                    if cell['id'] == guest_node:
+                        require_memory = int(cell['memory'])
+                        break
+                if require_memory:
+                    huge_page_num = require_memory // default_mem_huge_page_size
+                    hp_cl.set_node_num_huge_pages(huge_page_num, target_host_node, default_mem_huge_page_size, False)
         if page_list:
             hp_size = [h_list[p_size]['size'] for p_size in range(len(h_list))]
             multi_hp_size = hp_cl.get_multi_supported_hugepage_size()
