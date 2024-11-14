@@ -374,7 +374,8 @@ def prepare_kernel_selftest_in_guest(session, params, test):
                                                                srpm)
     kernel_tar_cmd = params.get("kernel_tar_cmd") % linux_name
     kernel_selftest_compile_cmd = params.get("kernel_selftest_compile_cmd")
-
+    prepare_cert_cmd = params.get("prepare_cert_cmd")
+    execute_cmds(prepare_cert_cmd, session, test)
     execute_cmds(kernel_download_cmd, session, test)
     execute_cmds(kernel_tar_cmd, session, test)
     execute_cmds(kernel_selftest_compile_cmd, session, test)
