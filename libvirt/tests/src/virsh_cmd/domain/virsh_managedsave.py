@@ -427,6 +427,9 @@ def run(test, params, env):
             vm_ref = params.get(vm_ref)
         elif vm_ref == "name":
             vm_ref = vm_name
+        # Prepare the certain state before managedsave
+        if params.get('paused_after_start_vm'):
+            virsh.suspend(vm_ref)
 
         # Ignore exception with "ignore_status=True"
         if progress:
