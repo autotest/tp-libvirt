@@ -79,14 +79,15 @@ def run(test, params, env):
             virsh.attach_device(vm_name, device_xml.xml, ignore_status=False, debug=True)
         vm.cleanup_serial_console()
         vm.create_serial_console()
-        vm.wait_for_serial_login().close()
+        vm_session = vm.wait_for_serial_login()
 
         test.log.info("TEST_STEP2: check the attribute in %s xml", device_type)
         check_attribute()
         if hotplug:
             virsh.detach_device(vm_name, device_xml.xml, ignore_status=False, debug=True)
         test.log.info("TEST_STEP3: check the network by ping")
-        utils_net.ping(dest=ping_outside, count='3', timeout=10, session=vm.session, force_ipv4=True)
+        utils_net.ping(dest=ping_outside, count='3', timeout=10, session=vm_session, force_ipv4=True)
+        vm_session.close()
 
     def teardown_test(disk_image_path):
         """
