@@ -15,7 +15,6 @@ from virttest import utils_package
 from virttest import utils_misc
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
-from virttest import libvirt_version
 
 from virttest.libvirt_xml.devices.tpm import Tpm
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -54,6 +53,7 @@ def run(test, params, env):
     tpm_model = params.get("tpm_model")
     backend_type = params.get("backend_type")
     backend_version = params.get("backend_version")
+    backend_debug = params.get("backend_debug")
     device_path = params.get("device_path")
     tpm_num = int(params.get("tpm_num", 1))
     # After first start of vm with vtpm, do operations, check it still works
@@ -284,6 +284,8 @@ def run(test, params, env):
         if backend_version:
             check_ver = backend_version if backend_version not in ["none", "default"] else '2.0'
             xpaths.append({'element_attrs': [".//backend[@version='%s']" % check_ver]})
+        if backend_debug:
+            xpaths.append({'element_attrs': [".//backend[@debug='%s']" % backend_debug]})
         if active_pcr_banks and not remove_pcrbank:
             check_active_pcr_banks(xml_after_adding_device)
         if backend_type == "passthrough":
@@ -398,6 +400,8 @@ def run(test, params, env):
             pattern_list.remove("--log")
         if prepare_secret:
             pattern_list.extend(["--key", "--migration-key"])
+        if backend_debug:
+            pattern_list.extend(["level=%s" % backend_debug])
         for pattern in pattern_list:
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the %s for tpm device "
@@ -749,6 +753,20 @@ def run(test, params, env):
         if swtpm_pidfile and libvirt_version.version_compare(8, 7, 0):
             test.error('swtpm.pid still exists after %s: %s' % (test_stage, swtpm_pidfile))
 
+    def test_swtpm_logging():
+        """
+        test logging level for swtpm when backend_debug is set
+        """
+        log_pattern_list = ["SWTPM_IO_Read",  "SWTPM_IO_Write"]
+        swtpm_log = "/var/log/swtpm/libvirt/qemu/" + vm.name + "-swtpm.log"
+        with open(swtpm_log) as f:
+            lines = "".join(f.readlines())
+            for log_pattern in log_pattern_list:
+                if re.search(log_pattern, lines):
+                    logging.info("Finding msg<%s> in swtpm log", log_pattern)
+                else:
+                    test.fail("Can not find msg:<%s> in swtpm log" % log_pattern)
+
     try:
         tpm_real_v = None
         sec_uuids = []
@@ -776,6 +794,8 @@ def run(test, params, env):
                 if backend_type == "emulator":
                     if backend_version != 'none':
                         backend.backend_version = backend_version
+                    if backend_debug:
+                        backend.backend_debug = backend_debug
                     if persistent_state:
                         backend.persistent_state = "yes"
                     if prepare_secret:
@@ -972,6 +992,8 @@ def run(test, params, env):
             else:
                 test_guest_tpm(expect_version, session, expect_fail)
             session.close()
+            if backend_debug:
+                test_swtpm_logging()
             if multi_vms:
                 reuse_by_vm2(tpm_dev)
                 if backend_type != "passthrough":
