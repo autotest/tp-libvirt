@@ -8,12 +8,14 @@ import shutil
 from avocado.utils import path as utils_path
 from avocado.utils import process
 
+from virttest import libvirt_version
 from virttest import utils_libguestfs
 from virttest import utils_misc
 from virttest import virsh
 from virttest import utils_config
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_disk
 from virttest.staging import service
 
 
@@ -65,13 +67,22 @@ def run(test, params, env):
         expect_msg = expect_shutdown_msg(status_error, on_shutdown)
         logging.debug("The expected messages when host shutdown is: %s ", expect_msg)
         for dom in vms:
-            if not re.search(expect_msg[dom.name], output):
-                logging.debug("expect_mesg is: %s", expect_msg[dom.name])
-                if status_error == "no":
-                    test.fail("guest should be %s on shutdown" % on_shutdown)
-                else:
-                    test.fail("Shutdown of guest should be failed to "
-                              "complete in time")
+            check_res = re.search(expect_msg[dom.name], output)
+            no_operation = (transient_vm_operation == "nothing" and not dom.is_persistent())
+            if no_operation:
+                if check_res:
+                    test.fail("Expect msg '%s' does not exist." % expect_msg)
+                test.log.debug("Check transient guest:%s did nothing successfully", dom.name)
+            else:
+                if not check_res:
+                    logging.debug("expect_mesg is: %s", expect_msg[dom.name])
+                    if status_error == "no":
+                        test.fail("guest:%s should be %s on shutdown" % (dom.name, on_shutdown))
+                    else:
+                        test.fail("Shutdown of guest should be failed to "
+                                  "complete in time")
+                test.log.debug("Check guest:%s did '%s' successfully",
+                               dom.name, expect_msg[dom.name])
 
         if (on_shutdown == "shutdown") and int(parallel_shutdown) > 0:
             chk_parallel_shutdown(output, parallel_shutdown)
@@ -85,12 +96,11 @@ def run(test, params, env):
         :param on_boot: action taking on host booting
         """
         if status_error == "no":
-            if on_boot == "start":
+            if on_boot == "start" or transient_vm:
                 for dom in vms:
                     if not dom.is_alive():
-                        test.fail("Since on_boot is setting to 'start', "
-                                  "guest should be running after "
-                                  "restarting libvirt-guests.")
+                        test.fail("guest:%s should be running after "
+                                  "restarting libvirt-guests." % dom.name)
             else:
                 for dom in vms:
                     if dom.is_alive():
@@ -98,6 +108,7 @@ def run(test, params, env):
                                   "unless guests are autostart, "
                                   "guest should be shut off after "
                                   "restarting libvirt-guests, ")
+        test.log.debug("Check all guests state successfully")
 
     def check_on_shutdown_vm_status():
         for dom in vms:
@@ -190,12 +201,13 @@ def run(test, params, env):
                         if os.path.exists(save_files[dom]):
                             test.fail("There should be no save files since "
                                       "guests are restored on host shutdown.")
-                else:
+                elif on_boot == "ignore":
                     for dom in vms:
                         if not os.path.exists(save_files[dom]):
                             test.fail("Guests are suspended on host shutdown, "
                                       "and been ignored on host boot, there "
                                       "should be save files for the guests.")
+        test.log.debug("Check all guests file successfully")
 
     def boot_time():
         booting_time = []
@@ -242,11 +254,28 @@ def run(test, params, env):
 
         nfs_server = libvirt.setup_or_cleanup_nfs(False)
 
+    def transfer_to_transient(per_guest_name):
+        """
+        Transfer one persistent vm to transient guest.
+
+        :param  per_guest_name: persistent guest name.
+        """
+        virsh.start(per_guest_name, ignore_status=False)
+        vmxml = vm_xml.VMXML.new_from_dumpxml(per_guest_name)
+        virsh.undefine(per_guest_name, options='--nvram', debug=True, ignore_status=False)
+        virsh.create(vmxml.xml, debug=True)
+        test.log.debug("Transfer guest %s to be transient type", per_guest_name)
+
     main_vm_name = params.get("main_vm")
     main_vm = env.get_vm(main_vm_name)
 
     on_boot = params.get("on_boot")
     on_shutdown = params.get("on_shutdown")
+    persistent_only = params.get("persistent_only", "")
+    transient_vm = "yes" == params.get("transient_vm", "no")
+    if transient_vm:
+        libvirt_version.is_libvirt_feature_supported(params)
+    transient_vm_operation = params.get("transient_vm_operation")
     nfs_vol = params.get("nfs_vol") == "yes"
     virt_use_nfs = params.get("virt_use_nfs") == "on"
     parallel_shutdown = params.get("parallel_shutdown")
@@ -287,9 +316,10 @@ def run(test, params, env):
         utils_libguestfs.virt_clone_cmd(main_vm_name, guest_name,
                                         True, timeout=360,
                                         ignore_status=False)
+        if transient_vm:
+            transfer_to_transient(guest_name)
         vms.append(main_vm.clone(guest_name))
         logging.debug("Now the vms is: %s", [dom.name for dom in vms])
-
     if nfs_vol:
         # info collected for clear env finally
         vmxml_backup = []
@@ -299,7 +329,7 @@ def run(test, params, env):
         if not dom.is_alive():
             dom.start()
     for dom in vms:
-        dom.wait_for_login()
+        dom.wait_for_login().close()
     first_boot_time = []
     if on_shutdown == "shutdown" and on_boot == "start":
         first_boot_time = boot_time()
@@ -307,13 +337,20 @@ def run(test, params, env):
 
     try:
         # Config the libvirt-guests file
-        config.ON_BOOT = on_boot
-        config.ON_SHUTDOWN = on_shutdown
-        config.PARALLEL_SHUTDOWN = parallel_shutdown
-        config.SHUTDOWN_TIMEOUT = shutdown_timeout
+        if on_boot:
+            config.ON_BOOT = on_boot
+        if on_shutdown:
+            config.ON_SHUTDOWN = on_shutdown
+        if persistent_only:
+            config.PERSISTENT_ONLY = persistent_only
+        if parallel_shutdown:
+            config.PARALLEL_SHUTDOWN = parallel_shutdown
+        if shutdown_timeout:
+            config.SHUTDOWN_TIMEOUT = shutdown_timeout
         process.run("sed -i -e 's/ = /=/g' "
                     "/etc/sysconfig/libvirt-guests",
                     shell=True)
+        process.run("cat /etc/sysconfig/libvirt-guests", shell=True)
 
         tail_messages = get_log()
         # Even though libvirt-guests was designed to operate guests when
@@ -325,11 +362,13 @@ def run(test, params, env):
         time.sleep(30)
         output = tail_messages.get_output()
         logging.debug("Get messages in /var/log/messages: %s" % output)
-
+        virsh.dom_list("--all", debug=True)
         # check the guests state when host shutdown
         chk_on_shutdown(status_error, on_shutdown, parallel_shutdown, output)
-        # check the guests state when host rebooted
-        chk_on_boot(status_error, on_boot)
+        virsh.dom_list("--all", debug=True)
+        if not (transient_vm and on_shutdown == "shutdown"):
+            # check the guests state when host rebooted
+            chk_on_boot(status_error, on_boot)
         # check the guests save files
         chk_save_files(status_error, on_shutdown, on_boot)
 
@@ -353,3 +392,6 @@ def run(test, params, env):
 
         if libvirt_guests_service.status():
             libvirt_guests_service.stop()
+
+        source_path = os.path.dirname(libvirt_disk.get_first_disk_source(vms[0]))
+        process.run("cd %s; rm -rf *-clone*" % source_path, shell=True)
