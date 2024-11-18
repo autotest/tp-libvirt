@@ -74,7 +74,7 @@ def run(test, params, env):
             libvirt_disk.create_disk("file", new_disk_path, disk_size, disk_format="qcow2")
             disk_dict.update({'source': {'attrs': {'file': new_disk_path}}})
             disk_obj = libvirt_vmxml.create_vm_device_by_type('disk', disk_dict)
-            virsh.attach_device(vm.name, disk_obj.xml, debug=True, ignore_status=False)
+            virsh.attach_device(vm.name, disk_obj.xml, debug=True, ignore_status=False, wait_for_event=True)
 
         if need_sriov:
             test_obj.params["iface_dict"] = str(sroiv_test_obj.parse_iface_dict())
