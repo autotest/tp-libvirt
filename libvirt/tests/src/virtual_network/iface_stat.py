@@ -140,7 +140,8 @@ def run(test, params, env):
                 for _ in range(3):
                     session.cmd('curl -O https://avocado-project.org/data/'
                                 'assets/jeos/27/jeos-27-64.qcow2.xz -L',
-                                timeout=240, ignore_all_errors=True)
+                                timeout=60, ignore_all_errors=True)
+                    session.sendcontrol("c")
                 host_iface_stat = get_host_iface_stat(vm_name,
                                                       iface_target_dev,
                                                       **virsh_args)
