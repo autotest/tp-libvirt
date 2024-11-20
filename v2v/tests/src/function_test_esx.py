@@ -949,8 +949,6 @@ def run(test, params, env):
             params['msg_content_yes'] += '<rasd:num_of_sockets>' + res_cpu_topology.get('sockets') + '%'
             params['msg_content_yes'] += '<rasd:cpu_per_socket>' + res_cpu_topology.get('cores') + '%'
             params['msg_content_yes'] += '<rasd:threads_per_cpu>' + res_cpu_topology.get('threads')
-        if 'empty_cdrom' in checkpoint:
-            v2v_result = raw_dumpxml
         else:
             if 'exist_uuid' in checkpoint:
                 auto_clean = False
