@@ -673,6 +673,7 @@ TIMEOUT 3"""
     ipt6_rules = []
     define_macvtap = "yes" == params.get("define_macvtap", "no")
     net_dns_forwarders = params.get("net_dns_forwarders", "").split()
+    only_test_define = "yes" == params.get("only_test_define", "no")
 
     # Cancel if not yet supported in libvirt version under test
     if "floor" in ast.literal_eval(iface_bandwidth_inbound):
@@ -795,10 +796,14 @@ TIMEOUT 3"""
                 netxml.sync()
             except xcepts.LibvirtXMLError as details:
                 logging.info(str(details))
+                if only_test_define and libvirt_version.version_compare(10, 8, 0):
+                    define_error = False
                 if define_error:
                     return
                 else:
                     test.fail("Failed to define network")
+            if only_test_define:
+                return
 
         # Check open mode network xml
         if "mode" in forward and forward["mode"] == "open":
