@@ -51,6 +51,7 @@ def run(test, params, env):
 
     vm_name = guest_os_booting_base.get_vm(params)
     vm = env.get_vm(vm_name)
+    enable_backward_migration = "yes" == params.get("enable_backward_migration", "yes")
 
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
@@ -60,10 +61,11 @@ def run(test, params, env):
         migration_obj.run_migration()
         migration_obj.verify_default()
 
-        test.log.info("TEST_STEP: Migrate back the VM to the source host.")
-        migration_obj.run_migration_back()
-        dargs = {"check_disk_on_dest": "no"}
-        migration_obj.migration_test.post_migration_check([vm], dargs)
+        if enable_backward_migration:
+            test.log.info("TEST_STEP: Migrate back the VM to the source host.")
+            migration_obj.run_migration_back()
+            dargs = {"check_disk_on_dest": "no"}
+            migration_obj.migration_test.post_migration_check([vm], dargs)
 
     finally:
         migration_obj.cleanup_default()

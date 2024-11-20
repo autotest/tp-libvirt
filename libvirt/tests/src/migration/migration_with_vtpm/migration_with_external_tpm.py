@@ -224,6 +224,7 @@ def run(test, params, env):
         migration_obj.cleanup_connection()
 
     vm_name = params.get("migrate_main_vm")
+    enable_backward_migration = "yes" == params.get("enable_backward_migration", "yes")
 
     libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
@@ -234,7 +235,8 @@ def run(test, params, env):
         migration_obj.run_migration()
         verify_test()
         launch_external_swtpm(params, test, skip_setup=True)
-        migration_obj.run_migration_back()
-        verify_test_again()
+        if enable_backward_migration:
+            migration_obj.run_migration_back()
+            verify_test_again()
     finally:
         cleanup_test()

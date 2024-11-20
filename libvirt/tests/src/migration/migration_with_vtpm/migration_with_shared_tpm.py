@@ -268,6 +268,7 @@ def run(test, params, env):
 
     vm_name = params.get("migrate_main_vm")
     shared_storage_type = params.get('shared_storage_type', '')
+    enable_backward_migration = "yes" == params.get("enable_backward_migration", "yes")
 
     libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
@@ -282,7 +283,8 @@ def run(test, params, env):
         setup_test()
         migration_obj.run_migration()
         verify_test()
-        migration_obj.run_migration_back()
-        verify_test_again()
+        if enable_backward_migration:
+            migration_obj.run_migration_back()
+            verify_test_again()
     finally:
         cleanup_test()
