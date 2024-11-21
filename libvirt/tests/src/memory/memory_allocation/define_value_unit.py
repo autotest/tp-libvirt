@@ -133,7 +133,7 @@ def run(test, params, env):
                     test.fail('%s should be %s instead of %s ' %
                               (attr, result[attr], new_value))
                 else:
-                    test.log.debug("Get correct %s=%s in xml", (attr, result[attr]))
+                    test.log.debug("Get correct %s=%s in xml", attr, result[attr])
 
     def set_negative_memory(case):
         """
