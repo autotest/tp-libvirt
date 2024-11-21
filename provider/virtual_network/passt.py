@@ -243,10 +243,10 @@ def check_default_gw(session, host_iface=None):
     :param host_iface: if given, only check gateway information on this
                        host interface
     """
-    host_gw = utils_net.get_default_gateway(force_dhcp=True,
-                                            target_iface=host_iface).split()
-    vm_gw = utils_net.get_default_gateway(session=session,
-                                          force_dhcp=True).split()
+    host_gw = utils_net.get_default_gateway(
+        force_dhcp=True, target_iface=host_iface, json=True).split()
+    vm_gw = utils_net.get_default_gateway(
+        session=session, force_dhcp=True, json=True).split()
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
     if [x for x in vm_gw if x not in host_gw]:
         raise exceptions.TestFail(
