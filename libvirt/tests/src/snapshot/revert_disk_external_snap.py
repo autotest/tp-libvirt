@@ -29,7 +29,9 @@ def revert_snap_and_check_files(params, vm, test, snap_name, expected_files):
     """
     virsh.snapshot_revert(vm.name, snap_name, **virsh_dargs)
 
-    session = vm.wait_for_login()
+    vm.cleanup_serial_console()
+    vm.create_serial_console()
+    session = vm.wait_for_serial_login()
     for file in expected_files:
         output = session.cmd('ls %s' % file)
         if file not in output:
@@ -49,8 +51,8 @@ def run(test, params, env):
         Prepare file and snapshot.
         """
         test.log.info("TEST_SETUP: Create files and snaps in running guest.")
-        virsh.start(vm_name)
-        session = vm.wait_for_login()
+        vm.start()
+        session = vm.wait_for_serial_login()
         mem_file = " "
         for index, sname in enumerate(snap_names):
             session.cmd("touch %s" % file_list[index])
