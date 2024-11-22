@@ -106,9 +106,9 @@ def run(test, params, env):
          for session in (server_session, client_session)]
 
         server_default_gw = utils_net.get_default_gateway(
-            session=server_session, force_dhcp=True)
+            session=server_session, force_dhcp=True, json=True)
         server_default_gw_v6 = utils_net.get_default_gateway(
-            session=server_session, ip_ver='ipv6')
+            session=server_session, ip_ver='ipv6', json=True)
 
         firewalld.stop()
         server_session.cmd('systemctl stop firewalld')
