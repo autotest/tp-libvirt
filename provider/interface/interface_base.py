@@ -55,7 +55,8 @@ def get_vm_iface(vm_session, ignore_status=False):
     :param ignore_status: Whether to raise an exception if there is no interface
     :return: VM's first interface
     """
-    p_iface, _v_ifc = utils_net.get_remote_host_net_ifs(vm_session)
+    p_iface, _v_ifc = utils_net.get_remote_host_net_ifs(
+        vm_session, ip_options='-color=never')
     vm_iface = p_iface[:1:]
     if not vm_iface:
         if ignore_status:
