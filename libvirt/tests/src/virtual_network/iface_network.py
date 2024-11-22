@@ -26,6 +26,8 @@ from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest import libvirt_version
 
+from provider.virtual_network import network_base
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -482,8 +484,8 @@ TIMEOUT 3"""
 
         # It may take some time to get the ip address
         def get_ip_func():
-            return utils_net.get_guest_ip_addr(session, iface_mac,
-                                               ip_version=ip_ver)
+            return network_base.get_vm_ip(session, iface_mac,
+                                          ip_ver=ip_ver)
 
         utils_misc.wait_for(get_ip_func, 5)
         if not get_ip_func():
@@ -1086,7 +1088,7 @@ TIMEOUT 3"""
                 if test_dhcp_range:
                     dhcp_range = int(params.get("dhcp_range", "252"))
                     utils_net.restart_guest_network(session, iface_mac)
-                    vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
+                    vm_ip = network_base.get_vm_ip(session, iface_mac)
                     logging.debug("Guest has ip: %s", vm_ip)
                     if not vm_ip and dhcp_range:
                         test.fail("Guest has invalid ip address")
@@ -1100,8 +1102,7 @@ TIMEOUT 3"""
                         vms_mac = vms.get_virsh_mac_address()
                         # restart guest network to get ip addr
                         utils_net.restart_guest_network(sess, vms_mac)
-                        vms_ip = utils_net.get_guest_ip_addr(sess,
-                                                             vms_mac)
+                        vms_ip = network_base.get_vm_ip(sess, vms_mac)
                         if not vms_ip and dhcp_range:
                             test.fail("Guest has invalid ip address")
                         elif vms_ip and not dhcp_range:

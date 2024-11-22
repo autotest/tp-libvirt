@@ -29,6 +29,7 @@ from virttest.libvirt_xml import xcepts
 from virttest.staging import utils_memory
 
 from virttest import libvirt_version
+from provider.virtual_network import network_base
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -382,8 +383,8 @@ def run(test, params, env):
         utils_net.restart_guest_network(session, mac)
         # Wait for IP address is ready
         utils_misc.wait_for(
-            lambda: utils_net.get_guest_ip_addr(session, mac), 10)
-        return utils_net.get_guest_ip_addr(session, mac)
+            lambda: network_base.get_vm_ip(session, mac), 10)
+        return network_base.get_vm_ip(session, mac)
 
     def check_user_network(session):
         """

@@ -17,6 +17,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
 from virttest.libvirt_xml import network_xml
 
+from provider.virtual_network import network_base
+
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
 
@@ -249,7 +251,7 @@ def run(test, params, env):
         remote_url = params.get("remote_ip", "www.google.com")
 
         try:
-            vm1_ip = utils_net.get_guest_ip_addr(session1, mac)
+            vm1_ip = network_base.get_vm_ip(session1, mac)
         except Exception as errs:
             test.fail("vm1 can't get IP with the new create bridge: %s" % errs)
         if test_qos:
