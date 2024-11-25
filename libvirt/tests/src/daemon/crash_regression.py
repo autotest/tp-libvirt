@@ -83,7 +83,7 @@ def run_mix_boot_order_os_boot(params, libvirtd, vm):
     try:
         if not vm_xml.os.boots:
             os_xml = vm_xml.os
-            os_xml.boots = {'dev': 'hd'}
+            os_xml.boots = ['hd']
             vm_xml.os = os_xml
         else:
             logging.debug(vm_xml.os.boots)
