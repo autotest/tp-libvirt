@@ -16,7 +16,7 @@ import re
 from avocado.utils import process
 
 from virttest import utils_libvirtd
-from virttest import virt_vm
+from virttest import virt_vm, utils_misc
 from virttest import virt_admin
 
 from virttest.libvirt_xml import vm_xml
@@ -117,8 +117,7 @@ def check_msg_in_var_log_message(params, test):
     log_config_path = params.get("log_file_path")
     str_to_grep = params.get("str_to_grep")
     cmd = "grep -E -l '%s' %s" % (str_to_grep, log_config_path)
-    if process.run(cmd, shell=True, ignore_status=True).exit_status != 0:
-        test.fail("Check message log:%s failed in log file:%s" % (str_to_grep, log_config_path))
+    return process.run(cmd, shell=True, ignore_status=True).exit_status == 0
 
 
 def run(test, params, env):
@@ -144,7 +143,11 @@ def run(test, params, env):
     except virt_vm.VMStartError as e:
         LOG.debug("VM failed to start as expected."
                   "Error: %s", str(e))
-        check_msg_in_var_log_message(params, test)
+        result = utils_misc.wait_for(lambda: check_msg_in_var_log_message(params, test), timeout=20)
+        if not result:
+            log_config_path = params.get("log_file_path")
+            str_to_grep = params.get("str_to_grep")
+            test.fail("Check message log:%s failed in log file:%s" % (str_to_grep, log_config_path))
     finally:
         # Recover VM
         LOG.info("Restoring vm...")
