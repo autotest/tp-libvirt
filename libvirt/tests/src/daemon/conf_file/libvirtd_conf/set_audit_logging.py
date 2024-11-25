@@ -142,6 +142,7 @@ def run(test, params, env):
             check_virt_type_from_audit_log()
             check_msg_in_libvirtd_log("virDomainAudit")
         elif test_scenario == "default_audit_log":
+            vm.wait_for_login().close()
             ausearch_audit_log()
         elif test_scenario == "concurrent_filters":
             check_concurrent_filters()
