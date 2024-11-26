@@ -92,17 +92,19 @@ def run(test, params, env):
         vm_sync(vmxml, vm_name, virsh_instance=virsh_instance)
         logging.debug("VM XML after updating interface: %s" % vmxml)
 
-    def update_net_dict(net_dict, runner=utils_net.local_runner):
+    def update_net_dict(net_dict, iface_name, runner=utils_net.local_runner):
         """
         Update network dict
 
         :param net_dict: The network dict to be updated
+        :param iface_name: host iface name to use for direct network
         :param runner: Command runner
         :return: Updated network dict
         """
         if net_dict.get("name", "") == "direct-macvtap":
             logging.info("Updating network iface name")
-            iface_name = utils_net.get_net_if(runner=runner, state="UP")[0]
+            if not iface_name:
+                iface_name = utils_net.get_net_if(runner=runner, state="UP")[0]
             net_dict.update({'forward_interface': [{'dev': iface_name}]})
         else:
             # TODO: support other types
@@ -204,6 +206,8 @@ def run(test, params, env):
         params.get("migrate_source_host"))
     src_uri = params.get("virsh_migrate_connect_uri")
     dest_uri = params.get("virsh_migrate_desturi")
+    host_iface_src = params.get("host_iface_src")
+    host_iface_dst = params.get("host_iface_dst")
 
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
@@ -257,11 +261,11 @@ def run(test, params, env):
                 test.fail("Failed to create ovs bridge on remote. Status: %s"
                           "Stdout: %s" % (status, stdout))
         if network_dict:
-            update_net_dict(network_dict, runner=remote_session.cmd)
+            update_net_dict(network_dict, host_iface_src, runner=remote_session.cmd)
             libvirt_network.create_or_del_network(
                 network_dict, remote_args=remote_virsh_dargs)
             logging.info("dest: network created")
-            update_net_dict(network_dict)
+            update_net_dict(network_dict, host_iface_dst)
             libvirt_network.create_or_del_network(network_dict)
             logging.info("localhost: network created")
 
