@@ -228,6 +228,9 @@ class MigrationBase(object):
         """
         Execute migration from target host to source host
         """
+        migrate_vm_back = "yes" == self.params.get("migrate_vm_back", "yes")
+        if not migrate_vm_back:
+            return
         virsh_options = self.params.get("virsh_options", "")
         extra = self.params.get("virsh_migrate_extra")
         options = self.params.get("virsh_migrate_options", "--live --verbose")

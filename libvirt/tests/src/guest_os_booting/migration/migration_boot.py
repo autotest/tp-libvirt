@@ -49,6 +49,17 @@ def run(test, params, env):
         update_vm_xml(vm, params)
         migration_obj.setup_default()
 
+    def verify_test_again():
+        """
+        Test verify
+        """
+        migrate_vm_back = "yes" == params.get("migrate_vm_back", "yes")
+        if not migrate_vm_back:
+            return
+        test.log.info("Verify test again.")
+        dargs = {"check_disk_on_dest": "no"}
+        migration_obj.migration_test.post_migration_check([vm], dargs)
+
     vm_name = guest_os_booting_base.get_vm(params)
     vm = env.get_vm(vm_name)
 
@@ -62,8 +73,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Migrate back the VM to the source host.")
         migration_obj.run_migration_back()
-        dargs = {"check_disk_on_dest": "no"}
-        migration_obj.migration_test.post_migration_check([vm], dargs)
+        verify_test_again()
 
     finally:
         migration_obj.cleanup_default()

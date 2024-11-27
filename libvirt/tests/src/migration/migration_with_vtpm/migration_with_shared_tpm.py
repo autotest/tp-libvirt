@@ -250,6 +250,10 @@ def run(test, params, env):
         Verify steps for migration back
 
         """
+        migrate_vm_back = "yes" == params.get("migrate_vm_back", "yes")
+        if not migrate_vm_back:
+            return
+
         tpm_security_contexts_restore = params.get("tpm_security_contexts_restore")
         check_vtpm_func(params, vm, test)
         vm.shutdown()
