@@ -9,7 +9,6 @@ from avocado.utils import process
 from virttest import remote
 from virttest import utils_misc
 from virttest import utils_net
-from virttest import utils_package
 from virttest import virsh
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
@@ -416,10 +415,6 @@ def exec_netperf_test(params, env):
     s_func, s_ip, s_session = _get_access_info(netperf_server)
 
     try:
-        if not utils_package.package_install("netperf", c_session):
-            raise exceptions.TestError("Unable to install netperf in the client host!")
-        if not utils_package.package_install("netperf", s_session):
-            raise exceptions.TestError("Unable to install netperf in the server host!")
         c_func("systemctl stop firewalld")
         s_func("systemctl stop firewalld")
 
