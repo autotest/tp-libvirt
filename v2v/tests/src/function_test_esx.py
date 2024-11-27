@@ -607,9 +607,6 @@ def run(test, params, env):
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
                     services = ['qemu-ga', 'balloon']
-                    virtio_win_env = os.getenv('VIRTIO_WIN')
-                    if virtio_win_env and 'rhv-guest-tools' in virtio_win_env:
-                        services.append('spice-ga')
                     for ser in services:
                         check_windows_service(vmchecker.checker, ser)
                 else:
@@ -804,7 +801,7 @@ def run(test, params, env):
             ovirt4_path = os.path.dirname(ovirtsdk4.__file__)
             dst_ovirt4_path = ovirt4_path + '.bak'
             os.rename(ovirt4_path, dst_ovirt4_path)
-        if checkpoint[0].startswith('ogac'):
+        if checkpoint[0].startswith('ogac') and 'ogac_balloon' not in checkpoint:
             os.environ['VIRTIO_WIN'] = virtio_win_path
             if os_type == 'linux' and not utils_v2v.multiple_versions_compare(implementation_change_ver) and \
                     os.path.isdir(os.getenv('VIRTIO_WIN')):

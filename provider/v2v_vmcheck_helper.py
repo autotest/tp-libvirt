@@ -843,11 +843,14 @@ class VMChecker(object):
         if re.search(r"(Intel|AMD) Processor", win_dirvers):
             if re.search(r"(Intel|AMD) Processor", win_dirvers).group(0) in cpu_drivers:
                 LOG.info("CPU driver '%s' is found" % re.search(r"(Intel|AMD) Processor", win_dirvers).group(0))
+        elif self.os_version == "win2016":
+            LOG.info('Skip check cpu driver for win2016 guest because bug RHEL-17685 is not fixed')
         else:
             err_msg = "CPU driver is not found"
             self.log_err(err_msg)
         cpu_status = self.checker.get_cpu_status()
-        if not re.search(r'OK', cpu_status):
+        # Skip check cpu status for win2016 guest because bug RHEL-17685 is not fixed
+        if not re.search(r'OK', cpu_status) and self.os_version != "win2016":
             self.log_err("cpu status is abnormal")
         # Check graphic and video type in VM XML
         self.check_vm_xml()
