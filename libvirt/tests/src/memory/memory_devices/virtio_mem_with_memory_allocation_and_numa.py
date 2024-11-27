@@ -33,7 +33,7 @@ def adjust_virtio_mem_size_unit(params, test):
     params.update({"target_size": target_size})
     params.update({"request_size": request_size})
 
-    test.log.debug("Convert params: target_size to be %s, request_size to be",
+    test.log.debug("Convert params: target_size to be %s, request_size to be %s",
                    target_size, request_size)
 
 
