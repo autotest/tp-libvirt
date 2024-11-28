@@ -24,7 +24,8 @@ from virttest.libvirt_xml.devices import rng
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
-logging = log.getLogger('avocado.' + __name__)
+logging = log.getLogger("avocado." + __name__)
+background_jobs = []
 
 
 def run(test, params, env):
@@ -39,8 +40,7 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    snap_options = params.get("snap_options")
-    mem_files = eval(params.get("mem_files", '[]'))
+    mem_files = eval(params.get("mem_files", "[]"))
 
     def check_rng_xml(xml_set, exists=True):
         """
@@ -89,38 +89,58 @@ def run(test, params, env):
                 get_value = xml_get[rng_attr]
             except xcepts.LibvirtXMLNotFoundError:
                 get_value = None
-            logging.debug("get xml_set value(%s) is %s, get xml_get value is %s",
-                          rng_attr, set_value, get_value)
+            logging.debug(
+                "get xml_set value(%s) is %s, get xml_get value is %s",
+                rng_attr,
+                set_value,
+                get_value,
+            )
             return (set_value, get_value)
 
         match = True
         for rng_attr in xml_set.__slots__:
             set_value, get_value = get_compare_values(xml_set, xml_get, rng_attr)
-            logging.debug("rng_attr=%s, set_value=%s, get_value=%s", rng_attr, set_value, get_value)
+            logging.debug(
+                "rng_attr=%s, set_value=%s, get_value=%s",
+                rng_attr,
+                set_value,
+                get_value,
+            )
             if set_value and set_value != get_value:
-                if rng_attr == 'backend':
+                if rng_attr == "backend":
                     for bak_attr in xml_set.backend.__slots__:
-                        set_backend, get_backend = get_compare_values(xml_set.backend, xml_get.backend, bak_attr)
+                        set_backend, get_backend = get_compare_values(
+                            xml_set.backend, xml_get.backend, bak_attr
+                        )
                         if set_backend and set_backend != get_backend:
-                            if bak_attr == 'source':
+                            if bak_attr == "source":
                                 set_source = xml_set.backend.source
                                 get_source = xml_get.backend.source
                                 find = False
                                 for i in range(len(set_source)):
                                     for j in get_source:
-                                        if set(set_source[i].items()).issubset(j.items()):
+                                        if set(set_source[i].items()).issubset(
+                                            j.items()
+                                        ):
                                             find = True
                                             break
                                     if not find:
-                                        logging.debug("set source(%s) not in get source(%s)",
-                                                      set_source[i], get_source)
+                                        logging.debug(
+                                            "set source(%s) not in get source(%s)",
+                                            set_source[i],
+                                            get_source,
+                                        )
                                         match = False
                                         break
                                     else:
                                         continue
                             else:
-                                logging.debug("set backend(%s)- %s not equal to get backend-%s",
-                                              rng_attr, set_backend, get_backend)
+                                logging.debug(
+                                    "set backend(%s)- %s not equal to get backend-%s",
+                                    rng_attr,
+                                    set_backend,
+                                    get_backend,
+                                )
                                 match = False
                                 break
                         else:
@@ -128,8 +148,12 @@ def run(test, params, env):
                         if not match:
                             break
                 else:
-                    logging.debug("set value(%s)-%s not equal to get value-%s",
-                                  rng_attr, set_value, get_value)
+                    logging.debug(
+                        "set value(%s)-%s not equal to get value-%s",
+                        rng_attr,
+                        set_value,
+                        get_value,
+                    )
                     match = False
                     break
             else:
@@ -138,30 +162,26 @@ def run(test, params, env):
                 break
 
         if match:
-            logging.info("Find same rng xml as hotpluged")
+            logging.info("Found the same rng xml as hotplugged")
         else:
-            test.fail("Rng xml in VM not same with attached xml")
+            test.fail("Rng xml in VM not same as attached xml")
 
         return True
 
-    def modify_rng_xml(dparams, sync=True, get_xml=False):
+    def get_rng_xml(dparams):
         """
-        Modify interface xml options
+        Get rng device xml
 
         :params dparams: parameters for organize xml
-        :params sync: whether sync to domain xml, if get_xml is True,
-                      then sync will not take effect
-        :params get_xml: whether get device xml
-        :return: if get_xml=True, return xml file
+        :return: return rng xml file
         """
         rng_model = dparams.get("rng_model", "virtio")
         rng_rate = dparams.get("rng_rate")
         backend_model = dparams.get("backend_model", "random")
         backend_type = dparams.get("backend_type")
         backend_dev = dparams.get("backend_dev", "")
-        backend_source_list = dparams.get("backend_source",
-                                          "").split()
         backend_protocol = dparams.get("backend_protocol")
+        backend_source_list = dparams.get("backend_source", "").split()
         rng_alias = dparams.get("rng_alias")
         device_address = dparams.get("address")
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -176,8 +196,7 @@ def run(test, params, env):
         if backend_dev:
             backend.backend_dev = backend_dev
         if backend_source_list:
-            source_list = [ast.literal_eval(source) for source in
-                           backend_source_list]
+            source_list = [ast.literal_eval(source) for source in backend_source_list]
             backend.source = source_list
         if backend_protocol:
             backend.backend_protocol = backend_protocol
@@ -187,23 +206,41 @@ def run(test, params, env):
         if with_packed:
             rng_xml.driver = dict(packed=driver_packed)
         if device_address:
-            rng_xml.address = rng_xml.new_rng_address(**{"attrs": ast.literal_eval(device_address)})
+            rng_xml.address = rng_xml.new_rng_address(
+                **{"attrs": ast.literal_eval(device_address)}
+            )
 
         logging.debug("Rng xml: %s", rng_xml)
-        if get_xml:
-            return rng_xml
-        if sync:
+        return rng_xml
+
+    def modify_rng_xml(rng_xml, sync_or_edit="sync"):
+        """
+        Modify rng xml
+
+        :params rng_xml: the rng device xml
+        :params sync_or_edit: "sync" will redefine the VM with the rng
+                              "edit" will edit the VM
+        """
+        if sync_or_edit == "sync":
             vmxml.add_device(rng_xml)
             vmxml.xmltreefile.write()
             vmxml.sync()
-        else:
+        elif sync_or_edit == "edit":
             status = libvirt.exec_virsh_edit(
-                vm_name, [(r":/<devices>/s/$/%s" %
-                           re.findall(r"<rng.*<\/rng>",
-                                      str(rng_xml), re.M
-                                      )[0].replace("/", "\/"))])
+                vm_name,
+                [
+                    (
+                        r":/<devices>/s/$/%s"
+                        % re.findall(r"<rng.*<\/rng>", str(rng_xml), re.M)[0].replace(
+                            "/", "\/"
+                        )
+                    )
+                ],
+            )
             if not status:
                 test.fail("Failed to edit vm xml")
+        else:
+            test.error(f"Can't modify XML with method '{sync_or_edit}'.")
 
     def check_qemu_cmd(dparams):
         """
@@ -213,9 +250,7 @@ def run(test, params, env):
         rng_rate = dparams.get("rng_rate")
         backend_type = dparams.get("backend_type")
         backend_model = dparams.get("backend_model")
-        backend_source_list = dparams.get("backend_source",
-                                          "").split()
-        cmd = ("ps -ef | grep %s | grep -v grep" % vm_name)
+        cmd = "ps -ef | grep %s | grep -v grep" % vm_name
         logging.debug("Qemu cmd line info:\n")
         process.run(cmd, ignore_status=True, shell=True)
         chardev = src_host = src_port = None
@@ -225,34 +260,32 @@ def run(test, params, env):
             chardev = "udp"
         for bc_source in backend_source_list:
             source = ast.literal_eval(bc_source)
-            if "mode" in source and source['mode'] == "connect":
-                src_host = source['host']
-                src_port = source['service']
+            if "mode" in source and source["mode"] == "connect":
+                src_host = source["host"]
+                src_port = source["service"]
 
         result = process.run(cmd, ignore_status=True, shell=True)
         if result.exit_status:
-            test.fail("Got error obtaining qemu cmdline:"
-                      " %s" % result.stderr_text)
+            test.fail("Got error obtaining qemu cmdline: %s" % result.stderr_text)
         expected_matches = []
         if backend_model == "builtin":
             expected_matches.append("rng-builtin")
         if chardev and src_host and src_port:
-            expected_matches.append("chardev %s,.*host=%s,port=%s"
-                                    % (chardev, src_host, src_port))
+            expected_matches.append(
+                "chardev %s,.*host=%s,port=%s" % (chardev, src_host, src_port)
+            )
         if rng_model == "virtio":
             expected_matches.append("%s" % dparams.get("rng_device"))
         if rng_rate:
             rate = ast.literal_eval(rng_rate)
-            expected_matches.append("max-bytes.*%s" % rate['bytes'])
-            expected_matches.append("period.*%s" % rate['period'])
+            expected_matches.append("max-bytes.*%s" % rate["bytes"])
+            expected_matches.append("period.*%s" % rate["period"])
         if with_packed:
             expected_matches.append("packed.*%s" % driver_packed)
-        if not all([re.findall(x, result.stdout_text)
-                    for x in expected_matches]):
+        if not all([re.findall(x, result.stdout_text) for x in expected_matches]):
             logging.debug("Expected matches: %s" % expected_matches)
             logging.debug("QEMU cmdline: %s" % result.stdout_text)
-            test.fail("Can't see rng option"
-                      " in command line. Please check the log.")
+            test.fail("Can't see rng option in command line. Please check the log.")
 
     def check_host():
         """
@@ -263,33 +296,33 @@ def run(test, params, env):
             cmd = "lsof |grep %s" % backend_dev
             ret = process.run(cmd, ignore_status=True, shell=True)
             if ret.exit_status or not ret.stdout_text.count("qemu"):
-                test.fail("Failed to check random device"
-                          " on host, command output: %s" %
-                          ret.stdout_text)
+                test.fail(
+                    "Failed to check random device"
+                    " on host, command output: %s" % ret.stdout_text
+                )
 
-    def check_snapshot(bgjob=None):
+    def check_snapshot():
         """
         Do snapshot operation and check the results
         """
-        snapshot_name1 = "snap.s1"
+        # we only check_snapshot
+        snapshot_name = "s2"
         if not snapshot_vm_running:
             vm.destroy(gracefully=False)
         snap_options = params.get("snap_options")
         if "--memspec" in snap_options:
             snap_options += mem_files[1]
         ret = virsh.snapshot_create_as(
-            vm_name, options=snap_options % snapshot_name1, debug=True)
+            vm_name, options=snap_options % snapshot_name, debug=True
+        )
         libvirt.check_exit_status(ret)
-        snap_info = virsh.snapshot_info(vm_name, snapshot_name1, debug=True)
+        snap_info = virsh.snapshot_info(vm_name, snapshot_name, debug=True)
         check_snap_info(snap_info)
         snap_lists = virsh.snapshot_list(vm_name, debug=True)
         if snapshot_name not in snap_lists:
-            test.fail("Snapshot %s doesn't exist"
-                      % snapshot_name)
+            test.fail("Snapshot %s doesn't exist" % snapshot_name)
 
-        options = ""
-        ret = virsh.snapshot_revert(
-            vm_name, ("%s %s" % (snapshot_name, options)), debug=True)
+        ret = virsh.snapshot_revert(vm_name, "s1", debug=True)
         libvirt.check_exit_status(ret)
         ret = virsh.dumpxml(vm_name, debug=True)
         if ret.stdout.strip().count("<rng model="):
@@ -323,15 +356,15 @@ def run(test, params, env):
         :param session: ssh session to guest
         """
         rng_file = "/sys/devices/virtual/misc/hw_random/rng_available"
-        rng_avail = session.cmd_output("cat %s" % rng_file,
-                                       timeout=timeout).strip()
+        rng_avail = session.cmd_output("cat %s" % rng_file, timeout=timeout).strip()
         logging.debug("rng avail:%s", rng_avail)
         if rng_avail.count("virtio"):
-            test.fail("Failed to check rng file on guest."
-                      " The virtio device should no longer be an available rng device.")
+            test.fail(
+                "Failed to check rng file on guest."
+                " The virtio device should no longer be an available rng device."
+            )
 
-    def check_guest(session, expect_fail=False,
-                    set_virtio_current=False):
+    def check_guest(session, expect_fail=False, set_virtio_current=False):
         """
         Check random device on guest
 
@@ -340,35 +373,37 @@ def run(test, params, env):
         """
         rng_files = (
             "/sys/devices/virtual/misc/hw_random/rng_available",
-            "/sys/devices/virtual/misc/hw_random/rng_current")
-        rng_avail = session.cmd_output("cat %s" % rng_files[0],
-                                       timeout=timeout).strip()
-        rng_currt = session.cmd_output("cat %s" % rng_files[1],
-                                       timeout=timeout).strip()
+            "/sys/devices/virtual/misc/hw_random/rng_current",
+        )
+        rng_avail = session.cmd_output("cat %s" % rng_files[0], timeout=timeout).strip()
+        rng_currt = session.cmd_output("cat %s" % rng_files[1], timeout=timeout).strip()
         logging.debug("rng avail:%s, current:%s", rng_avail, rng_currt)
         if not rng_avail.count("virtio"):
-            test.fail("Failed to check rng file on guest."
-                      " The virtio device is not available.")
-        guest_required_kernel = params.get('guest_required_kernel', '')
+            test.fail(
+                "Failed to check rng file on guest."
+                " The virtio device is not available."
+            )
+        guest_required_kernel = params.get("guest_required_kernel", "")
         if guest_required_kernel and not set_virtio_current:
-            vm_kerv = session.cmd_output('uname -r').strip().split('-')[0]
+            vm_kerv = session.cmd_output("uname -r").strip().split("-")[0]
             set_virtio_current = vm_kerv in VersionInterval(guest_required_kernel)
         if set_virtio_current:
-            virtio_dev = re.findall('virtio_rng.\d+', rng_avail)[0]
-            _ = session.cmd_output(("echo -n %s > %s" %
-                                    (virtio_dev, rng_files[1])),
-                                   timeout=timeout)
+            virtio_dev = re.findall("virtio_rng.\d+", rng_avail)[0]
+            _ = session.cmd_output(
+                ("echo -n %s > %s" % (virtio_dev, rng_files[1])), timeout=timeout
+            )
             rng_currt = virtio_dev
         if not rng_currt.count("virtio") or rng_currt not in rng_avail:
-            test.fail("Failed to check rng file on guest."
-                      " The virtio device is not the current rng device.")
+            test.fail(
+                "Failed to check rng file on guest."
+                " The virtio device is not the current rng device."
+            )
 
         # Read the random device
         rng_rate = params.get("rng_rate")
         # For rng rate test this command and return in a short time
         # but for other test it will hang
-        cmd = ("dd if=/dev/hwrng of=rng.test %s"
-               " && rm -f rng.test" % dd_throughput)
+        cmd = "dd if=/dev/hwrng of=rng.test %s && rm -f rng.test" % dd_throughput
         try:
             ret, output = session.cmd_status_output(cmd, timeout=timeout)
             if ret and expect_fail:
@@ -398,17 +433,14 @@ def run(test, params, env):
 
         if rng_rate:
             rate_bytes, rate_period = list(ast.literal_eval(rng_rate).values())
-            rate_conf = float(rate_bytes) / (float(rate_period)/1000)
-            ret = re.search(r"(\d+) bytes.*copied, (\d+.\d+) s",
-                            output, re.M)
+            rate_conf = float(rate_bytes) / (float(rate_period) / 1000)
+            ret = re.search(r"(\d+) bytes.*copied, (\d+.\d+) s", output, re.M)
             if not ret:
                 test.fail("Can't find rate from output")
             rate_real = float(ret.group(1)) / float(ret.group(2))
-            logging.debug("Found rate: %s, config rate: %s",
-                          rate_real, rate_conf)
+            logging.debug("Found rate: %s, config rate: %s", rate_real, rate_conf)
             if rate_real > rate_conf * 1.2:
-                test.fail("The rate of reading exceed"
-                          " the limitation of configuration")
+                test.fail("The rate of reading exceed the limitation of configuration")
         if device_num > 1:
             rng_dev = rng_avail.split()
             compare_device_numbers(ignored_devices, rng_dev, device_num)
@@ -428,9 +460,11 @@ def run(test, params, env):
         """
         filtered_rng_dev = [x for x in rng_dev if x not in ignored_devices]
         if len(filtered_rng_dev) != device_num:
-            test.fail("Number of rng devices defined and available does not match.\n"
-                      "Rng devices: %s\n"
-                      "Number of devices: %i" % (rng_dev, device_num))
+            test.fail(
+                "Number of rng devices defined and available does not match.\n"
+                "Rng devices: %s\n"
+                "Number of devices: %i" % (rng_dev, device_num)
+            )
 
     def get_rng_device(guest_arch, rng_model):
         """
@@ -451,7 +485,7 @@ def run(test, params, env):
         :param snap_info: result get from vm snapshot info
         """
         snap_state = "running" if snapshot_vm_running else "shutoff"
-        if snap_info["State"] != snap_state or snap_info['Location'] != "external":
+        if snap_info["State"] != snap_state or snap_info["Location"] != "external":
             test.fail("Snapshot info about State or Location checking failed!")
 
     def rotate_audit_log():
@@ -461,7 +495,201 @@ def run(test, params, env):
         """
         process.run("systemctl kill --signal SIGUSR1 auditd")
 
-    start_error = "yes" == params.get("start_error", "no")
+    def handle_egd_connect_mode():
+        """
+        Creates source for egd in connect mode, i.e. a server where the VM
+        connects to when started.
+
+        It ignores external hosts and instead runs everything locally.
+
+        After starting the fake egd in the background, wait a second to make
+        sure it's up when VM starts.
+
+        Feed entropy from /dev/urandom to avoid blocking.
+        """
+        connect_sources = [
+            eval(source)
+            for source in backend_source_list
+            if eval(source)["mode"] == "connect"
+        ]
+        if not connect_sources:
+            return
+        for source in connect_sources:
+
+            connect_port = source["service"]
+
+            if params.get("backend_type") == "tcp" and (
+                test_snapshot or (random_source and not test_guest_dump)
+            ):
+                cmd = f"cat /dev/urandom | nc -4 -l 127.0.0.1 {connect_port}"
+                job = utils_misc.AsyncJob(cmd)
+                background_jobs.append(job)
+
+            if params.get("backend_type") == "udp" and (
+                test_snapshot or (random_source and test_guest_dump)
+            ):
+                if not utils_package.package_install("socat"):
+                    test.error("Failed to install socat on host")
+                cmd = f"cat /dev/urandom | socat udp-listen:{connect_port},reuseaddr,fork -"
+                job = utils_misc.AsyncJob(cmd)
+                background_jobs.append(job)
+
+            time.sleep(1)
+
+        logging.info(f"{background_jobs}")
+        for job in background_jobs:
+            logging.info(f"fake egd: {job.get_stderr()} {job.get_stdout()}")
+
+    def handle_egd_bind_mode():
+        """
+        Provides entropy to the given port that's listening on the VM.
+        For test cases that use tcp bind mode only because we can't test
+        udp bind connect with external server.
+
+        Feed entropy from /dev/urandom to avoid blocking.
+        """
+        if not params.get("backend_type") == "tcp":
+            return
+
+        if not backend_source_list:
+            return
+
+        bind_sources = [
+            eval(source)
+            for source in backend_source_list
+            if eval(source)["mode"] == "bind"
+        ]
+
+        for source in bind_sources:
+            time.sleep(3)  # extra time for VM to start listening
+            connect_port = source["service"]
+            cmd = f"cat /dev/random | nc -4 localhost {connect_port}"
+            job = utils_misc.AsyncJob(cmd)
+            background_jobs.append(job)
+            logging.info(f"fake egd: {job.get_stderr()} {job.get_stdout()}")
+
+    def try_use_rngd():
+        """
+        Try to install rng-tools on host, it can speed up random rate
+        if installation failed, ignore the error and continue the test
+        """
+        if utils_package.package_install(["rng-tools"]):
+            rngd_conf = "/etc/sysconfig/rngd"
+            rngd_srv = "/usr/lib/systemd/system/rngd.service"
+            if os.path.exists(rngd_conf):
+                # For rhel6 host, add extra options
+                with open(rngd_conf, "w") as f_rng:
+                    f_rng.write('EXTRAOPTIONS="--rng-device /dev/urandom"')
+            elif os.path.exists(rngd_srv):
+                # For rhel7 host, modify start options
+                rngd_srv_conf = "/etc/systemd/system/rngd.service"
+                if not os.path.exists(rngd_srv_conf):
+                    shutil.copy(rngd_srv, rngd_srv_conf)
+                process.run(
+                    "sed -i -e 's#^ExecStart=.*#ExecStart=/sbin/rngd"
+                    " -f -r /dev/urandom -o /dev/random#' %s" % rngd_srv_conf,
+                    shell=True,
+                )
+                process.run("systemctl daemon-reload")
+        process.run("service rngd start")
+
+    def build_vm_xml():
+        """
+        Build the VM XML.
+
+        :return: rng_xml
+        """
+        rng_xml = None
+        if device_num > 1:
+            for i in xrange(device_num):
+                rng_model = params.get("rng_model_%s" % i, "virtio")
+                dparams[i] = {"rng_model": rng_model}
+                dparams[i].update(
+                    {"backend_model": params.get("backend_model_%s" % i, "random")}
+                )
+                dparams[i].update({"rng_device": get_rng_device(guest_arch, rng_model)})
+                bk_type = params.get("backend_type_%s" % i)
+                if bk_type:
+                    dparams[i].update({"backend_type": bk_type})
+                bk_dev = params.get("backend_dev_%s" % i)
+                if bk_dev:
+                    dparams[i].update({"backend_dev": bk_dev})
+                bk_src = params.get("backend_source_%s" % i)
+                if bk_src:
+                    dparams[i].update({"backend_source": bk_src})
+                bk_pro = params.get("backend_protocol_%s" % i)
+                if bk_pro:
+                    dparams[i].update({"backend_protocol": bk_pro})
+                rng_xml = get_rng_xml(dparams[i])
+                modify_rng_xml(rng_xml, "edit")
+        else:
+            params.update(
+                {
+                    "rng_device": get_rng_device(
+                        guest_arch, params.get("rng_model", "virtio")
+                    )
+                }
+            )
+
+            if urandom or detach_alias:
+                device_alias = "ua-" + str(uuid.uuid4())
+                params.update({"rng_alias": device_alias})
+
+            rng_xml = get_rng_xml(params)
+            if not attach_rng:
+                sync_or_edit = "edit" if test_snapshot else "sync"
+                modify_rng_xml(rng_xml, sync_or_edit)
+        return rng_xml
+
+    def handle_first_snapshot():
+        """
+        test_snapshot will take two snapshots:
+        s1: without rng
+        s2: with rng
+        """
+        if test_snapshot:
+            snapshot_name = "s1"
+            if snapshot_vm_running:
+                vm.start()
+                vm.wait_for_login().close()
+            snap_options = params.get("snap_options")
+            if "--memspec" in snap_options:
+                snap_options += mem_files[0]
+            ret = virsh.snapshot_create_as(
+                vm_name, options=snap_options % snapshot_name, debug=True
+            )
+            libvirt.check_exit_status(ret)
+            snap_info = virsh.snapshot_info(vm_name, snapshot_name, debug=True)
+            check_snap_info(snap_info)
+
+    def handle_hotplug():
+        """
+        Hotplugs device if requested
+        """
+        if attach_rng:
+            ret = virsh.attach_device(
+                vm_name,
+                rng_xml.xml,
+                flagstr=attach_options,
+                wait_remove_event=True,
+                debug=True,
+                ignore_status=True,
+            )
+            libvirt.check_exit_status(ret, status_error)
+            if status_error:
+                return "pass_test_on_error"
+            if not check_rng_xml(rng_xml, True):
+                test.fail("Can not find rng device in xml")
+        return ""
+
+    def remove_all_rng_devices():
+        """
+        Make sure no extra rng devices interfere.
+        """
+        vmxml.remove_all_device_by_type("rng")
+        vmxml.sync()
+        logging.debug("Prepared vm xml without rng dev is %s", vmxml)
+
     expected_create_error = params.get("expected_create_error", "")
     status_error = "yes" == params.get("status_error", "no")
 
@@ -475,9 +703,7 @@ def run(test, params, env):
     test_guest_rng_file = "yes" == params.get("test_guest_rng_file", "no")
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
     test_snapshot = "yes" == params.get("test_snapshot", "no")
-    snapshot_vm_running = "yes" == params.get("snapshot_vm_running",
-                                              "no")
-    snapshot_name = params.get("snapshot_name")
+    snapshot_vm_running = "yes" == params.get("snapshot_vm_running", "no")
     device_num = int(params.get("device_num", 1))
     ignored_devices = params.get("ignored_devices", "").split(",")
     detach_alias = "yes" == params.get("rng_detach_alias", "no")
@@ -491,152 +717,53 @@ def run(test, params, env):
     driver_packed = params.get("driver_packed", "on")
     urandom = "yes" == params.get("urandom", "no")
     dd_throughput = params.get("dd_throughput")
+    backend_source_list = params.get("backend_source", "").split()
 
-    if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(6, 2, 0):
+    if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(
+        6, 2, 0
+    ):
         test.cancel("Builtin backend is not supported on this libvirt version")
 
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
-        test.cancel("Multiple virtio-rng devices not "
-                    "supported on this libvirt version")
+        test.cancel("Multiple virtio-rng devices not supported on this libvirt version")
 
     if with_packed and not libvirt_version.version_compare(6, 3, 0):
-        test.cancel("The virtio packed attribute is not supported in"
-                    " current libvirt version.")
+        test.cancel(
+            "The virtio packed attribute is not supported in"
+            " current libvirt version."
+        )
 
     guest_arch = params.get("vm_arch_name", "x86_64")
 
-    # Back up xml file.
-    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml_backup = vmxml.copy()
 
-    # Try to install rng-tools on host, it can speed up random rate
-    # if installation failed, ignore the error and continue the test
-    if utils_package.package_install(["rng-tools"]):
-        rngd_conf = "/etc/sysconfig/rngd"
-        rngd_srv = "/usr/lib/systemd/system/rngd.service"
-        if os.path.exists(rngd_conf):
-            # For rhel6 host, add extra options
-            with open(rngd_conf, 'w') as f_rng:
-                f_rng.write('EXTRAOPTIONS="--rng-device /dev/urandom"')
-        elif os.path.exists(rngd_srv):
-            # For rhel7 host, modify start options
-            rngd_srv_conf = "/etc/systemd/system/rngd.service"
-            if not os.path.exists(rngd_srv_conf):
-                shutil.copy(rngd_srv, rngd_srv_conf)
-            process.run("sed -i -e 's#^ExecStart=.*#ExecStart=/sbin/rngd"
-                        " -f -r /dev/urandom -o /dev/random#' %s"
-                        % rngd_srv_conf, shell=True)
-            process.run('systemctl daemon-reload')
-        process.run("service rngd start")
+    try_use_rngd()
 
-    # Build the xml and run test.
     try:
-        bgjob = None
-        bgjob2 = None
-
         if test_audit:
             rotate_audit_log()
 
-        # Prepare xml, make sure no extra rng dev.
-        vmxml = vmxml_backup.copy()
-        vmxml.remove_all_device_by_type('rng')
-        vmxml.sync()
-        logging.debug("Prepared vm xml without rng dev is %s", vmxml)
-
-        # Take snapshot if needed
-        if snapshot_name:
-            if snapshot_vm_running:
-                vm.start()
-                vm.wait_for_login().close()
-            if "--memspec" in snap_options:
-                snap_options += mem_files[0]
-            ret = virsh.snapshot_create_as(
-                vm_name, options=snap_options % snapshot_name, debug=True)
-            libvirt.check_exit_status(ret)
-            snap_info = virsh.snapshot_info(vm_name, snapshot_name, debug=True)
-            check_snap_info(snap_info)
-
-        # Destroy VM first
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
+        remove_all_rng_devices()
+        handle_first_snapshot()
 
         try:
-            # Build vm xml.
             dparams = {}
-            if device_num > 1:
-                for i in xrange(device_num):
-                    rng_model = params.get("rng_model_%s" % i, "virtio")
-                    dparams[i] = {"rng_model": rng_model}
-                    dparams[i].update({"backend_model": params.get(
-                        "backend_model_%s" % i, "random")})
-                    dparams[i].update({"rng_device": get_rng_device(
-                        guest_arch, rng_model)})
-                    bk_type = params.get("backend_type_%s" % i)
-                    if bk_type:
-                        dparams[i].update({"backend_type": bk_type})
-                    bk_dev = params.get("backend_dev_%s" % i)
-                    if bk_dev:
-                        dparams[i].update({"backend_dev": bk_dev})
-                    bk_src = params.get("backend_source_%s" % i)
-                    if bk_src:
-                        dparams[i].update({"backend_source": bk_src})
-                    bk_pro = params.get("backend_protocol_%s" % i)
-                    if bk_pro:
-                        dparams[i].update({"backend_protocol": bk_pro})
-                    modify_rng_xml(dparams[i], False)
-            else:
-                params.update({"rng_device": get_rng_device(
-                    guest_arch, params.get("rng_model", "virtio"))})
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
 
-                if detach_alias:
-                    device_alias = "ua-" + str(uuid.uuid4())
-                    params.update({"rng_alias": device_alias})
+            rng_xml = build_vm_xml()
 
-                rng_xml = modify_rng_xml(params, not test_snapshot, attach_rng)
-
-                if urandom:
-                    device_alias = "ua-" + str(uuid.uuid4())
-                    params.update({"rng_alias": device_alias})
-                    rng_xml = modify_rng_xml(params, False, True)
-                    vmxml.add_device(rng_xml)
-                    vmxml.sync()
-
-            # Add tcp random server
-            if random_source and params.get("backend_type") == "tcp" and not test_guest_dump:
-                cmd = "cat /dev/random | nc -4 -l localhost 1024"
-                bgjob = utils_misc.AsyncJob(cmd)
-
-            if all([random_source, params.get("backend_type") == "udp", test_guest_dump]):
-                if not utils_package.package_install("socat"):
-                    test.error("Failed to install socat on host")
-                cmd1 = "cat /dev/urandom|nc -l 127.0.0.1 1235"
-                bgjob = utils_misc.AsyncJob(cmd1)
-                cmd2 = "socat udp-listen:1234,reuseaddr,fork tcp:127.0.0.1:1235"
-                bgjob2 = utils_misc.AsyncJob(cmd2)
+            handle_egd_connect_mode()
 
             vm.start()
-            # Wait guest to enter boot stage
-            time.sleep(3)
             virsh.dumpxml(vm_name, "--xpath //rng", debug=True)
+            time.sleep(3)  # Wait guest to enter boot stage
 
-            if attach_rng:
-                ret = virsh.attach_device(vm_name, rng_xml.xml,
-                                          flagstr=attach_options,
-                                          wait_remove_event=True,
-                                          debug=True, ignore_status=True)
-                libvirt.check_exit_status(ret, status_error)
-                if status_error:
-                    return
-                if not check_rng_xml(rng_xml, True):
-                    test.fail("Can not find rng device in xml")
-            else:
-                # Start the VM.
-                if start_error:
-                    test.fail("VM started unexpectedly")
+            if "pass_test_on_error" == handle_hotplug():
+                return
 
-            # Feed the tcp random device some data
-            if test_guest_dump and params.get("backend_type") == "tcp":
-                cmd = "cat /dev/random | nc -4 localhost 1024"
-                bgjob = utils_misc.AsyncJob(cmd)
+            handle_egd_bind_mode()
 
             if test_qemu_cmd and not attach_rng:
                 if device_num > 1:
@@ -647,22 +774,22 @@ def run(test, params, env):
             if test_host:
                 check_host()
             if test_audit:
-                libvirt.check_logfile(expected_audit_message,
-                                      audit_log_file)
+                libvirt.check_logfile(expected_audit_message, audit_log_file)
             session = vm.wait_for_login()
             if test_guest:
                 check_guest(session, set_virtio_current=set_virtio_current)
             if test_guest_dump:
                 check_guest_dump(session, True)
             if test_snapshot:
-                check_snapshot(bgjob)
+                check_snapshot()
 
             if urandom:
                 check_rng_xml(rng_xml, True)
 
             if detach_alias:
-                result = virsh.detach_device_alias(vm_name, device_alias,
-                                                   detach_alias_options, debug=True)
+                result = virsh.detach_device_alias(
+                    vm_name, params.get("rng_alias"), detach_alias_options, debug=True
+                )
                 if "--config" in detach_alias_options:
                     vm.destroy()
 
@@ -680,11 +807,17 @@ def run(test, params, env):
 
             # Detach after attach
             if attach_rng:
-                ret = virsh.detach_device(vm_name, rng_xml.xml,
-                                          flagstr=attach_options,
-                                          debug=True, ignore_status=True)
+                ret = virsh.detach_device(
+                    vm_name,
+                    rng_xml.xml,
+                    flagstr=attach_options,
+                    debug=True,
+                    ignore_status=True,
+                )
                 libvirt.check_exit_status(ret, status_error)
-                if utils_misc.wait_for(lambda: check_rng_xml(rng_xml, False), wait_timeout):
+                if utils_misc.wait_for(
+                    lambda: check_rng_xml(rng_xml, False), wait_timeout
+                ):
                     logging.info("Find same rng xml as hotpluged")
                 else:
                     test.fail("Rng device still exists after detach!")
@@ -697,17 +830,11 @@ def run(test, params, env):
             session.close()
         except virt_vm.VMStartError as details:
             logging.info(str(details))
-            if not start_error:
-                test.fail('VM failed to start, '
-                          'please refer to https://bugzilla.'
-                          'redhat.com/show_bug.cgi?id=1220252:'
-                          '\n%s' % details)
         except xcepts.LibvirtXMLError as details:
             logging.info(str(details))
             details = str(details).replace("\n", "")
             if not re.match(expected_create_error, details):
-                test.fail("Didn't match expected error:"
-                          " %s" % expected_create_error)
+                test.fail("Didn't match expected error: %s" % expected_create_error)
     finally:
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name, debug=True)
@@ -724,7 +851,5 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
         vmxml_backup.sync()
-        if bgjob2:
-            bgjob2.kill_func()
-        if bgjob:
-            bgjob.kill_func()
+        for job in background_jobs:
+            job.kill_func()
