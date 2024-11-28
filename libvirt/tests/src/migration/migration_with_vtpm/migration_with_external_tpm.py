@@ -197,6 +197,9 @@ def run(test, params, env):
 
         """
         tpm_security_contexts = params.get("tpm_security_contexts")
+        migrate_vm_back = "yes" == params.get("migrate_vm_back", "yes")
+        if not migrate_vm_back:
+            return
 
         check_vtpm_func(params, vm, test)
         vm.shutdown()
