@@ -88,6 +88,7 @@ def run(test, params, env):
             report_num_q35_7_8 = params.get('report_num_q35_7_8', '')
             report_num_q35_8_3 = params.get('report_num_q35_8_3', '')
             report_num_q35_8_4 = params.get('report_num_q35_8_4', '')
+            report_num_q35_9_6 = params.get('report_num_q35_9_6', '')
             logging.info('Check the output of virsh capabilities')
             xmltreefile = capability_xml.CapabilityXML().xmltreefile
             machtype_vcpunum_dict = {}
@@ -108,25 +109,22 @@ def run(test, params, env):
                                   .format(report_num_pc_7,
                                           machtype_vcpunum_dict[key]))
                 if key.startswith('pc-q35') or key == 'q35':
+                    exp_val = report_num_q35_7_8
                     if key == "pc-q35-rhel7.3.0":
-                        if machtype_vcpunum_dict[key] != report_num_q35_73:
-                            test.fail('Test failed as q35_rhel73_max_vcpus_num '
-                                      'in virsh_capa is wrong. Expected: {} '
-                                      'Actual: {}.'
-                                      .format(report_num_q35_73,
-                                              machtype_vcpunum_dict[key]))
+                        exp_val = report_num_q35_73
+                    elif key == "pc-q35-rhel9.6.0" or key == 'q35':
+                        exp_val = report_num_q35_9_6
                     else:
-                        exp_val = report_num_q35_7_8
                         if libvirt_version.version_compare(7, 0, 0):
                             exp_val = report_num_q35_8_4
                         elif libvirt_version.version_compare(6, 6, 0):
                             exp_val = report_num_q35_8_3
-                        if machtype_vcpunum_dict[key] != exp_val:
-                            test.fail('Test failed as the q35_max_vcpus_num in '
-                                      'virsh_capa is wrong. Expected: {} '
-                                      'Actual: {}.'
-                                      .format(exp_val,
-                                              machtype_vcpunum_dict[key]))
+                    if machtype_vcpunum_dict[key] != exp_val:
+                        test.fail('Test failed as the q35_max_vcpus_num for'
+                                  ' machine type:{} in virsh_capa is wrong.'
+                                  ' Expected: {}, Actual: {}.'
+                                  .format(key, exp_val,
+                                          machtype_vcpunum_dict[key]))
 
         # Test i440fx VM starts with 240(positive)/241(negative) vcpus and hot-plugs vcpus to 240
         if check.startswith('i440fx_test'):
