@@ -191,7 +191,7 @@ def run(test, params, env):
     """
 
     if not libvirt_version.version_compare(3, 3, 0):
-        test.skip("Coalesce setting is only supported by libvirt3.3.0 and above")
+        test.cancel("Coalesce setting is only supported by libvirt3.3.0 and above")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
