@@ -5,6 +5,7 @@ import aexpect
 from virttest import remote
 from virttest import utils_net
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
@@ -76,6 +77,7 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs'))
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
+    backend = params.get('backend')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
         iface_name=True, force_dhcp=True, json=True).split()[0]
 
@@ -94,8 +96,12 @@ def run(test, params, env):
         mac = vm_xml.VMXML.get_first_mac_by_name(vm_name, virsh_ins)
         vmxml.del_device('interface', by_tag=True)
         vmxml.sync(virsh_instance=virsh_ins)
+        if backend:
+            libvirt_version.is_libvirt_feature_supported(params)
+            iface_attrs['backend'] = eval(backend)
         iface = libvirt_vmxml.create_vm_device_by_type(
             'interface', {**iface_attrs, **({'mac_address': mac} if mac else {})})
+        LOG.debug('iface xml to be tested is: %s', iface)
         vmxml.add_device(iface)
         define_result = virsh.define(vmxml.xml, debug=True, uri=virsh_uri)
         libvirt.check_exit_status(define_result, expect_error)
