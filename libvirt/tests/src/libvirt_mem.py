@@ -239,12 +239,13 @@ def run(test, params, env):
             xml_max_mem_rt = int(dom_xml.max_mem_rt)
             xml_max_mem = int(dom_xml.max_mem)
             xml_cur_mem = int(dom_xml.current_mem)
-            if 'ppc64' in arch:
+            if is_ppc64:
                 # for arch ppc64 and hugepages, the run time max memory grows and never shrinks.
                 # libvirt rounded max memory boundaries to align with memory block size (usually 64 MiB or 128 MiB)
                 assert int(max_mem_rt) <= xml_max_mem_rt
             else:
                 assert int(max_mem_rt) == xml_max_mem_rt
+
             # Check attached/detached memory
             logging.info("at_mem=%s,dt_mem=%s", at_mem, dt_mem)
             logging.info("detach_device is %s", detach_device)
@@ -392,14 +393,6 @@ def run(test, params, env):
                 pass
 
         if numa_cells:
-            cells = [ast.literal_eval(x) for x in numa_cells]
-            # Rounding the numa memory values
-            if align_mem_values:
-                for cell in range(cells.__len__()):
-                    memory_value = str(utils_numeric.align_value(
-                        cells[cell]["memory"],
-                        align_to_value))
-                    cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
             cpu_mode = params.get("cpu_mode", "host-model")
             cpu_xml.xml = "<cpu mode='%s'><numa/></cpu>" % cpu_mode
@@ -511,12 +504,14 @@ def run(test, params, env):
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     arch = platform.machine()
+    is_ppc64 = 'ppc64' in arch.lower()
+    is_ppc64le = arch.lower() == 'ppc64le'
 
     if not libvirt_version.version_compare(1, 2, 14):
         test.cancel("Memory hotplug not supported in current libvirt version.")
 
     if 'align_256m' in params.get('name', ''):
-        if arch.lower() != 'ppc64le':
+        if not is_ppc64le:
             test.cancel('This case is for ppc64le only.')
 
     if align_mem_values:
@@ -525,6 +520,23 @@ def run(test, params, env):
         max_mem_rt = utils_numeric.align_value(max_mem_rt, align_to_value)
         cur_mem = utils_numeric.align_value(cur_mem, align_to_value)
         tg_size = utils_numeric.align_value(tg_size, align_to_value)
+
+    # Prepare NUMA memory once, before defining the domain or checking its XML.
+    cells = [ast.literal_eval(x) for x in numa_cells]
+    if align_mem_values:
+        for cell in cells:
+            memory_value = int(cell["memory"])
+            if is_ppc64:
+                memory_value = max(memory_value, 1048576)  # 1 GiB in KiB
+            cell["memory"] = str(utils_numeric.align_value(
+                memory_value, align_to_value))
+
+    if is_ppc64 and cells:
+        # Libvirt rounds each PPC64 NUMA cell to 256 MiB before summing
+        # the initial memory. Keep the expectation independent of dumpxml.
+        max_mem = cur_mem = sum(
+            utils_numeric.align_value(cell["memory"], 262144)
+            for cell in cells)
 
     try:
         # Drop caches first for host has enough memory
