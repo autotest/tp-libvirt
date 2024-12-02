@@ -212,6 +212,11 @@ def run(test, params, env):
             xml_max_mem = int(dom_xml.max_mem)
             xml_cur_mem = int(dom_xml.current_mem)
             assert int(max_mem_rt) == xml_max_mem_rt
+            cpuxml = dom_xml.cpu
+            numa_cells = cpuxml.numa_cell
+
+            if is_ppc64le:
+                cur_mem = max_mem = sum(int(cell["memory"]) for cell in numa_cells)
 
             # Check attached/detached memory
             logging.info("at_mem=%s,dt_mem=%s", at_mem, dt_mem)
@@ -361,13 +366,16 @@ def run(test, params, env):
 
         if numa_cells:
             cells = [ast.literal_eval(x) for x in numa_cells]
+            min_memory_value = 1048576  # 1 GiB in KiB
             # Rounding the numa memory values
             if align_mem_values:
                 for cell in range(cells.__len__()):
-                    memory_value = str(utils_numeric.align_value(
-                        cells[cell]["memory"],
+                    memory_value = int(cells[cell]["memory"])
+                    if is_ppc64le:
+                        memory_value = max(memory_value, min_memory_value)
+                    cells[cell]["memory"] = str(utils_numeric.align_value(
+                        memory_value,
                         align_to_value))
-                    cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
             cpu_mode = params.get("cpu_mode", "host-model")
             cpu_xml.xml = "<cpu mode='%s'><numa/></cpu>" % cpu_mode
@@ -478,13 +486,13 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    is_ppc64le = 'ppc64le' in platform.machine().lower()
 
     if not libvirt_version.version_compare(1, 2, 14):
         test.cancel("Memory hotplug not supported in current libvirt version.")
 
     if 'align_256m' in params.get('name', ''):
-        arch = platform.machine()
-        if arch.lower() != 'ppc64le':
+        if not is_ppc64le:
             test.cancel('This case is for ppc64le only.')
 
     if align_mem_values:
