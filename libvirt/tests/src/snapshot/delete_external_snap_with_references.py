@@ -46,8 +46,9 @@ def run(test, params, env):
         Delete the parent snapshot with multiple children.
         """
         test.log.info("TEST_STEP:Delete the parent snapshot with multi-child.")
-        virsh.start(vm_name)
-        vm.wait_for_login().close()
+        if not vm.is_alive():
+            virsh.start(vm_name)
+            vm.wait_for_login().close()
         del_res = virsh.snapshot_delete(vm.name, snap_names[0], debug=True)
         libvirt.check_exit_status(del_res, error_msg)
 
