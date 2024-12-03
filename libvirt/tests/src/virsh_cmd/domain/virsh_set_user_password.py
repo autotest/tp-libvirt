@@ -2,7 +2,6 @@ import logging as log
 
 from avocado.utils import process
 
-from virttest import utils_net
 from virttest import remote
 from virttest import virsh
 from virttest.utils_test import libvirt
@@ -60,8 +59,7 @@ def run(test, params, env):
         else:
             # Get guest ip address
             session = vm.wait_for_login(timeout=30, username="root", password=ori_passwd)
-            vm_mac = vm.get_virsh_mac_address()
-            vm_ip = utils_net.get_guest_ip_addr(session, vm_mac)
+            vm_ip = vm.wait_for_get_address(nic_index=0, timeout=120)
 
             # Add user
             if add_user:
@@ -127,7 +125,11 @@ def run(test, params, env):
                                (set_user_name, output))
                 session.close()
     finally:
-        vmxml_bak.sync()
         # Recover VM
         if vm.is_alive():
+            # always restore root password in case previously case execution is broken
+            if status_error != "yes":
+                virsh.set_user_password(vm_name, set_user_name, ori_passwd, False,
+                                        option=option, debug=True)
             vm.destroy(gracefully=False)
+        vmxml_bak.sync()
