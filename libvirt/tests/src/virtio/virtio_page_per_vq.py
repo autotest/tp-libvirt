@@ -1,6 +1,8 @@
 import os
 import platform
 
+from avocado.utils import process
+
 from virttest import libvirt_version
 from virttest import utils_net
 from virttest import virsh
@@ -15,6 +17,24 @@ from virttest.libvirt_xml.devices.memballoon import Memballoon  # pylint: disabl
 from virttest.libvirt_xml.devices.rng import Rng  # pylint: disable=W0611
 from virttest.libvirt_xml.devices.video import Video  # pylint: disable=W0611
 from virttest.utils_test import libvirt
+
+
+def get_input_event_file(test):
+    """
+    Get the input event file on the host
+
+    :return: str, the last file path if exists, otherwise skip the test
+    """
+    ret = process.run("ls /dev/input/event*",
+                      shell=True,
+                      verbose=True,
+                      ignore_status=True)
+    if ret.exit_status != 0:
+        if ret.stderr_text.count("No such file or directory"):
+            test.cancel(ret.stderr_text)
+        else:
+            test.fail(ret.stderr_text)
+    return ret.stdout_text.splitlines()[-1]
 
 
 def run(test, params, env):
@@ -56,6 +76,8 @@ def run(test, params, env):
             device_dict['source']['attrs']['file'] = disk_image_path
         if device_type == "input":
             device_xml = eval(device_obj)(input_type)
+            if input_type == "passthrough":
+                device_dict['source_evdev'] = get_input_event_file(test)
         else:
             device_xml = eval(device_obj)()
         device_xml.setup_attrs(**device_dict)
