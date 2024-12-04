@@ -54,7 +54,7 @@ EOF
         if count > 0:
             test.fail('nbdkit-stats-filter leaks %d fd' % count)
 
-    def test_has_run_againt_vddk7_0():
+    def test_has_run_againt_vddk():
         """
         check if nbdkit --run + vddk + esx7.0 works.
         """
@@ -89,12 +89,15 @@ EOF
         vddk_libdir_src = params_get(params, "vddk_libdir_src")
         with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
             utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
+                        shell=True, ignore_status=True)
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
             vddk_thumbprint = '11'
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
   --filter=cacheextents --filter=retry vddk server=%s user=%s password=+%s vm=%s \
-  file='%s' libdir=%s --run 'nbdinfo $uri' thumbprint=%s
-""" % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_libdir, vddk_thumbprint)
+  file='%s' libdir=/home/vddk_libdir --run 'nbdinfo $uri' thumbprint=%s
+""" % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_thumbprint)
             # get thumbprint by a trick
             cmd_result = process.run(
                 nbdkit_cmd, shell=True, ignore_status=True)
@@ -119,11 +122,10 @@ nbdkit -rfv -U - --exportname / \
                              ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
                 LOG.info('nbdkit command with scan, readahead and blocksize filters:\n%s' % nbdkit_cmd)
             if checkpoint == 'vddk_with_delay_close_open_option':
-                nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=40000ms delay-open=40000ms'
+                nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=400ms delay-open=400ms'
                 LOG.info('nbdkit command with delay-close and delay-open options:\n%s' % nbdkit_cmd)
             # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
-            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
             if checkpoint == 'vddk_stats':
                 if vddk_stats == 1 and not re.search(
                         r'VDDK function stats', output):
@@ -131,9 +133,9 @@ nbdkit -rfv -U - --exportname / \
                 if vddk_stats == 0 and re.search(
                         r'VDDK function stats', output):
                     test.fail('failed to test vddk_stats')
-            if checkpoint == 'has_run_againt_vddk7_0' and not re.search(
+            if checkpoint == 'has_run_againt_vddk' and not re.search(
                     r'export-size', output):
-                test.fail('failed to test has_run_againt_vddk7_0')
+                test.fail('failed to test has_run_againt_vddk')
             if checkpoint == 'backend_datapath_controlpath' and re.search(r'vddk: (open|pread)', output):
                 test.fail('fail to test nbdkit.backend.datapath and nbdkit.backend.controlpath option')
             if checkpoint == 'scan_readahead_blocksize' and re.search('error', output):
@@ -561,7 +563,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
 
     def cve_starttls():
         tmp_path = data_dir.get_tmp_dir()
-        process.run("yum install libtool 'dnf-command(download)' -y", shell=True, ignore_status=True)
+        process.run("yum install libtool rpm-build 'dnf-command(download)' -y", shell=True, ignore_status=True)
         process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
@@ -665,6 +667,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                             test.fail('fail to test evil filter')
 
     def test_tar_filter():
+        process.run('yum install nbdkit-tar-filter -y', shell=True, ignore_status=True)
         tmp_path = data_dir.get_tmp_dir()
         image_path = os.path.join(tmp_path, 'latest-rhel9.img')
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
@@ -695,9 +698,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
-    elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats', 'backend_datapath_controlpath',
+    elif checkpoint in ['has_run_againt_vddk', 'vddk_stats', 'backend_datapath_controlpath',
                         'scan_readahead_blocksize', 'vddk_with_delay_close_open_option']:
-        test_has_run_againt_vddk7_0()
+        test_has_run_againt_vddk()
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
     elif checkpoint == 'data_corruption':
