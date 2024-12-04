@@ -235,8 +235,7 @@ def run(test, params, env):
 
             def check_iface_exist():
                 try:
-                    session = vm.wait_for_serial_login(username=username,
-                                                       password=password)
+                    session = vm.wait_for_login(serial=True)
                     if utils_net.get_linux_ifname(session, iface['mac']):
                         return True
                     else:
@@ -291,8 +290,7 @@ def run(test, params, env):
             # Start the domain if needed
             if vm.is_dead():
                 vm.start()
-            session = vm.wait_for_serial_login(username=username,
-                                               password=password)
+            session = vm.wait_for_login(serial=True)
 
             # check if interface is attached
             for iface in iface_list:
