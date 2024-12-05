@@ -835,6 +835,7 @@ def run(test, params, env):
             LOG.info('Set service chronyd on')
             cmd = ['yum -y install chrony',
                    'systemctl start chronyd',
+                   'systemctl enable chronyd',
                    'chronyc add server %s' % ntp_server]
             vm_cmd(cmd)
         if checkpoint == 'sync_ntp':
