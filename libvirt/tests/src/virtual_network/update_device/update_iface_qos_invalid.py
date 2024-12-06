@@ -1,5 +1,6 @@
 import logging
 
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
@@ -16,6 +17,7 @@ def run(test, params, env):
     """
     Test live update interface bandwidth setting by update-device or domiftune
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     status_error = 'yes' == params.get('status_error', 'no')
