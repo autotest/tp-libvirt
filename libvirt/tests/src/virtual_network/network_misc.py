@@ -1,18 +1,17 @@
 import logging as log
 import re
 
-from avocado.utils.software_manager.backends import rpm
 from avocado.utils import process
 from avocado.utils import service
-
+from avocado.utils.software_manager.backends import rpm
 from virttest import libvirt_version
 from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
-
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
 from virttest.libvirt_xml.network_xml import NetworkXML
+from virttest.utils_libvirt import libvirt_network
 from virttest.utils_test import libvirt
 
 DEFAULT_NET = 'default'
@@ -44,9 +43,12 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     machine_type = params.get('machine_type')
     net = params.get('net', DEFAULT_NET)
+    ran_id = utils_misc.generate_random_string(3)
+    net_name = 'net_' + ran_id
+    net_attrs = eval(params.get('net_attrs', '{}'))
     status_error = 'yes' == params.get('status_error', 'no')
     expect_str = params.get('expect_str')
-    bridge_name = 'br_' + utils_misc.generate_random_string(3)
+    bridge_name = 'br_' + ran_id
 
     test_group = params.get('test_group', 'default')
     case = params.get('case', '')
@@ -86,17 +88,29 @@ def run(test, params, env):
 
         setup_firewalld()
 
-        # Setup zone for bridge
-        netxml = NetworkXML.new_from_net_dumpxml(net)
-        if case == 'public':
-            netxml.bridge = {'name': bridge_name, 'zone': 'public'}
-        elif case == 'info':
-            netxml.bridge = {'name': bridge_name}
-        else:
-            test.error('Test "%s" is not supported.' % case)
-        netxml.forward = {'mode': 'nat'}
-        netxml.sync()
-        logging.debug('Updated net:\n%s', virsh.net_dumpxml(net).stdout_text)
+        def setup_test_zone_default():
+            # Setup zone for bridge
+            netxml = NetworkXML.new_from_net_dumpxml(net)
+            if case == 'info':
+                netxml.bridge = {'name': bridge_name}
+            else:
+                test.error('Test "%s" is not supported.' % case)
+            netxml.forward = {'mode': 'nat'}
+            netxml.sync()
+            logging.debug('Updated net:\n%s',
+                          virsh.net_dumpxml(net).stdout_text)
+
+        def setup_test_zone_libvirt_managed():
+            if params.get('forward_mode') == 'isolated':
+                net_attrs.pop('forward')
+            libvirt_network.create_or_del_network(net_attrs)
+
+        def setup_test_zone_public():
+            libvirt_network.create_or_del_network(net_attrs)
+
+        setup_zone = eval('setup_test_zone_%s' % case) if \
+            'setup_test_zone_%s' % case in locals() else setup_test_zone_default
+        setup_zone()
 
     def run_test_zone(case):
         """
@@ -104,30 +118,75 @@ def run(test, params, env):
 
         :param case: test case
         """
-
-        def run_test_zone_public():
+        def check_zone(iface, expect_zone):
             """
-            Check zone of interface with firewalld-cmd
+            Check whether zone info meets expectation
             """
-            check_cmd = 'firewall-cmd --get-zone-of-interface=%s' % bridge_name
-            output = process.run(check_cmd, verbose=True).stdout_text.strip()
-            if output == 'public':
+            check_cmd = 'firewall-cmd --get-zone-of-interface=%s' % iface
+            cmd_result = process.run(check_cmd, ignore_status=True)
+            output = cmd_result.stdout_text.strip() + cmd_result.stderr_text.strip()
+            if output == expect_zone:
                 logging.info('Zone check of interface PASSED')
+                return output
             else:
-                test.fail('Zone check of interface FAILED, should be public, but got %s' % output)
+                test.fail(
+                    f'Zone check of interface FAILED, should be {expect_zone}, but got %s' % output)
 
-        def run_test_zone_info():
+        def check_zone_info(br, zone):
             """
             Check zone info with firewalld-cmd
             """
-            check_cmd = 'firewall-cmd --info-zone=libvirt'
+            check_cmd = f'firewall-cmd --info-zone={zone}'
             output = process.run(check_cmd, verbose=True).stdout_text.strip()
-            br = bridge_name
             for item in eval(expect_str):
                 if item in output or re.search(item, output):
                     logging.debug('Found "%s" in firewalld-cmd output' % item)
                 else:
                     test.fail('Not found "%s" in firewalld-cmd output' % item)
+
+        def run_test_zone_public():
+            """
+            Check zone of interface with firewalld-cmd
+            """
+            net_attrs = NetworkXML.new_from_net_dumpxml(net_name).fetch_attrs()
+            net_br_attrs = net_attrs['bridge']
+            if net_attrs['bridge']['zone'] != 'public':
+                test.fail(f"Network {net_name} zone should be 'public',"
+                          f"not {net_attrs['bridge']['zone']}")
+
+            check_zone(net_br_attrs['name'], 'public')
+            process.run('firewall-cmd --reload')
+            utils_misc.wait_for(
+                lambda: check_zone(net_br_attrs['name'], 'public'),
+                timeout=10, ignore_errors=True)
+
+        def run_test_zone_info():
+            """
+            Check zone info with firewalld-cmd
+            """
+            check_zone_info(bridge_name, 'libvirt')
+
+        def run_test_zone_libvirt_managed():
+            br_attrs = eval(params.get('br_attrs', {}))
+            default_zone = params.get('default_zone')
+
+            virsh.net_dumpxml(net_name, **VIRSH_ARGS)
+            net_attrs = NetworkXML.new_from_net_dumpxml(net_name).fetch_attrs()
+            net_br_attrs = net_attrs['bridge']
+            if not set(br_attrs.items()).issubset(set(net_br_attrs.items())):
+                test.fail(
+                    f'libvirt should create a linux bridge named '
+                    f'{net_br_attrs["name"]}, with stp=on, delay=0')
+
+            check_zone(net_br_attrs['name'], default_zone)
+            if default_zone in ('no zone', 'libvirt-routed'):
+                logging.info(f'Skip checking zone info for "{default_zone}"')
+            else:
+                check_zone_info(net_br_attrs['name'], default_zone)
+            process.run('firewall-cmd --reload')
+            utils_misc.wait_for(
+                lambda: check_zone(net_br_attrs['name'], default_zone),
+                timeout=10, ignore_errors=True)
 
         test_zone = eval('run_test_zone_%s' % case)
         test_zone()
@@ -235,4 +294,6 @@ def run(test, params, env):
 
     finally:
         bk_netxml.sync()
+        if net_attrs:
+            libvirt_network.create_or_del_network(net_attrs, is_del=True)
         bk_xml.sync()
