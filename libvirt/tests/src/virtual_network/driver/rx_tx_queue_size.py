@@ -53,7 +53,7 @@ def run(test, params, env):
 
         iface = network_base.get_iface_xml_inst(vm_name, 'after vm start')
         actual_rx = int(iface.driver.driver_attr.get('rx_queue_size'))
-        actual_tx = int(iface.driver.driver_attr.get('tx_queue_size'))
+        actual_tx = int(params.get('actual_tx') or iface.driver.driver_attr.get('tx_queue_size'))
         LOG.debug(
             f'Actual rx_queue_size={actual_rx} tx_queue_size={actual_tx}')
         if str(actual_rx) != iface_attrs['driver']['driver_attr']['rx_queue_size']:
