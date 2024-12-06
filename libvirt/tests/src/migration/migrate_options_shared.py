@@ -181,18 +181,6 @@ def run(test, params, env):
         logging.debug("Delete remote libvirt log file '%s'", log_file)
         remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
-    def run_stress_in_vm():
-        """
-        The function to load stress in VM
-        """
-        stress_args = params.get("stress_args", "--cpu 8 --io 4 "
-                                 "--vm 2 --vm-bytes 128M "
-                                 "--timeout 20s")
-        try:
-            vm_session.cmd('stress %s' % stress_args)
-        except Exception as detail:
-            logging.debug(detail)
-
     def control_migrate_speed(to_speed=1, opts=""):
         """
         Control migration duration
@@ -742,6 +730,23 @@ def run(test, params, env):
                       "be 'running', but '%s' found" % (timeout, vm_state))
         remote_virsh_session.close_session()
 
+    def help_migration_converge():
+        """
+        This function will allow for more downtime and bandwidth
+        in order to help the migration converge.
+
+        This is useful in cases like auto-converge check where we
+        usually lower these values a lot so we can cause the
+        auto-converge feature to kick in.
+        """
+        one_second = 1000
+        virsh.migrate_setmaxdowntime(vm_name, one_second, **virsh_args)
+        maxspeed = 8796093022207
+        opts = ""
+        if postcopy_options:
+            opts = postcopy_options
+        virsh.migrate_setspeed(vm_name, maxspeed, extra=opts, **virsh_args)
+
     def check_converge(params):
         """
         Handle option '--auto-converge --auto-converge-initial
@@ -765,6 +770,7 @@ def run(test, params, env):
                       "is %s", allow_throttle_list)
 
         throttle = 0
+        old_throttle = 0
         jobtype = "None"
 
         while throttle < 100:
@@ -788,8 +794,12 @@ def run(test, params, env):
                 if key.count("Job type"):
                     jobtype = line.split(':')[-1].strip()
                 elif key.count("Auto converge throttle"):
+                    if throttle > 0:
+                        old_throttle = throttle
                     throttle = int(line.split(':')[-1].strip())
                     logging.debug("Auto converge throttle:%s", str(throttle))
+                    if old_throttle > 0 and throttle > old_throttle:
+                        help_migration_converge()
             if throttle and throttle not in allow_throttle_list:
                 test.fail("Invalid auto converge throttle "
                           "value '%s'" % throttle)
@@ -797,6 +807,7 @@ def run(test, params, env):
                 logging.debug("'Auto converge throttle' reaches maximum "
                               "allowed value 99")
                 break
+
             if jobtype == "None" or jobtype == "Completed":
                 logging.debug("Jobtype:%s", jobtype)
                 if not throttle:
