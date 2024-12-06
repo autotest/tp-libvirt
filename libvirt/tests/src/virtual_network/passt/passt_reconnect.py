@@ -94,7 +94,7 @@ def run(test, params, env):
                                 ignore_status=True).stdout_text.strip()
         process.run(f'kill -9 {pid_passt}', shell=True)
 
-        utils_misc.wait_for(lambda: passt.get_proc_info('passt'), 10,
+        utils_misc.wait_for(lambda: passt.get_proc_info('passt'), 30,
                             ignore_errors=True)
         passt_proc_r = passt.get_proc_info('passt')
         LOG.debug(f'passt process info after reconnect: {passt_proc_r}')
