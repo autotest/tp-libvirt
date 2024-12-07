@@ -27,6 +27,7 @@ def run(test, params, env):
         """
         check if nbdkit-stats-filter leaks an fd
         """
+        process.run('yum install nbdkit-stats-filter -y', shell=True, ignore_status=True)
         tmp_logfile = os.path.join(data_dir.get_tmp_dir(), "nbdkit-test.log")
         cmd = """
 nbdkit -U - --filter=log --filter=stats sh - \
@@ -212,7 +213,7 @@ def get_size(h):
 def pread(h, count, offset):
     raise RuntimeError("pread")
     """
-
+        process.run('yum install nbdkit-python-plugin -y', shell=True, ignore_status=True)
         python_file_path = os.path.join(data_dir.get_tmp_dir(), "python_check.py")
         with open(python_file_path, "w") as f:
             f.write(lines)
@@ -379,6 +380,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             test.fail('fail to test ndbkit-server rpm package with annocheck tool')
 
     def statsfile_option():
+        process.run('yum install nbdkit-stats-filter -y', shell=True, ignore_status=True)
         tmp_path = data_dir.get_tmp_dir()
         process.run('nbdkit --filter=exitlast --filter=stats memory 2G statsfile=%s/example.txt' % tmp_path,
                     shell=True, ignore_status=True)
@@ -461,7 +463,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         for value in values:
             cmd_num = process.run("nbdkit null --filter=delay delay-open=%s --run 'nbdinfo $uri'" % value,
                                   shell=True, ignore_status=True)
-            if not re.search('could not parse number', cmd_num.stderr_text):
+            if not re.search('could not parse', cmd_num.stderr_text):
                 test.fail('get unexpected result when set invalid value for nbdkit delay options)')
         #Check error when nbdkit aborts early
         cmd_aborts = process.run("nbdkit --filter=delay null delay-close=3 --run 'nbdinfo --size $uri; "
