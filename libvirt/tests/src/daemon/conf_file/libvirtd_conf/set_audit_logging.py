@@ -92,10 +92,9 @@ def run(test, params, env):
         ausearch_type_list = params.get("ausearch_type_list").split()
         for type_item in ausearch_type_list:
             cmd = "ausearch -m %s -ts recent" % type_item
-            type_message = "type=%s msg=audit" % type_item
-            cmd_result = process.run(cmd, shell=True).stdout_text.strip()
-            if type_message not in cmd_result:
-                test.fail("Check ausearch type:%s log failed in output:%s" % (type_item, cmd_result))
+            status = process.run(cmd, shell=True, ignore_status=False, verbose=True).exit_status
+            if status:
+                test.fail("Check ausearch type:%s log failed in output:%s" % (type_item, status))
 
     def check_concurrent_filters():
         """
