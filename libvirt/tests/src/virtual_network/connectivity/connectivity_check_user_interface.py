@@ -77,7 +77,7 @@ def run(test, params, env):
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True).split()[0]
 
     ipv4_addr = params.get('ipv4_addr')
     ipv4_prefix = params.get('ipv4_prefix')
@@ -123,7 +123,7 @@ def run(test, params, env):
             check_val(ipv6_prefix, str(vm_ipv6_pfx), 'vm ipv6 prefix', test)
 
         default_gw_v4 = utils_net.get_default_gateway(
-            session=session, ip_ver='ipv4', force_dhcp=True)
+            session=session, ip_ver='ipv4', force_dhcp=True, json=True)
         LOG.debug(f'vm default gateway ipv4: {default_gw_v4}')
         check_val(ipv4_default_gw, default_gw_v4, 'default ipv4 gateway', test)
         vm_nameserver = utils_net.get_guest_nameserver(session)
