@@ -68,7 +68,9 @@ def check_file_exist(test, vm, params, revert_snap):
 
     if not vm.is_alive():
         virsh.start(vm_name)
-    session = vm.wait_for_login()
+    vm.cleanup_serial_console()
+    vm.create_serial_console()
+    session = vm.wait_for_serial_login()
 
     if revert_snap == "1":
         file_list = eval(params.get("file_list"))[0:1]
@@ -186,8 +188,8 @@ def run(test, params, env):
             hotplug disk/hotplug vcpus/blkiotune
         """
         test.log.info("TEST_STEP1:Prepare a running guest and create file.")
-        virsh.start(vm_name)
-        session = vm.wait_for_login()
+        vm.start()
+        session = vm.wait_for_serial_login()
         create_file(vm, file_list[0], session)
 
         test.log.info("TEST_STEP2: Create snapshot.")
