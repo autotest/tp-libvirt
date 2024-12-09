@@ -75,13 +75,18 @@ def run(test, params, env):
     # MAIN TEST CODE ###
     # Process cartesian parameters
     vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
-    vm.wait_for_login()
-
     restore_state = params.get("restore_state", "")
     vm_save = params.get("vm_save", "vm.save")
 
     vm_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml = vm_backup.copy()
+    vmxml.remove_all_boots()
+    dict_os_attrs = {"boots": ["hd"]}
+    vmxml.set_os_attrs(**dict_os_attrs)
+    vmxml.sync()
+    vm = env.get_vm(vm_name)
+    vm.start()
+    vm.wait_for_login()
 
     try:
         # Get a tmp_dir.
