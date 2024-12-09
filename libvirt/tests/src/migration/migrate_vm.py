@@ -507,6 +507,8 @@ def get_same_processor(test, server_ip, server_user, server_pwd, verbose):
     if status:
         test.fail("Failed to run '%s' on the remote: %s" % (cmd, output))
     remote_processors = re.findall(r'processor\s+: (\d+)', output)
+    if not remote_processors:
+        remote_processors = re.findall(r'processor\s+(\d+):', output)
     if verbose:
         logging.debug("Local processors: %s", local_processors)
         logging.debug("Remote processors: %s", remote_processors)
