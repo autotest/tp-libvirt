@@ -1,4 +1,5 @@
 import logging
+import platform
 
 from avocado.core import exceptions
 from avocado.utils import distro
@@ -38,7 +39,7 @@ def get_vm(params):
     LOG.debug(f"VMS: {os_type_dict}")
     if not firmware_type:
         LOG.debug("Get default vm")
-        if detected_distro.name == 'rhel':
+        if detected_distro.name == 'rhel' and platform.machine() != "s390x":
             if int(detected_distro.version) < 9:
                 firmware_type = 'seabios'
             else:
