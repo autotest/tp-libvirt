@@ -402,6 +402,7 @@ hugepage
 Hugepage
 hugepages
 hugetlbfs
+hwclock
 hwinfo
 hwtype
 hyperv
