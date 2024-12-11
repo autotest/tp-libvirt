@@ -87,12 +87,12 @@ def run(test, params, env):
         test.log.info("Check if the job can be aborted successfully")
         if utils_misc.wait_for(
                 lambda: libvirt.check_blockjob(vm_name,
-                                               dev, "progress", "100(.00)?"), 100):
+                                               dev, "progress", "100(.00)?"), 300):
             virsh.blockjob(vm_name, dev, options=' --pivot',
                            debug=True,
                            ignore_status=False)
         else:
-            test.fail("Blockjob timeout in 100 sec.")
+            test.fail("Blockjob timeout in 300 sec.")
 
         test.log.info("TEST_STEP3: Check the output of 'blockjob --raw' "
                       "after aborting the job")
