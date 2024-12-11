@@ -82,7 +82,7 @@ def run(test, params, env):
                               " paused after started"
                               " because of '--paused' option")
         else:
-            if params.get("paused_after_start_vm") == "yes":
+            if paused_after_start_vm:
                 if not vm.is_paused():
                     test.fail("Guest state should be"
                               " paused after started"
@@ -337,6 +337,7 @@ def run(test, params, env):
     remove_test = 'yes' == params.get('remove_test', 'no')
     case = params.get('case', '')
     msave_rm_error = "yes" == params.get("msave_rm_error", "no")
+    paused_after_start_vm = "yes" == params.get('paused_after_start_vm', "no")
     if option:
         if not virsh.has_command_help_match('managedsave', option):
             # Older libvirt does not have this option
@@ -428,7 +429,8 @@ def run(test, params, env):
         elif vm_ref == "name":
             vm_ref = vm_name
         # Prepare the certain state before managedsave
-        if params.get('paused_after_start_vm'):
+        if paused_after_start_vm:
+            logging.debug("Suspend the VM!")
             virsh.suspend(vm_ref)
 
         # Ignore exception with "ignore_status=True"
