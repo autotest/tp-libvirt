@@ -6,6 +6,7 @@ import logging as log
 import platform
 import shutil
 
+from avocado.core.exceptions import TestError
 from avocado.utils import process
 from avocado.utils import stacktrace
 
@@ -1107,10 +1108,14 @@ TIMEOUT 3"""
                         vms_mac = vms.get_virsh_mac_address()
                         # restart guest network to get ip addr
                         utils_net.restart_guest_network(sess, vms_mac)
-                        vms_ip = network_base.get_vm_ip(sess, vms_mac)
-                        if not vms_ip and dhcp_range:
-                            test.fail("Guest has invalid ip address")
-                        elif vms_ip and not dhcp_range:
+                        vms_ip = None
+                        try:
+                            vms_ip = network_base.get_vm_ip(sess, vms_mac)
+                        except TestError:
+                            logging.debug("Didn't get guest IP.")
+                            if dhcp_range:
+                                test.fail("Guest has invalid ip address")
+                        if vms_ip and not dhcp_range:
                             # Get IP address on guest should return Null
                             # if it exceeds the dhcp range
                             test.fail("Guest has ip address: %s" % vms_ip)
