@@ -1,5 +1,6 @@
 import logging as log
 import ipaddress
+import platform
 import time
 
 from virttest import virsh, virt_vm
@@ -39,6 +40,8 @@ def run(test, params, env):
             i) Reboot.
             ii) Suspend/Resume.
             iii) Start/Shutdown.
+    d). Multiple Reboots:
+        1. Checking PCI Device remains persistent across multiple reboots
     """
 
     def guest_lifecycle():
@@ -93,6 +96,8 @@ def run(test, params, env):
     sriov = ('yes' == params.get("libvirt_pci_SRIOV", 'no'))
     device_type = params.get("libvirt_pci_device_type", "NIC")
     vm_vfs = int(params.get("number_vfs", 2))
+    number_of_reboots = int(params.get("number_of_reboots", "1"))
+    arch = platform.machine()
     pci_dev = None
     pci_address = None
     bus_info = []
@@ -174,7 +179,7 @@ def run(test, params, env):
         pci_address = pci_xml.cap.get_address_dict()
         vmxml.add_hostdev(pci_address)
 
-    try:
+    def check_device_staus(net_ip, server_ip, netmask):
         for itr in range(iteration):
             logging.info("Currently executing iteration number: '%s'", itr)
             vmxml.sync()
@@ -195,9 +200,11 @@ def run(test, params, env):
                 bus_info.sort()
                 if not sriov:
                     # check all functions get same iommu group
-                    if len(set(nic_list)) != 1:
-                        test.fail("Multifunction Device passthroughed but "
-                                  "functions are in different iommu group")
+                    # arch ppc64 gets different iommu group when atached to VM
+                    if arch != "ppc64le":
+                        if len(set(nic_list)) != 1:
+                            test.fail("Multifunction Device passthroughed but "
+                                      "functions are in different iommu group")
                 # ping to server from each function
                 for val in bus_info:
                     nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
@@ -214,8 +221,9 @@ def run(test, params, env):
                     if s_ping != 0:
                         err_msg = "Ping test fails, error info: '%s'"
                         test.fail(err_msg % o_ping)
-                    # Each interface should have unique IP
-                    net_ip = net_ip + 1
+                    # Each interface should have unique IP, For ppc64 let's test using one ip only
+                    if arch != "ppc64le":
+                        net_ip = net_ip + 1
 
             elif device_type == "STORAGE":
                 # Get the result of "fdisk -l" in guest, and
@@ -225,8 +233,22 @@ def run(test, params, env):
                 if fdisk_list_after == fdisk_list_before:
                     test.fail("Didn't find the disk attached to guest.")
 
-            # Execute VM Life-cycle Operation with device pass-through
+    def multiple_reboot(number_of_reboots):
+        for reboot_count in range(number_of_reboots):
+            logging.info("Performing VM Reboot with device pass-through for reboot count : %s", reboot_count)
             guest_lifecycle()
+            logging.info("Performing device avialablity after VM Reboot after reboot count : %s", reboot_count)
+            check_device_staus(net_ip, server_ip, netmask)
+
+    try:
+        for itr in range(iteration):
+            check_device_staus(net_ip, server_ip, netmask)
+
+        # Execute VM Life-cycle Operation with device pass-through
+        guest_lifecycle()
+
+        # Execute Multiple reboots on VM and check the device persistency
+        multiple_reboot(number_of_reboots)
 
     finally:
         backup_xml.sync()

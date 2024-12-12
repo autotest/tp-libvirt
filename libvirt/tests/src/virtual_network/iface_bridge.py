@@ -115,7 +115,9 @@ def run(test, params, env):
     filter_name = params.get("filter_name", "vdsm-no-mac-spoofing")
     ping_count = params.get("ping_count", "5")
     ping_timeout = float(params.get("ping_timeout", "10"))
-    iface_name = utils_net.get_net_if(state="UP")[0]
+    host_iface = params.get("host_iface")
+    iface_name = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     bridge_script = NETWORK_SCRIPT + bridge_name
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
