@@ -53,7 +53,7 @@ def run(test, params, env):
         test.log.debug("Define guest by xml:\n%s", vmxml)
         virsh.undefine(vm_name, options='--nvram', debug=True,
                        ignore_status=False)
-        virsh.create(vmxml.xml, shell=True)
+        virsh.create(vmxml.xml, debug=True, ignore_status=False)
 
     def run_test():
         """
