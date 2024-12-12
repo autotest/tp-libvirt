@@ -76,19 +76,21 @@ def run(test, params, env):
                 ret = process.run(cmd, shell=True)
                 libvirt.check_exit_status(ret)
                 en_passwd = str(ret.stdout_text.strip())
-                passwd = en_passwd
+                passwd = en_passwd.replace('$', r'\$')
 
             ret = virsh.set_user_password(vm_name, set_user_name, passwd,
                                           encrypted=encrypted, option=option, debug=True)
             libvirt.check_exit_status(ret)
 
             # Login with new password
+            logging.debug("Trying to log in with new password")
             try:
                 session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, new_passwd,
                                                 r"[\#\$]\s*$", timeout=30)
                 session.close()
             except remote.LoginAuthenticationError as e:
                 logging.debug(e)
+                test.fail("Failed to login with new password")
 
             # Login with old password
             try:
