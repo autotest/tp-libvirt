@@ -19,13 +19,15 @@ VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 LOG = logging.getLogger('avocado.' + __name__)
 
 
-def get_vm_ip(session, mac, ip_ver="ipv4", timeout=5):
+def get_vm_ip(session, mac, ip_ver="ipv4", timeout=5, ignore_error=False):
     """
     Get vm ip address
 
     :param session: vm session
     :param mac: mac address of vm
     :param ip_ver: ip version, defaults to "ipv4"
+    :param ignore_error: True to return None, False to raise exception,
+           defaults to False
     :return: ip address of given mac
     """
     def _get_vm_ip():
@@ -39,16 +41,16 @@ def get_vm_ip(session, mac, ip_ver="ipv4", timeout=5):
                            and addr.get('mngtmpaddr') is not True]
 
         if len(target_addr) == 0:
-            LOG.warn(f'No ip addr of given mac: {mac}')
+            LOG.warning(f'No ip addr of given mac: {mac}')
             return
         elif len(target_addr) > 1:
-            LOG.warn(f'Multiple ip addr: {target_addr}')
+            LOG.warning(f'Multiple ip addr: {target_addr}')
 
         return target_addr[0]['local']
 
     vm_ip = utils_misc.wait_for(_get_vm_ip, timeout, ignore_errors=True)
 
-    if not vm_ip:
+    if not vm_ip and not ignore_error:
         raise exceptions.TestError(
             f'Cannot find {ip_ver} addr with given mac: {mac}')
 

@@ -1107,7 +1107,7 @@ TIMEOUT 3"""
                         vms_mac = vms.get_virsh_mac_address()
                         # restart guest network to get ip addr
                         utils_net.restart_guest_network(sess, vms_mac)
-                        vms_ip = network_base.get_vm_ip(sess, vms_mac)
+                        vms_ip = network_base.get_vm_ip(sess, vms_mac, ignore_error=True)
                         if not vms_ip and dhcp_range:
                             test.fail("Guest has invalid ip address")
                         elif vms_ip and not dhcp_range:
