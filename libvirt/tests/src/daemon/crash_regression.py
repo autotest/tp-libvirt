@@ -1,5 +1,6 @@
 import os
 import logging as log
+import time
 
 from six.moves import xrange
 
@@ -108,10 +109,12 @@ def run_kill_virsh_while_managedsave(params, libvirtd, vm):
     """
     Kill virsh process when doing managedsave.
     """
+    process.run("ls -lZ /run/libvirt/virtlogd-sock", ignore_status=False)
     if not vm.is_alive():
         vm.start()
     process.run("virsh managedsave %s &" % (vm.name), shell=True)
     process.run("pkill -9 virsh", ignore_status=True)
+    process.run("ls -lZ /run/libvirt/virtlogd-sock", ignore_status=False)
 
 
 def post_kill_virsh_while_managedsave(params, libvirtd, vm):
@@ -247,19 +250,23 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "virt-tests-vm1")
     bug_url = params.get("bug_url", None)
     vm = env.get_vm(vm_name)
-    # Run virtlogd foreground
-    try:
-        path.find_command('virtlogd')
-        process.run("systemctl stop virtlogd", ignore_status=True)
-        process.run("virtlogd -d")
-    except path.CmdNotFoundError:
-        pass
     libvirtd = LibvirtdSession(gdb=True)
     serv_tmp = "libvirt" if libvirtd.service_exec == "libvirtd" else libvirtd.service_exec
     process.run("rm -rf /var/run/libvirt/%s-*" % serv_tmp,
                 shell=True, ignore_status=True)
+    # Run virtlogd and virtnetworkd foreground
+    try:
+        daemon_list = ['virtlogd', 'virtnetworkd']
+        for daemon in daemon_list:
+            path.find_command(daemon)
+            process.run("systemctl stop %s" % daemon, ignore_status=True)
+            process.run("%s -d" % daemon, ignore_status=False)
+        time.sleep(30)
+    except path.CmdNotFoundError:
+        pass
     try:
         libvirtd.start()
+        time.sleep(30)
 
         run_func = globals()[func_name]
         for i in xrange(repeat):
@@ -281,10 +288,16 @@ def run(test, params, env):
             post_func(params, libvirtd, vm)
     finally:
         try:
-            path.find_command('virtlogd')
-            process.run('pkill virtlogd', ignore_status=True)
-            process.run('systemctl restart virtlogd.socket', ignore_status=True)
-            Libvirtd("libvirtd.socket").restart()
+            daemon_list = ["virtlogd", "virtnetworkd"]
+            for daemon in daemon_list:
+                path.find_command(daemon)
+                process.run('pkill %s' % daemon, ignore_status=True)
+                process.run('rm -rf /run/%s.pid' % daemon, shell=True, ignore_status=True)
+                process.run("rm -rf /var/run/libvirt/%s-*" % daemon, shell=True, ignore_status=True)
+                process.run('systemctl restart %s.socket' % daemon, shell=True, ignore_status=False)
         except path.CmdNotFoundError:
             pass
         libvirtd.exit()
+        process.run("rm -rf /run/%s.pid" % serv_tmp, shell=True, ignore_status=True)
+        socket_service = serv_tmp + ".socket"
+        Libvirtd(socket_service).restart()
