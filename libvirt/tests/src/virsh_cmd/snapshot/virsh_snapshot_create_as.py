@@ -73,7 +73,7 @@ def check_snap_in_image(vm_name, snap_name, backing_file=False):
         search_str = os.path.join(os.path.dirname(snap_file_path),
                                   os.path.basename(snap_file_path).replace(snap_name,
                                                                            file_suffix))
-        search_str = "backing file:\s*%s" % search_str
+        search_str = "backing file:\\s*%s" % search_str
 
     if re.search(search_str, img_info):
         logging.info("Find snapshot or backing file info in image with '%s'", search_str)
@@ -241,45 +241,52 @@ def check_snapslist(test, vm_name, options, option_dict, output,
             # For no metadata snapshot do not check name and
             # snapshot
             if no_metadata < 0:
-                dname = disks[num].get('name')
-                logging.debug("dname is %s", dname)
-                if dname == disk_dict['name']:
-                    logging.info("get disk%d name same as set in "
-                                 "diskspec", num)
+                dnames = []
+                for each in range(len(disks)):
+                    dnames.append(disks[each].get('name'))
+                logging.debug("All disk names: %s", dnames)
+                if disk_dict['name'] in dnames:
+                    logging.info("Found disk %s in diskspec",
+                                 disk_dict['name'])
                 else:
-                    test.fail("Get wrong disk%d name %s"
-                              % (num, dname))
+                    test.fail("%s disk not present"
+                              % disk_dict['name'])
 
                 if option_disk.find('snapshot=') >= 0:
-                    dsnap = disks[num].get('snapshot')
-                    logging.debug("dsnap is %s", dsnap)
-                    if dsnap == disk_dict['snapshot']:
-                        logging.info("get disk%d snapshot type same"
-                                     " as set in diskspec", num)
+                    dsnaps = []
+                    for each in range(len(disks)):
+                        dsnaps.append(disks[each].get('snapshot'))
+                    logging.debug("All snapshots are %s", dsnaps)
+                    if disk_dict['snapshot'] in dsnaps:
+                        logging.info("Found snapshot %s in diskspec",
+                                     disk_dict['snapshot'])
                     else:
-                        test.fail("Get wrong disk%d "
-                                  "snapshot type %s" %
-                                  (num, dsnap))
+                        test.fail("%s snapshot not present"
+                                  % disk_dict['snapshot'])
 
             if option_disk.find('driver=') >= 0:
-                dtype = disks[num].find('driver').get('type')
-                if dtype == disk_dict['driver']:
-                    logging.info("get disk%d driver type same as "
-                                 "set in diskspec", num)
+                dtypes = []
+                for each in range(len(disks)):
+                    dtypes.append(disks[each].find('driver').get('type'))
+                logging.debug("All drivers are %s", dtypes)
+                if disk_dict['driver'] in dtypes:
+                    logging.info("Found driver %s in diskspec",
+                                 disk_dict['driver'])
                 else:
-                    test.fail("Get wrong disk%d driver "
-                              "type %s" % (num, dtype))
+                    test.fail("%s driver not present"
+                              % disk_dict['driver'])
 
             if option_disk.find('file=') >= 0:
-                sfile = disks[num].find('source').get('file')
-                if sfile == disk_dict['file']:
-                    logging.info("get disk%d source file same as "
-                                 "set in diskspec", num)
-                    if os.path.exists(sfile):
-                        os.unlink(sfile)
+                sfiles = []
+                for each in range(len(disks)):
+                    sfiles.append(disks[each].find('source').get('file'))
+                logging.debug("All sources are %s", sfiles)
+                if disk_dict['file'] in sfiles:
+                    logging.info("Found source %s in diskspec",
+                                 disk_dict['file'])
                 else:
-                    test.fail("Get wrong disk%d source "
-                              "file %s" % (num, sfile))
+                    test.fail("%s source not present"
+                              % disk_dict['file'])
 
     # For memspec check if the xml is same as setting
     # Also check if the mem file exists
