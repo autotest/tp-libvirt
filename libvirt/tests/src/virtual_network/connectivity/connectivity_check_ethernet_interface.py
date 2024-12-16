@@ -28,6 +28,7 @@ def run(test, params, env):
         vm_name = params.get('main_vm')
         vm = env.get_vm(vm_name)
         virsh_ins = virsh
+        test_user = 'root'
     else:
         vm_name = params.get('unpr_vm_name')
         test_user = params.get('test_user', '')
@@ -71,7 +72,9 @@ def run(test, params, env):
     try:
         mac_addr = vm_xml.VMXML.get_first_mac_by_name(vm_name, virsh_ins)
         tap_flag = ''
-        for attr in (iface_attrs, iface_attrs_2):
+        iface_ori = network_base.get_iface_xml_inst(
+            vm_name, 'on vm', virsh_ins=virsh_ins)
+        for attr in (iface_attrs, iface_attrs_2, iface_ori.fetch_attrs()):
             if attr.get('driver', {}).get('driver_attr', {}).get('queues'):
                 tap_flag = 'multi_queue'
                 break
@@ -99,7 +102,6 @@ def run(test, params, env):
         iface_attrs['mac_address'] = mac_addr
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
             vm_name, virsh_instance=virsh_ins)
-        vmxml.del_device('interface', by_tag=True)
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
         if iface_attrs_2:
