@@ -275,7 +275,7 @@ def run(test, params, env):
         if check_partitions and not status_error:
             logging.debug("wait seconds for starting in checking vm part")
             time.sleep(2)
-            if not check_in_vm(old_parts):
+            if not utils_misc.wait_for(check_in_vm(old_parts), 30):
                 test.fail("Check disk partitions in VM failed")
         # Check snapshot operation and its result
         if domain_operation == 'snap_shot':
