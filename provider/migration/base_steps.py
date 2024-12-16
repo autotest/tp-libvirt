@@ -13,6 +13,7 @@ from virttest import utils_conn
 from virttest import utils_libvirtd
 from virttest import utils_iptables
 from virttest import utils_misc
+from virttest import virsh
 
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_vmxml
@@ -478,3 +479,41 @@ def cleanup_disks_remote(params, vm):
         disk_path = disk.get("source")
         cmd = "rm -f %s" % disk_path
         remote.run_remote_cmd(cmd, params, ignore_status=False)
+
+
+def sync_cpu_for_mig(params):
+    """
+    Sync cpu xml for migration
+
+    :param params: Dictionary with the test parameters
+    """
+    dest_uri = params.get("virsh_migrate_desturi")
+    vm_name = params.get("main_vm")
+
+    cpu_dest_xml = virsh.domcapabilities(uri=dest_uri)
+    cpu_src_xml = virsh.domcapabilities()
+    mig_cpu_xml = os.path.join(data_dir.get_tmp_dir(), "cpu_xml")
+    with open(mig_cpu_xml, 'w+') as fd:
+        fd.write(cpu_dest_xml.stdout.strip())
+        fd.write(cpu_src_xml.stdout.strip())
+    out = virsh.hypervisor_cpu_baseline(mig_cpu_xml, options="--migratable")
+    dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    cpuxml = vm_xml.VMCPUXML()
+    cpuxml.xml = out.stdout.strip()
+    dom_xml.cpu = cpuxml
+    dom_xml.sync()
+
+
+def check_cpu_for_mig(dest_uri):
+    """
+    Check cpu for migration
+
+    :param dest_uri: connect uri for destination machine
+    :return: if the cpu on the source and target hosts are the same, return True
+    """
+    cpu_dest_xml = virsh.domcapabilities(uri=dest_uri, debug=True).stdout_text.strip()
+    cpu_src_xml = virsh.domcapabilities(debug=True).stdout_text.strip()
+    if cpu_dest_xml == cpu_src_xml:
+        return True
+    else:
+        return False
