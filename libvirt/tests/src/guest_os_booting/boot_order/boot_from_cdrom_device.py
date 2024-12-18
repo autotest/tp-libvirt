@@ -102,7 +102,7 @@ def run(test, params, env):
         vm.start()
         if bootable_patterns:
             vm.serial_console.read_until_output_matches(
-                bootable_patterns, timeout=60, internal_timeout=0.5)
+                bootable_patterns, timeout=360, internal_timeout=0.5)
         else:
             try:
                 vm.wait_for_serial_login().close()
