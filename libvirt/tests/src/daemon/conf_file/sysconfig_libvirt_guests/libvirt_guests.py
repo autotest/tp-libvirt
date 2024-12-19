@@ -93,11 +93,11 @@ def run(test, params, env):
 
         :param status_error: positive test if status_error is "no", otherwise
                              negative test
-        :param on_boot: action taking on host booting
+        :param on_boot: action taking on host booting which set in the conf file
         """
         if status_error == "no":
-            if on_boot == "start" or transient_vm:
-                for dom in vms:
+            if on_boot != "ignore":
+                for dom in active_persistent_vms:
                     if not dom.is_alive():
                         test.fail("guest:%s should be running after "
                                   "restarting libvirt-guests." % dom.name)
@@ -353,6 +353,11 @@ def run(test, params, env):
         process.run("cat /etc/sysconfig/libvirt-guests", shell=True)
 
         tail_messages = get_log()
+        # Before restart libvirt-guests, check the status of all VMs
+        active_persistent_vms = []
+        for dom in vms:
+            if dom.is_alive and dom.is_persistent:
+                active_persistent_vms.append(dom)
         # Even though libvirt-guests was designed to operate guests when
         # host shutdown. The purpose can also be fulfilled by restart the
         # libvirt-guests service.
