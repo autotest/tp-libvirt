@@ -183,6 +183,17 @@ def interface_validate(test, file=None, **virsh_dargs):
         test.error(str(e))
 
 
+def domcap_validate(file=None, **virsh_dargs):
+    """
+    Prepare schema domcapabilities.
+
+    :param file: domcapabilities output file
+    :param virsh_dargs: virsh debug args.
+    """
+    cmd_result = virsh.domcapabilities(options="> %s" % file, **virsh_dargs)
+    libvirt.check_exit_status(cmd_result)
+
+
 def run(test, params, env):
     """
     Test for virt-xml-validate
@@ -203,7 +214,7 @@ def run(test, params, env):
 
     valid_schemas = ['domain', 'domainsnapshot', 'network', 'storagepool',
                      'storagevol', 'nodedev', 'capability',
-                     'nwfilter', 'secret', 'interface']
+                     'nwfilter', 'secret', 'interface', 'domcapabilities']
     if schema not in valid_schemas:
         test.fail("invalid %s specified" % schema)
 
@@ -230,6 +241,9 @@ def run(test, params, env):
         secret_validate(test, secret_volume, file=output_path, **virsh_dargs)
     elif schema == "interface":
         interface_validate(test, file=output_path, **virsh_dargs)
+    elif schema == "domcapabilities":
+        domcap_validate(file=output_path, **virsh_dargs)
+        schema = ""
     else:
         # domain
         virsh.dumpxml(vm_name, to_file=output_path)
