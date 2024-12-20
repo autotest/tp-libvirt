@@ -14,7 +14,6 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.staging.service import Factory
 from virttest.staging.utils_memory import drop_caches
-from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -363,10 +362,6 @@ def run(test, params, env):
         # Destroy vm first for setting configuration file
         if vm.state() == "running":
             vm.destroy(gracefully=False)
-
-        # Workaround bug: Remove multi-queue setting
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        libvirt_vmxml.modify_vm_device(vmxml, 'interface', {'driver': None})
         # Prepare test environment.
         if libvirtd_state == "off":
             libvirtd.stop()
