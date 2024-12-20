@@ -29,6 +29,7 @@ def run(test, params, env):
     iface_attrs = {**base_iface_attrs, **extra_attrs}
 
     update_attrs = eval(params.get('update_attrs', '{}'))
+    tmp_attrs = eval(params.get('tmp_attrs', '{}'))
     del_attr = params.get('del_attr')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -41,7 +42,6 @@ def run(test, params, env):
             vmxml.os = osxml
             libvirt_vmxml.modify_vm_device(vmxml, 'disk', {'boot': '1'})
 
-        vmxml.del_device('interface', by_tag=True)
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs)
         LOG.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
 
@@ -56,6 +56,8 @@ def run(test, params, env):
             else:
                 eval(f'iface.del_{del_attr}')()
         else:
+            if tmp_attrs:
+                iface.setup_attrs(**tmp_attrs)
             iface.setup_attrs(**update_attrs)
         LOG.debug(f'Interface xml to update with:\n{iface}')
 
