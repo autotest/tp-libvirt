@@ -79,9 +79,9 @@ def transfer_vm_to_host(session, prot, ip_ver, vm_iface, firewalld,
     rec_file = params.get('rec_file')
     cmd_create_file = params.get('cmd_create_file')
     force_dhcp = True if ip_ver == 'ipv4' else False
-    vm_default_gw = utils_net.get_default_gateway(session=session,
-                                                  ip_ver=ip_ver,
-                                                  force_dhcp=force_dhcp)
+    vm_default_gw = utils_net.get_default_gateway_json(session=session,
+                                                       ip_ver=ip_ver,
+                                                       force_dhcp=force_dhcp)
     addr = vm_default_gw if ip_ver == 'ipv4' \
         else f'[{vm_default_gw}%{vm_iface}]'
     firewalld.stop()
