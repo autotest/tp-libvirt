@@ -36,7 +36,7 @@ def run(test, params, env):
         cmd1 = f"mkdir {install_root}"
         cmd2 = f"dnf --installroot={install_root} --releasever=9 install "\
                "system-release vim-minimal systemd passwd dnf rootfiles sudo "\
-               "kernel kernel-modules net-tools yum dhcp-client -y >/dev/null"
+               "kernel kernel-modules net-tools yum -y >/dev/null"
         # Create the initramfs.
         cmd3 = f"dracut {initrams_file} --early-microcode "\
                "--add virtiofs --filesystem virtiofs"
