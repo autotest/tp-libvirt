@@ -33,6 +33,8 @@ def run(test, params, env):
     pg_a = eval(params.get('pg_a', '{}'))
     pg_b = eval(params.get('pg_b', '{}'))
     update_attrs = eval(params.get('update_attrs', '{}'))
+    status_error = params.get('status_error', '')
+    err_msg = params.get('err_msg', '')
 
     net_name = 'default' if 'name' not in net_attrs else net_name
     iface_attrs = eval(params.get('iface_attrs', '{}'))
@@ -72,7 +74,7 @@ def run(test, params, env):
         mac = iface.mac_address
 
         vm.start()
-        network_base.get_iface_xml_inst(vm_name, 'on vm after vm start')
+        iface_original = network_base.get_iface_xml_inst(vm_name, 'on vm after vm start')
         tap_device = libvirt.get_ifname_host(vm_name, mac)
         LOG.debug(f'tap device on host with mac {mac} is: {tap_device}.')
 
@@ -90,22 +92,19 @@ def run(test, params, env):
         iface.xmltreefile.write()
 
         LOG.debug(f'Update iface with xml: {iface}')
-        virsh.update_device(vm_name, iface.xml, **VIRSH_ARGS)
 
-        # Check updated iface xml
-        iface_update = network_base.get_iface_xml_inst(vm_name, 'after update')
-        if iface_update.source.get(
-                'portgroup') != update_attrs['source']['portgroup']:
-            test.fail('Update iface xml portgroup failed')
+        up_result = virsh.update_device(vm_name, iface.xml, debug=True)
+        libvirt.check_exit_status(up_result, status_error)
+        if err_msg:
+            libvirt.check_result(up_result, err_msg)
 
-        # Check rules
-        if not utils_net.check_class_rules(
-                tap_device, '1:1', pg_b['bandwidth_inbound']):
-            test.fail('class rule check failed-')
-        if not utils_net.check_filter_rules(
-                tap_device, pg_b['bandwidth_outbound']):
-            test.fail('filter rule check failed-')
-
+        iface_update = network_base.get_iface_xml_inst(vm_name,
+                                                       'after update-device')
+        LOG.debug(f'Check if the live interface xml changed:')
+        if iface_update != iface_original:
+            test.fail(f'Interface xml changed after unsuccessful update.\n'
+                      f'Should be:\n{iface_original}\n'
+                      f'Actually is:\n{iface_update}')
     finally:
         bkxml.sync()
         bk_net_xml.sync()
