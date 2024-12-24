@@ -1,4 +1,5 @@
 import logging
+import os
 
 from avocado.utils import process
 from virttest import utils_misc
@@ -44,6 +45,7 @@ def run(test, params, env):
     net_xml = NetworkXML.new_from_net_dumpxml('default')
     bk_net_xml = net_xml.copy()
     firewalld = service.Factory.create_service("firewalld")
+    check_libvirtd_log = params.get("check_libvirtd_log", "")
 
     try:
         if br_type == 'linux_br':
@@ -103,15 +105,16 @@ def run(test, params, env):
         firewalld.stop()
         vm_sess.cmd('systemctl stop firewalld')
 
-        network_base.check_throughput(
-            vm_sess.cmd, lambda x: process.run(x).stdout_text,
-            vm_ip, inbound["average"], 'inbound'
-        )
+        if params.get('check_qos') != 'no':
+            network_base.check_throughput(
+                vm_sess.cmd, lambda x: process.run(x).stdout_text,
+                vm_ip, inbound["average"], 'inbound'
+            )
 
-        network_base.check_throughput(
-            lambda x: process.run(x).stdout_text,
-            vm_sess.cmd,  host_ip, outbound["average"], 'outbound'
-        )
+            network_base.check_throughput(
+                lambda x: process.run(x).stdout_text,
+                vm_sess.cmd,  host_ip, outbound["average"], 'outbound'
+            )
         vm_sess.close()
         vm.destroy()
         ovs_list_cmd = 'ovs-vsctl list qos'
@@ -119,6 +122,10 @@ def run(test, params, env):
         if ovs_list_output:
             test.fail(f'There should be no output of command {ovs_list_cmd}.'
                       f'But we got {ovs_list_output}')
+        if check_libvirtd_log:
+            test.log.info("Check the libvirtd log.")
+            libvirtd_log_file = os.path.join(test.debugdir, "libvirtd.log")
+            libvirt.check_logfile(check_libvirtd_log, libvirtd_log_file)
 
     finally:
         bkxml.sync()
