@@ -9,6 +9,7 @@
 import logging
 import re
 import os
+import platform
 import shutil
 
 from virttest import virsh
@@ -35,7 +36,8 @@ def update_bib_env_info(params, test):
     full_path = os.path.join(base_folder, output_sub_folder, output_name)
     if not os.path.exists(full_path):
         test.fail("bootc image build fail to generate outputs for image type: %s" % params.get("disk_image_type"))
-    converted_disk_image = f"install_{bib_ref}_{firmware}_{bib_utils.convert_disk_image_name(params)}"
+    special_chars = re.sub(r'[.,-]+', '', platform.release())
+    converted_disk_image = f"install_{special_chars}_{bib_ref}_{firmware}_{bib_utils.convert_disk_image_name(params)}"
     disk_name, _ = os.path.splitext(converted_disk_image)
     full_path_dest = os.path.join(libvirt_base_folder, converted_disk_image)
     shutil.move(full_path, full_path_dest)
@@ -44,6 +46,15 @@ def update_bib_env_info(params, test):
     cleanup_files.append(full_path_dest)
     params.update({'vm_disk_image_path': full_path_dest})
     params.update({'vm_name_bootc': disk_name})
+
+    if params.get("disk_image_type") == "vhd":
+        converted_image_from_vhd_qcow2 = bib_utils.convert_vhd_to_qcow2(params)
+        params.update({'vm_disk_image_path': converted_image_from_vhd_qcow2})
+
+    if params.get("disk_image_type") == "gce":
+        untar_raw_image = bib_utils.untar_tgz_to_raw(params)
+        params.update({'vm_disk_image_path': untar_raw_image})
+        cleanup_files.append(untar_raw_image)
 
     iso_install_path = os.path.join(libvirt_base_folder, f"{disk_name}_{firmware}.qcow2")
     params.update({'iso_install_path': iso_install_path})
@@ -71,26 +82,31 @@ def prepare_env_and_execute_bib(params, test):
     roofs = params.get("roofs")
     aws_config_dict = eval(params.get("aws_config_dict", '{}'))
     options = None
+    config_json_file = None
+    use_toml_config = "yes" == params.get("use_toml_config")
 
     bib_utils.install_bib_packages()
-    config_json_file = bib_utils.create_config_json_file(params)
+    if use_toml_config:
+        config_json_file = bib_utils.create_config_toml_file(params)
+    else:
+        config_json_file = bib_utils.create_config_json_file(params)
     if disk_image_type in ["ami"]:
         bib_utils.prepare_aws_env(params)
 
-    if bib_ref in ["upstream_bib", "rhel_9.4_nightly_bib", "rhel_9.5_nightly_bib", "rhel_10.0_bib"]:
+    if bib_ref in ["upstream_bib", "rhel_9.4_nightly_bib", "rhel_9.5_nightly_bib", "rhel_9.6_nightly_bib", "rhel_10.0_bib"]:
         auth_file = bib_utils.create_auth_json_file(params)
-        bib_utils.podman_login_with_auth(auth_file, params.get("redhat_registry"))
-        options = auth_file
+        bib_utils.podman_login_with_auth(auth_file, params.get("redhat_stage_registry"))
+        options = " -v %s:/run/containers/0/auth.json " % auth_file
         bib_utils.podman_login(params.get("podman_stage_username"), params.get("podman_stage_password"),
-                               params.get("redhat_registry"))
+                               params.get("redhat_stage_registry"))
 
     # pull base image and build local image after change
     if build_container:
-        if bib_ref == "rhel_9.4_bib":
+        if bib_ref in ["rhel_9.4_bib", "rhel_9.5_bib"]:
             bib_utils.podman_login(params.get("podman_redhat_username"), params.get("podman_redhat_password"),
                                    params.get("redhat_registry"))
         bib_utils.create_and_build_container_file(params)
-    if bib_ref == "rhel_9.4_bib":
+    if bib_ref in ["rhel_9.4_bib", "rhel_9.5_bib"]:
         ownership = None
         bib_utils.podman_push(params.get("podman_quay_username"), params.get("podman_quay_password"),
                               params.get("registry"), container_url)
@@ -128,7 +144,11 @@ def run(test, params, env):
         update_bib_env_info(params, test)
         if disk_image_type in ["vmdk"]:
             bib_utils.create_and_start_vmware_vm(params)
-        elif disk_image_type in ["qcow2", "raw", "anaconda-iso"]:
+        elif disk_image_type in ["qcow2", "raw", "anaconda-iso", "vhd", "gce"]:
+            # clean up dirty VM if existed
+            vm_name = params.get("vm_name_bootc")
+            if vm_name and vm_name in virsh.dom_list().stdout_text:
+                virsh.undefine(vm_name, options="--nvram", ignore_status=True)
             bib_utils.create_qemu_vm(params, env, test)
         elif disk_image_type in ["ami"]:
             if len(aws_config_dict) != 0:
