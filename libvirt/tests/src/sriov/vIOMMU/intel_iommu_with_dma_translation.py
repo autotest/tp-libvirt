@@ -1,3 +1,4 @@
+from avocado.utils import cpu
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
@@ -23,6 +24,7 @@ def run(test, params, env):
         test_obj.setup_iommu_test(iommu_dict=iommu_dict)
         if with_more_vcpus:
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            guest_vcpus = cpu.online_count()
             vmxml.vcpu = int(guest_vcpus)
             vmxml.sync()
         test.log.info("TEST STEP2: Start the guest.")
