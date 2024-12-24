@@ -308,8 +308,14 @@ def run(test, params, env):
         utils_path.find_command("virt-clone")
     except utils_path.CmdNotFoundError:
         test.cancel("No virt-clone command found.")
-
     # Clone additional vms: avocado-vt-vm2, avocado-vt-vm3.....
+    # Before clone, make sure there is no existing VMs
+    all_vm_list = virsh.dom_list('--name --all').stdout.strip().splitlines()
+    logging.debug("All vm on the host: %s", all_vm_list)
+    for vm_i in all_vm_list:
+        if vm_i.startswith("avocado-vt-vm") and vm_i != "avocado-vt-vm1":
+            logging.debug("Clean the env by remove the guest : %s", vm_i)
+            virsh.remove_domain(vm_i, "--remove-all-storage --nvram")
     for i in range(additional_vms):
         guest_name = ("%s" % main_vm_name[:-1])+("%s" % str(i+2))
         logging.debug("guest_name : %s", guest_name)
