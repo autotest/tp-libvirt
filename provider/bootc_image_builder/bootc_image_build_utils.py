@@ -14,6 +14,7 @@ import json
 import os
 import random
 import shutil
+import subprocess
 import time
 import textwrap
 import pathlib
@@ -65,13 +66,16 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
         os.makedirs("/var/lib/libvirt/images/output")
     cmd = "sudo podman run --rm -it --privileged --pull=newer --security-opt label=type:unconfined_t -v /var/lib/libvirt/images/output:/output"
     if config:
-        cmd += " -v %s:/config.json  " % config
+        if "toml" in config:
+            cmd += " -v %s:/config.toml  " % config
+        else:
+            cmd += " -v %s:/config.json  " % config
 
     if local_container:
         cmd += " -v /var/lib/containers/storage:/var/lib/containers/storage "
 
     if options is not None:
-        cmd += " -v %s:/run/containers/0/auth.json " % options
+        cmd += " %s " % options
 
     if key_store_mounted:
         cmd += " -v %s " % key_store_mounted
@@ -83,7 +87,10 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
         " --type %s --tls-verify=%s " % (bib_image_url, disk_image_type, tls_verify)
 
     if config:
-        cmd += " --config /config.json "
+        if "toml" in config:
+            cmd += " --config /config.toml "
+        else:
+            cmd += " --config /config.json "
 
     if target_arch:
         cmd += " --target-arch=%s " % target_arch
@@ -173,6 +180,115 @@ def create_config_json_file(params):
     password = params.get("os_password")
     kickstart = "yes" == params.get("kickstart")
     public_key_path = os.path.join(os.path.expanduser("~/.ssh/"), "id_rsa.pub")
+    filesystem_size_set = "yes" == params.get("filesystem_size_set")
+    enable_lvm_disk_partitions = "yes" == params.get("enable_lvm_disk_partitions")
+    enable_plain_disk_partitions = "yes" == params.get("enable_plain_disk_partitions")
+    enable_btrf_disk_partitions = "yes" == params.get("enable_btrf_disk_partitions")
+
+    filesystem_dict = {"filesystem": [
+        {
+            "mountpoint": "/",
+            "minsize": "10 GiB"
+        },
+        {
+            "mountpoint": "/var/data",
+            "minsize": "15 GiB"
+        }
+        ]
+    }
+
+    enable_lvm_disk_partitions_dict = {"disk": {
+        "partitions": [
+            {
+                "type": "plain",
+                "label": "data",
+                "minsize": "4 GiB",
+                "fs_type": "xfs",
+                "mountpoint": "/data"
+            },
+            {
+                "type": "lvm",
+                "minsize": "15 GiB",
+                "name": "mainvg",
+                "logical_volumes": [
+                    {
+                        "name": "rootlv",
+                        "label": "root",
+                        "minsize": "10 GiB",
+                        "fs_type": "xfs",
+                        "mountpoint": "/"
+                    },
+                    {
+                        "name": "swaplv",
+                        "label": "swap",
+                        "minsize": "1 GiB",
+                        "fs_type": "swap"
+                    },
+                    {
+                        "name": "homelv",
+                        "label": "home",
+                        "minsize": "3 GiB",
+                        "fs_type": "xfs",
+                        "mountpoint": "/home"
+                    },
+                    {
+                        "name": "varloglv",
+                        "label": "var",
+                        "minsize": "2 GiB",
+                        "fs_type": "xfs",
+                        "mountpoint": "/var/log"
+                    }
+                ]
+            }
+        ]
+        }
+    }
+
+    enable_plain_disk_partitions_dict = {"disk": {
+        "partitions": [
+            {
+                "type": "plain",
+                "label": "root",
+                "minsize": "10 GiB",
+                "minsize": "10 GiB",
+                "fs_type": "xfs",
+                "mountpoint": "/",
+                "minsize": "1 GiB",
+                "fs_type": "swap",
+                "minsize": "2 GiB",
+                "fs_type": "xfs",
+                "mountpoint": "/var/log"
+            }
+        ]
+        }
+    }
+
+    enable_btrf_disk_partitions_dict = {"disk": {
+        "partitions": [
+            {
+                "type": "plain",
+                "label": "swap",
+                "minsize": "4 GiB",
+                "fs_type": "swap"
+            },
+            {
+                "type": "btrfs",
+                "minsize": "10 GiB",
+                "subvolumes": [
+                    {
+                        "name": "root",
+                        "mountpoint": "/"
+                    },
+                    {
+                        "name": "varlog",
+                        "mountpoint": "/var/log"
+                    }
+                ]
+            }
+        ]
+        }
+    }
+
     if not os.path.exists(public_key_path):
         LOG.debug("public key doesn't exist, will help create one")
         key_gen_cmd = "ssh-keygen -q -t rsa -N '' <<< $'\ny' >/dev/null 2>&1"
@@ -222,10 +338,102 @@ def create_config_json_file(params):
             }
         }
 
+    if enable_lvm_disk_partitions:
+        filesystem_size_set = False
+        cfg['blueprint']['customizations'].update(enable_lvm_disk_partitions_dict)
+
+    if enable_plain_disk_partitions:
+        filesystem_size_set = False
+        cfg['blueprint']['customizations'].update(enable_plain_disk_partitions_dict)
+
+    if enable_btrf_disk_partitions:
+        cfg['blueprint']['customizations'].update(enable_btrf_disk_partitions_dict)
+
+    if filesystem_size_set:
+        cfg['blueprint']['customizations'].update(filesystem_dict)
+
     LOG.debug("what is cfg:%s", cfg)
     config_json_path = pathlib.Path(folder) / "config.json"
     config_json_path.write_text(json.dumps(cfg), encoding="utf-8")
     return os.path.join(folder, "config.json")
+
+
+def create_config_toml_file(params):
+    """
+    create toml configuration file
+
+    :param params: one dictionary to pass in configuration
+    """
+    folder = params.get("config_file_path")
+    username = params.get("os_username")
+    password = params.get("os_password")
+    kickstart = "yes" == params.get("kickstart")
+    public_key_path = os.path.join(os.path.expanduser("~/.ssh/"), "id_rsa.pub")
+    filesystem_size_set = "yes" == params.get("filesystem_size_set")
+    filesystem_size_str = ""
+    fips_content = ""
+
+    if not os.path.exists(public_key_path):
+        LOG.debug("public key doesn't exist, will help create one")
+        key_gen_cmd = "ssh-keygen -q -t rsa -N '' <<< $'\ny' >/dev/null 2>&1"
+        process.run(key_gen_cmd, shell=True, ignore_status=False)
+
+    with open(public_key_path, 'r') as ssh:
+        key_value = ssh.read().rstrip()
+
+    if filesystem_size_set:
+        filesystem_size_str = f"""
+            [[customizations.filesystem]]
+            mountpoint = "/"
+            minsize = "10 GiB"
+
+            [[customizations.filesystem]]
+            mountpoint = "/var/data"
+            minsize = "20 GiB"
+            """
+    if not kickstart:
+        container_file_content = f"""\n
+            [[customizations.user]]
+            name = "{username}"
+            password = "{password}"
+            key = "{key_value}"
+            groups = ["wheel"]
+            {filesystem_size_str}
+            [customizations.kernel]
+            append = "mitigations=auto,nosmt"
+            """
+    else:
+        kick_start = {"contents": "user --name %s --password %s --groups wheel\n"
+                      "rootpw --lock --iscrypted locked\n"
+                      "sshkey --username %s \"%s\"\ntext --non-interactive\nzerombr\n"
+                      "clearpart --all --initlabel --disklabel=gpt\nautopart --noswap --type=lvm\n"
+                      "network --bootproto=dhcp --device=eno1 --activate --onboot=on\n reboot" % (username, password, username, key_value)
+                      }
+        if params.get("fips_enable") == "yes":
+            fips_content = f"""
+                [customizations]
+                fips = true
+                """
+
+        container_file_content = f"""\n
+            [customizations.kernel]
+            append = "mitigations=auto,nosmt"
+            {fips_content}
+            [customizations.installer.modules]
+            enable = [
+              "org.fedoraproject.Anaconda.Modules.Localization"
+            ]
+            disable = [
+              "org.fedoraproject.Anaconda.Modules.Timezone"
+            ]
+            {filesystem_size_str}
+            [customizations.installer.kickstart]
+            contents = \"""{kick_start.get("contents")}\"""
+            """
+    LOG.debug("what is toml content:%s", container_file_content)
+    config_toml_path = pathlib.Path(folder) / "config.toml"
+    config_toml_path.write_text(textwrap.dedent(container_file_content), encoding="utf8")
+    return os.path.join(folder, "config.toml")
 
 
 def create_auth_json_file(params):
@@ -235,18 +443,18 @@ def create_auth_json_file(params):
     :param params: one dictionary to pass in configuration
     """
     folder = params.get("config_file_path")
-    redhat_registry = params.get("redhat_registry")
-    registry_key = params.get("registry_key")
+    redhat_stage_registry = params.get("redhat_stage_registry")
+    registry_stage_key = params.get("registry_stage_key")
 
     cfg = {
         "auths": {
-            "%s" % redhat_registry: {
-                "auth": "%s" % registry_key
+            "%s" % redhat_stage_registry: {
+                "auth": "%s" % registry_stage_key
             }
         }
     }
 
-    LOG.debug("what is auth cfg:%s", cfg)
+    LOG.debug("what is auth json:%s", cfg)
     config_json_path = pathlib.Path(folder) / "auth.json"
     config_json_path.write_text(json.dumps(cfg), encoding="utf-8")
     final_config_file = os.path.join(folder, "auth.json")
@@ -279,9 +487,12 @@ def create_and_build_container_file(params):
     folder = params.get("container_base_folder")
     build_container = params.get("build_container")
     container_tag = params.get("container_url")
+    manifest = params.get("manifest")
 
     # clean up existed image
     clean_image_cmd = "sudo podman rmi %s" % container_tag
+    if manifest:
+        clean_image_cmd = "sudo podman manifest rm %s" % container_tag
     process.run(clean_image_cmd, shell=True, ignore_status=True)
     etc_config = ''
     dnf_vmware_tool = ''
@@ -299,7 +510,7 @@ def create_and_build_container_file(params):
             "examples/-/raw/main/vmware/etc/vmware-tools/tools.conf > %s/tools.conf" % vmware_tool_path
         process.run(download_vmware_config_cmd, shell=True, verbose=True, ignore_status=True)
 
-    if params.get("fips_enable") == "yes":
+    if params.get("fips_enable") == "yes" and params.get("enable_fips_enable_repo") == "yes":
         dnf_fips_install = "RUN cat > /usr/lib/bootc/kargs.d/01-fips.toml <<'EOF'\n" \
                            "kargs = ['fips=1']\n" \
                            "match-architectures = ['x86_64']\n" \
@@ -308,8 +519,10 @@ def create_and_build_container_file(params):
                            "update-crypto-policies --no-reload --set FIPS "
 
     container_path = pathlib.Path(folder) / "Containerfile_tmp"
-    shutil.copy("/etc/yum.repos.d/beaker-BaseOS.repo", folder)
-    shutil.copy("/etc/yum.repos.d/beaker-AppStream.repo", folder)
+    if os.path.exists("/etc/yum.repos.d/beaker-BaseOS.repo"):
+        shutil.copy("/etc/yum.repos.d/beaker-BaseOS.repo", folder)
+    if os.path.exists("/etc/yum.repos.d/beaker-AppStream.repo"):
+        shutil.copy("/etc/yum.repos.d/beaker-AppStream.repo", folder)
 
     create_sudo_file = "RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-passwordless-sudo"
     enable_root_ssh = "RUN echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config.d/01-permitrootlogin.conf"
@@ -332,6 +545,9 @@ def create_and_build_container_file(params):
         if "rhel-9.5" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-9.5.repo"
             repo_prefix = "rhel-9.5"
+        if "rhel-9.6" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-9.6.repo"
+            repo_prefix = "rhel-9.6"
         if "rhel-10.0" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-10.0.repo"
             repo_prefix = "rhel-10.0"
@@ -382,9 +598,16 @@ def create_and_build_container_file(params):
         {dnf_fips_install}
         Run dnf clean all
         """
+    build_cmd = "sudo podman build -t %s -f %s" % (container_tag, str(container_path))
+    if manifest:
+        container_file_content = f"""\n
+        FROM {build_container}
+        {create_sudo_file}
+        {enable_root_ssh}
+        """
+        build_cmd = "sudo podman build  --platform linux/arm64,linux/amd64 --manifest %s -f %s" % (manifest, str(container_path))
 
     container_path.write_text(textwrap.dedent(container_file_content), encoding="utf8")
-    build_cmd = "sudo podman build -t %s -f %s" % (container_tag, str(container_path))
     process.run(build_cmd, shell=True, ignore_status=False)
 
 
@@ -774,8 +997,13 @@ def create_qemu_vm(params, env, test):
         vm = env.get_vm(vm_name)
         if vm.is_dead():
             LOG.debug("VM is dead, starting")
-            vm.start()
-        ip_address = vm.wait_for_get_address(nic_index=0)
+            # workaround VM can not start in the first time on rhel10
+            try:
+                vm.start()
+            except Exception as ex:
+                LOG.debug("start vm in retries")
+                vm.start()
+        ip_address = vm.wait_for_get_address(nic_index=0, timeout=120)
         params.update({"ip_address": ip_address.strip()})
         remote_vm_obj = verify_ssh_login_vm(params)
         LOG.debug(f"ip addressis wcf: {ip_address}")
@@ -814,7 +1042,9 @@ def prepare_aws_env(params):
     create_aws_secret_file(aws_secret_folder, aws_access_key_id, aws_access_key)
     aws_utils.create_aws_credentials_file(aws_access_key_id, aws_access_key)
     aws_utils.create_aws_config_file(aws_region)
-    aws_utils.install_aws_cli_tool(params)
+    vm_arch_name = params.get("vm_arch_name", "x86_64")
+    if "s390x" not in vm_arch_name:
+        aws_utils.install_aws_cli_tool(params)
 
 
 def cleanup_aws_env(params):
@@ -836,6 +1066,249 @@ def cleanup_aws_ami_and_snapshot(params):
     """
     aws_utils.delete_aws_ami_id(params)
     aws_utils.delete_aws_ami_snapshot_id(params)
+
+
+def convert_vhd_to_qcow2(params):
+    """
+    Convert vhd disk format into qcow2
+
+    @param params: one dictionary wrapping various parameter
+    :return: Converted image path
+    """
+    original_image_path = params.get('vm_disk_image_path')
+    converted_image_path = original_image_path.replace("vhd", "qcow2")
+    LOG.debug(f"converted vhd to qcow2 output is : {converted_image_path}")
+
+    convert_cmd = f"qemu-img convert -p -f vpc  -O qcow2 {original_image_path} {converted_image_path}"
+    process.run(convert_cmd, shell=True, verbose=True, ignore_status=False)
+    return converted_image_path
+
+
+def untar_tgz_to_raw(params):
+    """
+    extract image.tgz for GCP format to raw format:disk.raw
+
+    @param params: one dictionary wrapping various parameter
+    """
+    original_image_path = params.get('vm_disk_image_path')
+    tar_image_folder = os.path.dirname(original_image_path)
+    untar_image_path = os.path.join(tar_image_folder, "disk.raw")
+    LOG.debug(f"untar image.tgz to gce output is : {tar_image_folder}")
+
+    tar_cmd = f"tar -xvzf {original_image_path}  -C {tar_image_folder}"
+    process.run(tar_cmd, shell=True, verbose=True, ignore_status=False)
+    return untar_image_path
+
+
+def check_bootc_image_version_id(params):
+    """
+    check bootc image version id
+
+    @param params: one dictionary wrapping various parameter
+    """
+    expected_redhat_version_id = params.get("redhat_version_id")
+    if expected_redhat_version_id is None:
+        LOG.debug("don't need to check redhat version id")
+    else:
+        bootc_meta_info_dict = get_bootc_image_meta_info(params)
+        redhat_version_id = bootc_meta_info_dict.get("redhat.version-id")
+        compose_id = bootc_meta_info_dict.get("redhat.compose-id")
+        expected_compose_id = "RHEL-{}".format(expected_redhat_version_id)
+        if "-beta" in expected_compose_id:
+            expected_compose_id = expected_compose_id[0:expected_compose_id.index("-beta")]
+        if expected_redhat_version_id != redhat_version_id:
+            raise exceptions.TestFail(f"Expected redhat version id :{expected_redhat_version_id}, real version id is: {redhat_version_id}")
+        if expected_compose_id not in compose_id:
+            raise exceptions.TestFail(f"Expected compose id :{expected_compose_id}, real compose id is: {compose_id}")
+
+
+def get_bootc_image_meta_info(params):
+    """
+    get bootc image meta information
+
+    @param params: one dictionary wrapping various parameter
+    """
+    container_url = params.get('container_url')
+    cmd = "sudo skopeo inspect --retry-times=5 --tls-verify=false docker://%s |jq  -r '.Labels'" % container_url
+    ret = process.run(cmd, timeout=40, verbose=True, ignore_status=True, shell=True).stdout_text
+    LOG.debug(f"skopeo inspect bootc image output is : {ret}")
+
+    bootc_meta_info_dict = eval(ret)
+    return bootc_meta_info_dict
+
+
+def create_registry_policy_file(params):
+    """
+    create registry policy file
+
+    @param params: one dictionary wrapping various parameter
+    """
+    base_dir = params.get("config_file_path")
+    policy_file = os.path.join(base_dir, "policy.json")
+    pub_key_file = os.path.join(base_dir, "key.gpg")
+    local_registry = "localhost:5000"
+
+    registry_policy = {
+                    "default": [{"type": "insecureAcceptAnything"}],
+                    "transports": {
+                        "docker": {
+                            f"{local_registry}": [
+                                {
+                                    "type": "signedBy",
+                                    "keyType": "GPGKeys",
+                                    "keyPath": f"{pub_key_file}"
+                                }
+                            ]
+                        },
+                        "docker-daemon": {
+                            "": [{"type": "insecureAcceptAnything"}]
+                        }
+                    }
+    }
+
+    with open(policy_file, mode="w", encoding="utf-8") as f:
+        f.write(json.dumps(registry_policy))
+
+
+def create_lookaside_config_file(params):
+    """
+    create look aside config file
+
+    @param params: one dictionary wrapping various parameter
+    """
+    base_dir = params.get("config_file_path")
+    lookaside_file = os.path.join(base_dir, "bib_lookaside.yaml")
+    lookaside_file_config = """
+    docker:
+        localhost:5000:
+         lookaside: file:///var/lib/containers/sigstore
+    """
+    with open(lookaside_file, mode="w", encoding="utf-8") as f:
+        f.write(lookaside_file_config)
+
+
+def gpg_gen_key(params):
+    """
+    generate gpg key
+
+    @param params: one dictionary wrapping various parameter
+    """
+    base_dir = params.get("config_file_path")
+    home_dir = f"{base_dir}/.gnupg"
+    pub_key_file = os.path.join(base_dir, "key.gpg")
+    if os.path.exists(home_dir):
+        return
+
+    os.makedirs(home_dir, mode=0o700, exist_ok=False)
+    key_params = """
+      %no-protection
+      Key-Type: RSA
+      Key-Length: 3072
+      Key-Usage: sign
+      Name-Real: Bootc Image Builder Test usage
+      Name-Email: bib_test@redhat.com
+      Expire-Date: 0
+    """
+    email = "bib_test@redhat.com"
+
+    subprocess.run(
+        ["gpg", "--gen-key", "--batch"],
+        check=True, capture_output=True,
+        env={"GNUPGHOME": home_dir},
+        input=key_params,
+        text=True)
+
+    subprocess.run(
+        ["gpg", "--output", pub_key_file,
+         "--armor", "--export", email],
+        check=True, capture_output=True,
+        env={"GNUPGHOME": home_dir})
+
+
+def retag_container_image_to_local_registry(params):
+    """
+    re-tag the image to point it to our local registry
+
+    @param params: one dictionary wrapping various parameter
+    """
+    container_url = params.get('container_url')
+    pull_image_cmd = f"podman pull {container_url}"
+    process.run(pull_image_cmd, timeout=600, verbose=True, ignore_status=False, shell=True)
+
+    index = container_url.index(":") + 1
+    image_name = container_url[index:]
+
+    delete_img_cmd = f"podman rmi localhost:5000/{image_name} -f "
+    process.run(delete_img_cmd, timeout=60, verbose=True, ignore_status=True, shell=True)
+
+    cmd = f"podman tag {container_url} localhost:5000/{image_name}"
+    ret = process.run(cmd, timeout=40, verbose=True, ignore_status=False, shell=True).stdout_text
+
+    list_image = "podman images localhost:5000/{image_name}"
+    ret = process.run(cmd, timeout=40, verbose=True, ignore_status=True, shell=True).stdout_text
+    LOG.debug(f"pomdman list image output is : {ret}")
+    return f"localhost:5000/{image_name}"
+
+
+def ensure_registry(params):
+    """
+    ensure registry is running
+
+    @param params: one dictionary wrapping various parameter
+    """
+    registry_container_name = subprocess.run([
+        "podman", "ps", "-a", "--filter", "name=registry", "--format", "{{.Names}}"
+    ], check=True, capture_output=True).stdout.decode("utf-8").strip()
+
+    if registry_container_name != "registry":
+        subprocess.run([
+            "podman", "run", "-d", "-p", "5000:5000", "--restart", "always", "--name", "registry", "registry:2"
+        ], check=True, capture_output=True)
+
+    registry_container_state = subprocess.run([
+        "podman", "ps", "-a", "--filter", "name=registry", "--format", "{{.State}}"
+    ], check=True, capture_output=True).stdout.decode("utf-8").strip()
+
+    if registry_container_state in ("paused", "exited"):
+        subprocess.run([
+            "podman", "start", "registry"
+        ], check=True, capture_output=True)
+    time.sleep(20)
+    cmd = "podman ps"
+    output = process.run(cmd, timeout=40, verbose=True, ignore_status=True, shell=True).stdout_text
+    LOG.debug(f"pomdman list running container output is : {output}")
+
+
+def sign_image(params):
+    """
+    sign container image
+
+    @param params: one dictionary wrapping various parameter
+    """
+    gpg_gen_key(params)
+    ensure_registry(params)
+    local_registry_url = retag_container_image_to_local_registry(params)
+    create_registry_policy_file(params)
+    create_lookaside_config_file(params)
+    base_dir = params.get("config_file_path")
+    home_dir = f"{base_dir}/.gnupg"
+    email = "bib_test@redhat.com"
+    base_dir = params.get("config_file_path")
+    lookaside_file = os.path.join(base_dir, "bib_lookaside.yaml")
+    system_lookaside_conf_file = os.path.join(
+        "/etc/containers/registries.d",
+        os.path.basename(lookaside_file)
+    )
+    shutil.copy(lookaside_file, system_lookaside_conf_file)
+
+    subprocess.run([
+        "podman", "push",
+        "--tls-verify=false",
+        "--sign-by", email,
+        f"{local_registry_url}",
+    ], check=True, capture_output=True, env={"GNUPGHOME": home_dir})
+    os.unlink(system_lookaside_conf_file)
+    return local_registry_url
 
 
 def get_baseurl_from_repo_file(repo_file_path):
