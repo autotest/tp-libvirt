@@ -57,6 +57,8 @@ def run(test, params, env):
             # virtiofsd man pages. Add another kind of pattern here to avoid
             # possible change in the future again.
             expected_results += " --thread-pool-size(\s|=)%s" % thread_pool_size
+        if openfiles:
+            expected_results += " --rlimit-nofile(\s|=)%s" % open_files_max
         logging.debug(expected_results)
         return expected_results
 
@@ -226,6 +228,7 @@ def run(test, params, env):
     xattr = params.get("xattr", "on")
     path = params.get("virtiofsd_path", "/usr/libexec/virtiofsd")
     thread_pool_size = params.get("thread_pool_size")
+    openfiles = params.get("openfiles", "no") == "yes"
     queue_size = int(params.get("queue_size", "512"))
     driver_type = params.get("driver_type", "virtiofs")
     guest_num = int(params.get("guest_num", "1"))
@@ -279,6 +282,13 @@ def run(test, params, env):
             libvirt_version.is_libvirt_feature_supported(params)
             check_filesystem_hotplug_with_mem_setup()
             return
+
+        if openfiles:
+            with open('/proc/sys/fs/nr_open', 'r') as file:
+                open_files_max = file.read().strip()
+        else:
+            open_files_max = None
+
         # Define filesystem device xml
         for index in range(fs_num):
             driver = {'type': driver_type, 'queue': queue_size}
@@ -289,8 +299,10 @@ def run(test, params, env):
             source = {'socket': source_socket}
             target = {'dir': target_dir}
             if launched_mode == "auto":
-                binary_keys = ['path', 'cache_mode', 'xattr', 'thread_pool_size']
-                binary_values = [path, cache_mode, xattr, thread_pool_size]
+                binary_keys = ['path', 'cache_mode', 'xattr',
+                               'thread_pool_size', "open_files_max"]
+                binary_values = [path, cache_mode, xattr,
+                                 thread_pool_size, open_files_max]
                 binary_dict = dict(zip(binary_keys, binary_values))
                 source = {'dir': source_dir}
                 accessmode = "passthrough"
