@@ -60,7 +60,7 @@ def run(test, params, env):
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True).split()[0]
     host_ip = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv4')
     status_error = 'yes' == params.get('status_error', 'no')
     err_msg = params.get('err_msg')
@@ -125,7 +125,7 @@ def run(test, params, env):
             'outside_ip': outside_ip,
             'host_public_ip': host_ip,
         }
-        vm_default_gw = utils_net.get_default_gateway(session=session)
+        vm_default_gw = utils_net.get_default_gateway(session=session, json=True)
 
         if iface_amount == 'two_ifaces':
             ping_params = {
