@@ -62,8 +62,11 @@ def dynamic_node_replacement(params, numa_info, test_obj):
     key_names = ['memnode_nodeset_', 'page_nodenum_']
     for param in params:
         if 'numa_cells_with_memory_required' in param:
-            if int(params['numa_cells_with_memory_required']) > len(node_list):
-                test_obj.cancel("There is no enough NUMA nodes available on this system to perform the test.")
+            if 'ppc64' in arch:
+                if not node_list:
+                    test_obj.cancel("No NUMA nodes available on this system to perform the test.")
+            elif int(params['numa_cells_with_memory_required']) > len(node_list):
+                    test_obj.cancel("There is no enough NUMA nodes available on this system to perform the test.")
         if 'memory_nodeset' in param:
             params['memory_nodeset'] = ','.join([str(elem) for elem in node_list])
             logging.debug('The parameter "memory_nodeset" from config file is going to be replaced by: {} available '
@@ -112,9 +115,11 @@ def run(test, params, env):
                 ppc_memory_nodeset += str(node_list[int(nodes.split('-')[1])])
             else:
                 node_lst = nodes.split(',')
-                for n in range(len(node_lst) - 1):
-                    ppc_memory_nodeset += str(node_list[int(node_lst[n])]) + ','
-                ppc_memory_nodeset += str(node_list[int(node_lst[-1])])
+                for n in range(len(node_lst)):
+                    if int(node_lst[n]) in node_list:
+                        ppc_memory_nodeset += str(node_lst[n])
+                        if n < len(node_lst) - 1:
+                            ppc_memory_nodeset += ','
             params['memory_nodeset'] = ppc_memory_nodeset
         except IndexError:
             test.cancel("No of numas in config does not match with no of "
@@ -125,7 +130,11 @@ def run(test, params, env):
         for pkey in pkeys:
             for key in params.keys():
                 if pkey in key:
-                    params[key] = str(node_list[int(params[key])])
+                    index = int(params[key])
+                    if index < len(node_list):
+                        params[key] = str(node_list[index])
+                    else:
+                        params[key] = str(node_list[-1])
         # Modify qemu command line
         try:
             if params['qemu_cmdline_mem_backend_1']:
