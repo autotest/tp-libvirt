@@ -272,6 +272,7 @@ def run(test, params, env):
 
     vm_name = params.get("migrate_main_vm")
     shared_storage_type = params.get('shared_storage_type', '')
+    desturi = params.get("virsh_migrate_desturi")
 
     libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
@@ -283,6 +284,8 @@ def run(test, params, env):
 
     try:
         set_secret(params)
+        if not base_steps.check_cpu_for_mig(desturi):
+            base_steps.sync_cpu_for_mig(params)
         setup_test()
         migration_obj.run_migration()
         verify_test()
