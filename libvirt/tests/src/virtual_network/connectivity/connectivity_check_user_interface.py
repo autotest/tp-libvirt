@@ -95,7 +95,7 @@ def run(test, params, env):
         vmxml.del_device('interface', by_tag=True)
         vmxml.sync(virsh_instance=virsh_ins)
         iface = libvirt_vmxml.create_vm_device_by_type(
-            'interface', {**iface_attrs, **{'mac_address': mac}})
+            'interface', {**iface_attrs, **({'mac_address': mac} if mac else {})})
         vmxml.add_device(iface)
         define_result = virsh.define(vmxml.xml, debug=True, uri=virsh_uri)
         libvirt.check_exit_status(define_result, expect_error)
