@@ -106,11 +106,12 @@ def run(test, params, env):
         # that it's within 20 percent of each value to give us enough of
         # a "fudge" factor to declare "close enough". Don't return a failure
         # just print a debug message and move on.
-        diffval = abs(int(cpu_frequency_nodeinfo) - int(cpu_frequency_os))
-        if (float(diffval) / float(cpu_frequency_nodeinfo) > 0.20 or
-                float(diffval) / float(cpu_frequency_os) > 0.20):
-            logging.debug("Virsh nodeinfo output didn't match CPU "
-                          "frequency within 20 percent")
+        if 'yes' == params.get('check_frequency', 'no'):
+            diffval = abs(int(cpu_frequency_nodeinfo) - int(cpu_frequency_os))
+            if (float(diffval) / float(cpu_frequency_nodeinfo) > 0.20 or
+                    float(diffval) / float(cpu_frequency_os) > 0.20):
+                logging.debug("Virsh nodeinfo output didn't match CPU "
+                              "frequency within 20 percent")
 
         # Get CPU topology from virsh capabilities xml
         cpu_topology = capability_xml.CapabilityXML()['cpu_topology']
