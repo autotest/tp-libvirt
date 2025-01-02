@@ -347,9 +347,9 @@ class MigrationBase(object):
         log_level = self.params.get("libvirtd_debug_level")
         log_file = self.params.get("libvirtd_debug_file")
         log_filters = self.params.get("libvirtd_debug_filters")
-        file_type = self.params.get("libvirtd_file_type")
+        remote_file_type = self.params.get("remote_file_type")
 
-        service_name = utils_libvirtd.Libvirtd(file_type).service_name
+        service_name = utils_libvirtd.Libvirtd(remote_file_type).service_name
         file_path = utils_config.get_conf_obj(service_name).conf_path
         self.test.log.debug("Config file path: %s" % file_path)
         cmd = "ls {0} || mkdir -p {0}".format(os.path.dirname(log_file))
@@ -369,24 +369,42 @@ class MigrationBase(object):
                                   otherwise, False
         """
         check_str_local_log = eval(self.params.get("check_str_local_log", "[]"))
-        check_str_remote_log = self.params.get("check_str_remote_log", "")
+        check_no_str_local_log = eval(self.params.get("check_no_str_local_log", "[]"))
+        check_str_remote_log = eval(self.params.get("check_str_remote_log", "[]"))
+        check_no_str_remote_log = eval(self.params.get("check_no_str_remote_log", "[]"))
         log_file = self.params.get("libvirtd_debug_file")
+        runner_on_target = None
+
         if check_str_local_log:
             for check_log in check_str_local_log:
                 libvirt.check_logfile(check_log, log_file, str_in_log=local_str_in_log)
-        if check_str_remote_log:
-            runner_on_target = None
+        if check_no_str_local_log:
+            for check_log in check_no_str_local_log:
+                local_str_in_log = False
+                libvirt.check_logfile(check_log, log_file, str_in_log=local_str_in_log)
+        if check_str_remote_log or check_no_str_remote_log:
             server_ip = self.params.get("server_ip")
             server_user = self.params.get("server_user", "root")
             server_pwd = self.params.get("server_pwd")
             runner_on_target = remote.RemoteRunner(host=server_ip,
                                                    username=server_user,
                                                    password=server_pwd)
-            libvirt.check_logfile(check_str_remote_log,
-                                  log_file,
-                                  str_in_log=remote_str_in_log,
-                                  cmd_parms=self.params,
-                                  runner_on_target=runner_on_target)
+
+        if check_str_remote_log:
+            for check_log in check_str_remote_log:
+                libvirt.check_logfile(check_log,
+                                      log_file,
+                                      str_in_log=remote_str_in_log,
+                                      cmd_parms=self.params,
+                                      runner_on_target=runner_on_target)
+        if check_no_str_remote_log:
+            remote_str_in_log = False
+            for check_log in check_no_str_remote_log:
+                libvirt.check_logfile(check_log,
+                                      log_file,
+                                      str_in_log=remote_str_in_log,
+                                      cmd_parms=self.params,
+                                      runner_on_target=runner_on_target)
 
     def remote_add_or_remove_port(self, port, add=True):
         """
