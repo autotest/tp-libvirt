@@ -209,6 +209,10 @@ def run(test, params, env):
             if tap_cmd is None:
                 test.error('No tap creating command provided.')
             tap_cmd = tap_cmd.format(tap_name=tap_name)
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            iface = vmxml.devices.by_device_tag('interface')[0]
+            if "driver queues" not in str(iface):
+                tap_cmd = tap_cmd.replace(' multi_queue', '')
             logging.debug('Tap creating command: \n %s', tap_cmd)
             # Create tap device
             process.run(tap_cmd, verbose=True, shell=True)
@@ -231,8 +235,6 @@ def run(test, params, env):
                     test.fail('Host mtu size check FAIL.')
 
                 # Get iface mac address
-                vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-                iface = vmxml.devices.by_device_tag('interface')[0]
                 iface_mac = iface.mac_address
 
                 # Check mtu inside vm
@@ -386,4 +388,7 @@ def run(test, params, env):
             process.run("ovs-vsctl del-br %s" % br, verbose=True)
             utils_package.package_remove(add_pkg)
         if create_tap:
-            process.run('ip tuntap del mode tap {}'.format(tap_name), verbose=True, shell=True)
+            tap_del_cmd = 'ip tuntap del mode tap {} multi_queue'
+            if "multi_queue" not in tap_cmd:
+                tap_del_cmd = tap_del_cmd.replace(' multi_queue', '')
+            process.run(tap_del_cmd.format(tap_name), verbose=True, shell=True)
