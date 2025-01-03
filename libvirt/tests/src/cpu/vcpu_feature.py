@@ -49,6 +49,7 @@ def run(test, params, env):
     cpu_mode = params.get('cpu_mode', "host-passthrough")
     cpu_check = params.get('cpu_check', "full")
     feature_name = params.get('feature_name', "vmx")
+    feature_check_name = params.get('feature_check_name', feature_name)
     feature_policy = params.get('feature_policy', "require")
     host_supported_feature = "yes" == params.get("host_supported_feature", "no")
     check_vm_feature = "yes" == params.get("check_vm_feature", "no")
@@ -58,10 +59,9 @@ def run(test, params, env):
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
-        if not libvirt_version.version_compare(6, 0, 0):
-            test.cancel("Libvirt version is too low for this test.")
+        libvirt_version.is_libvirt_feature_supported(params)
 
-        flags_cmd = "grep -q %s /proc/cpuinfo" % feature_name
+        flags_cmd = "grep -qw %s /proc/cpuinfo" % feature_check_name
         res = process.run(flags_cmd, shell=True, ignore_status=True).exit_status
         if host_supported_feature == bool(res):
             test.cancel('The host does not support current test!')
@@ -75,14 +75,20 @@ def run(test, params, env):
         if err_msg:
             libvirt.check_result(result, err_msg)
 
+        vm_session = None
         if not status_error and check_vm_feature:
             vm_session = vm.wait_for_login()
             res = vm_session.cmd_status(flags_cmd)
             # TODO: Add checks for other feature policies
             if feature_policy == "disable":
                 if not res:
-                    test.fail("The vm unexpectedly contains %s flag"
-                              % feature_name)
+                    test.fail("The vm unexpectedly contains %s flag" % feature_name)
+
+        check_qemu_pattern = params.get('check_qemu_pattern', "")
+        # we don't expect for now negative cases for the check_qemu_pattern
+        if check_qemu_pattern:
+            logging.debug(f"TEST_STEP: checking pattern in qemu-kvm command line:{check_qemu_pattern}.")
+            libvirt.check_qemu_cmd_line(check_qemu_pattern)
 
     finally:
         if vm.is_alive():
