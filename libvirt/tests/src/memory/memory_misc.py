@@ -243,7 +243,7 @@ def run(test, params, env):
             if cancel:
                 test.cancel('Setting pagenum of numa nodes failed, '
                             'please check log')
-
+            params["hp_cfg"] = hp_cfg
             # Setup vmxml: Add memory device
             mem_device = Memory()
             mem_device_attrs = eval(params.get('mem_device_attrs'))
@@ -268,6 +268,7 @@ def run(test, params, env):
             hp_cfg = test_setup.HugePageConfig(params)
             hp_cfg.set_kernel_hugepages(pagesize, vm_mem_size // pagesize, False)
             hp_cfg.set_kernel_hugepages(mount_pagesize, mem_device_size // mount_pagesize, False)
+            params["hp_cfg"] = hp_cfg
             set_vmxml(vmxml, params)
             _setup_mbxml()
             vmxml.sync()
@@ -448,13 +449,18 @@ def run(test, params, env):
                 hp_cfg = test_setup.HugePageConfig(params)
                 hp_cfg.set_kernel_hugepages(pagesize, params['page_num_bk'])
         if case == 'hp_from_2_numa_nodes':
+            hp_cfg = params.get("hp_cfg")
+            if hp_cfg is None:
+                return
             restore_hugepages()
         if case == 'mount_hp_running_vm':
+            hp_cfg = params.get("hp_cfg")
+            if hp_cfg is None:
+                return
             mount_path = params.get('mount_path')
             utils_disk.umount('hugetlbfs', mount_path, 'hugetlbfs')
             if os.path.exists(mount_path):
                 os.rmdir(mount_path)
-            hp_cfg = test_setup.HugePageConfig(params)
             hp_cfg.set_kernel_hugepages(int(params.get('mount_pagesize')), 0)
             hp_cfg.cleanup()
 
