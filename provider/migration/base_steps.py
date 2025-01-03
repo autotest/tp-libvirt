@@ -368,10 +368,13 @@ class MigrationBase(object):
         :param remote_str_in_log: True if the remote file should include the given string,
                                   otherwise, False
         """
-        check_str_local_log = eval(self.params.get("check_str_local_log", "[]"))
-        check_no_str_local_log = eval(self.params.get("check_no_str_local_log", "[]"))
-        check_str_remote_log = eval(self.params.get("check_str_remote_log", "[]"))
-        check_no_str_remote_log = eval(self.params.get("check_no_str_remote_log", "[]"))
+        try:
+            check_str_local_log = eval(self.params.get("check_str_local_log", "[]"))
+            check_no_str_local_log = eval(self.params.get("check_no_str_local_log", "[]"))
+            check_str_remote_log = eval(self.params.get("check_str_remote_log", "[]"))
+            check_no_str_remote_log = eval(self.params.get("check_no_str_remote_log", "[]"))
+        except Exception as e:
+            self.test.error(f"Wrong test configuration. Unable to eval one or more parameter(s): {str(e)}")
         log_file = self.params.get("libvirtd_debug_file")
         runner_on_target = None
 
