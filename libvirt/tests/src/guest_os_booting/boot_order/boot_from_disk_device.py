@@ -6,17 +6,19 @@ from virttest import remote
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import disk
+from virttest.utils_misc import cmd_status_output
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_vmxml
 
 from provider.guest_os_booting import guest_os_booting_base
 
 
-def parse_disks_attrs(vmxml, params):
+def parse_disks_attrs(vmxml, test, params):
     """
     Parse disk devices' attrs
 
     :param vmxml: The vmxml object
+    :param test: The test object
     :param params: Dictionary with the test parameters
     :return: (Newly created disk image path, list of disk devices' attrs)
     """
@@ -28,7 +30,14 @@ def parse_disks_attrs(vmxml, params):
     if disk1_img:
         disk1_img_path = os.path.join(data_dir.get_data_dir(), 'images',
                                       disk1_img)
-        libvirt_disk.create_disk('file', disk1_img_path, disk_format='qcow2')
+        if disk1_img == "copied_original.qcow2":
+            org_source_file = disk_org_attrs['source']['attrs']['file']
+            cmd_status_output("qemu-img convert "
+                              "-f qcow2 -O qcow2 -o lazy_refcounts=on "
+                              f"{org_source_file} {disk1_img_path}")
+        else:
+            libvirt_disk.create_disk('file', disk1_img_path, disk_format='qcow2')
+
         disk1_attrs = copy.deepcopy(disk_org_attrs)
         disk1_attrs['source'] = {'attrs': {'file': disk1_img_path}}
         disk_attrs_list.append(disk1_attrs)
@@ -84,15 +93,19 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     bkxml = vmxml.copy()
+    session = None
 
     try:
-        disk1_img_path, disk_attrs_list = parse_disks_attrs(vmxml, params)
+        disk1_img_path, disk_attrs_list = parse_disks_attrs(vmxml, test, params)
         update_vm_xml(vm, params, disk_attrs_list)
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
 
         vm.start()
         try:
-            vm.wait_for_serial_login().close()
+            #vm.wait_for_serial_login(timeout=120).close()
+            session = vm.wait_for_serial_login()
+            if 'emergency mode' in session.get_output():
+                test.fail("Couldn't boot correctly")
         except remote.LoginTimeoutError as detail:
             if status_error:
                 test.log.debug("Found the expected error: %s", detail)
@@ -100,6 +113,8 @@ def run(test, params, env):
                 test.fail(detail)
 
     finally:
+        if session:
+            session.close()
         bkxml.sync()
         if disk1_img_path and os.path.isfile(disk1_img_path):
             test.log.debug(f"removing {disk1_img_path}")
