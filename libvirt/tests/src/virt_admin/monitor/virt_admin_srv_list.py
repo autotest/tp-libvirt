@@ -1,4 +1,8 @@
 import re
+
+from avocado.utils import process
+
+from virttest import utils_libvirtd
 from virttest import virt_admin
 
 
@@ -14,6 +18,10 @@ def run(test, params, env):
     if not server_name:
         server_name = virt_admin.check_server_name()
 
+    process.run("systemctl status virtproxyd-admin.socket", shell=True)
+    process.run("systemctl status virtproxyd", shell=True)
+    virtproxyd_admin_socket = utils_libvirtd.DaemonSocket("virtproxyd-admin.socket")
+    virtproxyd_admin_socket.restart()
     vp = virt_admin.VirtadminPersistent()
     result = vp.srv_list(ignore_status=True, debug=True)
     output = result.stdout.strip()
