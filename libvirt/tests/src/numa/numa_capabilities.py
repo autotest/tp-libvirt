@@ -14,6 +14,7 @@ def run(test, params, env):
     """
     Test capabilities with host numa node topology
     """
+    missing_cpu_topology_key = params.get("missing_cpu_topology_key")
     libvirtd = utils_libvirtd.Libvirtd()
     libvirtd.start()
     try:
@@ -49,6 +50,10 @@ def run(test, params, env):
             cpu_topo_list = []
             for cpu_id in cpu_list:
                 cpu_dict = node_.get_cpu_topology(cpu_id)
+                # if specific cpu topology file from sysfs doesn't exist, default 0
+                # would be used in virsh capabilities
+                if missing_cpu_topology_key and cpu_dict[missing_cpu_topology_key] is None:
+                    cpu_dict[missing_cpu_topology_key] = '0'
                 cpu_topo_list.append(cpu_dict)
             logging.debug("cpu topology list from capabilities xml is %s",
                           cpu_list_from_xml)
