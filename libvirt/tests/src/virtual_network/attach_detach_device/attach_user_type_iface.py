@@ -112,5 +112,8 @@ def run(test, params, env):
         if len(iface_list):
             test.fail('Found interface xml on vm which should be detached:'
                       f'{iface_list}')
+        # Workaround timeout when running virsh dumpxml
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+            vm_name, virsh_instance=virsh_ins)
     finally:
         bkxml.sync(virsh_instance=virsh_ins)
