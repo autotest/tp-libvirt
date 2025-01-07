@@ -9,6 +9,7 @@ subtest types:
 * LVSB
 * V2V
 * Libguestfs
+* Virt-tools
 
 Really quick start guide
 ------------------------
