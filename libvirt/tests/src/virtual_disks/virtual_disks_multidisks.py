@@ -1117,19 +1117,25 @@ def run(test, params, env):
 
     # For minimal VM xml,it need reconstruct one.
     if test_minimal_xml:
+        cpu_model_xml = params.get("cpu_model_xml", "")
+        aarch64_machine_type = params.get("aarch64_machine_type")
+        memory_size = params.get("memory_size", "1048576")
+        curr_mem_size = params.get("curr_mem_size", "1048576")
         minimal_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        machine_type = aarch64_machine_type if aarch64_machine_type else machine
         first_disk = vm.get_first_disk_devices()
         first_disk_source = first_disk['source']
         minimal_vm_xml_file = minimal_vm_xml.xml
         minimal_xml_content = """<domain type='kvm'>
         <name>%s</name>
-        <memory unit='KiB'>1048576</memory>
-        <currentMemory unit='KiB'>1048576</currentMemory>
+        <memory unit='KiB'>%s</memory>
+        <currentMemory unit='KiB'>%s</currentMemory>
         <vcpu placement='static'>1</vcpu>
         <os>
           <type arch='%s' machine='%s'>hvm</type>
           <boot dev='hd'/>
         </os>
+        %s
         <devices>
           <emulator>/usr/libexec/qemu-kvm</emulator>
           <disk type='file' device='disk'>
@@ -1138,7 +1144,13 @@ def run(test, params, env):
             <target dev='vda' bus='virtio'/>
           </disk>
         </devices>
-        </domain>""" % (vm_name, arch, machine, first_disk_source)
+        </domain>""" % (vm_name,
+                        memory_size,
+                        curr_mem_size,
+                        arch,
+                        machine_type,
+                        cpu_model_xml,
+                        first_disk_source)
         with open(minimal_vm_xml_file, 'w') as xml_file:
             xml_file.seek(0)
             xml_file.truncate()
