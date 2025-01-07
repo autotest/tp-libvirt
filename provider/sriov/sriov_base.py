@@ -260,8 +260,8 @@ class SRIOVTest(object):
         if not os.path.exists(rom_file):
             virtio_rom_file = "/usr/share/ipxe/1af41000.rom"
             if not os.path.exists(virtio_rom_file):
-                self.test.error(f"This test needs a rom file, but neither {rom_file}"
-                                "nor {virtio_rom_file} exist!")
+                self.test.error(f"This test needs a rom file, but neither {rom_file} "
+                                f"nor {virtio_rom_file} exist!")
             return virtio_rom_file
         return rom_file
 
