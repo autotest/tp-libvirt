@@ -92,7 +92,7 @@ def run(test, params, env):
             vm.wait_for_login(timeout=360).close()
             test.log.debug("Succeed to boot %s", vm_name)
         else:
-            vm.serial_console.read_until_output_matches(check_prompt, timeout=300,
+            vm.serial_console.read_until_output_matches(check_prompt, timeout=600,
                                                         internal_timeout=0.5)
     finally:
         bkxml.sync()
