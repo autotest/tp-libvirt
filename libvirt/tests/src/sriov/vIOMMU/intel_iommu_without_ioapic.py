@@ -1,15 +1,17 @@
+from virttest import libvirt_version
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml import xcepts
 from virttest.utils_libvirt import libvirt_vmxml
 
 
 def run(test, params, env):
     """
-    Check for the error message when using an Intel iommu device
-    but without <ioapic driver='qemu'/> defined in the VM
+    libvirt will automatically add "<ioapic driver='qemu'/>"
+    if <driver intremap='on'/> is set for the intel iommu device
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     iommu_dict = eval(params.get('iommu_dict', '{}'))
-    err_msg = params.get("err_msg", "I/O APIC")
+    auto_add_ioapic = params.get("auto_add_ioapic", "no") == "yes"
     feature_name = params.get("feature_name", "ioapic")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
@@ -27,15 +29,17 @@ def run(test, params, env):
         iommu_dev = libvirt_vmxml.create_vm_device_by_type('iommu', iommu_dict)
         vmxml.add_device(iommu_dev)
         vmxml.xmltreefile.write()
-        try:
-            vmxml.sync()
-        except xcepts.LibvirtXMLError as details:
-            test.log.debug("Check '%s' in %s.", err_msg, details)
-            if not str(details).count(err_msg):
-                test.fail("Incorrect error message, it should be '{}', but "
-                          "got '{}'.".format(err_msg, details))
+        vmxml.sync()
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        features = vmxml.features
+        tmp_msg = "" if auto_add_ioapic else "not "
+        msg = (f"{feature_name} should {tmp_msg}be "
+               f"added automatically! Actual feature list: {features}")
+        if auto_add_ioapic == features.has_feature(feature_name):
+            test.log.debug(msg)
         else:
-            test.fail("Vm is expected to fail on defining with intel iommu "
-                      "without ioapic feature, while it succeeds.")
+            test.fail(msg)
+        virsh.start(vm.name, debug=True, ignore_status=False)
     finally:
         backup_vmxml.sync()
