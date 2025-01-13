@@ -720,9 +720,9 @@ def do_domjobabort(params):
     libvirt.check_result(ret, expected_fails=domjobabort_err_msg, check_both_on_error=True)
 
 
-def get_vm_serial_session_on_dest(params):
+def write_vm_disk_on_dest(params):
     """
-    Get vm serial session on dest
+    Write vm's disk on dest
 
     :param params: dictionary with the test parameter, get dest uri and migration object
     """
@@ -733,7 +733,8 @@ def get_vm_serial_session_on_dest(params):
     migration_obj.vm.cleanup_serial_console()
     migration_obj.vm.create_serial_console()
     vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
-    params.update({"vm_session": vm_session})
+    vm_session.cmd("while true; do echo 'do disk I/O error test' >> /tmp/disk_io_error_test; sleep 1; done &")
+    vm_session.close()
     migration_obj.vm.connect_uri = backup_uri
 
 

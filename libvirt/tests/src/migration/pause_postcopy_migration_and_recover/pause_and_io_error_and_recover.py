@@ -26,8 +26,6 @@ def run(test, params, env):
 
         test.log.debug("Do I/O Error.")
         shutil.chown(disk_source, "root", "root")
-        vm_session.cmd("echo 'do disk I/O error test' > /tmp/disk_io_error_test")
-        vm_session.close()
 
     def verify_test():
         """
