@@ -4,6 +4,7 @@ import logging as log
 import platform
 import time
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import virt_vm
@@ -53,6 +54,9 @@ def run(test, params, env):
         with open(hook_file, 'w') as hf:
             hf.write('\n'.join(hook_lines))
         os.chmod(hook_file, 0o755)
+        if distro.detect().name == 'rhel' and int(distro.detect().version) > 9:
+            process.run("restorecon -Rv /etc/libvirt/hooks", ignore_status=False, shell=True)
+            process.run("setsebool -P virt_hooks_unconfined on", ignore_status=False, shell=True)
 
         # restart libvirtd
         libvirtd.restart()
