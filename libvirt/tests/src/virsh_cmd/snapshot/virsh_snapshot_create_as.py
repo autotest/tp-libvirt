@@ -594,7 +594,14 @@ def run(test, params, env):
             # check status_error
             if status_error == "yes":
                 if status == 0:
-                    test.fail("Run successfully with wrong command!")
+                    # snapshots can be created for the guests created
+                    # with 'autodestroy' option on libvirt v5.8.0 and above!
+                    if libvirt_version.version_compare(5, 8, 0) and \
+                            create_autodestroy:
+                        logging.info("Run passed as expected in "
+                                     "libvirt version >= 5.8.0")
+                    else:
+                        test.fail("Run successfully with wrong command!")
                 else:
                     # Check memspec file should be removed if failed
                     if (options.find("memspec") >= 0 and
