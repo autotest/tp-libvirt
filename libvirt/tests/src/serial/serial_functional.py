@@ -23,6 +23,7 @@ from virttest.libvirt_xml.devices.console import Console
 from virttest import libvirt_version
 
 from avocado.utils import astring
+from avocado.utils import process
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -746,6 +747,7 @@ def run(test, params, env):
     target_model = params.get('target_model', '')
     console_target_port = params.get('console_target_port', '0')
     second_serial_console = params.get('second_serial_console', 'no') == 'yes'
+    connect_to_console_without_serial_device = params.get('connect_to_console_without_serial_device', 'no') == 'yes'
     custom_pki_path = params.get('custom_pki_path', '/etc/pki/libvirt-chardev')
     auto_recover = params.get('auto_recover', 'no')
     client_pwd = params.get('client_pwd', None)
@@ -821,6 +823,12 @@ def run(test, params, env):
         if console_type == 'server':
             console = prepare_serial_console()
 
+        if connect_to_console_without_serial_device:
+            libvirt_version.is_libvirt_feature_supported(params)
+            for device_type in remove_devices:
+                vm_xml.remove_all_device_by_type(device_type)
+            vm_xml.sync()
+
         res = virsh.start(vm_name)
         libvirt.check_result(res, expected_fails, [])
         if res.exit_status:
@@ -835,8 +843,19 @@ def run(test, params, env):
            console_type != 'server'):
             check_serial_console(console, username, password)
 
+        if connect_to_console_without_serial_device:
+            time.sleep(20)
+            # use raw virsh console command since we need to output message from virsh console VM
+            result = process.run("virsh console %s" % vm_name, shell=True, verbose=True, ignore_status=True).stderr_text
+            error_msg = params.get("error_msg")
+            if error_msg not in result:
+                test.fail(f"Fail to get expected error message:{error_msg} from console")
+
         vm.destroy()
 
     finally:
+        # Recover VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
         cleanup(objs_list)
         vm_xml_backup.sync()
