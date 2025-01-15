@@ -12,6 +12,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import utils_config
 from virttest import utils_iptables
+from virttest import utils_split_daemons
 
 from virttest import libvirt_version
 from virttest.utils_sasl import SASL
@@ -232,6 +233,7 @@ def run(test, params, env):
     """
 
     test_dict = dict(params)
+    test_dict['traditional_mode'] = "no" if utils_split_daemons.is_modular_daemon() else "yes"
     socket_access_controls_cfg_file = test_dict.get("socket_access_controls_cfg_file", "no")
     if socket_access_controls_cfg_file == "yes":
         if libvirt_version.version_compare(6, 0, 0):
