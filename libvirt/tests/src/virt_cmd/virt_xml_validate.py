@@ -34,6 +34,8 @@ def domainsnapshot_validate(test, vm_name, file=None, **virsh_dargs):
 
     cmd_result = virsh.snapshot_dumpxml(vm_name, snapshot_name, to_file=file)
     libvirt.check_exit_status(cmd_result)
+    cmd_result = virsh.snapshot_delete(vm_name, snapshot_name, to_file=file)
+    libvirt.check_exit_status(cmd_result)
 
 
 def network_validate(test, net_name, file=None, **virsh_dargs):
