@@ -267,6 +267,7 @@ dzheng
 ebtables
 efi
 eg
+egd
 els
 embeddedqemu
 emulatorbin
@@ -384,7 +385,9 @@ hostfile
 hostname
 hostnuma
 hotplug
+hotplugs
 Hotplug
+Hotplugs
 hotpluggable
 hotplugged
 Hotplugged
@@ -1104,6 +1107,7 @@ upadte
 Updae
 uperf
 uptime
+urandom
 uri
 URI
 uris
