@@ -538,5 +538,5 @@ def run(test, params, env):
         if multi_guests:
             for i in range(int(multi_guests)):
                 virsh.remove_domain("%s_%s" % (vm_name, i),
-                                    "--remove-all-storage",
+                                    "--remove-all-storage --nvram",
                                     debug=True)
