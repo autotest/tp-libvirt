@@ -631,7 +631,8 @@ def run(test, params, env):
     hotunplug_after_migrate = "yes" == params.get("virsh_hotunplug_cpu_after",
                                                   "no")
     compat_guest_migrate = get_compat_guest_migrate(params)
-    compat_mode = "yes" == params.get("compat_mode", "no")
+    compat_mode_P9 = "yes" == params.get("compat_mode_P9", "no")
+    compat_mode_P11 = "yes" == params.get("compat_mode_P11", "no")
     remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
                     'server_pwd': server_pwd,
                     'file_path': "/etc/libvirt/libvirt.conf"}
@@ -653,7 +654,7 @@ def run(test, params, env):
             libvirt.add_controller(vm.name, contr_xml)
 
     # Configurations for cpu compat guest to boot
-    if compat_mode:
+    if (compat_mode_P9 or compat_mode_P11):
         if compat_guest_migrate:
             if not libvirt_version.version_compare(3, 2, 0):
                 test.cancel("host CPU model is not supported")
@@ -671,8 +672,10 @@ def run(test, params, env):
                                                      actual_cpu_model))
             logging.debug("Configured cpu model successfully! Guest booted "
                           "with CPU model: %s", actual_cpu_model)
-        else:
+        elif compat_mode_P9:
             test.cancel("Host arch is not POWER9")
+        else:
+            test.cancel("Host arch is not POWER11")
     # Configurations for cpu hotplug and cpu hotunplug
     if cpu_hotplug:
         # To check cpu hotplug is supported or not
