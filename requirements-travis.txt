@@ -4,7 +4,7 @@ nosexcover==1.0.8
 tox==1.5.0; python_version < '3.8'
 tox==4.16.0; python_version > '3.7'
 virtualenv==1.9.1; python_version < '3.8'
-virtualenv==20.26.3; python_version > '3.7'
+virtualenv==20.26.6; python_version > '3.7'
 simplejson==3.8.1
 inspektor==0.5.2; python_version < '3.8'
 inspektor==0.5.3; python_version > '3.7'
