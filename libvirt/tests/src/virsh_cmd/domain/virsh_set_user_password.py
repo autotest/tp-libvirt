@@ -76,40 +76,29 @@ def run(test, params, env):
                 ret = process.run(cmd, shell=True)
                 libvirt.check_exit_status(ret)
                 en_passwd = str(ret.stdout_text.strip())
-                passwd = en_passwd
+                passwd = en_passwd.replace('$', r'\$')
 
             ret = virsh.set_user_password(vm_name, set_user_name, passwd,
                                           encrypted=encrypted, option=option, debug=True)
             libvirt.check_exit_status(ret)
 
             # Login with new password
+            logging.debug("Trying to log in with new password")
             try:
                 session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, new_passwd,
                                                 r"[\#\$]\s*$", timeout=30)
                 session.close()
             except remote.LoginAuthenticationError as e:
                 logging.debug(e)
+                test.fail("Failed to login with new password")
 
-            # Login with old password
-            try:
-                session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, ori_passwd,
-                                                r"[\#\$]\s*$", timeout=10)
-                session.close()
-            except remote.LoginAuthenticationError:
-                logging.debug("Login with old password failed as expected.")
-
-            # Change the password back in VM
-            ret = virsh.set_user_password(vm_name, set_user_name, ori_passwd, False,
-                                          option=option, debug=True)
-            libvirt.check_exit_status(ret)
-
-            # Login with the original password
-            try:
-                session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, ori_passwd,
-                                                r"[\#\$]\s*$", timeout=30)
-                session.close()
-            except remote.LoginAuthenticationError as e:
-                logging.debug(e)
+    finally:
+        # Recover VM
+        if vm.is_alive():
+            # always restore root password in case previously case execution is broken
+            if status_error != "yes":
+                virsh.set_user_password(vm_name, set_user_name, ori_passwd, False,
+                                        option=option, debug=True)
 
             if start_ga:
                 # Stop guest agent in vm
@@ -124,12 +113,5 @@ def run(test, params, env):
                     test.error("Deleting user '%s' got failed: '%s'" %
                                (set_user_name, output))
                 session.close()
-    finally:
-        # Recover VM
-        if vm.is_alive():
-            # always restore root password in case previously case execution is broken
-            if status_error != "yes":
-                virsh.set_user_password(vm_name, set_user_name, ori_passwd, False,
-                                        option=option, debug=True)
             vm.destroy(gracefully=False)
         vmxml_bak.sync()
