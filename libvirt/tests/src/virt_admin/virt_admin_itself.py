@@ -6,6 +6,7 @@ from xml.etree import ElementTree
 from avocado.utils import process
 from avocado.core import exceptions
 
+from virttest import utils_libvirtd
 from virttest import virt_admin
 
 
@@ -73,6 +74,10 @@ def run(test, params, env):
     pwd_status_error = params.get("pwd_status_error", "no")
     echo_status_error = params.get("echo_status_error", "no")
 
+    process.run("systemctl status virtproxyd-admin.socket", shell=True)
+    process.run("systemctl status virtproxyd", shell=True)
+    virtproxyd_admin_socket = utils_libvirtd.DaemonSocket("virtproxyd-admin.socket")
+    virtproxyd_admin_socket.restart()
     # Run virtadmin command in interactive mode
     vp = virt_admin.VirtadminPersistent()
 
