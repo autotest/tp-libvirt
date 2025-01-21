@@ -4,7 +4,11 @@ import multiprocessing
 import time
 import platform
 import re
+import pexpect
+
 from avocado.utils import process
+from avocado.utils.software_manager.manager import SoftwareManager
+from avocado.utils import distro
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -195,6 +199,131 @@ def run(test, params, env):
             else:
                 return True
 
+    def crash_utility(dump_file, vm):
+        """
+        Check the working of crash utility tool to analyse the guest dump
+
+        In order for the function to work, both the guest and the host must
+        have the same kernel
+        If crash tool or kernel debug libraries are not installed, the function
+        returns error
+        If crash tool cannot read into the vm-core, the function returns fail
+        If crash tool can read the vm-core, the function returns true
+
+        Returns:
+            0: Success
+            1: Crash command failed
+            2: Dependency installation failed or debug kernel not found
+            3: Kernel mismatch between host and guest
+            4: Guest kernel retrieval failed
+            5: Unsupported distribution
+            6: virsh dump unsuccessful
+        """
+        def get_guest_kernel(vm):
+            """
+                Login into the guest and get guest kernel
+            """
+            try:
+                session = vm.wait_for_login(timeout=240)
+            except:
+                logging.error("Error Logging into the guest")
+                return ""
+            guest_kernel = session.cmd("uname -r")
+            session.close()
+            return guest_kernel
+
+        logging.debug("Crash Utility to Analyse Dump")
+
+        # Get guest and host kernel to verify if it is same
+        guest_kernel = get_guest_kernel(vm).strip()
+        host_kernel = platform.release().strip()
+        if not guest_kernel:
+            return 4
+        if guest_kernel != host_kernel:
+            logging.error("Kernel mismatch")
+            logging.error("Host Kernel: %s", host_kernel)
+            logging.error("Guest Kernel: %s", guest_kernel)
+            return 3
+
+        # Get distro version to check for respective libraries
+        smm = SoftwareManager()
+        detected_distro = distro.detect()
+        distro_name = detected_distro.name.lower()
+        upstream_kernel = params.get("upstream_kernel", "no") == "yes"
+
+        # Check for required debug tools and libraries
+        if distro_name in ("fedora", "rhel"):
+            deps = ["kexec-tools", "elfutils", "crash"]
+            if not upstream_kernel:
+                deps.append("kernel-debuginfo")
+        elif distro_name in ("ubuntu"):
+            deps = ["linux-crashdump", "kdump-tools", "crash", "elfutils"]
+            if not upstream_kernel:
+                deps.append("linux-image-debug")
+        elif distro_name in ("suse", "sles"):
+            deps = ["elfutils", "crash"]
+            if not upstream_kernel:
+                deps.append("linux-image-debug")
+        else:
+            return 5
+        for package in deps:
+            if not smm.check_installed(package) and not smm.install(package):
+                logging.error("Failed to install dependency: %s", package)
+                return 2
+
+        # Check if debug kernel is present
+        if distro_name in ("fedora", "rhel"):
+            vmlinux = "/usr/lib/debug/lib/modules/" + host_kernel + "/vmlinux"
+        elif distro_name in ("ubuntu", "suse", "sles"):
+            vmlinux = "/usr/lib/debug/boot/vmlinux-" + host_kernel
+        else:
+            return 5
+        if upstream_kernel:
+            vmlinux = params.get("upstream_kernel_vmlinux", vmlinux)
+        if not os.path.isfile(vmlinux):
+            logging.error("vmlinux not found")
+            return 2
+
+        # Collect guest vm-core
+        try:
+            virsh.dump(vm_name, dump_file, options,
+                       ignore_status=True, debug=True)
+        except:
+            return 6
+
+        # Run Crash Utility
+        crash_cmd = f"crash {vmlinux} {dump_file}"
+        logging.debug("Crash command: %s", crash_cmd)
+        try:
+            # Spawn the crash command
+            child = pexpect.spawn(crash_cmd, timeout=100)
+            child.expect("crash> ")
+            stdout = child.before.decode('utf-8')
+            logging.debug("Crash tool output: %s", stdout.strip())
+
+            # Send the back-trace command and capture output
+            child.sendline("bt | head")
+            child.expect("crash> ")
+            stdout = child.before.decode('utf-8')
+
+            # Check if the back-trace produced output
+            if "PID" in stdout or "TASK" in stdout:
+                logging.info("Crash tool is working correctly.")
+                logging.debug("Crash tool bt output: %s", stdout.strip())
+                return 0
+            else:
+                logging.error("Crash tool did not produce expected output.")
+                logging.debug("Crash tool output: %s", stdout.strip())
+                return 1
+
+        except pexpect.TIMEOUT:
+            logging.error("Crash command timed out.")
+            return 1
+
+        except Exception as e:
+            logging.error("An error occurred while running the crash command: %s", e)
+            return 1
+
     # Configure dump_image_format in /etc/libvirt/qemu.conf.
     qemu_config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
@@ -282,34 +411,57 @@ def run(test, params, env):
             libvirt.mkfs(small_img, "ext3")
             os.mkdir(dump_dir)
             utils_misc.mount(small_img, dump_dir, None)
-        # Run virsh command
-        cmd_result = virsh.dump(vm_name, dump_file, options,
-                                unprivileged_user=unprivileged_user,
-                                uri=uri,
-                                ignore_status=True, debug=True)
-        status = cmd_result.exit_status
-        if 'child_process' in locals():
-            child_process.join(timeout=check_bypass_timeout)
-            params['bypass'] = result_dict['bypass']
 
-        logging.info("Start check result")
-        time.sleep(5)
-        if not check_domstate(vm.state(), options):
-            test.fail("Domain status check fail.")
-        if status_error:
-            if not status:
-                test.fail("Expect fail, but run successfully")
-        else:
-            if status:
-                test.fail("Expect succeed, but run fail")
-            if not os.path.exists(dump_file):
-                test.fail("Fail to find domain dumped file.")
-            if check_dump_format(dump_image_format, dump_file):
-                logging.info("Successfully dump domain to %s", dump_file)
+        # Check for Crash Utility test
+        crash_utility_test = params.get("crash_utility", "no") == "yes"
+
+        if not crash_utility_test:
+            # Run virsh command
+            cmd_result = virsh.dump(vm_name, dump_file, options,
+                                    unprivileged_user=unprivileged_user,
+                                    uri=uri,
+                                    ignore_status=True, debug=True)
+            status = cmd_result.exit_status
+            if 'child_process' in locals():
+                child_process.join(timeout=check_bypass_timeout)
+                params['bypass'] = result_dict['bypass']
+
+            logging.info("Start check result")
+            time.sleep(5)
+            if not check_domstate(vm.state(), options):
+                test.fail("Domain status check fail.")
+            if status_error:
+                if not status:
+                    test.fail("Expect fail, but run successfully")
             else:
-                test.fail("The format of dumped file is wrong.")
-        if params.get('bypass'):
-            test.fail(params['bypass'])
+                if status:
+                    test.fail("Expect succeed, but run fail")
+                if not os.path.exists(dump_file):
+                    test.fail("Fail to find domain dumped file.")
+                if check_dump_format(dump_image_format, dump_file):
+                    logging.info("Successfully dump domain to %s", dump_file)
+                else:
+                    test.fail("The format of dumped file is wrong.")
+            if params.get('bypass'):
+                test.fail(params['bypass'])
+
+        else:
+            crash_tool = crash_utility(dump_file, vm)
+            if crash_tool == 6:
+                test.fail("Unable to collect guest vmcore")
+            if crash_tool == 5:
+                test.cancel("Test unsupported for distro")
+            if crash_tool == 4:
+                test.error("Guest login issue. Unable to get guest kernel version")
+            if crash_tool == 3:
+                test.cancel("Guest and Host kernel are different")
+            elif crash_tool == 2:
+                test.error("Required debug libraries/tools not installed")
+            elif crash_tool == 1:
+                test.fail("Unable to analyse guest vmcore using crash")
+            else:
+                logging.info("Able to analyse guest vmcore using crash")
+
     finally:
         backup_xml.sync()
         qemu_config.restore()
