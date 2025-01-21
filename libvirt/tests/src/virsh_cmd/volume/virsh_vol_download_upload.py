@@ -18,6 +18,7 @@ from virttest import virt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
+from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt as utlv
 
@@ -117,22 +118,22 @@ def create_disk(disk_type, disk_path, disk_format, disk_device_type,
     return custom_disk
 
 
-def write_disk(test, guest_vm, target_name, size=200):
+def write_disk(test, guest_vm, size=200):
     """
     Write data into disk in VM discard value.
 
     :param test: test itself.
     :param guest_vm: Guest VM.
-    :param target_name: Device target name.
     :param size: Data size in 1M unit.
     """
     logging.info("Write data into disk in VM...")
     try:
         session = guest_vm.wait_for_login()
+        disk_name, _ = libvirt_disk.get_non_root_disk_name(session)
         cmd = ("fdisk -l  /dev/{0} && mkfs.ext4 -F /dev/{0} && "
                "mkdir -p test && mount /dev/{0} test && "
                "dd if=/dev/urandom of=test/file bs=1M count={1} && sync"
-               .format(target_name, size))
+               .format(disk_name, size))
         status, output = session.cmd_status_output(cmd)
         if status != 0:
             session.close()
@@ -376,7 +377,7 @@ def run(test, params, env):
 
             # Write 100M data into disk.
             data_size = 100
-            write_disk(test, vm, target, data_size)
+            write_disk(test, vm, data_size)
             data_size_in_bytes = data_size * 1024 * 1024
 
             # Refresh directory pool.
