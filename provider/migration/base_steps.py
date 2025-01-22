@@ -1,4 +1,5 @@
 import os
+import platform
 import time
 
 from six import itervalues
@@ -525,16 +526,39 @@ def sync_cpu_for_mig(params):
     dom_xml.sync()
 
 
-def check_cpu_for_mig(dest_uri):
+def check_cpu_for_mig(params):
     """
     Check cpu for migration
 
-    :param dest_uri: connect uri for destination machine
+    :param params: Dictionary with the test parameters
     :return: if the cpu on the source and target hosts are the same, return True
     """
-    cpu_dest_xml = virsh.domcapabilities(uri=dest_uri, debug=True).stdout_text.strip()
+    dest_uri = params.get("virsh_migrate_desturi")
+    remote_ip = params.get("server_ip")
+    remote_user = params.get("server_user")
+    remote_pwd = params.get("server_pwd")
+
+    # aarch64 only supports migration tests between hosts with the same CPU, so
+    # no need to check the CPU.
+    if platform.machine() == "aarch64":
+        return True
+
     cpu_src_xml = virsh.domcapabilities(debug=True).stdout_text.strip()
-    if cpu_dest_xml == cpu_src_xml:
+    mig_src_xml = os.path.join(data_dir.get_tmp_dir(), "mig_src.xml")
+    with open(mig_src_xml, 'w+') as fd:
+        fd.write(cpu_src_xml)
+
+    remote_session = remote.remote_login("ssh", remote_ip, "22",
+                                         remote_user, remote_pwd,
+                                         r'[$#%]')
+    utils_misc.make_dirs(os.path.dirname(mig_src_xml), remote_session)
+    remote_session.close()
+    remote.scp_to_remote(remote_ip, '22', remote_user, remote_pwd, mig_src_xml,
+                         mig_src_xml, limit="", log_filename=None, timeout=60,
+                         interface=None)
+
+    ret = virsh.hypervisor_cpu_compare(xml_file=mig_src_xml, uri=dest_uri, debug=True).stdout_text.strip()
+    if "identical" in ret or "superset" in ret:
         return True
     else:
         return False

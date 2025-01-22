@@ -234,7 +234,7 @@ def run(test, params, env):
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
-        if not base_steps.check_cpu_for_mig(desturi):
+        if not base_steps.check_cpu_for_mig(params):
             base_steps.sync_cpu_for_mig(params)
         setup_test()
         migration_obj.run_migration()
