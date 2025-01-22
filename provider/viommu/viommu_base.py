@@ -46,7 +46,6 @@ class VIOMMUTest(object):
         self.session = session
         self.remote_virsh_dargs = None
         self.controller_dicts = eval(self.params.get("controller_dicts", "[]"))
-        self.dev_slot = 0
 
         libvirt_version.is_libvirt_feature_supported(self.params)
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
@@ -60,14 +59,16 @@ class VIOMMUTest(object):
         """
         mac_addr = utils_net.generate_mac_address_simple()
         iface_dict = eval(self.params.get("iface_dict", "{}"))
-        self.test.log.debug("iface_dict2: %s.", iface_dict)
 
         if self.controller_dicts and iface_dict:
             iface_bus = "%0#4x" % int(self.controller_dicts[-1].get("index"))
             iface_attrs = {"bus": iface_bus}
-            if isinstance(self.dev_slot, int):
-                self.dev_slot += 1
-                iface_attrs.update({"slot": self.dev_slot})
+            if self.controller_dicts[-1].get("model") == "pcie-to-pci-bridge":
+                iface_slot = libvirt_pcicontr.get_free_pci_slot(
+                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                        controller_bus=iface_bus)
+                iface_attrs.update({"slot": iface_slot})
+
             iface_dict.update({"address": {"attrs": iface_attrs}})
         self.test.log.debug("iface_dict: %s.", iface_dict)
         return iface_dict
@@ -80,8 +81,8 @@ class VIOMMUTest(object):
         """
         if not self.controller_dicts:
             return
-
-        for contr_dict in self.controller_dicts:
+        for i in range(len(self.controller_dicts)):
+            contr_dict = self.controller_dicts[i]
             pre_controller = contr_dict.get("pre_controller")
             if pre_controller:
                 pre_contrs = list(
@@ -93,10 +94,16 @@ class VIOMMUTest(object):
                 else:
                     pre_idx = libvirt_pcicontr.get_max_contr_indexes(
                         vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                        contr_dict["type"], pre_controller)
-                if not pre_idx:
-                    self.test.error(
-                        f"Unable to get index of {pre_controller} controller!")
+                        contr_dict["type"], pre_controller)[-1]
+                pre_contr_bus = "%0#4x" % int(pre_idx)
+                contr_attrs = {"bus": pre_contr_bus}
+                contr_slot = libvirt_pcicontr.get_free_pci_slot(
+                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                        controller_bus=pre_contr_bus)
+                if contr_dict.get("model") == "pcie-to-pci-bridge":
+                    contr_slot = "0"
+                contr_attrs.update({"slot": contr_slot})
+                contr_dict.update({"address": {"attrs": contr_attrs}})
                 contr_dict.pop("pre_controller")
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name), "controller",
@@ -104,6 +111,9 @@ class VIOMMUTest(object):
             contr_dict["index"] = libvirt_pcicontr.get_max_contr_indexes(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name),
                 contr_dict["type"], contr_dict["model"])[-1]
+            self.controller_dicts[i] = contr_dict
+
+        self.test.log.debug(f"Prepared controllers according to {self.controller_dicts}")
         return self.controller_dicts
 
     def update_disk_addr(self, disk_dict):
@@ -120,8 +130,10 @@ class VIOMMUTest(object):
                 dev_attrs = {"bus": dev_bus}
                 dev_attrs.update({"type": self.controller_dicts[-1].get("type")})
                 if self.controller_dicts[-1].get("model") == "pcie-to-pci-bridge":
-                    self.dev_slot = 1
-                    dev_attrs.update({"slot": self.dev_slot})
+                    dev_slot = libvirt_pcicontr.get_free_pci_slot(
+                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                        controller_bus=dev_bus)
+                    dev_attrs.update({"slot": dev_slot})
 
             disk_dict.update({"address": {"attrs": dev_attrs}})
             if disk_dict["target"]["bus"] == "scsi":
