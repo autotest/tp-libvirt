@@ -291,7 +291,7 @@ def run(test, params, env):
                     driver_dict = eval(iface_driver)
                     if session1 is None:
                         session1 = vm1.wait_for_serial_login()
-                    guest_iface_info = session1.cmd_output("ip l").strip()
+                    guest_iface_info = session1.cmd_output("ip --color=never l").strip()
                     guest_iface_name = re.findall(r"^\d+: (\S+?)[@:].*state UP.*$", guest_iface_info, re.MULTILINE)[0]
                     comb_size = driver_dict.get('queues')
                     rx_size = driver_dict.get('rx_queue_size')
