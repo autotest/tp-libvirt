@@ -66,7 +66,7 @@ def dynamic_node_replacement(params, numa_info, test_obj):
                 if not node_list:
                     test_obj.cancel("No NUMA nodes available on this system to perform the test.")
             elif int(params['numa_cells_with_memory_required']) > len(node_list):
-                    test_obj.cancel("There is no enough NUMA nodes available on this system to perform the test.")
+                test_obj.cancel("There is no enough NUMA nodes available on this system to perform the test.")
         if 'memory_nodeset' in param:
             params['memory_nodeset'] = ','.join([str(elem) for elem in node_list])
             logging.debug('The parameter "memory_nodeset" from config file is going to be replaced by: {} available '
