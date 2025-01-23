@@ -291,7 +291,7 @@ def run(test, params, env):
 
     try:
         set_secret(params)
-        if not base_steps.check_cpu_for_mig(desturi):
+        if not base_steps.check_cpu_for_mig(params):
             base_steps.sync_cpu_for_mig(params)
         setup_test()
         migration_obj.run_migration()

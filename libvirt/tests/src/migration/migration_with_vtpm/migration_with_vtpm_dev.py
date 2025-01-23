@@ -217,7 +217,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
-    if base_steps.check_cpu_for_mig(desturi):
+    if base_steps.check_cpu_for_mig(params):
         if test_case != "diff_secret_on_src_and_dst":
             test.cancel("Need to use machines with different cpu to test this case.")
     else:
