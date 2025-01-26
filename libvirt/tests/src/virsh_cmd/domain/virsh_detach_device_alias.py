@@ -1,6 +1,7 @@
-import os
-import uuid
 import logging as log
+import os
+import platform
+import uuid
 
 from virttest import data_dir
 from virttest import virsh
@@ -20,6 +21,34 @@ from avocado.utils import process
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+
+
+def get_suitable_pci_device(test):
+    """
+    Get a suitable pci device ID for attaching to the vm.
+    The host PCI devices will vary on different hardware, so it is hard
+    to always get an usable pci device.
+
+    :param test: test object
+    :return: str, the pci device full id or None
+    """
+    pci_ids = utils_sys.get_host_bridge_id()
+    if not pci_ids:
+        test.error("Not Found any pci devices")
+
+    if platform.machine() != "aarch64":
+        good_pci = utils_misc.get_full_pci_id(pci_ids[-1]).split("\n")[0]
+        return good_pci
+    else:
+        suitable_pci_ids = [id for id in pci_ids if id != "0000:00"]
+        for pci_id in suitable_pci_ids:
+            full_ids = utils_misc.get_full_pci_id(pci_id)
+            good_pci = "%s:00.0" % pci_id
+            if full_ids.count(good_pci):
+                test.log.debug("PCI ID '%s' is chosen", good_pci)
+                return good_pci
+    test.log.warning("No suitable PCI ID is chosen")
+    return None
 
 
 def run(test, params, env):
@@ -159,12 +188,7 @@ def run(test, params, env):
                                                dev_type='controller',
                                                dev_dict=controller_dict,
                                                index=int(params.get("index")))
-
-                pci_ids = utils_sys.get_host_bridge_id()
-                if not pci_ids:
-                    test.error("Not Found any pci devices")
-                pci_id = utils_misc.get_full_pci_id(pci_ids[-1])
-
+                pci_id = get_suitable_pci_device(test)
                 if not vm.is_alive():
                     vm.start()
                 vm.wait_for_login()
