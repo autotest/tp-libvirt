@@ -50,12 +50,13 @@ def handle_param(param_tuple, params):
     return param_list
 
 
-def dynamic_node_replacement(params, numa_info, test_obj):
+def dynamic_node_replacement(params, numa_info, arch, test_obj):
     """
     Replace numa node parameters dynamically per current system configuration
 
     :param numa_info: available numa node info from avocado-vt/utils_misc
     :param params: all params passed to test
+    :param arch: The host architecture
     :param test_obj: test object - for cancel case
     """
     node_list = numa_info.get_online_nodes_withmem()
@@ -104,7 +105,7 @@ def run(test, params, env):
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes
     arch = platform.machine()
-    dynamic_node_replacement(params, host_numa_node, test)
+    dynamic_node_replacement(params, host_numa_node, arch, test)
     if 'ppc64' in arch:
         try:
             ppc_memory_nodeset = ""
