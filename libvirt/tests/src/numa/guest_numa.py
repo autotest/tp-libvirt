@@ -62,6 +62,7 @@ def dynamic_node_replacement(params, numa_info, test_obj):
     key_names = ['memnode_nodeset_', 'page_nodenum_']
     for param in params:
         if 'numa_cells_with_memory_required' in param:
+            arch = platform.machine()
             if 'ppc64' in arch:
                 if not node_list:
                     test_obj.cancel("No NUMA nodes available on this system to perform the test.")
@@ -291,6 +292,20 @@ def run(test, params, env):
             deallocate = True
             hp_cl.target_hugepages = hugepage_num
             hp_cl.set_hugepages()
+            # for strict mode, allocate the guest numa cell again to
+            # make sure it has enough huge page
+            numa_hugepage_dict = {}
+            if numa_memnode and numa_memnode[0]['mode'] == 'strict':
+                if numa_cell:
+                    for cell in numa_cell:
+                        if cell['id'] == numa_memnode[0]['cellid']:
+                            numa_hugepage_dict['node'] = numa_memnode[0]['nodeset']
+                            numa_hugepage_dict['hp_num'] = int(
+                                cell['memory']) // default_mem_huge_page_size
+                            numa_hugepage_dict['hp_size'] = default_mem_huge_page_size
+            if numa_hugepage_dict:
+                hp_cl.set_node_num_huge_pages(
+                    numa_hugepage_dict['hp_num'], numa_hugepage_dict['node'], numa_hugepage_dict['hp_size'])
         if page_list:
             hp_size = [h_list[p_size]['size'] for p_size in range(len(h_list))]
             multi_hp_size = hp_cl.get_multi_supported_hugepage_size()
