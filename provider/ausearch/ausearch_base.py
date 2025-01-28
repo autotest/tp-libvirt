@@ -7,7 +7,9 @@ from avocado.utils import process
 LOG = logging.getLogger('avocado.test.' + __name__)
 
 
-def summarize_ausearch_results(ausearch_start, denial_types=None, log_ausearch_rows=True):
+def summarize_ausearch_results(ausearch_start, 
+                               denial_types=["AVC", "USER_AVC", "SELINUX_ERR", "USER_SELINUX_ERR"], 
+                               log_ausearch_rows=True):
     """
     Summarizes SELinux AVC denials from ausearch output.
 
@@ -26,10 +28,6 @@ def summarize_ausearch_results(ausearch_start, denial_types=None, log_ausearch_r
     Raises:
     - process.CmdError: If `ausearch` encounters an error other than "<no matches>".
     """
-
-    # Default denial types if none are provided
-    if denial_types is None:
-        denial_types = ["AVC", "USER_AVC", "SELINUX_ERR", "USER_SELINUX_ERR"]
 
     # Construct the ausearch command with dynamic denial types
     ausearch_cmd = f"ausearch --input-logs {' '.join(f'-m {t}' for t in denial_types)} --start {ausearch_start}"
