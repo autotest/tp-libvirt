@@ -3,7 +3,7 @@ import subprocess
 def run(test, params, env):
     
     qemu_binary = params.get("qemu_binary")
-    errors = ["tcg_region_init", "assertion failed", "Aborted", \
+    errors = ["tcg_region_init", "assertion failed", "Aborted",
               "core dumped", "Invalid CPU topology"]
 
     def check_qemu_cmdline(cpus=9999):
