@@ -28,6 +28,7 @@ def run(test, params, env):
         vm_name = params.get('main_vm')
         vm = env.get_vm(vm_name)
         virsh_ins = virsh
+        test_user = 'root'
     else:
         vm_name = params.get('unpr_vm_name')
         test_user = params.get('test_user', '')
@@ -71,7 +72,9 @@ def run(test, params, env):
     try:
         mac_addr = vm_xml.VMXML.get_first_mac_by_name(vm_name, virsh_ins)
         tap_flag = ''
-        for attr in (iface_attrs, iface_attrs_2):
+        iface_ori = network_base.get_iface_xml_inst(
+            vm_name, 'on vm', virsh_ins=virsh_ins)
+        for attr in (iface_attrs, iface_attrs_2, iface_ori.fetch_attrs()):
             if attr.get('driver', {}).get('driver_attr', {}).get('queues'):
                 tap_flag = 'multi_queue'
                 break
@@ -99,7 +102,6 @@ def run(test, params, env):
         iface_attrs['mac_address'] = mac_addr
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
             vm_name, virsh_instance=virsh_ins)
-        vmxml.del_device('interface', by_tag=True)
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
         if iface_attrs_2:
@@ -109,7 +111,7 @@ def run(test, params, env):
             libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs_2, 1,
                                            virsh_instance=virsh_ins)
 
-        LOG.debug(f'VMxml is:\n{virsh_ins.dumpxml(vm_name).stdout_text}')
+        LOG.debug(f'VMxml is:\n{virsh.dumpxml(vm_name, uri=uri).stdout_text}')
 
         start_result = virsh.start(vm_name, debug=True, uri=uri)
         libvirt.check_exit_status(start_result, status_error)
@@ -126,6 +128,9 @@ def run(test, params, env):
             'host_public_ip': host_ip,
         }
         vm_default_gw = utils_net.get_default_gateway(session=session, json=True)
+        if isinstance(vm_default_gw, list):
+            vm_default_gw = [gw for gw in vm_default_gw if gw.startswith('192')][0]
+        LOG.debug(f'vm_default_gw is {vm_default_gw}')
 
         if iface_amount == 'two_ifaces':
             ping_params = {
@@ -188,12 +193,12 @@ def run(test, params, env):
         session.close()
 
     finally:
-        bkxml.sync(virsh_instance=virsh_ins)
-        if not root:
-            del virsh_ins
         if tap_type:
             network_base.delete_tap(tap_name)
             if iface_amount == 'two_ifaces':
                 network_base.delete_tap(tap_name_2)
             if tap_type == 'tap':
                 utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
+        bkxml.sync(virsh_instance=virsh_ins)
+        if not root:
+            virsh_ins.close_session()
