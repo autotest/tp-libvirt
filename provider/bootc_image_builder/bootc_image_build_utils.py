@@ -407,7 +407,7 @@ def create_config_toml_file(params):
                       "rootpw --lock --iscrypted locked\n"
                       "sshkey --username %s \"%s\"\ntext --non-interactive\nzerombr\n"
                       "clearpart --all --initlabel --disklabel=gpt\nautopart --noswap --type=lvm\n"
-                      "network --bootproto=dhcp --device=eno1 --activate --onboot=on\n reboot" % (username, password, username, key_value)
+                      "network --bootproto=dhcp --device=link --activate --onboot=on\n reboot" % (username, password, username, key_value)
                       }
         if params.get("fips_enable") == "yes":
             fips_content = f"""
@@ -930,6 +930,9 @@ def virt_install_vm(params):
     if disk_image_type in ["anaconda-iso"]:
         if os.path.exists(iso_install_path):
             os.remove(iso_install_path)
+        check_squashfs = params.get("check_squashfs") == "yes"
+        if check_squashfs:
+            check_image_filesystem(params)
         cmd = ("virt-install --name %s"
                " --disk path=%s,bus=virtio,format=qcow2,size=12"
                " --vcpus 3 --memory 3096"
@@ -958,6 +961,21 @@ def virt_install_vm(params):
                " --noreboot" %
                (vm_name, disk_path, format, machine_type, boot_option))
     process.run(cmd, shell=True, verbose=True, ignore_status=True)
+
+
+def check_image_filesystem(params):
+    """
+    Check image file system
+
+    @param params: one dictionary containing parameters
+    """
+    disk_path = params.get("vm_disk_image_path")
+    mount_cmd = f"mount {disk_path} /mnt"
+    process.run(mount_cmd, shell=True, verbose=True, ignore_status=False)
+    check_squashfs_cmd = "file /mnt/images/install.img"
+    ret = process.run(check_squashfs_cmd, verbose=True, ignore_status=False, shell=True).stdout_text
+    if "Squashfs" not in ret:
+        raise exceptions.TestFail(f"Squashfs is not enabled")
 
 
 def verify_in_vm_internal(vm, params):
