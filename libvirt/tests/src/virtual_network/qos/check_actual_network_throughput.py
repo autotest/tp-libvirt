@@ -38,6 +38,8 @@ def run(test, params, env):
     net_attrs = eval(params.get('net_attrs', '{}'))
     inbound = eval(params.get('inbound'))
     outbound = eval(params.get('outbound'))
+    throuput_bw = params.get('throuput_bw')
+    expect_msg = params.get('expect_msg')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -65,6 +67,9 @@ def run(test, params, env):
 
         vm.start()
         vm_sess = vm.wait_for_serial_login()
+        if expect_msg:
+            libvirt.check_logfile(expect_msg,
+                                  params.get("libvirtd_debug_file"))
 
         iface = network_base.get_iface_xml_inst(vm_name, 'on vm')
         mac = iface.mac_address
@@ -105,7 +110,7 @@ def run(test, params, env):
 
         network_base.check_throughput(
             vm_sess.cmd, lambda x: process.run(x).stdout_text,
-            vm_ip, inbound["average"], 'inbound'
+            vm_ip, throuput_bw if throuput_bw else inbound["average"], 'inbound'
         )
 
         network_base.check_throughput(
