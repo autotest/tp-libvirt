@@ -7,6 +7,7 @@ from avocado.core import exceptions
 
 from virttest import data_dir
 from virttest import virsh
+from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 
@@ -74,6 +75,16 @@ def run(test, params, env):
     restore_state = params.get("restore_state", "running")
     vm_save = params.get("vm_save", "vm.save")
 
+    vm_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml.remove_all_boots()
+    dict_os_attrs = {"boots": ["hd"]}
+    vmxml.set_os_attrs(**dict_os_attrs)
+    vmxml.sync()
+    vm = env.get_vm(vm_name)
+    vm.start()
+    vm.wait_for_login()
+
     try:
         # Get a tmp_dir.
         tmp_dir = data_dir.get_tmp_dir()
@@ -121,3 +132,5 @@ def run(test, params, env):
 
         if os.path.exists(xmlfile):
             os.remove(xmlfile)
+
+        vm_backup.sync()
