@@ -65,6 +65,7 @@ def run(test, params, env):
     check_log = params.get("check_log")
     check_str_not_in_log = params.get("check_str_not_in_log")
     qemu_conf_dict = eval(params.get("qemu_conf_dict", "{}"))
+    os_update_dict = eval(params.get("os_update_dict"))
 
     vm_ref_uid = None
     vm_ref_gid = None
@@ -88,12 +89,7 @@ def run(test, params, env):
             os.chmod(vmxml.xml, stat.S_IRWXU | stat.S_IRGRP | stat.S_IROTH)
             if not setup_nfs:
                 extra_param = "--xml %s" % vmxml.xml
-                dict_os_attrs = {}
-                if "hd" in vmxml.os.boots:
-                    dict_os_attrs.update({"boots": ["cdrom"]})
-                    vmxml.set_os_attrs(**dict_os_attrs)
-                else:
-                    test.cancel("Please add 'hd' in boots for --xml testing")
+                vmxml.set_os_attrs(**os_update_dict)
                 logging.info("vmxml os is %s after update"
                              % vmxml.os.xmltreefile)
             else:
@@ -196,9 +192,11 @@ def run(test, params, env):
             if extra_param.count("xml"):
                 if not setup_nfs:
                     aft_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-                    boots_list = aft_vmxml.os.boots
-                    if "hd" in boots_list or "cdrom" not in boots_list:
-                        test.fail("Update xml with restore failed")
+                    for attr in os_update_dict:
+                        got = getattr(aft_vmxml.os, attr, "")
+                        expected = os_update_dict[attr]
+                        if got != expected:
+                            test.fail("Update xml with restore failed")
                 else:
                     if vm_ref_uid and vm_ref_gid:
                         check_file_own(vm_ref, vm_ref_uid, vm_ref_gid)
