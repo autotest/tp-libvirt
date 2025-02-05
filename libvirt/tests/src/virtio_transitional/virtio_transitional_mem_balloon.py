@@ -95,7 +95,7 @@ def run(test, params, env):
         if is_windows_guest:
             return
         # Check if memory balloon device exists on guest
-        status = session.cmd_status_output('lspci |grep balloon')[0]
+        status = session.cmd_status_output(params.get("detect_cmd"))[0]
         if status != 0:
             test.fail("Didn't detect memory balloon device on guest.")
         # Save and restore guest
