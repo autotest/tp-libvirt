@@ -1,5 +1,10 @@
+import re
 from virttest import virt_admin
 from virttest import utils_libvirtd
+from virttest.utils_misc import cmd_status_output
+import logging
+
+LOG = logging.getLogger("avocado." + __name__)
 
 
 def run(test, params, env):
@@ -33,15 +38,35 @@ def run(test, params, env):
             config.max_workers = max_workers
             config.prio_workers = prio_workers
 
+        LOG.debug(" before daemon.restart")
+        _cmd = "ps -eo pid,ppid,fname,cmd,context | grep unconfined_service_[t]"
+        _, output = cmd_status_output(_cmd, shell=True)
+        LOG.debug(_cmd)
+        LOG.debug(output)
         daemon.restart()
+        LOG.debug(" after daemon.restart")
+        _, output = cmd_status_output(_cmd, shell=True)
+        LOG.debug(_cmd)
+        LOG.debug(output)
         result = virt_admin.srv_threadpool_info(server_name, ignore_status=True,
                                                 debug=True)
-
+        LOG.debug(" after virt-admin command")
+        _, output = cmd_status_output(_cmd, shell=True)
+        LOG.debug(_cmd)
+        LOG.debug(output)
         output = result.stdout_text.strip().splitlines()
         out_split = [item.split(':') for item in output]
         out_dict = dict([[item[0].strip(), item[1].strip()] for item in out_split])
 
         if result.exit_status:
+            """
+            _, output = cmd_status_output("cat /var/log/audit/audit.log|grep virtqemud_t", shell=True)
+            lines = output.split()
+            message = "This operation should success but failed! Output: \n %s" % result
+            for line in lines:
+                m = re.match(r".*pid\=(\d+).*comm\=\"rpc-virtqemud.*name\=\"(\d+)\".*virtqemud.*unconfined_service*", s)
+                if m:
+                """
             test.fail("This operation should success "
                       "but failed! Output: \n %s" % result)
         else:
