@@ -201,7 +201,13 @@ def check_vm_ip(iface_attrs, session, host_iface, vm_iface=None):
             raise exceptions.TestFail('vm ip and prefix should be '
                                       'the same as host')
 
-    set_ipv6_info = get_iface_ip_and_prefix(host_iface, ip_ver='ipv6')[0]
+    host_ipv6_info = get_iface_ip_and_prefix(host_iface, ip_ver='ipv6')
+    # If the host does not support IPv6, the guest will not support it either, cancel the test
+    if host_ipv6_info:
+        set_ipv6_info = host_ipv6_info[0]
+    else:
+        raise exceptions.TestCancel(f'Host ipv6 is not available, skip the test!')
+    # The settings in attrs should take precedence if there is
     if 'ips' in iface_attrs:
         iface_ipv6_info = [ip for ip in iface_attrs['ips']
                            if ip['family'] == 'ipv6'][0]
