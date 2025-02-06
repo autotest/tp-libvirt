@@ -1,6 +1,7 @@
 import logging as log
 from virttest import virt_admin
 from virttest import utils_libvirtd
+from virttest.utils_misc import cmd_status_output
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -32,7 +33,15 @@ def run(test, params, env):
         server_name = virt_admin.check_server_name()
 
     daemon = utils_libvirtd.Libvirtd()
-    vp = virt_admin.VirtadminPersistent()
+    try:
+        vp = virt_admin.VirtadminPersistent()
+    except Exception as e:
+        logging.debug(" after requesting virtadmin persistent")
+        _cmd = "ps -eo pid,ppid,fname,cmd,context | grep unconfined_service_[t]"
+        _, output = cmd_status_output(_cmd, shell=True)
+        logging.debug(_cmd)
+        logging.debug(output)
+        raise e
 
     def threadpool_info(server):
         """
