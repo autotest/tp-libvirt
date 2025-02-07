@@ -166,7 +166,8 @@ def run(test, params, env):
             vmxml.vcpu = int(guest_vcpu)
             set_iommu(vmxml)
             result_need_check = virsh.define(vmxml.xml, debug=True)
-
+            if libvirt_version.version_compare(10, 10, 0):
+                err_msg = ""
         # Add ioapic and iommu device in xml for q35 VM
         if check.startswith('ioapic_iommu'):
             logging.info('Modify features')
