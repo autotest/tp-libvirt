@@ -95,6 +95,8 @@ def transfer_vm_to_host(session, prot, ip_ver, vm_iface, firewalld,
     LOG.debug(f'MD5 of sent file: {md5}')
     host_session = aexpect.ShellSession('su')
     host_session.sendline(cmd_listen)
+    # Wait 2 seconds for the host listen cmd to be prepared
+    time.sleep(2)
     session.cmd(cmd_transfer)
     host_session.close()
     if not os.path.exists(rec_file):
