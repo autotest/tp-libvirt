@@ -7,7 +7,6 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 from provider.save import save_base
@@ -52,10 +51,6 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
-        # Workaround bug: Remove multi-queue setting
-        libvirt_vmxml.modify_vm_device(vmxml, 'interface', {'driver': None})
-        vm.start()
-
         pid_ping, upsince = save_base.pre_save_setup(vm)
         if pre_state == 'paused':
             virsh.suspend(vm_name, **VIRSH_ARGS)
