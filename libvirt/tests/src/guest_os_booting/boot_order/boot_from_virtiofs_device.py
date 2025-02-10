@@ -2,7 +2,6 @@
 #   SPDX-License-Identifier: GPL-2.0
 #   Author: Meina Li <meili@redhat.com>
 
-import aexpect
 import os
 import re
 import shutil
@@ -69,7 +68,6 @@ def run(test, params, env):
     initrams_file = os.path.join(BOOT_PATH, "initramfs-virtiofs.img")
     vmlinuz_file = os.path.join(BOOT_PATH, "vmlinuz-virtiofs.img")
     boot_img = os.path.join(data_dir.get_data_dir(), "test.img")
-    access_cmd = params.get("access_cmd") % vm_name
     guest_cmd = params.get("guest_cmd")
     target_dir = params.get("target_dir")
     vm_memory = int(params.get("vm_memory"))
@@ -103,13 +101,10 @@ def run(test, params, env):
         disk_dict.update({'source': {'attrs': {'file': boot_img}}})
         libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_dict)
         if not vm.is_alive():
-            virsh.start(vm_name, debug=True, ignore_status=False)
-
+            vm.start()
         test.log.info("STEP3: Login the guest")
-        access_session = aexpect.ShellSession(access_cmd)
-        libvirt.virsh_console_login(access_session, username, passwd,
-                                    debug=True, timeout=120)
-        result = access_session.cmd_output(guest_cmd)
+        vm_session = vm.wait_for_serial_login()
+        result = vm_session.cmd_output(guest_cmd)
         test.log.debug("Send cmd: '%s' in console", guest_cmd)
         if not re.search(target_dir, result):
             test.fail(f"Expect {target_dir} in {result}, but not found")
