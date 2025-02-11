@@ -1,5 +1,6 @@
 import logging as log
 import ipaddress
+import platform
 import time
 
 from virttest import virsh, virt_vm
@@ -39,6 +40,8 @@ def run(test, params, env):
             i) Reboot.
             ii) Suspend/Resume.
             iii) Start/Shutdown.
+    d). Multiple Reboots:
+        1. Checking PCI Device remains persistent across multiple reboots
     """
 
     def guest_lifecycle():
@@ -93,6 +96,8 @@ def run(test, params, env):
     sriov = ('yes' == params.get("libvirt_pci_SRIOV", 'no'))
     device_type = params.get("libvirt_pci_device_type", "NIC")
     vm_vfs = int(params.get("number_vfs", 2))
+    number_of_reboots = int(params.get("number_of_reboots", "1"))
+    arch = platform.machine()
     pci_dev = None
     pci_address = None
     bus_info = []
@@ -174,59 +179,76 @@ def run(test, params, env):
         pci_address = pci_xml.cap.get_address_dict()
         vmxml.add_hostdev(pci_address)
 
-    try:
-        for itr in range(iteration):
-            logging.info("Currently executing iteration number: '%s'", itr)
-            vmxml.sync()
-            vm.start()
-            session = vm.wait_for_login()
-            # The Network configuration is generic irrespective of PF or SRIOV VF
-            if device_type == "NIC":
-                if sorted(vm.get_pci_devices()) != sorted(nic_list_before):
-                    logging.debug("Adapter passthroughed to guest successfully")
-                else:
-                    test.fail("Passthrough adapter not found in guest.")
-                net_ip = ipaddress.ip_address(net_ip)
-                nic_list_after = vm.get_pci_devices()
-                nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
-                for val in range(len(nic_list)):
-                    bus_info.append(str(nic_list[val]).split(' ', 1)[0])
-                    nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
-                bus_info.sort()
-                if not sriov:
-                    # check all functions get same iommu group
+    def check_device_staus(net_ip, server_ip, netmask):
+        logging.info("Currently executing iteration number: '%s'", itr)
+        vmxml.sync()
+        vm.start()
+        session = vm.wait_for_login()
+        # The Network configuration is generic irrespective of PF or SRIOV VF
+        if device_type == "NIC":
+            if sorted(vm.get_pci_devices()) != sorted(nic_list_before):
+                logging.debug("Adapter passthroughed to guest successfully")
+            else:
+                test.fail("Passthrough adapter not found in guest.")
+            net_ip = ipaddress.ip_address(net_ip)
+            nic_list_after = vm.get_pci_devices()
+            nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
+            for val in range(len(nic_list)):
+                bus_info.append(str(nic_list[val]).split(' ', 1)[0])
+                nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
+            bus_info.sort()
+            if not sriov:
+                # check all functions get same iommu group
+                # arch ppc64 gets different iommu group when attached to VM
+                if arch != "ppc64le":
                     if len(set(nic_list)) != 1:
                         test.fail("Multifunction Device passthroughed but "
                                   "functions are in different iommu group")
-                # ping to server from each function
-                for val in bus_info:
-                    nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
-                    session.cmd("ip addr flush dev %s" % nic_name)
-                    session.cmd("ip addr add %s/%s dev %s"
-                                % (net_ip, netmask, nic_name))
-                    session.cmd("ip link set %s up" % nic_name)
-                    # Pinging using nic_name is having issue,
-                    # hence replaced with IPAddress
-                    s_ping, o_ping = utils_test.ping(server_ip, count=5,
-                                                     interface=net_ip, timeout=30,
-                                                     session=session)
-                    logging.info(o_ping)
-                    if s_ping != 0:
-                        err_msg = "Ping test fails, error info: '%s'"
-                        test.fail(err_msg % o_ping)
-                    # Each interface should have unique IP
+            # ping to server from each function
+            for val in bus_info:
+                nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
+                session.cmd("ip addr flush dev %s" % nic_name)
+                session.cmd("ip addr add %s/%s dev %s"
+                            % (net_ip, netmask, nic_name))
+                session.cmd("ip link set %s up" % nic_name)
+                # Pinging using nic_name is having issue,
+                # hence replaced with IPAddress
+                s_ping, o_ping = utils_test.ping(server_ip, count=5,
+                                                 interface=net_ip, timeout=30,
+                                                 session=session)
+                logging.info(o_ping)
+                if s_ping != 0:
+                    err_msg = "Ping test fails, error info: '%s'"
+                    test.fail(err_msg % o_ping)
+                # Each interface should have unique IP
+                # For ppc64 arch let's test using one ip only
+                if arch != "ppc64le":
                     net_ip = net_ip + 1
 
-            elif device_type == "STORAGE":
-                # Get the result of "fdisk -l" in guest, and
-                # compare the result with fdisk_list_before.
-                output = session.cmd_output("fdisk -l|grep \"Disk identifier:\"")
-                fdisk_list_after = output.splitlines()
-                if fdisk_list_after == fdisk_list_before:
-                    test.fail("Didn't find the disk attached to guest.")
+        elif device_type == "STORAGE":
+            # Get the result of "fdisk -l" in guest, and
+            # compare the result with fdisk_list_before.
+            output = session.cmd_output("fdisk -l|grep \"Disk identifier:\"")
+            fdisk_list_after = output.splitlines()
+            if fdisk_list_after == fdisk_list_before:
+                test.fail("Didn't find the disk attached to guest.")
 
-            # Execute VM Life-cycle Operation with device pass-through
+    def multiple_reboot(number_of_reboots):
+        for reboot_count in range(number_of_reboots):
+            logging.info("Performing VM Reboot with device pass-through for reboot count : %s", reboot_count)
             guest_lifecycle()
+            logging.info("Check device avialablity after VM Reboot for reboot count : %s", reboot_count)
+            check_device_staus(net_ip, server_ip, netmask)
+
+    try:
+        for itr in range(iteration):
+            check_device_staus(net_ip, server_ip, netmask)
+
+        # Execute VM Life-cycle Operation with device pass-through
+        guest_lifecycle()
+
+        # Execute Multiple reboots on VM and check the device persistency
+        multiple_reboot(number_of_reboots)
 
     finally:
         backup_xml.sync()
