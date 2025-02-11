@@ -1,6 +1,7 @@
 import logging as log
 from virttest import virt_admin
 from virttest import utils_libvirtd
+import time
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -32,6 +33,7 @@ def run(test, params, env):
         server_name = virt_admin.check_server_name()
 
     daemon = utils_libvirtd.Libvirtd()
+    time.sleep(10)
     vp = virt_admin.VirtadminPersistent()
 
     def threadpool_info(server):
