@@ -68,7 +68,7 @@ def _allocate_huge_memory(params, test, allocate_mem,
     kernel_hp_file = params.get("kernel_hp_tmpl_file")
     cleanup_file = params.get("cleanup_file", [])
 
-    target_nodes = params.get("numa_obj").online_nodes_withmem
+    target_nodes = params.get("numa_obj").online_nodes_withmem[:2]
     params.update({"all_nodes": target_nodes})
 
     test.log.debug("Allocate %sKiB on %s pagesize", allocate_mem, hugepage_size)
@@ -431,10 +431,10 @@ def run(test, params, env):
         test.log.info("TEST_TEARDOWN: Clean up env.")
         bkxml.sync()
         for file in params.get("cleanup_file", []):
-            process.run("echo 0 > %s" % file, ignore_status=True)
+            process.run("echo 0 > %s" % file, ignore_status=True, shell=True)
         hg_path = params.get("hg_path")
         if hg_path:
-            process.run("umount %s; rm %s" % (hg_path, hg_path), ignore_status=True)
+            process.run("umount %s; rm -r %s" % (hg_path, hg_path), ignore_status=True, shell=True)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
