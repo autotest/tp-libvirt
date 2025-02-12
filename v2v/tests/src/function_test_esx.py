@@ -235,8 +235,10 @@ def run(test, params, env):
         """
         def _get_vmtools_info(cmd):
             _, res = vmcheck.run_cmd(cmd)
-            exit_code = re.search(r'uninstalling VMware Tools\s+.*exit code\s+(\d+)', res).group(1)
-            return int(exit_code)
+            vmtools_info = re.search(r'uninstalling VMware Tools\s+.*exit code\s+(\d+)', res)
+            if vmtools_info:
+                exit_code = vmtools_info.group(1)
+                return int(exit_code)
 
         cmd = r'type "C:\Program Files\Guestfs\Firstboot\log.txt"'
 
@@ -946,6 +948,7 @@ def run(test, params, env):
             params['msg_content_yes'] += '<rasd:num_of_sockets>' + res_cpu_topology.get('sockets') + '%'
             params['msg_content_yes'] += '<rasd:cpu_per_socket>' + res_cpu_topology.get('cores') + '%'
             params['msg_content_yes'] += '<rasd:threads_per_cpu>' + res_cpu_topology.get('threads')
+            v2v_result = utils_v2v.v2v_cmd(v2v_params)
         else:
             if 'exist_uuid' in checkpoint:
                 auto_clean = False
