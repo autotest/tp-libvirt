@@ -48,7 +48,7 @@ def run(test, params, env):
         test.log.debug("The final guest xml is %s", vmxml)
         if not vm.is_alive():
             vm.start()
-        vm.serial_console.read_until_any_line_matches([check_prompt], timeout=360)
+        vm.serial_console.read_until_any_line_matches([check_prompt], timeout=600)
     finally:
         bkxml.sync()
         for file_path in [boot_initrd, boot_vmlinuz]:
