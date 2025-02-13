@@ -78,7 +78,7 @@ def console_check(vm, pattern, debug_log=False):
     :return: function returning true if console output matches pattern
     """
     def _matches():
-        output = vm.serial_console.get_stripped_output()
+        output = vm.serial_console.get_output()
         matches = re.search(pattern, output, re.S)
         if debug_log:
             logging.debug("Checked for '%s' in '%s'", pattern, output)
