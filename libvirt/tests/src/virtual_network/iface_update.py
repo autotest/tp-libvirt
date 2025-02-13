@@ -314,7 +314,9 @@ def run(test, params, env):
                     state_map = "%s.*\n.*%s" % (iface_link_value.upper(), mac_addr)
                     session = vm.wait_for_serial_login()
                     logging.info("ip link output:%s", session.cmd_output("ip link"))
-                    if_name = utils_net.get_net_if(runner=session.cmd_output, state=state_map)[0]
+                    if_name = utils_net.get_net_if(
+                        runner=session.cmd_output, state=state_map,
+                        ip_options='--color=never')[0]
                     if not check_iface_link(session, mac_addr, new_iface_link):
                         test.fail('iface link check inside vm failed.')
                     session.close()
