@@ -111,6 +111,8 @@ def run(test, params, env):
 
     finally:
         bkxml.sync()
+        if test_user != "root":
+            virsh_ins.close_session()
         if interface_type == "ethernet":
             network_base.delete_tap(tap_name)
             utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
