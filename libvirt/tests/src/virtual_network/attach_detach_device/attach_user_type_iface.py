@@ -114,3 +114,5 @@ def run(test, params, env):
                       f'{iface_list}')
     finally:
         bkxml.sync(virsh_instance=virsh_ins)
+        if not root:
+            virsh_ins.close_session()
