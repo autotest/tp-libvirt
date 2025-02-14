@@ -1,4 +1,5 @@
 import logging
+import platform
 
 from avocado.core import exceptions
 from avocado.utils import distro
@@ -25,6 +26,9 @@ def get_vm(params):
     firmware_type = params.get('firmware_type')
     detected_distro = distro.detect()
     os_type_dict = {}
+    if platform.machine() == "s390x":
+        return vms[0]
+
     for _vm in vms:
         if os_type_dict.get("seabios") and os_type_dict.get("ovmf"):
             break
