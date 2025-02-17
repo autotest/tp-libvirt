@@ -80,8 +80,10 @@ def run(test, params, env):
         migration_obj.verify_default()
         check_iommu_xml(vm, params)
 
-        test.log.info("TEST_STEP: Migrate back the VM to the source host.")
-        migration_obj.run_migration_back()
-        migration_obj.migration_test.ping_vm(vm, params)
+        migrate_vm_back = "yes" == params.get("migrate_vm_back", "yes")
+        if migrate_vm_back:
+            test.log.info("TEST_STEP: Migrate back the VM to the source host.")
+            migration_obj.run_migration_back()
+            migration_obj.migration_test.ping_vm(vm, params)
     finally:
         test_obj.teardown_iommu_test()
