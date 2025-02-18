@@ -41,7 +41,7 @@ def run(test, params, env):
                                                       test_passwd,
                                                       **unpr_vm_args)
         uri = f'qemu+ssh://{test_user}@localhost/session'
-        virsh_ins = virsh.VirshPersistent(uri=uri)
+        virsh_ins = virsh.Virsh(uri=uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
@@ -200,5 +200,3 @@ def run(test, params, env):
             if tap_type == 'tap':
                 utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
         bkxml.sync(virsh_instance=virsh_ins)
-        if not root:
-            virsh_ins.close_session()

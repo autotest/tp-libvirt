@@ -43,7 +43,7 @@ def run(test, params, env):
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
         host_session.close()
-        virsh_ins = virsh.VirshPersistent(uri=virsh_uri)
+        virsh_ins = virsh.Virsh(uri=virsh_uri)
 
     scenario = params.get('scenario')
     operation = params.get('operation')
@@ -143,8 +143,6 @@ def run(test, params, env):
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
-        else:
-            del virsh_ins
         utils_selinux.set_status(selinux_status)
         process.run(f'ip link del {DOWN_IFACE_NAME}',
                     shell=True, ignore_status=True)
