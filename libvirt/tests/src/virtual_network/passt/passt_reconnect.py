@@ -50,7 +50,7 @@ def run(test, params, env):
                                                       test_passwd,
                                                       **unpr_vm_args)
         uri = f'qemu+ssh://{test_user}@localhost/session'
-        virsh_ins = virsh.VirshPersistent(uri=uri)
+        virsh_ins = virsh.Virsh(uri=uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
@@ -141,6 +141,4 @@ def run(test, params, env):
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
-        else:
-            del virsh_ins
         utils_selinux.set_status(selinux_status)
