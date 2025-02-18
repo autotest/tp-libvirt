@@ -430,12 +430,14 @@ def run(test, params, env):
                 # IP address
                 if i == 0:
                     ip_addr = r'IPv4 Address.*?: %s' % value
+                    LOG.info('static ip addr: %s', re.search(ip_addr, ipconfig, re.S))
                     if not re.search(ip_addr, ipconfig, re.S):
                         LOG.debug('Found IP addr failed')
                         return False
                 # Default gateway
                 if i == 1:
                     ip_gw = r'Default Gateway.*?: .*?%s' % value
+                    LOG.info('static gateway: %s', re.search(ip_gw, ipconfig, re.S))
                     if not re.search(ip_gw, ipconfig, re.S):
                         LOG.debug('Found Gateway failed')
                         return False
@@ -446,12 +448,14 @@ def run(test, params, env):
                     cidr = '.'.join(
                         [str(int(bin_mask[i * 8:i * 8 + 8], 2)) for i in range(4)])
                     sub_mask = r'Subnet Mask.*?: %s' % cidr
+                    LOG.info('static subnet mask: %s', re.search(sub_mask, ipconfig, re.S))
                     if not re.search(sub_mask, ipconfig, re.S):
                         LOG.debug('Found subnet mask failed')
                         return False
                 # DNS server list
                 if i >= 3:
                     dns_server = r'DNS Servers.*?:.*?%s' % value
+                    LOG.info('static DNS: %s', re.search(dns_server, ipconfig, re.S))
                     if not re.search(dns_server, ipconfig, re.S):
                         LOG.debug('Found DNS Server failed')
                         return False
