@@ -1,6 +1,7 @@
 import logging as log
 import os
 import signal
+import time
 
 from avocado.utils import process
 
@@ -283,6 +284,7 @@ def run(test, params, env):
             error_operation = params.get("error_operation")
             if error_operation:
                 if "destroy_vm" in error_operation:
+                    time.sleep(5)
                     virsh.destroy(vm_name, debug=True)
                 if "kill_qemu" in error_operation:
                     utils_misc.safe_kill(vm.get_pid(), signal.SIGKILL)
