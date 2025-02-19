@@ -596,7 +596,7 @@ def run(test, params, env):
             if checkpoint == 'multi_kernel':
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
-            if checkpoint == 'multi_disks' and params.get('skip_vm_check') != 'yes':
+            if checkpoint == 'multi_disks':
                 check_disks(vmchecker.checker)
             if checkpoint == 'multi_netcards':
                 check_multi_netcards(params['mac_address'],
