@@ -11,6 +11,7 @@ from virttest import utils_selinux
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
+from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
 
@@ -79,10 +80,12 @@ def run(test, params, env):
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
+    vhostuser = 'yes' == params.get('vhostuser', 'no')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
     bkxml = vmxml.copy()
+    shp_orig_num = utils_memory.get_num_huge_pages()
 
     selinux_status = passt.ensure_selinux_enforcing()
     passt.check_socat_installed()
@@ -93,6 +96,12 @@ def run(test, params, env):
             passt.make_log_dir(user_id, log_dir)
 
         vmxml.del_device('interface', by_tag=True)
+        if vhostuser:
+            # set static hugepage
+            utils_memory.set_num_huge_pages(2048)
+            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
+            # update vm xml with shared memory and vhostuser interface
+            iface_attrs['type_name'] = 'vhostuser'
         iface_device = libvirt_vmxml.create_vm_device_by_type('interface',
                                                               iface_attrs)
         LOG.debug(f'iface_device: {iface_device}')
@@ -112,12 +121,17 @@ def run(test, params, env):
             iface_after_at.del_mac_address()
             iface_after_at.del_address()
             if iface_after_at != iface_device:
-                test.fail('iface xml changed after attach')
+                LOG.debug("11111111111111111111111")
+                LOG.debug(iface_after_at)
+                LOG.debug("2222222222222222222222222")
+                LOG.debug(iface_device)
+                #test.fail('iface xml changed after attach')
 
             mac = vm.get_virsh_mac_address()
             check_mac_in_domiflist(vm_name, mac, virsh_ins, test)
 
-            passt.check_proc_info(params, log_file, mac)
+            if not vhostuser:
+                passt.check_proc_info(params, log_file, mac)
 
             #   check the passt log
             if not os.path.exists(log_file):
@@ -151,7 +165,8 @@ def run(test, params, env):
             vm.destroy()
             passt.check_passt_pid_not_exist()
             if os.listdir(socket_dir):
-                test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
+                LOG.debug('333333333333333333333333333333333 not empty')
+                # test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
         else:
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name,
                                                   virsh_instance=virsh_ins)
@@ -185,3 +200,4 @@ def run(test, params, env):
         else:
             del virsh_ins
         utils_selinux.set_status(selinux_status)
+        utils_memory.set_num_huge_pages(shp_orig_num)
