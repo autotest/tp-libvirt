@@ -19,6 +19,7 @@ def run(test, params, env):
     ping_dest = params.get('ping_dest')
     iommu_dict = eval(params.get('iommu_dict', '{}'))
     test_devices = eval(params.get("test_devices", "[]"))
+    dev_in_same_iommu_group = eval(params.get("dev_in_same_iommu_group", "[]"))
     need_sriov = "yes" == params.get("need_sriov", "no")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
@@ -32,6 +33,13 @@ def run(test, params, env):
     try:
         test_obj.setup_iommu_test(iommu_dict=iommu_dict, cleanup_ifaces=cleanup_ifaces)
         test_obj.prepare_controller()
+        vm.start()
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
+        vm_session = vm.wait_for_serial_login(
+            timeout=int(params.get('login_timeout')))
+        pre_devices = viommu_base.get_devices_pci(vm_session, test_devices)
+        vm.destroy()
 
         for dev in ["disk", "video"]:
             dev_dict = eval(params.get('%s_dict' % dev, '{}'))
@@ -56,15 +64,19 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Start the VM.")
         vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
             timeout=int(params.get('login_timeout')))
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
 
         test.log.info("TEST_STEP: Check dmesg message about iommu inside the vm.")
         vm_session.cmd("dmesg | grep -i 'Adding to iommu group'")
-        viommu_base.check_vm_iommu_group(vm_session, test_devices)
+        viommu_base.check_vm_iommu_group(vm_session, test_devices, pre_devices)
+        if dev_in_same_iommu_group:
+            devices_pci_info = viommu_base.get_devices_pci(vm_session, dev_in_same_iommu_group)
+            devices_pci = [x for y in devices_pci_info.values() for x in y]
+            dev_dir = str(viommu_base.get_iommu_dev_dir(vm_session, devices_pci[0]))
+            for dev in devices_pci:
+                vm_session.cmd(f"ls {dev_dir} |grep {dev}")
 
         test.log.info("TEST_STEP: Check if the VM disk and network are woring well.")
         utils_disk.dd_data_to_vm_disk(vm_session, "/mnt/test")
