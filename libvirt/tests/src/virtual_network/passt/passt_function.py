@@ -10,6 +10,7 @@ from virttest import utils_selinux
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
+from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
 
@@ -65,10 +66,12 @@ def run(test, params, env):
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs = eval(params.get('iface_attrs'))
     iface_attrs['backend']['logFile'] = log_file
+    vhostuser = 'yes' == params.get('vhostuser', 'no')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
     bkxml = vmxml.copy()
+    shp_orig_num = utils_memory.get_num_huge_pages()
 
     selinux_status = passt.ensure_selinux_enforcing()
     passt.check_socat_installed()
@@ -83,6 +86,12 @@ def run(test, params, env):
 
         vmxml.del_device('interface', by_tag=True)
         vmxml.sync(virsh_instance=virsh_ins)
+        if vhostuser:
+            # set static hugepage
+            utils_memory.set_num_huge_pages(2048)
+            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
+            # update vm xml with shared memory and vhostuser interface
+            iface_attrs['type_name'] = 'vhostuser'
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
@@ -92,6 +101,7 @@ def run(test, params, env):
         passt.check_proc_info(params, log_file, mac)
 
         #   check the passt log
+        LOG.debug(virsh.dumpxml(vm_name))
         if not os.path.exists(log_file):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
@@ -123,7 +133,7 @@ def run(test, params, env):
         vm.destroy()
 
         passt.check_passt_pid_not_exist()
-        if os.listdir(socket_dir):
+        if not vhostuser and os.listdir(socket_dir):
             test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
 
     finally:
@@ -134,3 +144,4 @@ def run(test, params, env):
         else:
             del virsh_ins
         utils_selinux.set_status(selinux_status)
+        utils_memory.set_num_huge_pages(shp_orig_num)
