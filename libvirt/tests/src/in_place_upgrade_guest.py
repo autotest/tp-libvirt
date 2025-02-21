@@ -2,17 +2,17 @@ import textwrap
 
 from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
-from virttest.staging import utils_memory
 
 def check_version(test, params, session, expected_release, step):
     release_check_cmd = params.get("release_check_cmd")
-    _, release_output = session.cmd_status_output(release_check_cmd)
+    kernel_check_cmd = params.get("kernel_check_cmd")
+
+    release_output = session.cmd_output(release_check_cmd)
     if ("release %s" % expected_release) not in release_output:
         test.fail("The guest %s should be at rhel release %s, but is at %s" %
                 (step, expected_release, release_output))
     
-    kernel_check_cmd = params.get("kernel_check_cmd")
-    _, kernel_output = session.cmd_status_output(kernel_check_cmd)
+    kernel_output = session.cmd_output(kernel_check_cmd)
     if (".el%s" % expected_release) not in kernel_output:
         test.fail("The guest %s should be at kernel version .el%s, but is at %s" %
                 (step, expected_release, kernel_output))
@@ -39,6 +39,7 @@ def run(test, params, env):
     pre_major_release = params.get("pre_major_release")
     target_major_release = params.get("target_major_release")
     target_release = params.get("target_release")
+    pagesize_check_cmd = params.get("pagesize_check_cmd")
     compose_url = params.get("compose_url")
     upgrade_repos_path = params.get("upgrade_repos_path")
 
@@ -53,7 +54,7 @@ def run(test, params, env):
         session = vm.wait_for_login()
 
         check_version(test, params, session, pre_major_release, "before upgrade")
-        pre_page_size = utils_memory.get_huge_page_size(session)
+        pre_page_size = session.cmd_output(pagesize_check_cmd).strip()
 
         utils_package.package_install(["leapp-upgrade*"], session, 360)
 
@@ -80,9 +81,28 @@ def run(test, params, env):
         session = vm.reboot(session=session, timeout=900)
 
         check_version(test, params, session, target_major_release, "after upgrade")
-        post_page_size = utils_memory.get_huge_page_size(session)
+
+        post_page_size = session.cmd_output(pagesize_check_cmd).strip()
         if pre_page_size != post_page_size:
-            test.fail("Page size before upgrade (%s) is not the same after upgrade (%s)" % (pre_page_size, post_page_size)) 
+            list_kernel_cmd = params.get("list_kernel_cmd")
+            default_kernel_cmd = params.get("default_kernel_cmd")
+
+            kernels = session.cmd_output(list_kernel_cmd).splitlines()
+            release = ".el%s" % target_major_release
+            pagesize = "+%sk" % (int(pre_page_size) // 1024)
+            try:
+                kernel_index = [i for i, kernel in enumerate(kernels) if release in kernel and pagesize in kernel][0]
+            except:
+                test.fail("After upgrade, a kernel with version %s and pagesize %s could not be found" % (release, pagesize))
+            
+            cmd = "%s %s" % (default_kernel_cmd, kernel_index)
+            session.cmd(cmd)
+
+            session = vm.reboot(session=session, timeout=900)
+
+            post_page_size = session.cmd_output(pagesize_check_cmd).strip()
+            if pre_page_size != post_page_size:
+                test.fail("Page size before upgrade (%s) is not the same after upgrade (%s)" % (pre_page_size, post_page_size)) 
 
         session.close()
 
