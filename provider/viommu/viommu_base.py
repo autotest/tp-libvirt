@@ -1,4 +1,5 @@
 import os
+import logging
 
 from avocado.core import exceptions
 
@@ -10,31 +11,88 @@ from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_virtio
 from virttest.utils_libvirt import libvirt_pcicontr
 
+LOG = logging.getLogger('avocado.' + __name__)
 
-def check_vm_iommu_group(vm_session, test_devices):
+
+def get_devices_pci(vm_session, test_devices):
     """
-    Check the devices with iommu enabled are located in a separate iommu group
+    Get the devices pci
 
     :param vm_session: VM session
     :param test_devices: test devices to check
+    :return: The test devices' pci
     """
     result = {}
     for dev in test_devices:
         s, o = vm_session.cmd_status_output(
             "lspci | awk 'BEGIN{IGNORECASE=1} /%s/ {print $1}'" % dev)
+        LOG.debug(o)
         if s:
             exceptions.TestFail("Failed to get pci address!")
+        result.update({dev: o.strip().splitlines()})
+    return result
 
-        cmd = ("find /sys/kernel/iommu_groups/ -type l | xargs ls -l | awk -F "
-               "'/' '/%s / {print(\"\",$2,$3,$4,$5,$6)}' OFS='/' " % o.splitlines()[0])
-        s, o = vm_session.cmd_status_output(cmd)
-        if s:
-            exceptions.TestFail("Failed to find iommu group!")
-        device_dir = o.strip().splitlines()[-1]
-        s, dev_pci = vm_session.cmd_status_output("ls %s" % device_dir)
-        if s:
-            exceptions.TestFail("Failed to get the device in the iommu group!")
-        result.update({dev: os.path.join(device_dir, dev_pci.strip())})
+
+def get_added_devices_pci(vm_session, test_devices, orig_devices=None):
+    """
+    Get the newly added devices pci
+
+    :param vm_session: VM session
+    :param test_devices: test devices to check
+    :param orig_devices: The original devices
+    :return: The pci of the added device
+    """
+    result = {}
+    act_devices = get_devices_pci(vm_session, test_devices)
+    if not orig_devices:
+        return act_devices
+    for k, v in act_devices.items():
+        added_dev = list(filter(lambda x: x not in orig_devices.get(k),  v))
+        LOG.debug(f"added dev: {added_dev}")
+        if not added_dev:
+            exceptions.TestFail("Failed to get the added devices' pci address!")
+        result[k] = added_dev
+    return result
+
+
+def get_iommu_dev_dir(vm_session, pci_addr):
+    """
+    Get iommu group's devices
+
+    :param vm_session: VM session
+    :param pci_addr: Device pci address
+    :return: The directory of iommu group devices
+    """
+    cmd = ("find /sys/kernel/iommu_groups/ -type l | xargs ls -l | awk -F "
+           "'/' '/%s / {print(\"\",$2,$3,$4,$5,$6)}' OFS='/' " % pci_addr)
+    s, o = vm_session.cmd_status_output(cmd)
+    LOG.debug(o)
+    if s:
+        exceptions.TestFail("Failed to find iommu group!")
+    return o.strip().splitlines()[-1]
+
+
+def check_vm_iommu_group(vm_session, test_devices, orig_devices=None):
+    """
+    Check the devices with iommu enabled are located in a separate iommu group
+
+    :param vm_session: VM session
+    :param test_devices: test devices to check
+    :param orig_devices: The original devices
+    :return: The test devices' iommu group info
+    """
+    act_devices = get_added_devices_pci(vm_session, test_devices, orig_devices)
+    result = {}
+    for dev in test_devices:
+        tmp_path = []
+        for pci_addr in act_devices[dev]:
+            device_dir = get_iommu_dev_dir(vm_session, pci_addr)
+            s, dev_pci = vm_session.cmd_status_output("ls %s" % device_dir)
+            LOG.debug(f"dev pci: {dev_pci}")
+            if s:
+                exceptions.TestFail("Failed to get the device in the iommu group!")
+            tmp_path.append(os.path.join(device_dir, pci_addr))
+        result.update({dev: tmp_path})
     return result
 
 
@@ -100,9 +158,24 @@ class VIOMMUTest(object):
                 contr_slot = libvirt_pcicontr.get_free_pci_slot(
                         vm_xml.VMXML.new_from_dumpxml(self.vm.name),
                         controller_bus=pre_contr_bus)
-                if contr_dict.get("model") == "pcie-to-pci-bridge":
+                if contr_dict.get("model") in ["pcie-to-pci-bridge", "pcie-switch-upstream-port", "pcie-switch-downstream-port'"]:
                     contr_slot = "0"
                 contr_attrs.update({"slot": contr_slot})
+                self.test.log.debug(contr_slot)
+                if contr_dict.get("model") in ["pcie-switch-upstream-port"]:
+                    pci_devices = list(vm_xml.VMXML.new_from_dumpxml(self.vm.name).xmltreefile.find("devices"))
+                    used_function = []
+                    for dev in pci_devices:
+                        address = dev.find("address")
+                        if address is not None and address.get("bus") == pre_contr_bus:
+                            used_function.append(address.get("function"))
+                    self.test.log.debug(contr_dict)
+                    self.test.log.debug(f"Used function: {used_function}")
+                    available_function = sorted(list(filter(lambda x: x not in used_function,  ["%0#x" % d for d in range(8)])))
+                    self.test.log.debug(f"available_function: {available_function}")
+                    contr_function = available_function[0]
+                    contr_attrs.update({"function": contr_function})
+
                 contr_dict.update({"address": {"attrs": contr_attrs}})
                 contr_dict.pop("pre_controller")
             libvirt_vmxml.modify_vm_device(
@@ -139,7 +212,7 @@ class VIOMMUTest(object):
             if disk_dict["target"]["bus"] == "scsi":
                 disk_dict["address"]["attrs"].update({"type": "drive", "controller": dev_bus})
 
-            if self.controller_dicts[-1]["model"] == "pcie-root-port":
+            if self.controller_dicts[-1]["model"] in ["pcie-root-port", "pcie-switch-downstream-port"]:
                 self.controller_dicts.pop()
         return disk_dict
 

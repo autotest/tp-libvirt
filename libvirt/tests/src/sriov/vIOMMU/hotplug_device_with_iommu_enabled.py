@@ -30,13 +30,16 @@ def run(test, params, env):
         dev_obj = vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices(device_type)[-1]
         virsh.detach_device(vm_name, dev_obj.xml, wait_for_event=True,
                             debug=True, ignore_status=False)
-        if dev_iommu_info:
-            res = vm_session.cmd_status_output('ifconfig')
-            test.log.debug(res)
-            s, o = vm_session.cmd_status_output("ls %s" % dev_iommu_info)
-            test.log.debug(f"{device_type} iommu check: {o}")
-            if not s:
-                test.fail("The %s should be removed from the iommu group" % device_type)
+        if not dev_iommu_info:
+            return
+        for dev_info in dev_iommu_info:
+            if dev_info:
+                res = vm_session.cmd_status_output('ifconfig')
+                test.log.debug(res)
+                s, o = vm_session.cmd_status_output("ls %s" % dev_info)
+                test.log.debug(f"{device_type} iommu check: {o}")
+                if not s:
+                    test.fail("The %s should be removed from the iommu group" % device_type)
 
     cleanup_ifaces = params.get("cleanup_ifaces", "yes")
     disk_dict = eval(params.get('disk_dict', '{}'))
@@ -65,7 +68,7 @@ def run(test, params, env):
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
             timeout=int(params.get('login_timeout')))
-
+        pre_devices = viommu_base.get_devices_pci(vm_session, test_devices)
         if disk_dict:
             test.log.info("TEST_STEP: Attach a disk device to VM.")
             disk_dict = test_obj.update_disk_addr(disk_dict)
@@ -88,7 +91,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Check dmesg message about iommu inside the vm.")
         vm_session.cmd("dmesg | grep -i 'Adding to iommu group'", timeout=300)
-        dev_iommu_groups = viommu_base.check_vm_iommu_group(vm_session, test_devices)
+        dev_iommu_groups = viommu_base.check_vm_iommu_group(vm_session, test_devices, pre_devices)
         test.log.debug(f"Device iommu groups info: {dev_iommu_groups}")
 
         if "block" in test_devices:
