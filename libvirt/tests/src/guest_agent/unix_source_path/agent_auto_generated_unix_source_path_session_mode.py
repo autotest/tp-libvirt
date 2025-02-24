@@ -60,7 +60,7 @@ def run(test, params, env):
     vm = libvirt_unprivileged.get_unprivileged_vm(vm_name, test_user,
                                                   test_passwd,
                                                   **unpr_vm_args)
-    virsh_ins = virsh.VirshPersistent(uri=vm.connect_uri)
+    virsh_ins = virsh.Virsh(uri=vm.connect_uri)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
         vm_name, virsh_instance=virsh_ins)
     backup_xml = vmxml.copy()
@@ -108,4 +108,3 @@ def run(test, params, env):
         vm_new.destroy()
         virsh_ins.domrename(vm_new.name, vm.name, debug=True)
         backup_xml.sync(virsh_instance=virsh_ins)
-        virsh_ins.close_session()
