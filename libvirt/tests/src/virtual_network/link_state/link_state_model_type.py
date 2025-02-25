@@ -50,7 +50,7 @@ def run(test, params, env):
         vm_name = params.get("unpr_vm_name")
         vm = libvirt_unprivileged.get_unprivileged_vm(
             vm_name, test_user, test_passwd, **unpr_vm_args)
-        virsh_ins = virsh.VirshPersistent(uri=vm.connect_uri)
+        virsh_ins = virsh.Virsh(uri=vm.connect_uri)
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
         vm_name, virsh_instance=virsh_ins)

@@ -83,7 +83,7 @@ def _initialize_unpr_virsh():
 
     global unpr_virsh
     unpr_uri = f"qemu+ssh://{test_user}@localhost/session"
-    unpr_virsh = virsh.VirshPersistent(uri=unpr_uri, safe=True)
+    unpr_virsh = virsh.Virsh(uri=unpr_uri, safe=True)
 
     host_session = ShellSession("su")
     remote.VMManager.set_ssh_auth(host_session, "localhost", test_user, test_passwd)
@@ -393,8 +393,6 @@ def run(test, params, env):
     finally:
         for xml in backupxmls:
             xml.sync(virsh_instance=unpr_virsh)
-        if unpr_virsh:
-            del unpr_virsh
         for fs_dict in fs_dicts:
             source_dir = fs_dict["source"]["dir"]
             if os.path.exists(source_dir):
