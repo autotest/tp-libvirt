@@ -192,6 +192,8 @@ def run(test, params, env):
     blockcopy_reuse = params.get("blockcopy_reuse")
     backup_error = "yes" == params.get("backup_error")
     tmp_dir = data_dir.get_tmp_dir()
+    with_data_file = "yes" == params.get("with_data_file", "no")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     try:
         vm_name = params.get("main_vm")
@@ -217,8 +219,12 @@ def run(test, params, env):
         if original_disk_type == "local":
             image_name = "%s_image.qcow2" % original_disk_target
             disk_path = os.path.join(tmp_dir, image_name)
+            data_file = os.path.join(tmp_dir, "datastore")
+            if with_data_file:
+                data_file_option = params.get("data_file_option", "") % data_file
+            extra_cmd = "" if not with_data_file else data_file_option
             libvirt.create_local_disk("file", disk_path, original_disk_size,
-                                      "qcow2")
+                                      "qcow2", extra=extra_cmd)
             disk_params = {"device_type": "disk",
                            "type_name": "file",
                            "driver_type": "qcow2",
@@ -233,6 +239,11 @@ def run(test, params, env):
         virsh.attach_device(vm.name, disk_xml,
                             flagstr="--config", debug=True)
         vm.start()
+        guest_xml = virsh.dumpxml(vm_name).stdout_text
+        logging.debug("The current guest xml is:%s" % guest_xml)
+        if with_data_file:
+            if data_file not in guest_xml:
+                test.fail("The datastore file xml can't be generated automatically in guest!")
         session = vm.wait_for_login()
         new_disks_in_vm = list(utils_disk.get_linux_disks(session).keys())
         session.close()
