@@ -105,9 +105,14 @@ def get_iface_ip_and_prefix(iface, session=None, ip_ver='ipv4'):
                 for addr in iface_info['addr_info']
                 if addr['family'] == 'inet'][0]
     if ip_ver == 'ipv6':
-        return [(addr['local'], addr['prefixlen'])
-                for addr in iface_info['addr_info']
-                if addr['family'] == 'inet6' and addr['scope'] == 'global']
+        ipv6_global_addrs = [(addr['local'], addr['prefixlen'])
+                             for addr in iface_info['addr_info']
+                             if addr['family'] == 'inet6' and
+                             addr['scope'] == 'global']
+        if not ipv6_global_addrs:
+            LOG.warning("No global IPv6 address found.")
+            return None
+        return ipv6_global_addrs
 
 
 def get_proc_info(command):
@@ -201,7 +206,11 @@ def check_vm_ip(iface_attrs, session, host_iface, vm_iface=None):
             raise exceptions.TestFail('vm ip and prefix should be '
                                       'the same as host')
 
-    set_ipv6_info = get_iface_ip_and_prefix(host_iface, ip_ver='ipv6')[0]
+    ipv6_info = get_iface_ip_and_prefix(host_iface, ip_ver='ipv6')
+    if ipv6_info:
+        set_ipv6_info = ipv6_info[0]
+    else:
+        raise exceptions.TestSkipError(f'Host ipv6 is not available!')
     if 'ips' in iface_attrs:
         iface_ipv6_info = [ip for ip in iface_attrs['ips']
                            if ip['family'] == 'ipv6'][0]
