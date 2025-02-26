@@ -256,6 +256,7 @@ def run(test, params, env):
     script_content = params.get("stress_script", "")
     stdio_handler_file = "file" == params.get("stdio_handler")
     setup_mem = params.get("setup_mem", False)
+    omit_dir_at_first = "yes" == params.get("omit_dir_at_first", "no")
 
     fs_devs = []
     vms = []
@@ -294,7 +295,9 @@ def run(test, params, env):
             driver = {'type': driver_type, 'queue': queue_size}
             source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(index))
             logging.debug(source_dir)
-            not os.path.isdir(source_dir) and os.mkdir(source_dir)
+            if not os.path.isdir(source_dir):
+                if not (omit_dir_at_first and fs_index == 0):
+                    os.mkdir(source_dir)
             target_dir = dir_prefix + str(index)
             source = {'socket': source_socket}
             target = {'dir': target_dir}
@@ -355,6 +358,14 @@ def run(test, params, env):
             logging.debug(vmxml)
             libvirt_pcicontr.reset_pci_num(vm_names[index])
             result = virsh.start(vm_names[index], debug=True)
+            if omit_dir_at_first:
+                expect_error = True
+                libvirt.check_exit_status(result, expect_error)
+                source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(0))
+                os.mkdir(source_dir)
+                result = virsh.start(vm_names[index], debug=True)
+                libvirt.check_exit_status(result, not expect_error)
+                return
             if hotplug_unplug:
                 if stdio_handler_file:
                     qemu_config = LibvirtQemuConfig()
