@@ -8,6 +8,7 @@
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 import os
+import time
 
 from avocado.utils import process
 from avocado.utils import memory
@@ -89,7 +90,10 @@ def check_after_detach(vm, test, params):
     ausearch_check = params.get("ausearch_check") % (mem_value, mem_value - target_size)
 
     # Check the audit log by ausearch.
+    time.sleep(30)
     ausearch_result = process.run(audit_cmd, shell=True)
+    case_id = params.get("id")
+    process.run("cp /var/log/audit/audit.log /tmp/%s-audit.log" % case_id, shell=True)
     libvirt.check_result(ausearch_result, expected_match=ausearch_check)
     test.log.debug("Check audit log %s successfully." % ausearch_check)
 
