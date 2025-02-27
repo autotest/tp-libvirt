@@ -101,21 +101,23 @@ def run(test, params, env):
         """
         Get the unusable RAM of the VM.
         """
-        # Get total physical memory from dmidecode
-        cmd = "dmidecode -t 17"
-        dmi_mem = session.cmd_output(cmd)
-        dmi_mem_size = re.findall(r"Size:\s(\d+\s+[K|M|G]B)", dmi_mem)
-        if not dmi_mem_size:
+        # Get total physical memory from lshw
+        cmd = "lshw -C memory"
+        lshw_mem = session.cmd_output(cmd)
+        lshw_mem_size = re.findall(r'\*-\s*memory\s*[\s\S]*?size:\s*(\d+[K|M|G]iB)', lshw_mem)
+        if not lshw_mem_size:
             test.fail("Cannot get memory size info inside VM.")
         total_physical_mem = 0
-        for size_info in dmi_mem_size:
-            mem_size = int(size_info.split()[0].strip())
-            mem_unit = size_info.split()[1].strip()
-            if mem_unit.lower() == "kb":
+        for mem in lshw_mem_size:
+            size_value = re.match(r'(\d+)\s*([K|M|G]iB)', mem)
+            if size_value:
+                mem_size = int(size_value.group(1))  # Convert the numeric part to an integer
+                mem_unit = size_value.group(2)
+            if mem_unit.lower() == "kib":
                 total_physical_mem += mem_size
-            elif mem_unit.lower() == "mb":
+            elif mem_unit.lower() == "mib":
                 total_physical_mem += mem_size * 1024
-            elif mem_unit.lower() == "gb":
+            elif mem_unit.lower() == "gib":
                 total_physical_mem += mem_size * 1048576
         return total_physical_mem - get_vm_usable_mem(session)
 
@@ -266,7 +268,7 @@ def run(test, params, env):
     expect_xml_line = params.get("expect_xml_line")
     expect_qemu_line = params.get("expect_qemu_line")
     reset_vm_memory = "yes" == params.get("reset_vm_memory", "no")
-    use_dmidecode = "yes" == params.get("use_dmidecode", "yes")
+    use_lshw = "yes" == params.get("use_dmidecode", "yes")
 
     vm = env.get_vm(vm_name)
     # Back up domain XML
@@ -357,12 +359,12 @@ def run(test, params, env):
     if not vm.is_alive():
         vm.start()
     session = vm.wait_for_login()
-    if use_dmidecode:
-        # try make dmidecode available if not present
-        use_dmidecode &= 0 == session.cmd_status(
-            "dmidecode"
-        ) or utils_package.package_install("dmidecode", session)
-    if use_dmidecode:
+    if use_lshw:
+        # try make lshw available if not present
+        use_lshw &= 0 == session.cmd_status(
+            "lshw"
+        ) or utils_package.package_install("lshw", session)
+    if use_lshw:
         unusable_mem = vm_unusable_mem(session)
     else:
         unusable_mem = int(vmxml.memory) - get_vm_usable_mem(session)
