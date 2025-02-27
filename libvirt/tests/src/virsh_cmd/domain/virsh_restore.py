@@ -65,7 +65,7 @@ def run(test, params, env):
     check_log = params.get("check_log")
     check_str_not_in_log = params.get("check_str_not_in_log")
     qemu_conf_dict = eval(params.get("qemu_conf_dict", "{}"))
-    os_update_dict = eval(params.get("os_update_dict"))
+    os_update_dict = eval(params.get("os_update_dict", "{}"))
 
     vm_ref_uid = None
     vm_ref_gid = None
