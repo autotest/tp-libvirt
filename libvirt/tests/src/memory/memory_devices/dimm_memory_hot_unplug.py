@@ -90,10 +90,13 @@ def check_after_detach(vm, test, params):
     ausearch_check = params.get("ausearch_check") % (mem_value, mem_value - target_size)
 
     # Check the audit log by ausearch.
-    time.sleep(30)
+    time.sleep(5)
+    audit_result = process.run("grep VIRT_RESOURCE /var/log/audit/audit.log| grep 'mem' | tail -n 30", shell=True)
     ausearch_result = process.run(audit_cmd, shell=True)
     case_id = params.get("id")
+    process.run("ausearch -m VIRT_RESOURCE >> /tmp/%s-ausearch.txt" % case_id, shell=True)
     process.run("cp /var/log/audit/audit.log /tmp/%s-audit.log" % case_id, shell=True)
+    libvirt.check_result(audit_result, expected_match=ausearch_check)
     libvirt.check_result(ausearch_result, expected_match=ausearch_check)
     test.log.debug("Check audit log %s successfully." % ausearch_check)
 
