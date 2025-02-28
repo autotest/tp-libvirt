@@ -130,7 +130,14 @@ def run(test, params, env):
             virsh.start(vm_name, uri=virsh_uri, **VIRSH_ARGS)
             result = virsh.attach_device(vm_name, iface_device.xml,
                                          uri=virsh_uri, debug=True)
-
+        if scenario == 'inactive_host_iface':
+            passt_ver_cmp = params.get("passt_version")
+            passt_ver = process.run("rpm -q passt", shell=True,
+                                    ignore_status=True).stdout_text.strip().split('-')[1]
+            # With newer passt version, vm can start successfully
+            # with inactive interface
+            if passt_ver >= passt_ver_cmp:
+                status_error, error_msg = False, ''
         libvirt.check_exit_status(result, status_error)
         if error_msg:
             libvirt.check_result(result, error_msg)
