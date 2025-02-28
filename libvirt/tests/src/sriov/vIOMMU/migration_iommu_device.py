@@ -85,5 +85,6 @@ def run(test, params, env):
             test.log.info("TEST_STEP: Migrate back the VM to the source host.")
             migration_obj.run_migration_back()
             migration_obj.migration_test.ping_vm(vm, params)
+            migration_obj.check_vm_cont_ping(False)
     finally:
         test_obj.teardown_iommu_test()

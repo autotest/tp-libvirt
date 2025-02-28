@@ -49,6 +49,8 @@ class MigrationBase(object):
         self.src_full_uri = libvirt_vm.complete_uri(
                         self.params.get("migrate_source_host"))
         self.conn_list = []
+        self.check_cont_ping = "yes" == self.params.get("check_cont_ping", "no")
+        self.check_cont_ping_log = self.params.get("check_cont_ping_log", "/tmp/log_file")
         self.remote_libvirtd_log = None
 
         migration_test = migration.MigrationTest()
@@ -91,6 +93,11 @@ class MigrationBase(object):
         if start_vm == "yes" and not self.vm.is_alive():
             self.vm.start()
             self.vm.wait_for_login().close()
+        if self.check_cont_ping:
+            self.test.log.debug("Starting ping command to check network during migration...")
+            vm_session = self.vm.wait_for_login()
+            ping_cmd = "ping 8.8.8.8 > %s 2>&1 &" % self.check_cont_ping_log
+            vm_session.sendline(ping_cmd)
 
     def run_migration(self):
         """
@@ -272,6 +279,28 @@ class MigrationBase(object):
                            % (cmd, cmd_result))
         self.vm.connect_uri = self.src_uri
 
+    def check_vm_cont_ping(self, check_on_dest=True):
+        """
+        Check continuous ping command in VM
+
+        :param check_on_dest: Check whether on the destination machine
+        """
+        dest_uri = self.params.get("virsh_migrate_desturi")
+        if self.check_cont_ping:
+            self.test.log.debug("Checking the output of %s", self.check_cont_ping_log)
+            if check_on_dest:
+                backup_uri, self.vm.connect_uri = self.vm.connect_uri, dest_uri
+            self.vm.cleanup_serial_console()
+            self.vm.create_serial_console()
+            vm_session = self.vm.wait_for_serial_login(timeout=360)
+            vm_session.cmd(
+                "> {0}; sleep 5; grep time= {0}".format(self.check_cont_ping_log))
+            o = vm_session.cmd_output(f"cat {self.check_cont_ping_log}")
+            self.test.log.debug(f"ping command output: {o}")
+            vm_session.close()
+            if check_on_dest:
+                self.vm.connect_uri = backup_uri
+
     def verify_default(self):
         """
         Verify steps by default
@@ -286,6 +315,7 @@ class MigrationBase(object):
         if int(self.migration_test.ret.exit_status) == 0:
             self.migration_test.post_migration_check([self.vm], self.params,
                                                      dest_uri=dest_uri, src_uri=self.src_uri)
+            self.check_vm_cont_ping(check_on_dest=True)
         self.check_local_and_remote_log()
 
     def cleanup_default(self):
