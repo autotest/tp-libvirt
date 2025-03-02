@@ -1,9 +1,10 @@
 import re
 import platform
 
-from avocado.core import exceptions
 from avocado.utils import cpu
 from avocado.utils import memory as avocado_mem
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_version
@@ -14,6 +15,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_version import VersionInterval
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_misc
+
 
 virsh_dargs = {"ignore_status": False, "debug": True}
 
@@ -270,3 +272,52 @@ def compare_values(test, expected, actual, check_item=''):
             check_item, expected, actual))
     else:
         test.log.debug("Check %s %s PASS", check_item, actual)
+
+
+def check_boot_config(session, test):
+    """
+    Check /boot/config-$KVER file
+
+    :param session: vm session
+    :param test: test object
+    :raises: test.fail if checking fails
+    """
+    check_list = [
+        'CONFIG_LIBNVDIMM=m',
+        'CONFIG_BLK_DEV_PMEM=m',
+        'CONFIG_ACPI_NFIT=m'
+    ]
+    current_boot = session.cmd('uname -r').strip()
+    content = session.cmd('cat /boot/config-%s' % current_boot).strip()
+    for item in check_list:
+        if item in content:
+            test.log.debug("/boot/config content: %s exist", item)
+        else:
+            test.fail('/boot/config content not correct: %s not exist' % item)
+
+
+def check_used_memory_info(test, session=None):
+    """
+    Check the free -m cmd result on host or vm.
+
+    :params test: test object
+    :params session: vm session.
+    :return mem_dict: all memory value, such as total, used, free.
+    """
+    mem_dict = {}
+    if not session:
+        cmdRes = process.run('free -m')
+    else:
+        cmdRes = session.cmd_output('free -m')
+    test.log.debug(cmdRes)
+
+    mem = re.findall(r'Mem:\s+(.*)\n', cmdRes)[0]
+    all_value = re.findall(r"\d+", mem)
+    mem_dict['total'] = int(all_value[0])
+    mem_dict['used'] = int(all_value[1])
+    mem_dict['free'] = int(all_value[2])
+    mem_dict['shared'] = int(all_value[3])
+    mem_dict['buff/cache'] = int(all_value[4])
+    mem_dict['available'] = int(all_value[5])
+
+    return mem_dict
