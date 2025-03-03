@@ -17,6 +17,8 @@ import os
 import logging as log
 import aexpect
 import time
+import platform
+import random
 
 from avocado.utils import process
 
@@ -24,11 +26,10 @@ from virttest import virsh
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 from virttest.test_setup import PciAssignable
-from virttest import utils_misc
+from virttest import utils_test, utils_misc
 from virttest import data_dir
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest import utils_package
-from virttest import utils_net
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 
@@ -75,20 +76,41 @@ def run(test, params, env):
     virsh_dumpxml = params.get("virsh_dumpxml", "no")
     virsh_dump = params.get("virsh_dump", "no")
     flood_ping = params.get("flood_ping", "no")
+    arch = platform.machine()
+    multiple_hotplug_hotunplug = params.get("multiple_hotplug_hotunplug", "no")
+    no_of_hotplug_unplug = params.get("no_of_hotplug_unplug", "no")
+    random_reboot = params.get("random_reboot", "no")
     # Check the parameters from configuration file.
-    for each_param in params.itervalues():
-        if "ENTER_YOUR" in each_param:
-            test.cancel("Please enter the configuration details of %s."
-                        % each_param)
+    if arch != "ppc64le":
+        for each_param in params.itervalues():
+            if "ENTER_YOUR" in each_param:
+                test.cancel("Please enter the configuration details of %s."
+                            % each_param)
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
     devices = vmxml.get_devices()
     pci_devs = []
     dargs = {'debug': True, 'ignore_status': True}
+    cntlr_index = params.get("index", "1")
+    cntlr_model = params.get("model", "pci-root")
+    cntlr_type = "pci"
+
+    controllers = vmxml.get_controllers(cntlr_type, cntlr_model)
+    index_list = []
+    for controller in controllers:
+        index_value = controller.get("index")
+        if index_value is not None:
+            index_list.append(int(index_value))
+
+    if index_list:
+        next_index = max(index_list) + 1
+    else:
+        next_index = int(cntlr_index)
     controller = Controller("controller")
-    controller.type = "pci"
-    controller.index = params.get("index", "1")
-    controller.model = params.get("model", "pci-root")
+    controller.type = cntlr_type
+    controller.index = str(next_index)
+    controller.model = cntlr_model
+
     devices.append(controller)
     vmxml.set_devices(devices)
     vmxml.sync()
@@ -122,7 +144,7 @@ def run(test, params, env):
 
     def detach_device(pci_devs, pci_ids):
         # detaching the device from host
-        for pci_value, pci_node in map(None, pci_devs, pci_ids):
+        for pci_value, pci_node in zip(pci_devs, pci_ids):
             pci_value = pci_value.replace(".", "_")
             cmd = "lspci -ks %s | grep 'Kernel driver in use' |\
                    awk '{print $5}'" % pci_node
@@ -138,7 +160,7 @@ def run(test, params, env):
 
     def reattach_device(pci_devs, pci_ids):
         # reattach the device to host
-        for pci_value, pci_node in map(None, pci_devs, pci_ids):
+        for pci_value, pci_node in zip(pci_devs, pci_ids):
             pci_value = pci_value.replace(".", "_")
             cmd = "lspci -ks %s | grep 'Kernel driver in use' |\
                    awk '{print $5}'" % pci_node
@@ -160,8 +182,12 @@ def run(test, params, env):
         return nic_list_after != nic_list_before
 
     def device_hotplug():
-        if not libvirt_version.version_compare(3, 10, 0):
-            detach_device(pci_devs, pci_ids)
+        if arch == "ppc64le":
+            if libvirt_version.version_compare(3, 10, 0):
+                detach_device(pci_devs, pci_ids)
+        else:
+            if not libvirt_version.version_compare(3, 10, 0):
+                detach_device(pci_devs, pci_ids)
         # attach the device in hotplug mode
         result = virsh.attach_device(vm_name, dev.xml,
                                      flagstr="--live", debug=True)
@@ -190,7 +216,7 @@ def run(test, params, env):
 
     def test_ping():
         try:
-            output = session.cmd_output("lspci -nn | grep %s" % device_name)
+            output = session.cmd_output('lspci -nn | grep "%s"' % device_name)
             nic_id = str(output).split(' ', 1)[0]
             nic_name = str(utils_misc.get_interface_from_pci_id(nic_id,
                                                                 session))
@@ -198,8 +224,9 @@ def run(test, params, env):
             session.cmd("ip addr add %s/%s dev %s"
                         % (net_ip, netmask, nic_name))
             session.cmd("ip link set %s up" % nic_name)
-            s_ping, o_ping = utils_net.ping(dest=server_ip, count=5,
-                                            interface=net_ip)
+            s_ping, o_ping = utils_test.ping(server_ip, count=5,
+                                             interface=net_ip, timeout=30,
+                                             session=session)
             logging.info(s_ping)
             logging.info(o_ping)
             if s_ping:
@@ -211,8 +238,9 @@ def run(test, params, env):
 
     def test_flood_ping():
         # Test Flood Ping
-        s_ping, o_ping = utils_net.ping(dest=server_ip, count=5,
-                                        interface=net_ip, flood=True)
+        s_ping, o_ping = utils_test.ping(server_ip, count=5,
+                                         interface=net_ip, timeout=30,
+                                         flood=True, session=session)
         logging.info(s_ping)
         logging.info(o_ping)
         if s_ping:
@@ -263,6 +291,14 @@ def run(test, params, env):
         if cmd_result.exit_status:
             test.fail("Failed to virsh dump of domain %s" % vm_name)
 
+    def rand_reboot(iteration):
+        logging.info("Perform arandom reboot between hotplug and hotunplug of pci device")
+        rand_value = random.randint(15, 25)
+        if iteration == rand_value:
+            logging.debug("reboots at %s", rand_value)
+            test_reboot()
+        logging.debug("Random reboot completed, and adapter found in the VM after reboot")
+
     try:
         for stress_value in range(0, int(stress_val)):
             device_hotplug()
@@ -278,6 +314,21 @@ def run(test, params, env):
             if virsh_dump == "yes":
                 test_dump()
             device_hotunplug()
+
+        if multiple_hotplug_hotunplug == "yes":
+            for iteration in range(int(no_of_hotplug_unplug)):
+                logging.info("Performing Hotplug/Hotunplug of pci device for %s time", iteration)
+                device_hotplug()
+                test_ping()
+                device_hotunplug()
+
+        if random_reboot == "yes":
+            for iteration in range(int(no_of_hotplug_unplug)):
+                logging.info("Performing Hotplug/Hotunplug of pci device for %s time", iteration)
+                device_hotplug()
+                test_ping()
+                rand_reboot(iteration)
+                device_hotunplug()
 
     finally:
         # clean up
