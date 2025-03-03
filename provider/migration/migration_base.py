@@ -293,6 +293,7 @@ def execute_statistics_command(params):
     """
     vm_name = params.get("migrate_main_vm")
     disk_type = params.get("loop_disk_type")
+    loop_time = params.get("loop_time", "20")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     if disk_type:
@@ -301,18 +302,19 @@ def execute_statistics_command(params):
         disks = vmxml.get_disk_all_by_expr('device==disk')
     logging.debug("disks: %s", disks)
     debug_kargs = {'ignore_status': False, 'debug': True}
-    for disk in list(disks.values()):
-        if disk_type:
-            disk_source = disk.find('source').get('dev')
-        else:
-            disk_source = disk.find('source').get('file')
-        disk_target = disk.find('target').get('dev')
-        logging.debug("disk_source: %s", disk_source)
-        logging.debug("disk_target: %s", disk_target)
-        virsh.domblkstat(vm_name, disk_target, "", **debug_kargs)
-        virsh.domblkinfo(vm_name, disk_source, **debug_kargs)
-        virsh.domstats(vm_name, **debug_kargs)
-        virsh.dommemstat(vm_name, **debug_kargs)
+    for i in range(int(loop_time)):
+        for disk in list(disks.values()):
+            if disk_type:
+                disk_source = disk.find('source').get('dev')
+            else:
+                disk_source = disk.find('source').get('file')
+            disk_target = disk.find('target').get('dev')
+            logging.debug("disk_source: %s", disk_source)
+            logging.debug("disk_target: %s", disk_target)
+            virsh.domblkstat(vm_name, disk_target, "", **debug_kargs)
+            virsh.domblkinfo(vm_name, disk_source, **debug_kargs)
+            virsh.domstats(vm_name, **debug_kargs)
+            virsh.dommemstat(vm_name, **debug_kargs)
 
 
 def check_qemu_mem_lock_hard_limit(params):
