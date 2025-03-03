@@ -1,4 +1,7 @@
 import logging as log
+
+from avocado.utils import process
+
 from virttest import virt_admin
 from virttest import utils_libvirtd
 
@@ -27,6 +30,11 @@ def run(test, params, env):
     min_workers_gt_nworkers = params.get("min_workers_gt_nworkers") == "yes"
     max_workers_gt_nworkers = params.get("max_workers_gt_nworkers") == "yes"
     options_test_together = params.get("options_test_together") == "yes"
+
+    process.run("systemctl status virtproxyd-admin.socket", shell=True)
+    process.run("systemctl status virtproxyd", shell=True)
+    virtproxyd_admin_socket = utils_libvirtd.DaemonSocket("virtproxyd-admin.socket")
+    virtproxyd_admin_socket.restart()
 
     if not server_name:
         server_name = virt_admin.check_server_name()
