@@ -276,11 +276,18 @@ def check_nameserver(session):
     :param session: vm shell session instance
     """
     get_cmd = 'cat /etc/resolv.conf|grep -vE "#|;"'
-    on_host = process.run(get_cmd, shell=True).stdout_text.strip().split()
-    on_vm = session.cmd_output(get_cmd).strip().split()
+    on_host = process.run(get_cmd, shell=True).stdout_text.strip()
+    on_vm = session.cmd_output(get_cmd).strip()
+    LOG.debug(f'Output on host:\n{on_host}\nOutput on vm:\n{on_vm}')
     # remove zone index
-    on_host = [re.sub(r'%.*', '', x) for x in on_host]
-    on_vm = [re.sub(r'%.*', '', x) for x in on_vm]
+    on_host = [re.sub(r'%.*', '', x) for x in on_host.split()]
+    on_vm = [re.sub(r'%.*', '', x) for x in on_vm.split()]
+    # Remove irrelevant items such as "search"
+    on_host = set([(on_host[i], on_host[i + 1]) for i in range(len(on_host))
+                   if on_host[i].lower() == 'nameserver'])
+    on_vm = set([(on_vm[i], on_vm[i + 1]) for i in range(len(on_vm))
+                 if on_vm[i].lower() == 'nameserver'])
+    LOG.debug(f'On host:\n{on_host}\nOn vm:\n{on_vm}')
     if on_host == on_vm:
         LOG.debug(f'Nameserver on vm is consistent with host:\n{on_host}')
     else:
