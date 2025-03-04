@@ -1,7 +1,10 @@
 import aexpect
+import time
 
 import logging as log
 
+from avocado.utils import process
+from virttest import remote
 from virttest import libvirt_vm
 from virttest import migration
 
@@ -56,6 +59,7 @@ def run(test, params, env):
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = new_xml.copy()
+    server_session = None
 
     try:
         # Change the disk of the vm
@@ -81,7 +85,31 @@ def run(test, params, env):
         do_mig_param = {"vm": vm, "mig_test": migration_test, "src_uri": None, "dest_uri": dest_uri,
                         "options": options, "virsh_options": virsh_options, "extra": extra,
                         "action_during_mig": action_during_mig, "extra_args": extra_args}
-        migration_base.do_migration(**do_mig_param)
+
+
+        server_ip = params.get("server_ip", params.get("remote_ip"))
+        server_user = params.get("server_user", params.get("remote_user"))
+        server_pwd = params.get("server_pwd", params.get("remote_pwd"))
+        server_session = remote.wait_for_login(
+            "ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$"
+        )
+        date = process.run("date +%T", shell=True).stdout_text
+        status_cmd = f"systemctl status virt* --no-page"
+        journal_cmd = f"journalctl --since {date}"
+        try:
+            logging.info("LOCAL")
+            logging.info(process.run(status_cmd, shell=True).stdout_text)
+            logging.info("REMOTE")
+            logging.info(server_session.cmd_status_output(status_cmd)[1])
+            migration_base.do_migration(**do_mig_param)
+        except Exception as e:
+            logging.info("LOCAL")
+            logging.info(process.run(status_cmd, shell=True).stdout_text)
+            logging.info(process.run(journal_cmd, shell=True).stdout_text)
+            logging.info("REMOTE")
+            logging.info(server_session.cmd_status_output(status_cmd)[1])
+            logging.info(server_session.cmd_status_output(journal_cmd)[1])
+            raise e
 
         func_returns = dict(migration_test.func_ret)
         migration_test.func_ret.clear()
@@ -94,6 +122,8 @@ def run(test, params, env):
         if int(migration_test.ret.exit_status) == 0:
             migration_test.post_migration_check([vm], params, dest_uri=dest_uri)
     finally:
+        if server_session:
+            server_session.close()
         logging.info("Recover test environment")
         vm.connect_uri = bk_uri
         # Clean VM on destination and source
