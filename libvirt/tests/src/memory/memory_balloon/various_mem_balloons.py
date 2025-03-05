@@ -116,7 +116,7 @@ def run(test, params, env):
                 test.fail("Failed to run lscpi command on guest and get device info: ")
 
             # check returned stdout contains memory balloon string
-            # the searched string can be set in configuration, or it is by deafult memory balloon
+            # the searched string can be set in configuration, or it is by default memory balloon
             memballoon_device_str = params.get("memballoon_device_str", "memory balloon")
             if not re.search(memballoon_device_str, stdout):
                 test.fail(f"Expected string {memballoon_device_str} was not returned from guest lspci command. Returned: ")
@@ -181,7 +181,7 @@ def run(test, params, env):
 
     def run_test():
         """
-        Setup vm memballoon device model and aliase according params
+        Setup vm memballoon device model and alias according params
 
         :params vm_name: VM name (for debug log).
         :params vmxml: vmxml object
@@ -223,10 +223,8 @@ def run(test, params, env):
 
         if not_none_model:
             test.log.debug('TEST_STEP 10. send SIGSTOP signal')
-            #pid = process.run('pidof qemu-kvm', ignore_status=True).stdout_text.strip()
-            #kill_cmd = f"kill -19 {pid}"
             kill_cmd = "kill -19 `pidof qemu-kvm`"
-            kill_cmd_output = process.run(kill_cmd, shell=True).stdout_text.strip()
+            process.run(kill_cmd, shell=True).stdout_text.strip()
 
             test.log.debug(f"TEST_STEP 11: verify dominfo values")
             check_dominfo(lower_mem_size)
@@ -238,12 +236,11 @@ def run(test, params, env):
 
             test.log.debug('TEST_STEP 13. send CONT signal')
             kill_cmd = "kill -18 `pidof qemu-kvm`"
-            kill_cmd_output = process.run(kill_cmd, shell=True).stdout_text.strip()
+            process.run(kill_cmd, shell=True).stdout_text.strip()
 
             test.log.debug(f"TEST_STEP 14. set memory back to original_mem_size {current_mem}")
             try_setmem(vm_name, current_mem)
-            #virsh.setmem(vm_name, current_mem)
-            #test.log.debug("----------------------------------------------------------------------------")
+
             time.sleep(1)  # if there is no "pause" the dominfo will return previous value and test will fail.
             test.log.debug('TEST_STEP 15. check memory allocation by dominfo')
             check_dominfo(current_mem)
