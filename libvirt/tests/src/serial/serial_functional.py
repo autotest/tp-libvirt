@@ -738,6 +738,7 @@ def run(test, params, env):
         elif serial_type in ['pipe']:
             return 'server'
 
+    libvirt_version.is_libvirt_feature_supported(params)
     serial_type = params.get('serial_dev_type', 'pty')
     sources_str = params.get('serial_sources', '')
     username = params.get('username')
@@ -850,6 +851,16 @@ def run(test, params, env):
             error_msg = params.get("error_msg")
             if error_msg not in result:
                 test.fail(f"Fail to get expected error message:{error_msg} from console")
+
+        if params.get("hotunplug_serial", "no") == "yes":
+            error_msg = params.get("error_msg", "").format("detach")
+            res = virsh.detach_device(vm_name, serial_dev.xml, debug=True)
+            libvirt.check_result(res, error_msg)
+
+        if params.get("hotplug_serial", "no") == "yes":
+            error_msg = params.get("error_msg", "").format("hotplug")
+            res = virsh.attach_device(vm_name, serial_dev.xml, debug=True)
+            libvirt.check_result(res, error_msg)
 
         vm.destroy()
 
