@@ -9,9 +9,12 @@ from threading import Thread
 
 from avocado.utils import process
 
+from virttest import libvirt_version
+from virttest import ssh_key
 from virttest import virsh
 from virttest import utils_test
 from virttest import utils_misc
+from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.vsock import Vsock
@@ -183,6 +186,43 @@ def run(test, params, env):
         result = virsh.start(vm_name)
         utils_test.libvirt.check_exit_status(result, expect_error=False)
 
+    def add_guest_user(name, passwd):
+        """
+        Added a user account in guest
+
+        :param name: user name
+        :param passwd: password of user account
+        """
+        try:
+            session = vm.wait_for_login()
+            session.cmd_output('useradd %s' % name)
+        finally:
+            session.close()
+        virsh.set_user_password(vm_name, name, passwd, debug=True)
+
+    def forward_vsock_to_sshd():
+        """
+        Run a service that forwards VSOCK <=> SSHD communication
+        """
+
+        session = vm.wait_for_login()
+        try:
+            session.cmd("socat VSOCK-LISTEN:22,reuseaddr,fork TCP:localhost:22 &")
+        except Exception as e:
+            test.fail("Forwarding vsock to sshd communication failed: %s" % e)
+
+    def check_systemd_version():
+        """
+        Check the version of systemd inside the guest
+        """
+        try:
+            session = vm.wait_for_login()
+            systemd_version = session.cmd_output(systemd_version_cmd)
+            logging.debug("systemd version of guest is %s" % systemd_version)
+        finally:
+            session.close()
+        return systemd_version
+
     start_vm = params.get("start_vm", "no")
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(params["main_vm"])
@@ -197,6 +237,9 @@ def run(test, params, env):
     vsock_num = params.get("num")
     communication = params.get("communication", "no") == "yes"
     detach_device_alias = params.get("detach_device_alias", "no") == "yes"
+    guest_user = params.get("guest_user")
+    guest_user_passwd = params.get("guest_user_passwd")
+    systemd_version_cmd = params.get("systemd_version_cmd")
     # Backup xml file
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -217,7 +260,7 @@ def run(test, params, env):
     logging.debug(vsock_dev)
 
     if start_vm == "no" and vm.is_alive():
-        virsh.destroy()
+        vm.destroy()
 
     try:
         if edit_xml:
@@ -244,6 +287,28 @@ def run(test, params, env):
                 else:
                     result = virsh.start(vm_name, debug=True)
                     utils_test.libvirt.check_exit_status(result, expect_error=False)
+        elif guest_user:
+            libvirt_version.is_libvirt_feature_supported(params)
+            if not utils_package.package_install(["libvirt-ssh-proxy"]):
+                test.cancel("Failed to install libvirt-ssh-proxy on host")
+
+            vmxml.add_device(vsock_dev)
+            vmxml.sync()
+            logging.debug(vmxml)
+            vm.start()
+            vm_ip = vm.wait_for_get_address(0, timeout=60)
+            vm.prepare_guest_agent()
+            add_guest_user(guest_user, guest_user_passwd)
+            ssh_key.setup_ssh_key(vm_ip, guest_user, guest_user_passwd)
+
+            if int(check_systemd_version()) < 256:
+                forward_vsock_to_sshd()
+
+            # For convenienence in automation, Fully disable host key checking.
+            ssh_proxy_cmd = ("ssh -o StrictHostKeyChecking=no %s@qemu/%s hostname"
+                             % (guest_user, vm_name))
+            if process.run(ssh_proxy_cmd, shell=True, ignore_status=True).exit_status != 0:
+                test.fail("ssh proxy for vsock is not working.")
         else:
             session = vm.wait_for_login()
             session.close()
