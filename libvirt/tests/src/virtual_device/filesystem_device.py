@@ -37,29 +37,31 @@ def run(test, params, env):
     5.Lifecycle for guest with virtiofs filesystem device.
     """
 
-    def generate_expected_process_option():
+    def generate_expected_process_options():
         """
         Generate expected virtiofsd process option
         """
-        expected_results = ""
+        expected_results = []
         if cache_mode != "auto":
             if cache_mode == "none":
-                expected_results += "cache(\s|=)(none|never)"
+                expected_results.append("cache(\s|=)(none|never)")
             else:
-                expected_results += "cache(\s|=)%s" % cache_mode
+                expected_results.append("cache(\s|=)%s" % cache_mode)
         if xattr == "on":
-            expected_results += "(\s--|,)xattr"
+            expected_results.append("(\s--|,)xattr")
         elif xattr == "off" and not libvirt_version.version_compare(10, 5, 0):
-            expected_results += ",no_xattr"
+            expected_results.append(",no_xattr")
         if thread_pool_size:
             # Even through there is a equal mark between --thread-pool-size and
             # its value for libvirt format. But there is no equal mark in
             # virtiofsd man pages. Add another kind of pattern here to avoid
             # possible change in the future again.
-            expected_results += " --thread-pool-size(\s|=)%s" % thread_pool_size
+            expected_results.append("--thread-pool-size(\s|=)%s" % thread_pool_size)
         if openfiles:
-            expected_results += " --rlimit-nofile(\s|=)%s" % open_files_max
-        logging.debug(expected_results)
+            expected_results.append(" --rlimit-nofile(\s|=)%s" % open_files_max)
+        if sandbox_mode and sandbox_mode == "namespace":
+            expected_results.append(" --sandbox(\s|=)%s" % sandbox_mode)
+        logging.debug(f"Expected qemu cmdline pattern {expected_results}")
         return expected_results
 
     def shared_data(vm_names, fs_devs):
@@ -224,7 +226,7 @@ def run(test, params, env):
     start_vm = params.get("start_vm", "no")
     vm_names = params.get("vms", "avocado-vt-vm1").split()
     cache_mode = params.get("cache_mode", "none")
-    xattr = params.get("xattr", "on")
+    sandbox_mode = params.get("sandbox_mode", "none")
     xattr = params.get("xattr", "on")
     path = params.get("virtiofsd_path", "/usr/libexec/virtiofsd")
     thread_pool_size = params.get("thread_pool_size")
@@ -303,9 +305,9 @@ def run(test, params, env):
             target = {'dir': target_dir}
             if launched_mode == "auto":
                 binary_keys = ['path', 'cache_mode', 'xattr',
-                               'thread_pool_size', "open_files_max"]
+                               'thread_pool_size', "open_files_max", "sandbox_mode"]
                 binary_values = [path, cache_mode, xattr,
-                                 thread_pool_size, open_files_max]
+                                 thread_pool_size, open_files_max, sandbox_mode]
                 binary_dict = dict(zip(binary_keys, binary_values))
                 source = {'dir': source_dir}
                 accessmode = "passthrough"
@@ -384,8 +386,8 @@ def run(test, params, env):
                 return
             else:
                 utils_test.libvirt.check_exit_status(result, expect_error=False)
-            expected_results = generate_expected_process_option()
             if launched_mode == "auto":
+                expected_results = generate_expected_process_options()
                 cmd = 'ps aux | grep /usr/libexec/virtiofsd'
                 utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
 
