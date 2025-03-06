@@ -76,12 +76,17 @@ class DiskBase(object):
                 backing_list = disk.get_backingstore_list()
                 if disk_type != 'rbd_with_auth' and backing_list != []:
                     backing_list.pop()
-                source_list = [elem.find('source').get('file') or
-                               elem.find('source').get('name') or
-                               elem.find('source').get('dev') or
-                               elem.find('source').get('volume')
-                               for elem in backing_list
-                               if elem.find("source") is not None]
+                for elem in backing_list:
+                    source_ele = elem.find("source")
+                    if source_ele is not None:
+                        source_list = [source_ele.get('file') or
+                                       source_ele.get('name') or
+                                       source_ele.get('dev') or
+                                       source_ele.get('volume')]
+                        if source_ele.find("dataStore"):
+                            source_list.append(
+                                source_ele.find("dataStore").find('source').get('file'))
+
                 source_list.insert(0, active_level_path)
                 break
 
