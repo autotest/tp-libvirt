@@ -10,10 +10,13 @@ from virttest.utils_test import libvirt
 from virttest import utils_libvirtd
 from virttest import libvirt_cgroup
 
+from provider.cpu import patch_total_cpu_count_s390x
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+patch_total_cpu_count_s390x(cpuutil)
 
 
 def check_vcpu_placement(test, params):
