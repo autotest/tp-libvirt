@@ -25,8 +25,8 @@ def run(test, params, env):
         Setup general vm memory and current memory tags  according params - doesn't change the VM if not set
         """
 
-        # TODO do we need to check if the memory is available on host?
-        # setup memory according fixed settings
+        # QUESTION do we need to check if the memory is available on host?
+        # setup memory according provided settings
         vm_memory_attrs = {}
         try:
             if mem_unit == "" or mem_value == "":
@@ -40,19 +40,21 @@ def run(test, params, env):
             else:
                 vm_memory_attrs['current_mem_unit'] = current_mem_unit
                 vm_memory_attrs['current_mem'] = int(current_mem)
+            if len(vm_memory_attrs) > 0:
+                vmxml.setup_attrs(**vm_memory_attrs)
         except Exception as e:
             test.log.error(f"Wrong test configuration: {(str(e))}")
         test.log.debug(f"setting memory if provided(count: {(len(vm_memory_attrs))}) (mem: {mem_unit}, {mem_value}, " +
                        f"current: {current_mem_unit}, {current_mem}")
-        if len(vm_memory_attrs) > 0:
-            vmxml.setup_attrs(**vm_memory_attrs)
+
 
     def setup_vm_memballoon():
         """
         Setup vm memballoon inside the vm according params
+        consuming memballoon_model, membal_alias_name, we have from provided test params
         """
         # not sure if it can be empty, but assuming not ... we will use the "" as not set
-        # TODO question: in other tests there is first the memballoon device removed
+        # QUESTION: in other tests there is first the memballoon device removed
         if memballoon_model == "" or memballoon_alias_name == "":
             test.error(f"Wrong test configuration: memballoonloon model and alias are mandatory. Provided values: model ({memballoon_model}), alias ({memballoon_alias_name}).")
 
@@ -67,7 +69,12 @@ def run(test, params, env):
         libvirt.update_memballoon_xml(vmxml, balloon_dict)
 
     def check_qemu_cmd_line():
-        # org_umask = process.run('umask', verbose=True).stdout_text.strip()
+        """
+        Checks the QEMU command line for the presence of a specific memballoon device.
+        This function retrieves the QEMU command line arguments using `ps -ef`,
+        then searches for a memballoon device using a regular expression. It verifies
+        whether the detected device matches the expected `memballoon_driver` and `memballoon_alias_name`.
+        """
         test.log.info("TEST_STEP 4. Check the qemu cmd line")
         try:
             qemu_cmd = "ps -ef | grep qemu-kvm | grep -v grep"
@@ -99,6 +106,11 @@ def run(test, params, env):
             test.error(f"Failed with: {str(e)}")
 
     def check_device_on_guest():
+        """
+        This function logs into the guest, runs the `lspci` command to check for 
+        a memory balloon device
+        If `memballoon_model` is set to "none", check no such device is detected. 
+        """
         test.log.info("TEST_STEP 5. Check device exists on guest")
         guest_cmd = "lspci -vvv | grep balloon"
         guest_session = vm.wait_for_login()
@@ -143,7 +155,7 @@ def run(test, params, env):
         libvirt.check_result(dominfo, expected_match=dominfo_check)
 
     @virsh.EventTracker.wait_event
-    def try_setmem(vm_name, size, wait_for_event=True,
+    def try_setmem(vm_name, size,
                    expected_status=0,
                    expected_error='',
                    event_type='',
@@ -152,7 +164,6 @@ def run(test, params, env):
         Check events when setting guest agent status
 
         :param name: Name of domain.
-        :param wait_for_event: wait until an event of the given type comes
         :param event_type: type of the event
         :param event_timeout: timeout for virsh event command
         :param dargs: standardized function keywords
@@ -206,7 +217,6 @@ def run(test, params, env):
 
         if not_none_model:
             test.log.debug('TEST_STEP 8. check disk/memory cache ')
-            #virsh_helper.check_disk_caches() # TODO remove
 
         test.log.debug('TEST_STEP 9. set memory to lower_mem_size ')
         lower_mem_size = params.get("lower_mem_value", "1843200")
@@ -262,7 +272,6 @@ def run(test, params, env):
         """
         Clean data.
         """
-        #test.log.debug(virsh.dumpxml(vm_name).stdout_text)
         test.log.info("TEST_TEARDOWN: Clean up env.")
         virsh_helper.teardown()
         bkxml.sync()
@@ -289,6 +298,4 @@ def run(test, params, env):
         run_test()
 
     finally:
-        #test.log.debug("----------------------------------------------------------------------------")
-        #time.sleep(60)
         teardown_test()
