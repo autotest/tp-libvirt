@@ -217,6 +217,8 @@ def run(test, params, env):
 
         if not_none_model:
             test.log.debug('TEST_STEP 8. check disk/memory cache ')
+            virsh_helper.check_disk_caches()
+
 
         test.log.debug('TEST_STEP 9. set memory to lower_mem_size ')
         lower_mem_size = params.get("lower_mem_value", "1843200")
