@@ -47,7 +47,6 @@ def run(test, params, env):
         test.log.debug(f"setting memory if provided(count: {(len(vm_memory_attrs))}) (mem: {mem_unit}, {mem_value}, " +
                        f"current: {current_mem_unit}, {current_mem}")
 
-
     def setup_vm_memballoon():
         """
         Setup vm memballoon inside the vm according params
@@ -107,9 +106,9 @@ def run(test, params, env):
 
     def check_device_on_guest():
         """
-        This function logs into the guest, runs the `lspci` command to check for 
+        This function logs into the guest, runs the `lspci` command to check for
         a memory balloon device
-        If `memballoon_model` is set to "none", check no such device is detected. 
+        If `memballoon_model` is set to "none", check no such device is detected.
         """
         test.log.info("TEST_STEP 5. Check device exists on guest")
         guest_cmd = "lspci -vvv | grep balloon"
@@ -218,7 +217,6 @@ def run(test, params, env):
         if not_none_model:
             test.log.debug('TEST_STEP 8. check disk/memory cache ')
             virsh_helper.check_disk_caches()
-
 
         test.log.debug('TEST_STEP 9. set memory to lower_mem_size ')
         lower_mem_size = params.get("lower_mem_value", "1843200")
