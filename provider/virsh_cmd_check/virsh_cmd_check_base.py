@@ -1,4 +1,4 @@
-import os
+import os, time
 from virttest.utils_test import libvirt
 from virttest import utils_misc
 from virttest import virsh
@@ -52,6 +52,9 @@ class VirshCmdCheck(object):
         # Get info from vm
         if not self.session:
             self.session = self.vm.wait_for_login()
+            self.test.log.debug("------------------------------")
+            time.sleep(5)
+
 
         # Get info from virsh dommemstat command
         self.test.log.debug(f"TEST_STEP: getting dommemstat from {self.vm_name}")
