@@ -570,7 +570,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                     ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
-        check_file = process.run('ls /root/rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
+        check_file = process.run('ls /rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
                                  shell=True).stdout_text.strip('\n')
         count = 0
         with open(check_file, "r") as ff:
