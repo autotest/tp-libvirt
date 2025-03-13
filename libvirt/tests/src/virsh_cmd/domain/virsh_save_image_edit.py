@@ -25,8 +25,9 @@ def run(test, params, env):
     5) Check the new xml of the VM and its state
     """
 
-    def edit_image_xml():
-        edit_cmd = r":%s /<boot dev='hd'\/>/<boot dev='cdrom'\/>"
+    def edit_image_xml(xml_before, xml_after):
+        edit_cmd = r":%s /" + xml_before.replace("/", "\/")
+        edit_cmd += "/" + xml_after.replace("/", "\/")
 
         if restore_state == "running":
             option = "--running"
@@ -44,7 +45,7 @@ def run(test, params, env):
             session.sendline("virsh save-image-edit %s %s " %
                              (vm_save, option))
 
-            logging.info("Replace '<boot dev='hd'/>' to '<boot dev='cdrom'/>'")
+            logging.info(f"Replace {xml_before} to {xml_after}")
             session.sendline(edit_cmd)
             session.send('\x1b')
             session.send('ZZ')
@@ -64,8 +65,7 @@ def run(test, params, env):
 
         # The xml should contain the match_string
         xml = cmd_result.stdout.strip()
-        match_string = "<boot dev='cdrom'/>"
-        if not re.search(match_string, xml):
+        if not re.search(xml_after, xml):
             test.fail("After domain restore the xml is not expected")
 
         domstate = virsh.domstate(vm_name, debug=True).stdout.strip()
@@ -83,6 +83,9 @@ def run(test, params, env):
 
     vm_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
+    xml_before = params.get("xml_before")
+    xml_after = params.get("xml_after")
+
     try:
         # Get a tmp_dir.
         tmp_dir = data_dir.get_tmp_dir()
@@ -95,7 +98,7 @@ def run(test, params, env):
             test.fail("Failed to save running domain %s" % vm_name)
 
         # Edit the xml in the saved state file
-        edit_image_xml()
+        edit_image_xml(xml_before, xml_after)
 
         # Restore domain
         cmd_result = virsh.restore(vm_save, debug=True)

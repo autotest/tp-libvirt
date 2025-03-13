@@ -52,14 +52,18 @@ def run(test, params, env):
                                              debug=True)
         libvirt.check_exit_status(cmd_result)
 
-    def vm_state_check():
+    def vm_state_check(xml_after):
+        """
+        Checks the VM state
+
+        :param xml_after: expected xml substring
+        """
         cmd_result = virsh.dumpxml(vm_name, debug=True)
         libvirt.check_exit_status(cmd_result)
 
         # The xml should contain the match_string
         xml = cmd_result.stdout.strip()
-        match_string = "<boot dev='cdrom'/>"
-        if not re.search(match_string, xml):
+        if not re.search(xml_after, xml):
             raise exceptions.TestFail("After domain restore, "
                                       "the xml is not expected")
 
@@ -74,6 +78,9 @@ def run(test, params, env):
     restore_state = params.get("restore_state", "running")
     vm_save = params.get("vm_save", "vm.save")
 
+    xml_before = params.get("xml_before")
+    xml_after = params.get("xml_after")
+
     try:
         # Get a tmp_dir.
         tmp_dir = data_dir.get_tmp_dir()
@@ -87,8 +94,7 @@ def run(test, params, env):
 
         xml = get_image_xml()
 
-        # Replace <boot dev='hd'/> to <boot dev='cdrom'/>
-        newxml = xml.replace("<boot dev='hd'/>", "<boot dev='cdrom'/>")
+        newxml = xml.replace(xml_before, xml_after)
         logging.debug("After string replacement, the new xml is %s", newxml)
 
         # Write new xml into a tempfile
@@ -108,7 +114,7 @@ def run(test, params, env):
         libvirt.check_exit_status(cmd_result)
         os.remove(vm_save)
 
-        vm_state_check()
+        vm_state_check(xml_after)
 
     finally:
         # cleanup
