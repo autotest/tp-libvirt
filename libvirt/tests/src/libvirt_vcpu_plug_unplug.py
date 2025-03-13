@@ -14,12 +14,16 @@ from virttest import utils_test
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 
+from provider.cpu import patch_total_cpu_count_s390x
+
+
 vm_uptime_init = 0
 
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+patch_total_cpu_count_s390x(cpu_util)
 
 
 def run(test, params, env):
