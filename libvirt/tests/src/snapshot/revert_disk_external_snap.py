@@ -7,12 +7,15 @@
 #   Author: Nannan Li <nanli@redhat.com>
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+import os
 
+from virttest import data_dir
 from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
 from provider.snapshot import snapshot_base
+from provider.virtual_disk import disk_base
 
 virsh_dargs = {"debug": True, "ignore_status": False}
 
@@ -51,7 +54,14 @@ def run(test, params, env):
         Prepare file and snapshot.
         """
         test.log.info("TEST_SETUP: Create files and snaps in running guest.")
+        if with_data_file:
+            data_file = data_dir.get_data_dir() + "/datastore.img"
+            data_file_option = params.get("data_file_option", "") % data_file
+            image_path = disk_obj.add_vm_disk(disk_type, disk_dict, new_image_path="",
+                                              extra=data_file_option)
+            new_file.extend([data_file, image_path])
         vm.start()
+        test.log.debug("The current guest xml is: %s", virsh.dumpxml(vm_name).stdout_text)
         session = vm.wait_for_serial_login()
         mem_file = " "
         for index, sname in enumerate(snap_names):
@@ -85,6 +95,9 @@ def run(test, params, env):
         Clean data.
         """
         test.log.info("TEST_TEARDOWN: Clean up env.")
+        for file in new_file:
+            if os.path.exists(file):
+                os.remove(file)
         snap_names.reverse()
         test_obj.teardown_test()
 
@@ -97,10 +110,16 @@ def run(test, params, env):
     snap_type = params.get("snap_type")
     snap_options = params.get("snap_options")
     file_list = eval(params.get("file_list"))
+    disk_target = params.get("disk_target", "vdb")
+    disk_type = params.get("disk_type", "file")
+    disk_dict = eval(params.get("disk_dict", "{}"))
+    with_data_file = "yes" == params.get("with_data_file", "no")
     test_obj = snapshot_base.SnapshotTest(vm, test, params)
+    disk_obj = disk_base.DiskBase(test, vm, params)
     params.update({"test_obj": test_obj})
 
     libvirt_version.is_libvirt_feature_supported(params)
+    new_file = []
 
     try:
         setup_test()
