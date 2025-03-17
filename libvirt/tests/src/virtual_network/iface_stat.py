@@ -153,7 +153,7 @@ def run(test, params, env):
             host_iface = params.get("host_iface")
             if not host_iface:
                 host_iface = utils_net.get_default_gateway(
-                    iface_name=True, force_dhcp=True).split()[0]
+                    iface_name=True, force_dhcp=True, json=True)
             if iface_type == 'direct':
                 iface_dict = {k.replace('new_iface_', ''): v
                               for k, v in params.items()

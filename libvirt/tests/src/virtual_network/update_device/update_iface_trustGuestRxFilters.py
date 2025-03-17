@@ -24,7 +24,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
     iface_attrs = eval(params.get('iface_attrs', '{}'))
     ips = {'outside_ip': params.get('outside_ip')}
 
