@@ -166,7 +166,7 @@ def run(test, params, env):
                 vendor_id, product_id = usb_info.split()[5].split(':')
             if not (vendor_id and product_id):
                 test.fail("vendor/product id is not available")
-        server_id = usb_base.start_redirect_server(params, usb_cmd,vendor_id, product_id)
+        server_id = usb_base.start_redirect_server(params, usb_cmd, vendor_id, product_id)
         time.sleep(2)
         return server_id
 
