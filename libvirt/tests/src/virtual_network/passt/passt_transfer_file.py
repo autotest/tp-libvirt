@@ -48,7 +48,7 @@ def transfer_host_to_vm(session, prot, ip_ver, params, test):
     cmd_transfer = eval(params.get('cmd_transfer'))
     process.run(cmd_transfer, shell=True)
 
-    if session.cmd_status(f'test -a {rec_file}') != 0:
+    if session.cmd_status(f'test -e {rec_file}') != 0:
         test.fail(f'VM did not recieve {rec_file}')
     vm_file_md5 = session.cmd_output(f'md5sum {rec_file}')
     vm_file_md5 = vm_file_md5.split()[0]
