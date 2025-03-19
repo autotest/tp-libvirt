@@ -243,7 +243,7 @@ def run(test, params, env):
     path = params.get("virtiofsd_path", "/usr/libexec/virtiofsd")
     thread_pool_size = params.get("thread_pool_size")
     openfiles = params.get("openfiles", "no") == "yes"
-    queue_size = int(params.get("queue_size", "512"))
+    queue_size = params.get("queue_size", "512")
     driver_type = params.get("driver_type", "virtiofs")
     fs_num = int(params.get("fs_num", "1"))
     vcpus_per_cell = int(params.get("vcpus_per_cell", 2))
@@ -267,7 +267,9 @@ def run(test, params, env):
     stdio_handler_file = "file" == params.get("stdio_handler")
     setup_mem = params.get("setup_mem", False)
     omit_dir_at_first = "yes" == params.get("omit_dir_at_first", "no")
+    check_debug_log = "yes" == params.get("check_debug_log", "no")
 
+    qemu_config = None
     fs_devs = []
     vms = []
     vmxml_backups = []
@@ -311,7 +313,9 @@ def run(test, params, env):
                            directory which is not part of the XML so the test can
                            launch the instance for it
             """
-            driver = {'type': driver_type, 'queue': queue_size}
+            driver = {'type': driver_type }
+            if queue_size != "":
+                driver['queue'] = queue_size
             source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(fs_index))
             logging.debug(f"This filesystem has source dir: {source_dir}")
             if not os.path.isdir(source_dir):
@@ -490,10 +494,6 @@ def run(test, params, env):
                 libvirt.check_exit_status(result, not expect_error)
                 return True
             if hotplug_unplug:
-                if stdio_handler_file:
-                    qemu_config = LibvirtQemuConfig()
-                    qemu_config.stdio_handler = "file"
-                    utils_libvirtd.Libvirtd().restart()
                 update_vm_with_fs_devs(guest_index, vmxml, attach=True)
                 if status_error:
                     return True
@@ -508,6 +508,24 @@ def run(test, params, env):
                 expected_results = generate_expected_process_options()
                 cmd = 'ps aux | grep /usr/libexec/virtiofsd'
                 utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
+
+        def check_qemu_cmdline():
+            """
+            Checks the qemu command line output
+            At this point only queue size is checked.
+            """
+            if (
+                queue_size
+                and int(queue_size) > 0
+                and not hotplug_unplug
+            ):
+                cmd = 'ps aux | grep qemu-kvm'
+                content = [f"queue-size.{{1,3}}{queue_size}"]
+                utils_test.libvirt.check_cmd_output(
+                    cmd,
+                    content=content
+                )
+
 
         def check_file_exists(vm, filepath):
             """
@@ -524,15 +542,42 @@ def run(test, params, env):
             if status:
                 test.fail(f"{filepath} not found in the mount: {output}")
 
+        def update_qemu_config():
+            """
+            Updates Libvirt's QEMU configuration if needed
+            """
+            if not any([stdio_handler_file, check_debug_log]):
+                return
+            qemu_config = LibvirtQemuConfig()
+            if stdio_handler_file:
+                qemu_config.stdio_handler = "file"
+            if check_debug_log:
+                qemu_config.virtiofsd_debug = 1
+            utils_libvirtd.Libvirtd().restart()
 
+        update_qemu_config()
         create_fs_devs()
 
         for index in range(guest_num):
             end_test = set_up_and_start_vm(index)
+            check_qemu_cmdline()
             if end_test:
                 return
 
         shared_data(vm_names, fs_devs)
+
+        if check_debug_log:
+            alias = fs_devs[0].alias['name']
+            file_name = '/var/log/libvirt/qemu/%s-%s-virtiofsd.log' % (vm_names[0], alias)
+            try:
+                with open(file_name, 'r') as f:
+                    output = f.read()
+                if "DEBUG" not in output:
+                    shutil.copy(file_name, test.debugdir)
+                    test.fail("Failed to find string in virtiofsd log.")
+            except FileNotFoundError:
+                    test.fail("virtiofsd log not found")
+
 
         if lifecycle_scenario == "suspend_resume":
             virsh.suspend(vm_names[0], debug=True, ignore_status=False)
@@ -644,7 +689,7 @@ def run(test, params, env):
             virsh.managedsave_remove(vm.name, debug=True, ignore_status=True)
             vmxml_backups[index].sync()
         utils_memory.set_num_huge_pages(backup_huge_pages_num)
-        if stdio_handler_file:
+        if qemu_config:
             qemu_config.restore()
             utils_libvirtd.Libvirtd().restart()
         for path_pattern in [
