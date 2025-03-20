@@ -264,7 +264,7 @@ def run(test, params, env):
     launch_mode = params.get("launch_mode", "auto")
     bug_url = params.get("bug_url", "")
     script_content = params.get("stress_script", "")
-    stdio_handler_file = "file" == params.get("stdio_handler")
+    stdio_handler = params.get("stdio_handler", "")
     setup_mem = params.get("setup_mem", False)
     omit_dir_at_first = "yes" == params.get("omit_dir_at_first", "no")
     check_debug_log = "yes" == params.get("check_debug_log", "no")
@@ -307,13 +307,13 @@ def run(test, params, env):
             :param fs_index: the index of the filesystem
             :param socket_index: the index of the socket for externally launched
                                  virtiofsd; this parameter is ignored for internally
-                                 launched virtifosd and must be different for each
+                                 launched virtiofsd and must be different for each
                                  VM accessing the filesystem
             :return tuple: (fs_dev, source_dir) - the device xml but also the source
                            directory which is not part of the XML so the test can
                            launch the instance for it
             """
-            driver = {'type': driver_type }
+            driver = {'type': driver_type}
             if queue_size != "":
                 driver['queue'] = queue_size
             source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(fs_index))
@@ -350,9 +350,10 @@ def run(test, params, env):
             to the list fs_devs.
             """
             with_sockets = launch_mode == "externally"
+
             def __indexes():
                 """
-                Helper function that creates input parameters for 
+                Helper function that creates input parameters for
                 _get_fs_dev_and_source_dir. They are different for internally
                 and externally launched virtiofsd, e.g. for 2 times 2:
                 (fs_index, socket_index)
@@ -397,7 +398,7 @@ def run(test, params, env):
         def update_vm_with_fs_devs(guest_index, vmxml, attach):
             """
             Either updates the VM XML or attaches the device XML
-            
+
             :param guest_index: the index of the guest in vms
             :param vmxml: VMXML instance for guest_index
             :param attach: if True uses `virsh attach` else it redefines the VM
@@ -425,19 +426,19 @@ def run(test, params, env):
             fs_indexes = _fs_dev_indexes(guest_index)
             for fs_index in fs_indexes:
                 fs_dev = fs_devs[fs_index]
-                if detach_device_alias:
+                if detach_device_alias and launch_mode == "auto":
                     utils_package.package_install("lsof")
                     alias = fs_dev.alias['name']
                     cmd = 'lsof /var/log/libvirt/qemu/%s-%s-virtiofsd.log' % (vm.name, alias)
                     output = process.run(cmd).stdout_text.splitlines()
                     for item in output[1:]:
-                        if stdio_handler_file:
+                        if stdio_handler == "file":
                             if item.split()[0] != "virtiofsd":
                                 test.fail("When setting stdio_handler as file, the command"
-                                          "to write log should be virtiofsd!")
-                        else:
+                                          " to write log should be virtiofsd!")
+                        elif stdio_handler == "logd":
                             if item.split()[0] != "virtlogd":
-                                test.fail("When setting stdio_handler as logd, the command"
+                                test.fail(" When setting stdio_handler as logd, the command"
                                           "to write log should be virtlogd!")
                     ret = virsh.detach_device_alias(vm.name, alias, ignore_status=True,
                                                     debug=True, wait_for_event=True,
@@ -526,7 +527,6 @@ def run(test, params, env):
                     content=content
                 )
 
-
         def check_file_exists(vm, filepath):
             """
             Confirm that the given file path exists.
@@ -546,11 +546,12 @@ def run(test, params, env):
             """
             Updates Libvirt's QEMU configuration if needed
             """
-            if not any([stdio_handler_file, check_debug_log]):
+            if not any([stdio_handler, check_debug_log]):
                 return
+            nonlocal qemu_config
             qemu_config = LibvirtQemuConfig()
-            if stdio_handler_file:
-                qemu_config.stdio_handler = "file"
+            if stdio_handler:
+                qemu_config.stdio_handler = stdio_handler
             if check_debug_log:
                 qemu_config.virtiofsd_debug = 1
             utils_libvirtd.Libvirtd().restart()
@@ -576,8 +577,7 @@ def run(test, params, env):
                     shutil.copy(file_name, test.debugdir)
                     test.fail("Failed to find string in virtiofsd log.")
             except FileNotFoundError:
-                    test.fail("virtiofsd log not found")
-
+                test.fail("virtiofsd log not found")
 
         if lifecycle_scenario == "suspend_resume":
             virsh.suspend(vm_names[0], debug=True, ignore_status=False)
@@ -595,12 +595,10 @@ def run(test, params, env):
                 "destroy_start",
                 "shutdown_start",
                 "reboot"
-            ]:
+        ]:
             if fs_num > 1 or guest_num > 1:
-                raise test.error(
-                    "some lifecycle tests are implemented for only 1 guest and"
-                    " filesystem"
-                )
+                test.error("some lifecycle tests are implemented for only"
+                           " 1 guest and filesystem")
             session = vms[0].wait_for_login(timeout=120)
             session.cmd_status_output(
                 "echo 'mount_tag0 /var/tmp/mount_tag0 "
@@ -614,7 +612,7 @@ def run(test, params, env):
                 prepare_stress_script(script_path, script_content)
                 # Run guest stress script
                 stress_script_thread = threading.Thread(target=run_stress_script,
-                                                    args=(session, script_path))
+                                                        args=(session, script_path))
                 stress_script_thread.setDaemon(True)
                 stress_script_thread.start()
                 # Creates a lot of unlink files
