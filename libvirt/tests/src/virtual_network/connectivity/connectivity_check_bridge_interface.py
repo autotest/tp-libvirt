@@ -2,9 +2,9 @@ import logging
 import re
 
 from avocado.utils import process
-
 from virttest import utils_misc
 from virttest import utils_net
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import nwfilter_xml
 from virttest.libvirt_xml import vm_xml
@@ -65,12 +65,16 @@ def run(test, params, env):
         elif bridge_type == 'ovs_br':
             utils_net.create_ovs_bridge(bridge_name)
 
-        if nwfilter_attrs:
+        if nwfilter_attrs and not libvirt_version.version_compare(8, 0, 0):
             nwf = nwfilter_xml.NwfilterXML()
             nwf.setup_attrs(**nwfilter_attrs)
             virsh.nwfilter_define(nwf.xml, **VIRSH_ARGS)
             LOG.debug('nwfilter xml:\n' + virsh.nwfilter_dumpxml(
                 nwfilter_attrs['filter_name']).stdout_text)
+
+        if libvirt_version.version_compare(8, 0, 0):
+            if 'filterref' in iface_attrs:
+                iface_attrs.pop('filterref')
 
         vmxml, ep_vmxml = list(map(vm_xml.VMXML.new_from_inactive_dumpxml, vms))
 
