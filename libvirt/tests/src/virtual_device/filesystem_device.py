@@ -91,13 +91,14 @@ def run(test, params, env):
                 if status != 0:
                     session.close()
                     test.fail("mount virtiofs dir failed: %s" % output)
+                filename_guest = mount_dir + '/' + vms[0].name
                 if vm == vms[0]:
-                    filename_guest = mount_dir + '/' + vm.name
                     cmd = "dd if=/dev/urandom of=%s bs=1M count=512 oflag=direct" % filename_guest
                     status, output = session.cmd_status_output(cmd, timeout=300)
                     if status != 0:
                         session.close()
                         test.fail("Write data failed: %s" % output)
+                session.cmd_status_output(f"sync -d {mount_dir}")
                 md5_value = session.cmd_status_output("md5sum %s" % filename_guest,
                                                       timeout=300)[1].strip().split()[0]
                 md5s.append(md5_value)
