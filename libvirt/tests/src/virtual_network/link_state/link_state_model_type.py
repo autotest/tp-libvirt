@@ -110,7 +110,7 @@ def run(test, params, env):
         session.close()
 
     finally:
-        bkxml.sync()
+        bkxml.sync(virsh_instance=virsh_ins)
         if interface_type == "ethernet":
             network_base.delete_tap(tap_name)
             utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
