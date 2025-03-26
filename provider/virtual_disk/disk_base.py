@@ -79,10 +79,10 @@ class DiskBase(object):
                 for elem in backing_list:
                     source_ele = elem.find("source")
                     if source_ele is not None:
-                        source_list = [source_ele.get('file') or
-                                       source_ele.get('name') or
-                                       source_ele.get('dev') or
-                                       source_ele.get('volume')]
+                        source_list.append(source_ele.get('file') or
+                                           source_ele.get('name') or
+                                           source_ele.get('dev') or
+                                           source_ele.get('volume'))
                         if source_ele.find("dataStore"):
                             source_list.append(
                                 source_ele.find("dataStore").find('source').get('file'))
