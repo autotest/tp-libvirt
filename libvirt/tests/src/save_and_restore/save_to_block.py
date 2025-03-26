@@ -1,5 +1,6 @@
 import logging
 import re
+from datetime import datetime
 
 from avocado.utils import process
 from virttest import utils_config
@@ -7,10 +8,12 @@ from virttest import utils_libvirtd
 from virttest import utils_selinux
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 from provider.save import save_base
 from provider.virtual_network import passt
+from provider.ausearch import ausearch_base
 
 LOG = logging.getLogger('avocado.test.' + __name__)
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
@@ -31,8 +34,15 @@ def run(test, params, env):
 
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+    selinux_status = None
 
     try:
+        #setup ausearch checkpoint to see only relevant log rows
+        ausearch_start = datetime.now().strftime("%X")
+        LOG.debug(f"ausearch starting point:{ausearch_start}")
+
+        libvirt_vmxml.modify_vm_device(vmxml, 'interface', {'driver': None})
+
         selinux_status = passt.ensure_selinux_enforcing()
         if namespaces:
             qemu_conf.namespaces = eval(namespaces)
@@ -46,6 +56,7 @@ def run(test, params, env):
         pid_ping, upsince = save_base.pre_save_setup(vm)
 
         process.run(f'ls -lZ {save_path}')
+
         virsh.save(vm_name, save_path, **VIRSH_ARGS)
         label_output = process.run(f'ls -lZ {save_path}').stdout_text
         match = re.search(expect_label, label_output)
@@ -58,8 +69,8 @@ def run(test, params, env):
         if vm.state() != 'running':
             test.fail(f'VM should be running after restore, not {vm.state()}')
 
-        avc_denied = process.run("grep -E 'avc:.*denied' /var/log/audit/audit.log",
-                                 ignore_status=True).stdout_text.strip()
+        avc_denied = ausearch_base.summarize_ausearch_results(ausearch_start)
+
         if avc_denied:
             test.fail(f'Got avc denied:\n{avc_denied}')
 
@@ -70,4 +81,5 @@ def run(test, params, env):
         libvirtd.restart()
         bkxml.sync()
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        utils_selinux.set_status(selinux_status)
+        if selinux_status:
+            utils_selinux.set_status(selinux_status)
