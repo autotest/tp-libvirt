@@ -393,6 +393,11 @@ def run(test, params, env):
     # append extra 'socket' argument to URI if exists
     if unix_sock_dir:
         extra_params = "?socket=%s/libvirt-sock" % unix_sock_dir
+        if distro.detect().name == 'rhel' and int(distro.detect().version) == 8:
+            # On RHEL 8, SELinux is preventing systemd from create access on the sock_file libvirt-sock.
+            # We can generate a local policy module to allow this access.
+            process.run("ausearch -c 'systemd' --raw | audit2allow -M my-systemd", ignore_status=True, shell=True)
+            process.run("semodule -X 300 -i my-systemd.pp", ignore_status=True, shell=True)
 
     # generate auth.conf and default under the '/etc/libvirt'
     if auth_conf_cxt and auth_conf:
