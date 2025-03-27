@@ -1,7 +1,10 @@
-import os
 import logging as log
+import os
+import shutil
 import time
 import threading
+
+from glob import glob
 
 from avocado.utils import process
 from avocado.utils import path as utils_path
@@ -37,29 +40,31 @@ def run(test, params, env):
     5.Lifecycle for guest with virtiofs filesystem device.
     """
 
-    def generate_expected_process_option():
+    def generate_expected_process_options():
         """
         Generate expected virtiofsd process option
         """
-        expected_results = ""
+        expected_results = []
         if cache_mode != "auto":
             if cache_mode == "none":
-                expected_results += "cache(\s|=)(none|never)"
+                expected_results.append("cache(\s|=)(none|never)")
             else:
-                expected_results += "cache(\s|=)%s" % cache_mode
+                expected_results.append("cache(\s|=)%s" % cache_mode)
         if xattr == "on":
-            expected_results += "(\s--|,)xattr"
+            expected_results.append("(\s--|,)xattr")
         elif xattr == "off" and not libvirt_version.version_compare(10, 5, 0):
-            expected_results += ",no_xattr"
+            expected_results.append(",no_xattr")
         if thread_pool_size:
             # Even through there is a equal mark between --thread-pool-size and
             # its value for libvirt format. But there is no equal mark in
             # virtiofsd man pages. Add another kind of pattern here to avoid
             # possible change in the future again.
-            expected_results += " --thread-pool-size(\s|=)%s" % thread_pool_size
+            expected_results.append("--thread-pool-size(\s|=)%s" % thread_pool_size)
         if openfiles:
-            expected_results += " --rlimit-nofile(\s|=)%s" % open_files_max
-        logging.debug(expected_results)
+            expected_results.append(" --rlimit-nofile(\s|=)%s" % open_files_max)
+        if sandbox_mode and sandbox_mode == "namespace":
+            expected_results.append(" --sandbox(\s|=)%s" % sandbox_mode)
+        logging.debug(f"Expected qemu cmdline pattern {expected_results}")
         return expected_results
 
     def shared_data(vm_names, fs_devs):
@@ -71,8 +76,11 @@ def run(test, params, env):
         """
         md5s = []
         for vm in vms:
+            guest_index = vms.index(vm)
             session = vm.wait_for_login()
-            for fs_dev in fs_devs:
+            fs_indexes = _fs_dev_indexes(guest_index)
+            for fs_index in fs_indexes:
+                fs_dev = fs_devs[fs_index]
                 logging.debug(fs_dev)
                 mount_dir = '/var/tmp/' + fs_dev.target['dir']
                 session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=False)
@@ -83,13 +91,14 @@ def run(test, params, env):
                 if status != 0:
                     session.close()
                     test.fail("mount virtiofs dir failed: %s" % output)
+                filename_guest = mount_dir + '/' + vms[0].name
                 if vm == vms[0]:
-                    filename_guest = mount_dir + '/' + vm.name
                     cmd = "dd if=/dev/urandom of=%s bs=1M count=512 oflag=direct" % filename_guest
                     status, output = session.cmd_status_output(cmd, timeout=300)
                     if status != 0:
                         session.close()
                         test.fail("Write data failed: %s" % output)
+                session.cmd_status_output(f"sync -d {mount_dir}")
                 md5_value = session.cmd_status_output("md5sum %s" % filename_guest,
                                                       timeout=300)[1].strip().split()[0]
                 md5s.append(md5_value)
@@ -98,7 +107,7 @@ def run(test, params, env):
                 logging.debug(md5_value)
                 md5s.append(md5_value)
             session.close()
-        if len(set(md5s)) != len(fs_devs):
+        if len(set(md5s)) != fs_num:
             test.fail("The md5sum value are not the same in guests and host")
 
     def launch_externally_virtiofs(source_dir, source_socket):
@@ -147,16 +156,20 @@ def run(test, params, env):
         # Set ULIMIT_NOFILE to increase the number of unlinked files
         session.cmd("ulimit -n 500000 && /usr/bin/python3 %s" % script_path, timeout=120)
 
-    def umount_fs(vm):
+    def umount_fs(guest_index):
         """
         Unmount the filesystem in guest
 
-        :param vm: filesystem in this vm that should be unmounted
+        :param guest_index: the guest's index in vms
         """
+        fs_indexes = _fs_dev_indexes(guest_index)
+        vm = vms[guest_index]
         if vm.is_alive():
             session = vm.wait_for_login()
-            for fs_dev in fs_devs:
-                mount_dir = '/var/tmp/' + fs_dev.target['dir']
+            if lifecycle_scenario == "reboot":
+                session.cmd("sed -i '$d' /etc/fstab", ignore_all_errors=True)
+            for index in fs_indexes:
+                mount_dir = '/var/tmp/' + fs_devs[index].target['dir']
                 session.cmd('umount -f %s' % mount_dir, ignore_all_errors=True)
                 session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=True)
             session.close()
@@ -200,38 +213,40 @@ def run(test, params, env):
         fs_dict = eval(params.get('fs_dict', '{}'))
         source_dir = params.get('source_dir')
         dev_type = params.get('dev_type')
+        vm_name = vm_names[-1]
 
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-            vm_names[int(guest_num) - 1])
+            vm_name)
         vmxml.setup_attrs(**vm_attrs)
         virsh.define(vmxml.xml, debug=True, ignore_status=False)
 
         libvirtd = utils_libvirtd.Libvirtd()
         libvirtd.restart()
 
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_names[int(guest_num) - 1])
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.remove_all_device_by_type(dev_type)
         vmxml.sync()
-        vm = env.get_vm(vm_names[int(guest_num) - 1])
+        vm = env.get_vm(vm_name)
         vm.start()
         vm.wait_for_login(timeout=120)
         os.mkdir(source_dir)
 
         fs = libvirt_vmxml.create_vm_device_by_type(dev_type, fs_dict)
-        virsh.attach_device(vm_names[int(guest_num) - 1], fs.xml,
+        virsh.attach_device(vm_name, fs.xml,
                             debug=True, ignore_status=False)
 
     start_vm = params.get("start_vm", "no")
     vm_names = params.get("vms", "avocado-vt-vm1").split()
+    guest_num = len(vm_names)
     cache_mode = params.get("cache_mode", "none")
+    sandbox_mode = params.get("sandbox_mode", "none")
     xattr = params.get("xattr", "on")
     xattr = params.get("xattr", "on")
     path = params.get("virtiofsd_path", "/usr/libexec/virtiofsd")
     thread_pool_size = params.get("thread_pool_size")
     openfiles = params.get("openfiles", "no") == "yes"
-    queue_size = int(params.get("queue_size", "512"))
+    queue_size = params.get("queue_size", "512")
     driver_type = params.get("driver_type", "virtiofs")
-    guest_num = int(params.get("guest_num", "1"))
     fs_num = int(params.get("fs_num", "1"))
     vcpus_per_cell = int(params.get("vcpus_per_cell", 2))
     dir_prefix = params.get("dir_prefix", "mount_tag")
@@ -239,42 +254,39 @@ def run(test, params, env):
     error_msg_save = params.get("error_msg_save", "")
     status_error = params.get("status_error", "no") == "yes"
     socket_file_checking = params.get("socket_file_checking", "no") == "yes"
-    suspend_resume = params.get("suspend_resume", "no") == "yes"
-    managedsave = params.get("managedsave", "no") == "yes"
     coldplug = params.get("coldplug", "no") == "yes"
     hotplug_unplug = params.get("hotplug_unplug", "no") == "yes"
     detach_device_alias = params.get("detach_device_alias", "no") == "yes"
     extra_hugepages = params.get_numeric("extra_hugepages")
-    edit_start = params.get("edit_start", "no") == "yes"
+    lifecycle_scenario = params.get("lifecycle_scenario", "")
     with_hugepages = params.get("with_hugepages", "yes") == "yes"
     with_numa = params.get("with_numa", "yes") == "yes"
     with_memfd = params.get("with_memfd", "no") == "yes"
     source_socket = params.get("source_socket", "/var/tmp/vm001.socket")
-    launched_mode = params.get("launched_mode", "auto")
-    destroy_start = params.get("destroy_start", "no") == "yes"
+    launch_mode = params.get("launch_mode", "auto")
     bug_url = params.get("bug_url", "")
     script_content = params.get("stress_script", "")
-    stdio_handler_file = "file" == params.get("stdio_handler")
+    stdio_handler = params.get("stdio_handler", "")
     setup_mem = params.get("setup_mem", False)
+    omit_dir_at_first = "yes" == params.get("omit_dir_at_first", "no")
+    check_debug_log = "yes" == params.get("check_debug_log", "no")
 
+    qemu_config = None
     fs_devs = []
     vms = []
     vmxml_backups = []
     expected_fails_msg = []
-    host_hp_size = utils_memory.get_huge_page_size()
     backup_huge_pages_num = utils_memory.get_num_huge_pages()
+    host_hp_size = utils_memory.get_huge_page_size()
     huge_pages_num = 0
 
     if hotplug_unplug and not utils_path.find_command("lsof", default=False):
         test.error("Lsof command is required to run test, but not installed")
 
-    if len(vm_names) != guest_num:
-        test.error("This test needs exactly %d vms." % guest_num)
-
     if not libvirt_version.version_compare(7, 0, 0) and not with_numa:
         test.cancel("Not supported without NUMA before 7.0.0")
 
-    if not libvirt_version.version_compare(7, 6, 0) and destroy_start:
+    if not libvirt_version.version_compare(7, 6, 0) and lifecycle_scenario == "destroy_start":
         test.cancel("Bug %s is not fixed on current build" % bug_url)
 
     try:
@@ -289,46 +301,168 @@ def run(test, params, env):
         else:
             open_files_max = None
 
-        # Define filesystem device xml
-        for index in range(fs_num):
-            driver = {'type': driver_type, 'queue': queue_size}
-            source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(index))
+        def _get_fs_dev_and_source_dir(fs_index, socket_index):
+            """
+            Returns the device XML for both internally or externally launched
+            virtiofsd.
+
+            :param fs_index: the index of the filesystem
+            :param socket_index: the index of the socket for externally launched
+                                 virtiofsd; this parameter is ignored for internally
+                                 launched virtiofsd and must be different for each
+                                 VM accessing the filesystem
+            :return tuple: (fs_dev, source_dir) - the device xml but also the source
+                           directory which is not part of the XML so the test can
+                           launch the instance for it
+            """
+            driver = {'type': driver_type}
+            if queue_size != "":
+                driver['queue'] = queue_size
+            source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(fs_index))
             logging.debug(source_dir)
-            not os.path.isdir(source_dir) and os.mkdir(source_dir)
-            target_dir = dir_prefix + str(index)
-            source = {'socket': source_socket}
+            if not os.path.isdir(source_dir):
+                if fs_index == 0 and omit_dir_at_first:
+                    pass
+                else:
+                    os.mkdir(source_dir)
+            target_dir = dir_prefix + str(fs_index)
             target = {'dir': target_dir}
-            if launched_mode == "auto":
+            if launch_mode == "auto":
                 binary_keys = ['path', 'cache_mode', 'xattr',
-                               'thread_pool_size', "open_files_max"]
+                               'thread_pool_size', "open_files_max", "sandbox_mode"]
                 binary_values = [path, cache_mode, xattr,
-                                 thread_pool_size, open_files_max]
+                                 thread_pool_size, open_files_max, sandbox_mode]
                 binary_dict = dict(zip(binary_keys, binary_values))
                 source = {'dir': source_dir}
                 accessmode = "passthrough"
                 fsdev_keys = ['accessmode', 'driver', 'source', 'target', 'binary']
                 fsdev_values = [accessmode, driver, source, target, binary_dict]
             else:
+                source_socket = f"/var/tmp/vm_test{socket_index}.socket"
+                source = {'socket': source_socket}
                 fsdev_keys = ['driver', 'source', 'target']
                 fsdev_values = [driver, source, target]
             fsdev_dict = dict(zip(fsdev_keys, fsdev_values))
             logging.debug(fsdev_dict)
-            fs_dev = libvirt_device_utils.create_fs_xml(fsdev_dict, launched_mode)
+            fs_dev = libvirt_device_utils.create_fs_xml(fsdev_dict, launch_mode)
             logging.debug(fs_dev)
-            fs_devs.append(fs_dev)
+            return fs_dev, source_dir
 
-        #Start guest with virtiofs filesystem device
-        for index in range(guest_num):
-            logging.debug("prepare vm %s", vm_names[index])
-            vm = env.get_vm(vm_names[index])
+        def create_fs_devs():
+            """
+            Creates all fs devs necessary for the test setup and adds them
+            to the list fs_devs.
+            """
+            with_sockets = launch_mode == "externally"
+
+            def __indexes():
+                """
+                Helper function that creates input parameters for
+                _get_fs_dev_and_source_dir. They are different for internally
+                and externally launched virtiofsd, e.g. for 2 times 2:
+                (fs_index, socket_index)
+                internally: the same xml can be used for all guests:
+                            (0, None), (1, None)
+                externally: there must be 1 socket for each instance and guest:
+                            (0, 0), (0, 1), (1, 2), (1, 3)
+                """
+                socket_number = -1
+                for i in range(fs_num):
+                    if not with_sockets:
+                        yield (i, None)
+                    else:
+                        for j in range(guest_num):
+                            socket_number += 1
+                            yield (i, socket_number)
+
+            for index in __indexes():
+                fs_dev, source_dir = _get_fs_dev_and_source_dir(index[0], index[1])
+                if with_sockets:
+                    launch_externally_virtiofs(source_dir, fs_dev.source['socket'])
+                fs_devs.append(fs_dev)
+
+        def _fs_dev_indexes(guest_index):
+            """
+            Returns the list of indexes of all filesystem devices in fs_devs
+            that correspond to guest_index, e.g. for 2 times 2:
+            (fs_dev_index, guest_index)
+            internally launched: no socket necessary, reuse file
+                fs_dev with index 0, 1 can both be attached to guest 0, 1
+            externally launched: can't reuse file
+                fs_dev with index 0, 2 (with sockets 0, 2) are attached to guest 0
+                fs_dev with index 1, 3 (with sockets 1, 3) are attached to guest 1
+            """
+            if launch_mode == "externally":
+                return range(guest_index, fs_num*guest_num, guest_num)
+            else:
+                return range(fs_num)
+
+        def update_vm_with_fs_devs(guest_index, vmxml, attach):
+            """
+            Either updates the VM XML or attaches the device XML
+
+            :param guest_index: the index of the guest in vms
+            :param vmxml: VMXML instance for guest_index
+            :param attach: if True uses `virsh attach` else it redefines the VM
+            """
+            fs_indexes = _fs_dev_indexes(guest_index)
+            if attach:
+                for fs_index in fs_indexes:
+                    ret = virsh.attach_device(vms[guest_index].name, fs_devs[fs_index].xml,
+                                              flagstr='--current', debug=True)
+                    utils_test.libvirt.check_exit_status(ret, expect_error=False)
+            else:
+                for fs_index in fs_indexes:
+                    vmxml.add_device(fs_devs[fs_index])
+                vmxml.sync()
+            logging.debug(f"VMXML after adding device: {vmxml}")
+
+        def detach_fs_dev(guest_index):
+            vm = vms[guest_index]
+            fs_indexes = _fs_dev_indexes(guest_index)
+            for fs_index in fs_indexes:
+                fs_dev = fs_devs[fs_index]
+                if detach_device_alias and launch_mode == "auto":
+                    utils_package.package_install("lsof")
+                    alias = fs_dev.alias['name']
+                    cmd = 'lsof /var/log/libvirt/qemu/%s-%s-virtiofsd.log' % (vm.name, alias)
+                    output = process.run(cmd).stdout_text.splitlines()
+                    for item in output[1:]:
+                        if stdio_handler == "file":
+                            if item.split()[0] != "virtiofsd":
+                                test.fail("When setting stdio_handler as file, the command"
+                                          " to write log should be virtiofsd!")
+                        elif stdio_handler == "logd":
+                            if item.split()[0] != "virtlogd":
+                                test.fail(" When setting stdio_handler as logd, the command"
+                                          "to write log should be virtlogd!")
+                    ret = virsh.detach_device_alias(vm.name, alias, ignore_status=True,
+                                                    debug=True, wait_for_event=True,
+                                                    event_timeout=10)
+                else:
+                    ret = virsh.detach_device(vm.name, fs_dev.xml, ignore_status=True,
+                                              debug=True, wait_for_event=True)
+                libvirt.check_exit_status(ret, status_error)
+                check_filesystem_in_guest(vm, fs_dev)
+
+        def set_up_and_start_vm(guest_index):
+            """
+            Updates the domain xml according to test scenario
+            and starts it
+
+            :param guest_index: the index of the guest to be handled
+            :return end_of_test: True if test should terminate after VM
+                                 can be started
+            """
+            vm = env.get_vm(vm_names[guest_index])
+            logging.debug("prepare vm %s", vm.name)
             vms.append(vm)
-            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
-            vmxml_backup = vmxml.copy()
-            vmxml_backups.append(vmxml_backup)
-            logging.debug(fs_dev)
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+            vmxml_backups.append(vmxml.copy())
             if vmxml.max_mem < 1024000:
                 vmxml.max_mem = 1024000
             if with_hugepages:
+                nonlocal huge_pages_num
                 huge_pages_num += vmxml.max_mem // host_hp_size + extra_hugepages
                 utils_memory.set_num_huge_pages(huge_pages_num)
             vmxml.remove_all_device_by_type('filesystem')
@@ -339,51 +473,107 @@ def run(test, params, env):
             vm_xml.VMXML.set_vm_vcpus(vmxml.vm_name, vmxml.vcpu, numa_number=numa_no)
             vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name, access_mode="shared",
                                                hpgs=with_hugepages, memfd=with_memfd)
-            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
-            logging.debug(vmxml)
-            if launched_mode == "externally":
-                launch_externally_virtiofs(source_dir, source_socket)
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+            logging.debug(f"VMXML before adding device: {vmxml}")
             if coldplug:
-                ret = virsh.attach_device(vm_names[index], fs_devs[0].xml,
-                                          flagstr='--config', debug=True)
-                utils_test.libvirt.check_exit_status(ret, expect_error=False)
+                update_vm_with_fs_devs(guest_index, vmxml, attach=True)
             else:
                 if not hotplug_unplug:
-                    for fs in fs_devs:
-                        vmxml.add_device(fs)
-                        vmxml.sync()
-            logging.debug(vmxml)
-            libvirt_pcicontr.reset_pci_num(vm_names[index])
-            result = virsh.start(vm_names[index], debug=True)
+                    update_vm_with_fs_devs(guest_index, vmxml, attach=False)
+            libvirt_pcicontr.reset_pci_num(vm.name)
+            result = virsh.start(vm.name, debug=True)
+            if omit_dir_at_first:
+                expect_error = True
+                libvirt.check_exit_status(result, expect_error)
+                source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(0))
+                os.mkdir(source_dir)
+                result = virsh.start(vm.name, debug=True)
+                libvirt.check_exit_status(result, not expect_error)
+                return True
             if hotplug_unplug:
-                if stdio_handler_file:
-                    qemu_config = LibvirtQemuConfig()
-                    qemu_config.stdio_handler = "file"
-                    utils_libvirtd.Libvirtd().restart()
-                for fs_dev in fs_devs:
-                    ret = virsh.attach_device(vm_names[index], fs_dev.xml,
-                                              ignore_status=True, debug=True)
-                    libvirt.check_exit_status(ret, status_error)
-
+                update_vm_with_fs_devs(guest_index, vmxml, attach=True)
                 if status_error:
-                    return
-            if status_error and not managedsave:
+                    return True
+
+            if status_error and not lifecycle_scenario == "managedsave":
                 expected_error = error_msg_start
                 utils_test.libvirt.check_exit_status(result, expected_error)
-                return
+                return True
             else:
                 utils_test.libvirt.check_exit_status(result, expect_error=False)
-            expected_results = generate_expected_process_option()
-            if launched_mode == "auto":
+            if launch_mode == "auto":
+                expected_results = generate_expected_process_options()
                 cmd = 'ps aux | grep /usr/libexec/virtiofsd'
                 utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
 
+            if (
+                queue_size
+                and int(queue_size) > 0
+                and not hotplug_unplug
+            ):
+                cmd = 'ps aux | grep qemu-kvm'
+                content = [f"queue-size.{{1,3}}{queue_size}"]
+                utils_test.libvirt.check_cmd_output(
+                    cmd,
+                    content=content
+                )
+
+        def check_file_exists(vm, filepath):
+            """
+            Confirm that the given file path exists.
+            It should have been created earlier in the `shared_data`
+            function
+
+            :param vm: VM instance
+            :param filepath: the filepath created in the shared directory
+            :raise TestFail: file not found
+            """
+            session = vm.wait_for_login()
+            status, output = session.cmd_status_output(f"ls {filepath}")
+            if status:
+                test.fail(f"{filepath} not found in the mount: {output}")
+
+        def update_qemu_config():
+            """
+            Updates Libvirt's QEMU configuration if needed
+            """
+            if not any([stdio_handler, check_debug_log]):
+                return
+            nonlocal qemu_config
+            qemu_config = LibvirtQemuConfig()
+            if stdio_handler:
+                qemu_config.stdio_handler = stdio_handler
+            if check_debug_log:
+                qemu_config.virtiofsd_debug = 1
+            utils_libvirtd.Libvirtd().restart()
+
+        update_qemu_config()
+        create_fs_devs()
+
+        for index in range(guest_num):
+            end_test = set_up_and_start_vm(index)
+            if end_test:
+                return
+
         shared_data(vm_names, fs_devs)
-        if suspend_resume:
+
+        if check_debug_log:
+            alias = fs_devs[0].alias['name']
+            file_name = '/var/log/libvirt/qemu/%s-%s-virtiofsd.log' % (vm_names[0], alias)
+            try:
+                with open(file_name, 'r') as f:
+                    output = f.read()
+                if "DEBUG" not in output:
+                    shutil.copy(file_name, test.debugdir)
+                    test.fail("Failed to find string in virtiofsd log.")
+            except FileNotFoundError:
+                test.fail("virtiofsd log not found")
+
+        if lifecycle_scenario == "suspend_resume":
             virsh.suspend(vm_names[0], debug=True, ignore_status=False)
             time.sleep(30)
             virsh.resume(vm_names[0], debug=True, ignore_statue=False)
-        elif managedsave:
+        elif lifecycle_scenario == "managedsave":
             virsh.managedsave(vm_names[0], ignore_status=True, debug=True)
             save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_names[0]
             if not os.path.exists(save_file):
@@ -391,23 +581,52 @@ def run(test, params, env):
             virsh.start(vm_names[0], ignore_status=True, debug=True)
             if os.path.exists(save_file):
                 test.fail("guest is not restored from the managedsave file")
-        elif destroy_start:
-            session = vm.wait_for_login(timeout=120)
-            # Prepare the guest test script
-            script_path = os.path.join(fs_devs[0].source["dir"], "test.py")
-            script_content %= (fs_devs[0].source["dir"], fs_devs[0].source["dir"])
-            prepare_stress_script(script_path, script_content)
-            # Run guest stress script
-            stress_script_thread = threading.Thread(target=run_stress_script,
-                                                    args=(session, script_path))
-            stress_script_thread.setDaemon(True)
-            stress_script_thread.start()
-            # Create a lot of unlink files
-            time.sleep(60)
-            virsh.destroy(vm_names[0], debug=True, ignore_status=False)
-            ret = virsh.start(vm_names[0], debug=True)
-            libvirt.check_exit_status(ret)
-        elif edit_start:
+        elif lifecycle_scenario in [
+                "destroy_start",
+                "shutdown_start",
+                "reboot"
+        ]:
+            if fs_num > 1 or guest_num > 1:
+                raise test.error("some lifecycle tests are implemented for only"
+                                 " 1 guest and filesystem")
+            session = vms[0].wait_for_login(timeout=120)
+            session.cmd_status_output(
+                "echo 'mount_tag0 /var/tmp/mount_tag0 "
+                "virtiofs defaults 0 0' >> /etc/fstab"
+            )
+            if lifecycle_scenario == "destroy_start":
+                # Prepare the guest test script
+                _, source_dir = _get_fs_dev_and_source_dir(0, 0)
+                script_path = os.path.join(source_dir, "test.py")
+                script_content %= (source_dir, source_dir)
+                prepare_stress_script(script_path, script_content)
+                # Run guest stress script
+                stress_script_thread = threading.Thread(target=run_stress_script,
+                                                        args=(session, script_path))
+                stress_script_thread.setDaemon(True)
+                stress_script_thread.start()
+                # Creates a lot of unlink files
+                time.sleep(60)
+                virsh.destroy(vm_names[0], debug=True, ignore_status=False)
+                ret = virsh.start(vm_names[0], debug=True)
+                libvirt.check_exit_status(ret)
+            elif lifecycle_scenario == "shutdown_start":
+                virsh.shutdown(
+                    vm_names[0],
+                    debug=True,
+                    ignore_status=False
+                )
+                utils_misc.wait_for(vms[0].is_dead, timeout=60)
+                ret = virsh.start(vm_names[0], debug=True)
+                libvirt.check_exit_status(ret)
+            elif lifecycle_scenario == "reboot":
+                ret = virsh.reboot(vm_names[0], debug=True, ignore_status=False)
+                libvirt.check_exit_status(ret)
+            else:
+                test.fail("Test case not implemented.")
+        if lifecycle_scenario:
+            check_file_exists(vms[0], "/var/tmp/mount_tag0/" + vm_names[0])
+        elif lifecycle_scenario == "edit_start":
             vmxml_virtio_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[0])
             if vm.is_alive():
                 virsh.destroy(vm_names[0])
@@ -444,47 +663,30 @@ def run(test, params, env):
                     if not (status1 and status2):
                         test.fail("The socket and pid file is not as expected")
         elif hotplug_unplug:
-            for vm in vms:
-                umount_fs(vm)
-                for fs_dev in fs_devs:
-                    if detach_device_alias:
-                        utils_package.package_install("lsof")
-                        alias = fs_dev.alias['name']
-                        cmd = 'lsof /var/log/libvirt/qemu/%s-%s-virtiofsd.log' % (vm.name, alias)
-                        output = process.run(cmd).stdout_text.splitlines()
-                        for item in output[1:]:
-                            if stdio_handler_file:
-                                if item.split()[0] != "virtiofsd":
-                                    test.fail("When setting stdio_handler as file, the command"
-                                              "to write log should be virtiofsd!")
-                            else:
-                                if item.split()[0] != "virtlogd":
-                                    test.fail("When setting stdio_handler as logd, the command"
-                                              "to write log should be virtlogd!")
-                        ret = virsh.detach_device_alias(vm.name, alias, ignore_status=True,
-                                                        debug=True, wait_for_event=True,
-                                                        event_timeout=10)
-                    else:
-                        ret = virsh.detach_device(vm.name, fs_dev.xml, ignore_status=True,
-                                                  debug=True, wait_for_event=True)
-                    libvirt.check_exit_status(ret, status_error)
-                    check_filesystem_in_guest(vm, fs_dev)
-                check_detached_xml(vm)
+            for guest_index in range(guest_num):
+                umount_fs(guest_index)
+                vm = vms[guest_index]
+                detach_fs_dev(guest_index)
+                check_detached_xml(vms[guest_index])
     finally:
         for vm in vms:
-            alias = fs_dev.alias['name']
-            process.run('rm -f /var/log/libvirt/qemu/%s-%s-virtiofsd.log' % (vm.name, alias))
+            index = vms.index(vm)
             if vm.is_alive():
-                umount_fs(vm)
+                umount_fs(index)
                 vm.destroy(gracefully=False)
-        for vmxml_backup in vmxml_backups:
-            vmxml_backup.sync()
-        for index in range(fs_num):
-            process.run('rm -rf %s' % '/var/tmp/' + str(dir_prefix) + str(index), ignore_status=False)
-            process.run('rm -rf %s' % source_socket, ignore_status=False, shell=True)
-        if launched_mode == "externally":
-            process.run('restorecon %s' % path, ignore_status=False, shell=True)
+            virsh.managedsave_remove(vm.name, debug=True, ignore_status=True)
+            vmxml_backups[index].sync()
         utils_memory.set_num_huge_pages(backup_huge_pages_num)
-        if stdio_handler_file:
+        if qemu_config:
             qemu_config.restore()
             utils_libvirtd.Libvirtd().restart()
+        for path_pattern in [
+                "/var/log/libvirt/qemu/*-virtiofsd.log'",
+                "/var/tmp/vm_test*socket*",
+        ]:
+            for file in glob(path_pattern):
+                os.remove(file)
+        for folder in glob("/var/tmp/%s*" % str(dir_prefix)):
+            shutil.rmtree(folder)
+        if launch_mode == "externally":
+            process.run('restorecon %s' % path, ignore_status=False, shell=True)
