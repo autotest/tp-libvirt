@@ -2,6 +2,8 @@ import logging as log
 import os
 import platform
 import uuid
+import re
+import time
 
 from virttest import data_dir
 from virttest import virsh
@@ -16,6 +18,7 @@ from virttest.utils_disk import get_scsi_info
 from virttest.utils_libvirt import libvirt_vmxml
 
 from avocado.utils import process
+from provider.usb import usb_base
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -76,7 +79,7 @@ def run(test, params, env):
     redir_type = params.get("detach_redirdev_type")
     redir_bus = params.get("detach_redirdev_bus")
     redir_params = eval(params.get("redir_params", "{}"))
-    port = params.get("port")
+    port_num = params.get("port_num")
     # channel params
     channel_type = params.get("detach_channel_type")
     channel_dict = eval(params.get("channel_dict", "{}"))
@@ -97,6 +100,8 @@ def run(test, params, env):
     input_dict = eval(params.get('input_dict', '{}'))
 
     device_alias = "ua-" + str(uuid.uuid4())
+    if redir_type:
+        usb_cmd = usb_base.get_host_pkg_and_cmd()[1]
 
     def check_device_by_alias(dev_type, dev_alias, expect_exist=True):
         """
@@ -154,9 +159,15 @@ def run(test, params, env):
 
         """
         lsusb_list = process.run('lsusb').stdout_text.splitlines()
-        ps = process.SubProcess("usbredirserver -p {} {}".format
-                                (port, lsusb_list[0].split()[5]), shell=True)
-        server_id = ps.start()
+        for usb_info in lsusb_list:
+            if re.search("hub", usb_info, re.IGNORECASE):
+                continue
+            if len(usb_info.split()[5].split(':')) == 2:
+                vendor_id, product_id = usb_info.split()[5].split(':')
+            if not (vendor_id and product_id):
+                test.fail("vendor/product id is not available")
+        server_id = usb_base.start_redirect_server(params, usb_cmd, vendor_id, product_id)
+        time.sleep(2)
         return server_id
 
     # backup xml
