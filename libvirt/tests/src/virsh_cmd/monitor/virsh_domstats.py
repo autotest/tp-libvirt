@@ -355,7 +355,7 @@ def run(test, params, env):
         if "--iothread" in domstats_option:
             add_iothread(vm_list, iothread_add_ids)
         # Run virsh command
-        process.run("echo 1 > /proc/sys/kernel/sched_schedstats",shell=True)
+        process.run("echo 1 > /proc/sys/kernel/sched_schedstats", shell=True)
         logging.debug("enable sched_schedstats success")
         result = virsh.domstats(vm_list, domstats_option, ignore_status=True,
                                 debug=True)
