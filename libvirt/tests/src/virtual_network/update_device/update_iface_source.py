@@ -76,7 +76,7 @@ def run(test, params, env):
         vm_iface = utils_net.get_linux_ifname(session, mac)
         LOG.debug(f'Interface inside vm: {vm_iface}')
 
-        LOG.info('Run dhclient to refresh network.')
+        LOG.info('Run command to refresh network.')
         utils_net.restart_guest_network(session, mac)
 
         vm_iface_info = utils_net.get_linux_iface_info(
