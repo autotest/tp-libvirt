@@ -22,7 +22,7 @@ def run(test, params, env):
     outside_ip = params.get("outside_ip")
     host_iface = params.get("host_iface")
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
     rand_id = utils_misc.generate_random_string(3)
     bridge_name = "br_" + rand_id
     tap_name = "tap_" + rand_id

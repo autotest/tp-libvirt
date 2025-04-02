@@ -48,7 +48,7 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs', '{}'))
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
     rx_frames = params.get('rx_frames', '0')
     updated_rx_frames = params.get('updated_rx_frames', '0')
     updated_coalesce = eval(params.get('updated_coalesce', '{}'))
