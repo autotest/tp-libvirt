@@ -847,10 +847,9 @@ def run(test, params, env):
         if connect_to_console_without_serial_device:
             time.sleep(20)
             # use raw virsh console command since we need to output message from virsh console VM
-            result = process.run("virsh console %s" % vm_name, shell=True, verbose=True, ignore_status=True).stderr_text
-            error_msg = params.get("error_msg")
-            if error_msg not in result:
-                test.fail(f"Fail to get expected error message:{error_msg} from console")
+            res = process.run("virsh console %s" % vm_name, shell=True, verbose=True, ignore_status=True)
+            error_msgs = params.get("error_msg")
+            libvirt.check_result(res, error_msgs)
 
         if params.get("hotunplug_serial", "no") == "yes":
             error_msg = params.get("error_msg", "").format("detach")
