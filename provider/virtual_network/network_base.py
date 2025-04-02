@@ -103,6 +103,7 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
     :param args: other kwargs
     """
     ping_patterns = {k: v for k, v in params.items() if '_ping_' in k}
+    failures = []
 
     for pattern, expect_result in ping_patterns.items():
         source, destination = pattern.split('_ping_')
@@ -138,7 +139,10 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
         if ping_result:
             LOG.debug(msg)
         else:
-            raise exceptions.TestFail(msg)
+            LOG.error(msg)
+            failures.append(msg)
+    if failures:
+        raise exceptions.TestFail('.'.join(failures))
 
 
 def create_tap(tap_name, bridge_name, user, flag=''):
