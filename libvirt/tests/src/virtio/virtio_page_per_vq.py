@@ -182,6 +182,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     bkxml = vmxml.copy()
+    disk_image_path = None
 
     try:
         device_xml, vmxml, disk_image_path = prepare_test(vmxml)
