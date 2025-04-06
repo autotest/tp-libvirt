@@ -197,17 +197,18 @@ def verify_node_mem_by_freepages_all(test_obj):
         page_info = all_freepages[node]
         for pgsize, pgnum in page_info.items():
             test_obj.test.log.debug("node %d, pgsize %d, pgnum %d", node, pgsize, pgnum)
-            if allocate_result[node].get(pgsize) is not None and pgnum != allocate_result[node][pgsize]:
-                test_obj.test.fail("Expect freepages "
-                                   "result has '%d' pages "
-                                   "for size '%d' on node %d, but "
-                                   "found '%d'" % (allocate_result[node][pgsize],
-                                                   pgsize, node, pgnum))
-            elif allocate_result[node].get(pgsize) is None and pgnum != 0:
-                test_obj.test.fail("Expect freepages "
-                                   "result has 0 page "
-                                   "for size '%d' on node %d, but "
-                                   "found '%d'" % (pgsize, node, pgnum))
+            if allocate_result.get(node):
+                if allocate_result[node].get(pgsize) is not None and pgnum != allocate_result[node][pgsize]:
+                    test_obj.test.fail("Expect freepages "
+                                       "result has '%d' pages "
+                                       "for size '%d' on node %d, but "
+                                       "found '%d'" % (allocate_result[node][pgsize],
+                                                       pgsize, node, pgnum))
+                elif allocate_result[node].get(pgsize) is None and pgnum != 0:
+                    test_obj.test.fail("Expect freepages "
+                                       "result has 0 page "
+                                       "for size '%d' on node %d, but "
+                                       "found '%d'" % (pgsize, node, pgnum))
     test_obj.test.log.debug("Verify node memory by freepages with --all - PASS")
 
 
