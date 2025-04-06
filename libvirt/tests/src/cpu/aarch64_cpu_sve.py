@@ -249,7 +249,7 @@ def update_cpu_xml(cpu_xml, params, test, supported_list, unsupported_list):
     logging.debug("cpu_xml is %s" % cpu_xml)
 
 
-def execute_cmds(cmd, session, test, timeout=360, ignore_status=False):
+def execute_cmds(cmd, session, test, timeout=720, ignore_status=False):
     """
     Execute a command with vm session
 
