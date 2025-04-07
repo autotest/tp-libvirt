@@ -139,7 +139,7 @@ def check_proc_info(params, log_file, mac):
 
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
 
     proc_info = get_proc_info('passt')
     LOG.debug(proc_info)
@@ -250,9 +250,9 @@ def check_default_gw(session, host_iface=None):
                        host interface
     """
     host_gw = utils_net.get_default_gateway(
-        force_dhcp=True, target_iface=host_iface, json=True).split()
+        force_dhcp=True, target_iface=host_iface, json=True)
     vm_gw = utils_net.get_default_gateway(
-        session=session, force_dhcp=True, json=True).split()
+        session=session, force_dhcp=True, json=True)
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
     if [x for x in vm_gw if x not in host_gw]:
         raise exceptions.TestFail(
@@ -365,8 +365,9 @@ def check_connection(vm, vm_iface, protocols, host_iface=None):
     :param host_iface: host interface to get default gw for
                        if ommitted all default routes are returned
     """
-    default_gw = utils_net.get_default_gateway(force_dhcp=True,
-                                               target_iface=host_iface)
+    default_gw = utils_net.get_default_gateway(
+        force_dhcp=True, target_iface=host_iface, json=True
+    )
     vm_session = vm.wait_for_serial_login()
     default_gw_v6_vm = utils_net.get_default_gateway(
         session=vm_session, ip_ver='ipv6', json=True)

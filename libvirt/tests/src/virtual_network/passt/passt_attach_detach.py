@@ -68,7 +68,7 @@ def run(test, params, env):
     add_iface = 'yes' == params.get('add_iface', 'no')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
     host_ip = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv4')
     host_ip_v6 = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv6')
     iface_attrs = eval(params.get('iface_attrs'))
