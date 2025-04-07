@@ -1057,6 +1057,7 @@ def run(test, params, env):
     low_speed = params.get("low_speed", None)
     migrate_vm_back = "yes" == params.get("migrate_vm_back", "no")
     timer_migration = "yes" == params.get("timer_migration", "no")
+    armvtimer = eval(params.get("armvtimer", "{}"))
     concurrent_migration = "yes" == params.get("concurrent_migration", "no")
 
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
@@ -1276,6 +1277,10 @@ def run(test, params, env):
                     test.error("Failed to install swtpm packages on {} host."
                                .format(loc))
             remote_session.close()
+
+        if timer_migration and armvtimer:
+            new_xml.setup_attrs(**armvtimer)
+            new_xml.sync()
 
         # Change the disk of the vm to shared disk and then start VM
         libvirt.set_vm_disk(vm, params)
