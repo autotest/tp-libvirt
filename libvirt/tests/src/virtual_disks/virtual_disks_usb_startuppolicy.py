@@ -1,5 +1,6 @@
 import logging
 import platform
+import re
 import shutil
 import time
 
@@ -132,6 +133,12 @@ def run(test, params, env):
         vm.start()
     session = vm.wait_for_login()
     old_partitions = utils_disk.get_parts_list(session)
+    # Clean usb partition if existed.
+    for partitions in old_partitions:
+        _, output = session.cmd_status_output(
+            "udevadm info --query=property --name=%s | grep ID_BUS" % (re.sub(r"[\d-]", "", partitions)))
+        if "ID_BUS=usb" in output and re.findall(r"\d+", partitions):
+            utils_disk.delete_partition_linux(session, partitions)
     session.close()
     vm.destroy(gracefully=False)
 
