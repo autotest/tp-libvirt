@@ -105,7 +105,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP: Start the vm and check locked memory limit.")
         vm.start()
         test.log.debug("The current guest xml is:%s", virsh.dumpxml(vm_name).stdout_text)
-        vm_session = vm.wait_for_serial_login(timeout=240).close
+        vm.wait_for_login(timeout=240).close()
         default_mem = libvirt_memory.normalize_mem_size(
                        vmxml.get_current_mem(),
                        vmxml.get_current_mem_unit())
