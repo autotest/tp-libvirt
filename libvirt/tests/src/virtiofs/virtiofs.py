@@ -288,6 +288,9 @@ def run(test, params, env):
     if not libvirt_version.version_compare(7, 6, 0) and lifecycle_scenario == "destroy_start":
         test.cancel("Bug %s is not fixed on current build" % bug_url)
 
+    if not libvirt_version.version_compare(10, 0, 0) and lifecycle_scenario == "managed_save":
+        test.cancel("Bug %s is not fixed on current build" % bug_url)
+
     try:
         if setup_mem:
             libvirt_version.is_libvirt_feature_supported(params)
