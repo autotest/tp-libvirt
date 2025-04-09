@@ -73,6 +73,34 @@ def run(test, params, env):
         1.Mount dir in guest;
         2.Write a file in guest;
         3.Check the md5sum value are the same in guests and host;
+
+        :param vm_names: list of the VM names in the test
+        :param fs_devs: list of device XML instances
+        """
+        try:
+            _shared_data(vm_names, fs_devs)
+        except ShellTimeoutError as e:
+            logging.error(f"Issue using virtiofs {e}")
+            logging.error("Collect more information and retry")
+            for cmd in [
+                "ps aux|grep virtiofsd",
+                "ps aux|grep qemu-kvm",
+                "ls /var/tmp|grep mount",
+                "cat /var/log/libvirt/qemu/*virtiofsd.log"
+            ]:
+                logging.error(utils_misc.cmd_status_output(cmd)[1])
+            logging.error("Retry now")
+            _shared_data(vm_names, fs_devs)
+            logging.error("Seems retrying succeeded")
+            raise e
+
+    def _shared_data(vm_names, fs_devs):
+        """
+        Helper function for `shared_data` so we can retry and collect more
+        information about the system state.
+
+        :param vm_names: list of the VM names in the test
+        :param fs_devs: list of device XML instances
         """
         md5s = []
         for vm in vms:
