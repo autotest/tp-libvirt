@@ -1,3 +1,4 @@
+import os
 import logging as log
 
 from avocado.utils import process
@@ -9,6 +10,7 @@ from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest import ssh_key
 from virttest import libvirt_version
+from virttest.utils_test import libvirt
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -28,6 +30,38 @@ def check_audit_log(test, audit_log_search_string, start_date, start_time):
     if cmd_result.exit_status == 0:
         test.fail(f"Unexpectedly found '{audit_log_search_string}'"
                   "in'{cmd_result.stdout_text}'")
+
+
+def check_message_log(test, params):
+    """
+    Check message in /var/log/messages file
+
+    :param test: Test object for utility functions
+    :param params: one dictionary wrapping parameters
+    """
+    str_to_grep = params.get("libvirtd_error_message")
+    message_log_file = params.get("message_log_file")
+    if not libvirt.check_logfile(str_to_grep, message_log_file, str_in_log=False):
+        test.fail('Get unexpected error message:%s in log file:%s' % (str_to_grep, message_log_file))
+
+
+def check_auvirt_log(test, params):
+    """
+    Check message in output of virtualization audit
+
+    :param test: Test object for utility functions
+    :param params: one dictionary wrapping parameters
+    """
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
+    str_to_grep = params.get("auvirt_error_msg") % vm_name
+    auvirt_log_file = params.get("tmp_auvirt_event_log")
+    if os.path.exists(auvirt_log_file):
+        cmd = f"truncate -s 0 {auvirt_log_file}"
+        process.run(cmd, ignore_status=True, shell=True, verbose=True)
+    generate_virt_log_cmd = "auvirt --start recent --all-events|tee %s" % auvirt_log_file
+    process.run(generate_virt_log_cmd, ignore_status=False, shell=True, verbose=True)
+    if not libvirt.check_logfile(str_to_grep, auvirt_log_file, str_in_log=False):
+        test.fail('Get unexpected audit error message:%s in log file:%s' % (str_to_grep, auvirt_log_file))
 
 
 def run(test, params, env):
@@ -140,6 +174,8 @@ def run(test, params, env):
                 if audit_log_search_string:
                     if not service_mgr.status("auditd"):
                         service_mgr.start("auditd")
+                    truncate_2m_cmd = "truncate -s 0 /var/log/messages"
+                    process.run(truncate_2m_cmd, ignore_status=True, shell=True, verbose=True)
                 cmd_result = virsh.start(vm_ref, options=opt)
                 if cmd_result.exit_status:
                     if status_error == "no":
@@ -174,7 +210,9 @@ def run(test, params, env):
                               "but it is restored from a"
                               " managedsave.")
             elif audit_log_search_string:
+                check_message_log(test, params)
                 check_audit_log(test, audit_log_search_string, start_date, start_time)
+                check_auvirt_log(test, params)
             else:
                 if status_error == "no" and not vm.is_alive() and pre_operation != "remote":
                     test.fail("VM was started but it is not alive.")

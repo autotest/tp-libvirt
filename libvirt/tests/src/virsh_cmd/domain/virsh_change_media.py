@@ -242,6 +242,8 @@ def run(test, params, env):
             process.run("mkfs.ext3 -F %s" % source, shell=True)
 
         all_options = action + options + " " + source
+        if vm.is_alive():
+            vm.wait_for_login().close()
         result = virsh.change_media(vm_ref, target_device,
                                     all_options, ignore_status=True, debug=True)
         if status_error:

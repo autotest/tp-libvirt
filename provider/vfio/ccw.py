@@ -1,13 +1,12 @@
 import logging as log
 
 from avocado.core.exceptions import TestError
-
-from virttest import utils_package
-from virttest import virsh
-from virttest.utils_zchannels import SubchannelPaths
+from virttest import utils_package, virsh
 from virttest.utils_misc import cmd_status_output
-from virttest.libvirt_xml.devices.hostdev import Hostdev
 from virttest.utils_test.libvirt import mkfs
+from virttest.utils_zchannels import SubchannelPaths
+
+from provider.vfio import get_hostdev_xml
 
 # default disk paths supposing only one DASD is passed through
 DASD_DISK = "/dev/dasda"
@@ -18,7 +17,7 @@ MOUNT = "/mnt"
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
-logging = log.getLogger('avocado.' + __name__)
+logging = log.getLogger("avocado." + __name__)
 
 
 def read_write_operations_work(session, chpids, makefs=True):
@@ -67,8 +66,9 @@ def read_write(session):
         if err:
             raise TestError("Some read/write operation failed. %s" % out)
         if cmd == cmd3 and "kaixo" not in out:
-            raise TestError("Didn't get the written value '%s'"
-                            " from file '%s'" % ("kaixo", out))
+            raise TestError(
+                "Didn't get the written value '%s'" " from file '%s'" % ("kaixo", out)
+            )
 
 
 def make_dasd_part(path, session):
@@ -83,8 +83,7 @@ def make_dasd_part(path, session):
     cmd = "fdasd -a %s" % path
     err, out = cmd_status_output(cmd, shell=True, session=session)
     if err:
-        raise TestError("Couldn't create partition. Status code '%s'. %s."
-                        % (err, out))
+        raise TestError("Couldn't create partition. Status code '%s'. %s." % (err, out))
     return True
 
 
@@ -116,6 +115,8 @@ def format_dasd(path, session):
     err, out = cmd_status_output(cmd, shell=True, session=session)
     if err:
         raise TestError("Couldn't format disk. %s" % out)
+    udev_cmd = "udevadm settle"
+    cmd_status_output(udev_cmd, shell=True, session=session)
     return True
 
 
@@ -177,6 +178,17 @@ def set_device_online(device_id, session=None):
         raise TestError("Could not set device online. %s" % out)
 
 
+def get_subchannel_info(session=None):
+    """
+    Gets the subchannel path info
+
+    :param session: if given, get info inside guest
+    """
+    paths = SubchannelPaths(session)
+    paths.get_info()
+    return paths
+
+
 def get_first_device_identifiers(chpids, session):
     """
     Gets the usual device identifier cssid.ssid.devno
@@ -187,13 +199,12 @@ def get_first_device_identifiers(chpids, session):
     :raises TestError: if the device can't be found inside guest
     """
 
-    paths = SubchannelPaths(session)
-    paths.get_info()
-    devices_inside_guest = [x for x in paths.devices
-                            if x[paths.HEADER["CHPIDs"]] == chpids]
+    paths = get_subchannel_info(session)
+    devices_inside_guest = [
+        x for x in paths.devices if x[paths.HEADER["CHPIDs"]] == chpids
+    ]
     if not devices_inside_guest:
-        raise TestError("Device with chpids %s wasn't"
-                        " found inside guest" % chpids)
+        raise TestError("Device with chpids %s wasn't" " found inside guest" % chpids)
     first = devices_inside_guest[0]
     return first[paths.HEADER["Device"]], first[paths.HEADER["Subchan."]]
 
@@ -208,10 +219,10 @@ def device_is_listed(session, chpids):
     :return: True if device is listed
     """
 
-    paths = SubchannelPaths(session)
-    paths.get_info()
-    devices_inside_guest = [x for x in paths.devices
-                            if x[paths.HEADER["CHPIDs"]] == chpids]
+    paths = get_subchannel_info(session)
+    devices_inside_guest = [
+        x for x in paths.devices if x[paths.HEADER["CHPIDs"]] == chpids
+    ]
     return len(devices_inside_guest) > 0
 
 
@@ -272,6 +283,20 @@ def stop_device(uuid):
         logging.warning("Couldn't stop device. %s", out)
 
 
+def detach_hostdev(vm_name, uuid):
+    """
+    Detaches the mdev to the machine.
+
+    :param vm_name: VM name
+    :param uuid: mdev uuid
+    """
+
+    hostdev_xml = get_hostdev_xml(uuid, "vfio-ccw")
+    virsh.detach_device(
+        vm_name, hostdev_xml.xml, flagstr="--current", ignore_status=False
+    )
+
+
 def attach_hostdev(vm_name, uuid):
     """
     Attaches the mdev to the machine.
@@ -280,14 +305,10 @@ def attach_hostdev(vm_name, uuid):
     :param uuid: mdev uuid
     """
 
-    hostdev_xml = Hostdev()
-    hostdev_xml.mode = "subsystem"
-    hostdev_xml.model = "vfio-ccw"
-    hostdev_xml.type = "mdev"
-    hostdev_xml.source = hostdev_xml.new_source(**{"uuid": uuid})
-    hostdev_xml.xmltreefile.write()
-    virsh.attach_device(vm_name, hostdev_xml.xml, flagstr="--current",
-                        ignore_status=False)
+    hostdev_xml = get_hostdev_xml(uuid, "vfio-ccw")
+    virsh.attach_device(
+        vm_name, hostdev_xml.xml, flagstr="--current", ignore_status=False
+    )
 
 
 def assure_preconditions():
@@ -295,8 +316,24 @@ def assure_preconditions():
     Makes sure that preconditions are established.
     """
 
-    utils_package.package_install(["mdevctl",
-                                   "driverctl"])
+    utils_package.package_install(["mdevctl", "driverctl"])
+
+
+def select_first_available_device(device_ids):
+    """
+    Loops through the given device identifiers and selects
+    the first device that exists on the system.
+
+    :param device_ids: list of potential device identifiers.
+    :return device: device info as defined by SubchannelPaths
+    :raise TestError: if no available devices is found.
+    """
+    paths = get_subchannel_info()
+    for device in paths.devices:
+        for device_id in device_ids:
+            if device[paths.HEADER["Device"]] == device_id:
+                return device
+    raise TestError(f"None of the devices is available, {device_ids}")
 
 
 def get_device_info(devid=None):
@@ -309,8 +346,7 @@ def get_device_info(devid=None):
     :return: Subchannel and Channel path ids (schid, chpids)
     """
 
-    paths = SubchannelPaths()
-    paths.get_info()
+    paths = get_subchannel_info()
     device = None
     if devid:
         device = paths.get_device(devid)

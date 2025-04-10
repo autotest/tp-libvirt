@@ -5,6 +5,7 @@ import aexpect
 from virttest import remote
 from virttest import utils_net
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
@@ -64,7 +65,7 @@ def run(test, params, env):
         vm = libvirt_unprivileged.get_unprivileged_vm(vm_name, test_user,
                                                       test_passwd,
                                                       **unpr_vm_args)
-        virsh_ins = virsh.VirshPersistent(uri=virsh_uri)
+        virsh_ins = virsh.Virsh(uri=virsh_uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
@@ -76,8 +77,9 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs'))
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state='UP')[0]
+    backend = params.get('backend')
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True, json=True).split()[0]
 
     ipv4_addr = params.get('ipv4_addr')
     ipv4_prefix = params.get('ipv4_prefix')
@@ -91,10 +93,15 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
+        mac = vm_xml.VMXML.get_first_mac_by_name(vm_name, virsh_ins)
         vmxml.del_device('interface', by_tag=True)
         vmxml.sync(virsh_instance=virsh_ins)
+        if backend:
+            libvirt_version.is_libvirt_feature_supported(params)
+            iface_attrs['backend'] = eval(backend)
         iface = libvirt_vmxml.create_vm_device_by_type(
-            'interface', iface_attrs)
+            'interface', {**iface_attrs, **({'mac_address': mac} if mac else {})})
+        LOG.debug('iface xml to be tested is: %s', iface)
         vmxml.add_device(iface)
         define_result = virsh.define(vmxml.xml, debug=True, uri=virsh_uri)
         libvirt.check_exit_status(define_result, expect_error)
@@ -122,7 +129,7 @@ def run(test, params, env):
             check_val(ipv6_prefix, str(vm_ipv6_pfx), 'vm ipv6 prefix', test)
 
         default_gw_v4 = utils_net.get_default_gateway(
-            session=session, ip_ver='ipv4', force_dhcp=True)
+            session=session, ip_ver='ipv4', force_dhcp=True, json=True)
         LOG.debug(f'vm default gateway ipv4: {default_gw_v4}')
         check_val(ipv4_default_gw, default_gw_v4, 'default ipv4 gateway', test)
         vm_nameserver = utils_net.get_guest_nameserver(session)
@@ -137,5 +144,3 @@ def run(test, params, env):
         vm.destroy()
     finally:
         bkxml.sync(virsh_instance=virsh_ins)
-        if not root:
-            del virsh_ins

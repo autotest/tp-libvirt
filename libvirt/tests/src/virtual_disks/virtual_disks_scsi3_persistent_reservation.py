@@ -1,8 +1,10 @@
 import logging as log
 import time
 import shutil
+import os
 
 from avocado.utils import service
+from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import virsh
@@ -143,6 +145,11 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
+        # Prepare a /etc/target/pr directory based on BZ1652220
+        target_pr = "/etc/target/pr"
+        if not os.path.exists(target_pr):
+            process.run("mkdir -p %s" % target_pr, shell=True, ignore_status=False)
+
         # Setup iscsi target
         blk_dev = libvirt.setup_or_cleanup_iscsi(is_setup=True,
                                                  is_login=True,
@@ -206,3 +213,5 @@ def run(test, params, env):
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
         # Stop qemu-pr-helper daemon
         start_or_stop_qemu_pr_helper(is_start=False)
+        if os.path.exists(target_pr):
+            shutil.rmtree(target_pr)

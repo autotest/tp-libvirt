@@ -48,7 +48,7 @@ def transfer_host_to_vm(session, prot, ip_ver, params, test):
     cmd_transfer = eval(params.get('cmd_transfer'))
     process.run(cmd_transfer, shell=True)
 
-    if session.cmd_status(f'test -a {rec_file}') != 0:
+    if session.cmd_status(f'test -e {rec_file}') != 0:
         test.fail(f'VM did not recieve {rec_file}')
     vm_file_md5 = session.cmd_output(f'md5sum {rec_file}')
     vm_file_md5 = vm_file_md5.split()[0]
@@ -79,9 +79,9 @@ def transfer_vm_to_host(session, prot, ip_ver, vm_iface, firewalld,
     rec_file = params.get('rec_file')
     cmd_create_file = params.get('cmd_create_file')
     force_dhcp = True if ip_ver == 'ipv4' else False
-    vm_default_gw = utils_net.get_default_gateway(session=session,
-                                                  ip_ver=ip_ver,
-                                                  force_dhcp=force_dhcp)
+    vm_default_gw = utils_net.get_default_gateway_json(session=session,
+                                                       ip_ver=ip_ver,
+                                                       force_dhcp=force_dhcp)
     addr = vm_default_gw if ip_ver == 'ipv4' \
         else f'[{vm_default_gw}%{vm_iface}]'
     firewalld.stop()
@@ -95,6 +95,8 @@ def transfer_vm_to_host(session, prot, ip_ver, vm_iface, firewalld,
     LOG.debug(f'MD5 of sent file: {md5}')
     host_session = aexpect.ShellSession('su')
     host_session.sendline(cmd_listen)
+    # Wait 2 seconds for the host listen cmd to be prepared
+    time.sleep(2)
     session.cmd(cmd_transfer)
     host_session.close()
     if not os.path.exists(rec_file):
@@ -116,6 +118,11 @@ def run(test, params, env):
     Test file transfer between host and vm with passt backend interface
     """
     libvirt_version.is_libvirt_feature_supported(params)
+    # Since passt can not handle the multipath route on the host, skip the ipv6
+    # related test if host has multipath route. When there is multipath route,
+    # the utils_net.get_default_gateway() will return none.
+    ip_ver = params.get('ip_ver')
+
     root = 'root_user' == params.get('user_type', '')
     if root:
         vm_name = params.get('main_vm')
@@ -136,7 +143,7 @@ def run(test, params, env):
                                                       test_passwd,
                                                       **unpr_vm_args)
         uri = f'qemu+ssh://{test_user}@localhost/session'
-        virsh_ins = virsh.VirshPersistent(uri=uri)
+        virsh_ins = virsh.Virsh(uri=uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
@@ -145,15 +152,13 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
-    vm_iface = params.get('vm_iface', 'eno1')
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
     direction = params.get('direction')
-    ip_ver = params.get('ip_ver')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
@@ -172,12 +177,14 @@ def run(test, params, env):
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
 
         session = vm.wait_for_serial_login(timeout=60)
-        passt.check_default_gw(session)
+        passt.check_default_gw(session, host_iface)
 
         prot = 'TCP' if ip_ver == 'ipv4' else 'TCP6'
         if direction == 'host_to_vm':
             transfer_host_to_vm(session, prot, ip_ver, params, test)
         if direction == 'vm_to_host':
+            mac = vm.get_virsh_mac_address()
+            vm_iface = utils_net.get_linux_ifname(session, mac)
             transfer_vm_to_host(session, prot, ip_ver, vm_iface, firewalld,
                                 params, test)
     finally:
@@ -186,6 +193,4 @@ def run(test, params, env):
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
-        else:
-            del virsh_ins
         utils_selinux.set_status(selinux_status)

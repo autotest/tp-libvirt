@@ -231,7 +231,7 @@ def run(test, params, env):
             virsh.undefine(vm_name, '--nvram', ignore_status=False)
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                test.skip("can't create the domain")
+                test.cancel("can't create the domain")
 
         # Run the tests.
         if pm_enabled:

@@ -35,8 +35,8 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
-        boot_initrd = os.path.join(data_dir.get_data_dir(), "initrd.img")
-        boot_vmlinuz = os.path.join(data_dir.get_data_dir(), "vmlinuz")
+        boot_initrd = os.path.join(data_dir.get_data_dir(), initrd_url.split("/")[-1])
+        boot_vmlinuz = os.path.join(data_dir.get_data_dir(), vmlinuz_url.split("/")[-1])
         url_download(initrd_url, boot_initrd)
         url_download(vmlinuz_url, boot_vmlinuz)
         direct_kernel_dict = eval(params.get("direct_kernel_dict")
@@ -48,7 +48,7 @@ def run(test, params, env):
         test.log.debug("The final guest xml is %s", vmxml)
         if not vm.is_alive():
             vm.start()
-        vm.serial_console.read_until_any_line_matches([check_prompt], timeout=360)
+        vm.serial_console.read_until_any_line_matches([check_prompt], timeout=600)
     finally:
         bkxml.sync()
         for file_path in [boot_initrd, boot_vmlinuz]:

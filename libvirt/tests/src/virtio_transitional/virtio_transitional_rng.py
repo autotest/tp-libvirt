@@ -17,7 +17,7 @@ from src.virtio_transitional import virtio_transitional_base
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
-logging = log.getLogger('avocado.' + __name__)
+logging = log.getLogger("avocado." + __name__)
 
 
 def run(test, params, env):
@@ -37,10 +37,9 @@ def run(test, params, env):
         """
         used_slot = []
         for dev in pci_devices:
-            address = dev.find('address')
-            if (address is not None and
-                    address.get('bus') == pci_bridge_index):
-                used_slot.append(address.get('slot'))
+            address = dev.find("address")
+            if address is not None and address.get("bus") == pci_bridge_index:
+                used_slot.append(address.get("slot"))
         for slot_index in range(1, 30):
             slot = "%0#4x" % slot_index
             if slot not in used_slot:
@@ -58,16 +57,16 @@ def run(test, params, env):
         used_slot = set()
         # Record the bus indexes for all pci controllers
         for controller in pci_controllers:
-            if controller.get('model') == 'pcie-root-port':
-                root_ports.add(controller.get('index'))
+            if controller.get("model") == "pcie-root-port":
+                root_ports.add(controller.get("index"))
             else:
-                other_ports.add(controller.get('index'))
+                other_ports.add(controller.get("index"))
         # Record the addresses being allocated for all pci devices
-        pci_devices = list(vmxml.xmltreefile.find('devices'))
+        pci_devices = list(vmxml.xmltreefile.find("devices"))
         for dev in pci_devices:
-            address = dev.find('address')
+            address = dev.find("address")
             if address is not None:
-                used_slot.add(address.get('bus'))
+                used_slot.add(address.get("bus"))
         # Find the bus address unused
         for bus_index in root_ports:
             bus = "%0#4x" % int(bus_index)
@@ -76,15 +75,17 @@ def run(test, params, env):
         # Add a new pcie-root-port if no free one
         for index in range(1, 30):
             if index not in (root_ports | other_ports):
-                contr_dict = {'controller_type': 'pci',
-                              'controller_index': index,
-                              'controller_model': 'pcie-root-port'}
+                contr_dict = {
+                    "controller_type": "pci",
+                    "controller_index": index,
+                    "controller_model": "pcie-root-port",
+                }
                 cntl_add = libvirt.create_controller_xml(contr_dict)
                 libvirt.add_controller(vm_name, cntl_add)
                 return "%0#4x" % int(index)
         return None
 
-    def check_plug_to(bus_type='pcie-to-pci-bridge'):
+    def check_plug_to(bus_type="pcie-to-pci-bridge"):
         """
         Check if the nic is plugged onto pcie-to-pci-bridge
 
@@ -92,12 +93,12 @@ def run(test, params, env):
         :return True if plugged onto 'bus_type', otherwise False
         """
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        rng = vmxml.xmltreefile.find('devices').find('rng')
-        bus = int(eval(rng.find('address').get('bus')))
-        controllers = vmxml.get_controllers('pci')
+        rng = vmxml.xmltreefile.find("devices").find("rng")
+        bus = int(eval(rng.find("address").get("bus")))
+        controllers = vmxml.get_controllers("pci")
         for controller in controllers:
-            if controller.get('index') == bus:
-                if controller.get('model') == bus_type:
+            if controller.get("index") == bus:
+                if controller.get("model") == bus_type:
                     return True
                 break
         return False
@@ -106,31 +107,33 @@ def run(test, params, env):
         """
         check rng device inside guest
         """
-        check_cmd = params['check_cmd']
+        check_cmd = params["check_cmd"]
         lspci_output = session.cmd_output(check_cmd)
-        session.cmd_output('pkill -9 hexdump')
-        if 'No such file or directory' in lspci_output and device_exists:
-            test.fail('Can not detect device by %s.' % check_cmd)
+        session.cmd_output("pkill -9 hexdump")
+        if "No such file or directory" in lspci_output and device_exists:
+            test.fail("Can not detect device by %s." % check_cmd)
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(params["main_vm"])
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
     guest_src_url = params.get("guest_src_url")
-    virtio_model = params['virtio_model']
-    boot_with_rng = (params.get('boot_with_rng', 'yes') == 'yes')
-    hotplug = (params.get('hotplug', 'no') == 'yes')
-    device_exists = (params.get('device_exists', 'yes') == 'yes')
-    plug_to = params.get('plug_to', '')
+    virtio_model = params["virtio_model"]
+    boot_with_rng = params.get("boot_with_rng", "yes") == "yes"
+    hotplug = params.get("hotplug", "no") == "yes"
+    device_exists = params.get("device_exists", "yes") == "yes"
+    plug_to = params.get("plug_to", "")
     set_crypto_policy = params.get("set_crypto_policy")
+    bridge_controller_needed = "yes" == params.get("bridge_controller_needed", "yes")
 
     if not libvirt_version.version_compare(5, 0, 0):
-        test.cancel("This libvirt version doesn't support "
-                    "virtio-transitional model.")
+        test.cancel(
+            "This libvirt version doesn't support " "virtio-transitional model."
+        )
 
     # Download and update image if required
     if guest_src_url:
-        image_name = params['image_path']
+        image_name = params["image_path"]
         target_path = utils_misc.get_path(data_dir.get_data_dir(), image_name)
         if not os.path.exists(target_path):
             download.get_file(guest_src_url, target_path)
@@ -139,25 +142,28 @@ def run(test, params, env):
         utils_conn.update_crypto_policy(set_crypto_policy)
 
     try:
-        # Add 'pcie-to-pci-bridge' if there is no one
-        pci_controllers = vmxml.get_controllers('pci')
-        for controller in pci_controllers:
-            if controller.get('model') == 'pcie-to-pci-bridge':
-                pci_bridge = controller
-                break
-        else:
-            contr_dict = {'controller_type': 'pci',
-                          'controller_model': 'pcie-to-pci-bridge'}
-            pci_bridge = libvirt.create_controller_xml(contr_dict)
-            libvirt.add_controller(vm_name, pci_bridge)
-            pci_bridge = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)\
-                .get_controllers('pci', 'pcie-to-pci-bridge')[0]
-        pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
+        if bridge_controller_needed:
+            # Add 'pcie-to-pci-bridge' if there is no one
+            pci_controllers = vmxml.get_controllers("pci")
+            for controller in pci_controllers:
+                if controller.get("model") == "pcie-to-pci-bridge":
+                    pci_bridge = controller
+                    break
+            else:
+                contr_dict = {
+                    "controller_type": "pci",
+                    "controller_model": "pcie-to-pci-bridge",
+                }
+                pci_bridge = libvirt.create_controller_xml(contr_dict)
+                libvirt.add_controller(vm_name, pci_bridge)
+            pci_bridge = vm_xml.VMXML.new_from_inactive_dumpxml(
+                vm_name
+            ).get_controllers("pci", "pcie-to-pci-bridge")[0]
+            pci_bridge_index = "%0#4x" % int(pci_bridge.get("index"))
 
         # Update nic/nvram and vm disks
-        if (params["os_variant"] == 'rhel6' or
-                'rhel6' in params.get("shortname")):
-            iface_params = {'model': 'virtio-transitional'}
+        if params["os_variant"] == "rhel6" or "rhel6" in params.get("shortname"):
+            iface_params = {"model": "virtio-transitional"}
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
             virtio_transitional_base.remove_rhel6_nvram(vm_name)
         libvirt.set_vm_disk(vm, params)
@@ -166,7 +172,7 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
         # Remove existed rng devices if there are
-        rng_devs = vmxml.get_devices('rng')
+        rng_devs = vmxml.get_devices("rng")
         for rng in rng_devs:
             vmxml.del_device(rng)
         vmxml.xmltreefile.write()
@@ -174,15 +180,15 @@ def run(test, params, env):
 
         # General new rng xml per configurations
         rng_xml = libvirt.create_rng_xml({"rng_model": virtio_model})
-        if params.get('specify_addr', 'no') == 'yes':
-            pci_devices = list(vmxml.xmltreefile.find('devices'))
+        if params.get("specify_addr", "no") == "yes":
+            pci_devices = list(vmxml.xmltreefile.find("devices"))
             addr = rng_xml.new_rng_address()
-            if plug_to == 'pcie-root-port':
+            if plug_to == "pcie-root-port":
                 bus = get_free_root_port()
-                addr.set_attrs({'bus': bus})
+                addr.set_attrs({"bus": bus})
             else:
                 slot = get_free_pci_slot()
-                addr.set_attrs({'bus': pci_bridge_index, 'slot': slot})
+                addr.set_attrs({"bus": pci_bridge_index, "slot": slot})
             rng_xml.address = addr
         if boot_with_rng:  # Add to vm if required
             libvirt.add_vm_device(vmxml, rng_xml)
@@ -199,7 +205,7 @@ def run(test, params, env):
         check_rng_inside_guest()
         if hotplug:  # Unplug rng if hotplugged previously
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            rng = vmxml.get_devices('rng')[0]
+            rng = vmxml.get_devices("rng")[0]
             file_arg = rng.xml
             with open(file_arg) as rng_file:
                 logging.debug("Detach rng by XML: %s", rng_file.read())
@@ -208,14 +214,15 @@ def run(test, params, env):
         if not hotplug:
             session.close()
             save_path = os.path.join(
-                data_dir.get_tmp_dir(), '%s.save' % params['os_variant'])
+                data_dir.get_tmp_dir(), "%s.save" % params["os_variant"]
+            )
             ret = virsh.save(vm_name, save_path)
             libvirt.check_exit_status(ret)
             ret = virsh.restore(save_path)
             libvirt.check_exit_status(ret)
             session = vm.wait_for_login()
             check_rng_inside_guest()
-            process.run('rm -f %s' % save_path, ignore_status=True)
+            process.run("rm -f %s" % save_path, ignore_status=True)
     finally:
         vm.destroy()
         backup_xml.sync()

@@ -12,6 +12,7 @@ from virttest import utils_libvirtd
 from virttest import test_setup
 from virttest import utils_params
 from virttest import libvirt_version
+from virttest.staging import utils_memory
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -49,19 +50,24 @@ def handle_param(param_tuple, params):
     return param_list
 
 
-def dynamic_node_replacement(params, numa_info, test_obj):
+def dynamic_node_replacement(params, numa_info, arch, test_obj):
     """
     Replace numa node parameters dynamically per current system configuration
 
     :param numa_info: available numa node info from avocado-vt/utils_misc
     :param params: all params passed to test
+    :param arch: The host architecture
     :param test_obj: test object - for cancel case
     """
     node_list = numa_info.get_online_nodes_withmem()
     key_names = ['memnode_nodeset_', 'page_nodenum_']
     for param in params:
         if 'numa_cells_with_memory_required' in param:
-            if int(params['numa_cells_with_memory_required']) > len(node_list):
+            arch = platform.machine()
+            if 'ppc64' in arch:
+                if not node_list:
+                    test_obj.cancel("No NUMA nodes available on this system to perform the test.")
+            elif int(params['numa_cells_with_memory_required']) > len(node_list):
                 test_obj.cancel("There is no enough NUMA nodes available on this system to perform the test.")
         if 'memory_nodeset' in param:
             params['memory_nodeset'] = ','.join([str(elem) for elem in node_list])
@@ -97,39 +103,10 @@ def run(test, params, env):
     """
     Test guest numa setting
     """
-
-    def replace_qemu_cmdline(cmdline_list):
-        """
-        Replace the expected qemu command line for new machine type
-
-        :param cmdline_list: The list for expected qemu command lines
-        :return: The list contains the updated qemu command lines if any
-        """
-        os_xml = getattr(vmxml, "os")
-        machine_ver = getattr(os_xml, 'machine')
-        if (machine_ver.startswith("pc-q35-rhel") and
-                machine_ver > 'pc-q35-rhel8.2.0' and
-                libvirt_version.version_compare(6, 4, 0)):
-            # Replace 'node,nodeid=0,cpus=0-1,mem=1024' with
-            # 'node,nodeid=0,cpus=0-1,memdev=ram-node0'
-            # Replace 'node,nodeid=1,cpus=2-3,mem=1024' with
-            # 'node,nodeid=1,cpus=2-3,memdev=ram-node1'
-            for cmd in cmdline_list:
-                line = cmd['cmdline']
-                try:
-                    node = line.split(',')[1][-1]
-                    cmd['cmdline'] = line.replace('mem=1024',
-                                                  'memdev=ram-node{}'.format(node))
-                # We can skip replacing, when the cmdline parameter is empty.
-                except IndexError:
-                    pass
-
-        return cmdline_list
-
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes
     arch = platform.machine()
-    dynamic_node_replacement(params, host_numa_node, test)
+    dynamic_node_replacement(params, host_numa_node, arch, test)
     if 'ppc64' in arch:
         try:
             ppc_memory_nodeset = ""
@@ -140,9 +117,11 @@ def run(test, params, env):
                 ppc_memory_nodeset += str(node_list[int(nodes.split('-')[1])])
             else:
                 node_lst = nodes.split(',')
-                for n in range(len(node_lst) - 1):
-                    ppc_memory_nodeset += str(node_list[int(node_lst[n])]) + ','
-                ppc_memory_nodeset += str(node_list[int(node_lst[-1])])
+                for n in range(len(node_lst)):
+                    if int(node_lst[n]) in node_list:
+                        ppc_memory_nodeset += str(node_lst[n])
+                        if n < len(node_lst) - 1:
+                            ppc_memory_nodeset += ','
             params['memory_nodeset'] = ppc_memory_nodeset
         except IndexError:
             test.cancel("No of numas in config does not match with no of "
@@ -153,7 +132,11 @@ def run(test, params, env):
         for pkey in pkeys:
             for key in params.keys():
                 if pkey in key:
-                    params[key] = str(node_list[int(params[key])])
+                    index = int(params[key])
+                    if index < len(node_list):
+                        params[key] = str(node_list[index])
+                    else:
+                        params[key] = str(node_list[-1])
         # Modify qemu command line
         try:
             if params['qemu_cmdline_mem_backend_1']:
@@ -230,8 +213,16 @@ def run(test, params, env):
     backup_list = []
     page_tuple = ('vmpage_size', 'vmpage_unit', 'vmpage_nodeset')
     page_list = handle_param(page_tuple, params)
-    nr_pagesize_total = params.get("nr_pagesize_total")
+    hugepage_mem_total = params.get("hugepage_mem_total")
     deallocate = False
+
+    # Calculate huge page number and change huge page size to
+    # default huge page size
+    if hugepage_mem_total and page_list:
+        default_mem_huge_page_size = utils_memory.get_huge_page_size()
+        hugepage_num = int(hugepage_mem_total) // default_mem_huge_page_size
+        for page in page_list:
+            page['size'] = str(default_mem_huge_page_size)
 
     if page_list:
         if not libvirt_version.version_compare(1, 2, 5):
@@ -250,7 +241,7 @@ def run(test, params, env):
         """
         Mount hugepage path, update qemu conf then restart libvirtd
         """
-        size_dict = {'2048': '2M', '1048576': '1G', '16384': '16M'}
+        size_dict = {'2048': '2M', '1048576': '1G', '16384': '16M', '524288': '512M'}
         for page in page_list:
             if page['size'] not in supported_hp_size:
                 test.cancel("Hugepage size [%s] isn't supported, "
@@ -297,12 +288,25 @@ def run(test, params, env):
         qemu_conf_restore = True
 
         # set hugepage with total number or per-node number
-        if nr_pagesize_total:
-            # Only set total 2M size huge page number as total 1G size runtime
-            # update not supported now.
+        if hugepage_mem_total and page_list:
+            # Only set default huge page memory
             deallocate = True
-            hp_cl.target_hugepages = int(nr_pagesize_total)
+            hp_cl.target_hugepages = hugepage_num
             hp_cl.set_hugepages()
+            # for strict mode, allocate the guest numa cell again to
+            # make sure it has enough huge page
+            numa_hugepage_dict = {}
+            if numa_memnode and numa_memnode[0]['mode'] == 'strict':
+                if numa_cell:
+                    for cell in numa_cell:
+                        if cell['id'] == numa_memnode[0]['cellid']:
+                            numa_hugepage_dict['node'] = numa_memnode[0]['nodeset']
+                            numa_hugepage_dict['hp_num'] = int(
+                                cell['memory']) // default_mem_huge_page_size
+                            numa_hugepage_dict['hp_size'] = default_mem_huge_page_size
+            if numa_hugepage_dict:
+                hp_cl.set_node_num_huge_pages(
+                    numa_hugepage_dict['hp_num'], numa_hugepage_dict['node'], numa_hugepage_dict['hp_size'])
         if page_list:
             hp_size = [h_list[p_size]['size'] for p_size in range(len(h_list))]
             multi_hp_size = hp_cl.get_multi_supported_hugepage_size()
@@ -355,7 +359,8 @@ def run(test, params, env):
 
         # guest numa cpu setting
         vmcpuxml = libvirt_xml.vm_xml.VMCPUXML()
-        vmcpuxml.xml = "<cpu mode='host-model'><numa/></cpu>"
+        cpu_mode = params.get('cpu_mode')
+        vmcpuxml.xml = "<cpu mode='%s'><numa/></cpu>" % cpu_mode
         if topology:
             vmcpuxml.topology = topology
         logging.debug(vmcpuxml.numa_cell)
@@ -429,7 +434,6 @@ def run(test, params, env):
         with open("/proc/%s/cmdline" % vm_pid) as f_cmdline:
             q_cmdline_list = f_cmdline.read().split("\x00")
         logging.debug("vm qemu cmdline list is %s" % q_cmdline_list)
-        cmdline_list = replace_qemu_cmdline(cmdline_list)
         for cmd in cmdline_list:
             logging.debug("checking '%s' in qemu cmdline", cmd['cmdline'])
             p_found = False

@@ -403,11 +403,13 @@ def run(test, params, env):
         logging.info("Checking VM block size...")
         try:
             session = vm.wait_for_login()
+            new_disks = libvirt_disk.get_non_root_disk_names(session)
+            new_disk_names = [disk_info[0] for disk_info in new_disks]
             # Here the script needs wait for a while for the guest to
             # recognize the block on PPC
             add_sleep()
-            for target in targets_name:
-                cmd = "cat /sys/block/%s/queue/" % target
+            for disk_name in new_disk_names:
+                cmd = "cat /sys/block/%s/queue/" % disk_name
                 s, o = session.cmd_status_output("%slogical_block_size"
                                                  % cmd)
                 logging.debug("logical block size in VM:\n%s", o)
@@ -516,8 +518,10 @@ def run(test, params, env):
         snapshot1 = "s1"
         snapshot2 = "s2"
         snapshot2_file = os.path.join(data_dir.get_data_dir(), "s2")
-        ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
-        libvirt.check_exit_status(ret)
+        # Skip internal snapshot for ovmf guest
+        if "os_firmware" not in vmxml.os.fetch_attrs():
+            ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
+            libvirt.check_exit_status(ret)
 
         ret = virsh.snapshot_create_as(vm_name, "%s --disk-only" % snapshot1,
                                        **virsh_dargs)
@@ -1113,19 +1117,25 @@ def run(test, params, env):
 
     # For minimal VM xml,it need reconstruct one.
     if test_minimal_xml:
+        cpu_model_xml = params.get("cpu_model_xml", "")
+        aarch64_machine_type = params.get("aarch64_machine_type")
+        memory_size = params.get("memory_size", "1048576")
+        curr_mem_size = params.get("curr_mem_size", "1048576")
         minimal_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        machine_type = aarch64_machine_type if aarch64_machine_type else machine
         first_disk = vm.get_first_disk_devices()
         first_disk_source = first_disk['source']
         minimal_vm_xml_file = minimal_vm_xml.xml
         minimal_xml_content = """<domain type='kvm'>
         <name>%s</name>
-        <memory unit='KiB'>1048576</memory>
-        <currentMemory unit='KiB'>1048576</currentMemory>
+        <memory unit='KiB'>%s</memory>
+        <currentMemory unit='KiB'>%s</currentMemory>
         <vcpu placement='static'>1</vcpu>
         <os>
           <type arch='%s' machine='%s'>hvm</type>
           <boot dev='hd'/>
         </os>
+        %s
         <devices>
           <emulator>/usr/libexec/qemu-kvm</emulator>
           <disk type='file' device='disk'>
@@ -1134,7 +1144,13 @@ def run(test, params, env):
             <target dev='vda' bus='virtio'/>
           </disk>
         </devices>
-        </domain>""" % (vm_name, arch, machine, first_disk_source)
+        </domain>""" % (vm_name,
+                        memory_size,
+                        curr_mem_size,
+                        arch,
+                        machine_type,
+                        cpu_model_xml,
+                        first_disk_source)
         with open(minimal_vm_xml_file, 'w') as xml_file:
             xml_file.seek(0)
             xml_file.truncate()
@@ -1362,6 +1378,8 @@ def run(test, params, env):
                 osxml.type = vmxml.os.type
                 osxml.arch = vmxml.os.arch
                 osxml.machine = vmxml.os.machine
+                if vmxml.os.fetch_attrs().get("os_firmware") == "efi":
+                    osxml.os_firmware = vmxml.os.os_firmware
                 if test_boot_console:
                     osxml.loader = "/usr/share/seabios/bios.bin"
                     osxml.bios_useserial = "yes"

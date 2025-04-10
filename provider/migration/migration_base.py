@@ -63,7 +63,7 @@ def parse_funcs(action_during_mig, test, params):
                            "action_during_mig_again' is required")
             act_dict = {}
             func_param = one_action.get('func_param')
-            if func_param:
+            if func_param and isinstance(func_param, str):
                 func_param = eval(func_param)
 
             act_dict.update({'func': eval(one_action.get('func')),
@@ -81,24 +81,24 @@ def parse_funcs(action_during_mig, test, params):
                    "function name and list are supported")
 
 
-def do_migration(do_mig_param):
+def do_migration(**kwargs):
     """
     The wrapper function to call migration
 
-    :param do_mig_param: do migration parameters, dict, contains vm object,
-                         MigrationTest object, source uri, target uri, migration
-                         options, virsh options, extra options for migration, list
-                         or single function to run during migration, arguments for test
+    :param kwargs: do migration parameters, dict, contains vm object,
+                   MigrationTest object, source uri, target uri, migration
+                   options, virsh options, extra options for migration, list
+                   or single function to run during migration, arguments for test
     """
-    vm = do_mig_param['vm']
-    mig_test = do_mig_param['mig_test']
-    src_uri = do_mig_param['src_uri']
-    dest_uri = do_mig_param['dest_uri']
-    options = do_mig_param['options']
-    virsh_options = do_mig_param['virsh_options']
-    extra = do_mig_param['extra']
-    action_during_mig = do_mig_param['action_during_mig']
-    extra_args = do_mig_param['extra_args']
+    vm = kwargs.get('vm')
+    mig_test = kwargs.get('mig_test')
+    src_uri = kwargs.get('src_uri')
+    dest_uri = kwargs.get('dest_uri')
+    options = kwargs.get('options')
+    virsh_options = kwargs.get('virsh_options')
+    extra = kwargs.get('extra')
+    action_during_mig = kwargs.get('action_during_mig')
+    extra_args = kwargs.get('extra_args')
     vm_name = None
 
     if extra and "--dname" in extra:
@@ -293,6 +293,7 @@ def execute_statistics_command(params):
     """
     vm_name = params.get("migrate_main_vm")
     disk_type = params.get("loop_disk_type")
+    loop_time = params.get("loop_time", "20")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     if disk_type:
@@ -301,18 +302,19 @@ def execute_statistics_command(params):
         disks = vmxml.get_disk_all_by_expr('device==disk')
     logging.debug("disks: %s", disks)
     debug_kargs = {'ignore_status': False, 'debug': True}
-    for disk in list(disks.values()):
-        if disk_type:
-            disk_source = disk.find('source').get('dev')
-        else:
-            disk_source = disk.find('source').get('file')
-        disk_target = disk.find('target').get('dev')
-        logging.debug("disk_source: %s", disk_source)
-        logging.debug("disk_target: %s", disk_target)
-        virsh.domblkstat(vm_name, disk_target, "", **debug_kargs)
-        virsh.domblkinfo(vm_name, disk_source, **debug_kargs)
-        virsh.domstats(vm_name, **debug_kargs)
-        virsh.dommemstat(vm_name, **debug_kargs)
+    for i in range(int(loop_time)):
+        for disk in list(disks.values()):
+            if disk_type:
+                disk_source = disk.find('source').get('dev')
+            else:
+                disk_source = disk.find('source').get('file')
+            disk_target = disk.find('target').get('dev')
+            logging.debug("disk_source: %s", disk_source)
+            logging.debug("disk_target: %s", disk_target)
+            virsh.domblkstat(vm_name, disk_target, "", **debug_kargs)
+            virsh.domblkinfo(vm_name, disk_source, **debug_kargs)
+            virsh.domstats(vm_name, **debug_kargs)
+            virsh.dommemstat(vm_name, **debug_kargs)
 
 
 def check_qemu_mem_lock_hard_limit(params):
@@ -453,23 +455,23 @@ def set_bandwidth(params):
         virsh.migrate_getspeed(vm_name, debug=True)
 
 
-def check_vm_status_during_mig(params):
+def check_vm_status_during_mig(vm_name, dest_state=None, src_state=None, dest_uri=None, src_reason=None):
     """
     Check vm status during migration
 
-    :param params: dict, get expected status of vm, vm name, destination uri, source uri and timeout value
+    :param vm_name: vm name
+    :param dest_state: expected status of vm on target host
+    :param src_state: expected status of vm on source host
+    :param dest_uri: destination uri
+    :param src_reason: expected reason of vm state on source host
     :raise: test fail when check vm status failed
     """
-    vm_status_during_mig = params.get("vm_status_during_mig")
-    vm_name = params.get("migrate_main_vm")
-    dest_uri = params.get("virsh_migrate_desturi")
-    src_uri = params.get("virsh_migrate_connect_uri")
-    timeout_value = params.get("timeout_value")
-    if timeout_value:
-        time.sleep(int(timeout_value))
-    for uri in [dest_uri, src_uri]:
-        if not libvirt.check_vm_state(vm_name, vm_status_during_mig, uri=uri):
-            raise exceptions.TestFail("VM status is not '%s' during migration on %s." % (vm_status_during_mig, uri))
+    if dest_state:
+        if not libvirt.check_vm_state(vm_name, dest_state, uri=dest_uri):
+            raise exceptions.TestFail("VM status is not '%s' during migration on target." % dest_state)
+    if src_state:
+        if not libvirt.check_vm_state(vm_name, src_state, src_reason):
+            raise exceptions.TestFail("VM status is not '%s' during migration on source." % src_state)
 
 
 def check_vm_state(params):
@@ -513,14 +515,18 @@ def do_common_check(params):
     second_bandwidth = params.get("second_bandwidth")
     migration_obj = params.get("migration_obj")
     vm_name = params.get("main_vm")
+    remote_ip = params.get("server_ip")
+    postcopy_options = params.get("postcopy_options")
 
     if migration_options == "postcopy_bandwidth" and second_bandwidth:
         libvirt_domjobinfo.check_domjobinfo(migration_obj.vm, params)
 
     # check job info when migration is in paused status
-    expected_domjobinfo = '{"src_items": {"str_items": {"Job type": "Unbounded", "Operation": "Outgoing migration"}}}'
-    params.update({"expected_domjobinfo": expected_domjobinfo})
-    libvirt_monitor.check_domjobinfo_output(params)
+    expected_domjobinfo = {"src_items": {"str_items": {"Job type": "Unbounded", "Operation": "Outgoing migration"}}}
+    libvirt_monitor.check_domjobinfo_output(vm_name,
+                                            expected_domjobinfo=expected_domjobinfo,
+                                            postcopy_options=postcopy_options,
+                                            remote_ip=remote_ip)
 
     # check domain state with reason
     check_vm_state(params)
@@ -567,7 +573,7 @@ def resume_migration_again(params):
     do_mig_param = {"vm": migration_obj.vm, "mig_test": migration_obj.migration_test, "src_uri": None,
                     "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                     "extra": extra_twice_during_mig, "action_during_mig": None, "extra_args": extra_args_twice_during_mig}
-    do_migration(do_mig_param)
+    do_migration(**do_mig_param)
 
 
 def check_event_before_unattended(params):
@@ -716,9 +722,9 @@ def do_domjobabort(params):
     libvirt.check_result(ret, expected_fails=domjobabort_err_msg, check_both_on_error=True)
 
 
-def get_vm_serial_session_on_dest(params):
+def write_vm_disk_on_dest(params):
     """
-    Get vm serial session on dest
+    Write vm's disk on dest
 
     :param params: dictionary with the test parameter, get dest uri and migration object
     """
@@ -729,5 +735,24 @@ def get_vm_serial_session_on_dest(params):
     migration_obj.vm.cleanup_serial_console()
     migration_obj.vm.create_serial_console()
     vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
-    params.update({"vm_session": vm_session})
+    vm_session.cmd("while true; do echo 'do disk I/O error test' >> /tmp/disk_io_error_test; sleep 1; done &")
+    vm_session.close()
     migration_obj.vm.connect_uri = backup_uri
+
+
+def check_resume(params):
+    """
+    Check resume result
+
+    :param params: dictionary with the test parameter, get vm name, dest uri
+                   and error message.
+    """
+    vm_name = params.get("main_vm")
+    desturi = params.get("virsh_migrate_desturi")
+    resume_err_msg_src = params.get("resume_err_msg_src")
+    resume_err_msg_target = params.get("resume_err_msg_target")
+
+    ret = virsh.resume(vm_name, debug=True)
+    libvirt.check_result(ret, expected_fails=resume_err_msg_src, check_both_on_error=True)
+    ret = virsh.resume(vm_name, debug=True, uri=desturi)
+    libvirt.check_result(ret, expected_fails=resume_err_msg_target, check_both_on_error=True)

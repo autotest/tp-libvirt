@@ -37,12 +37,12 @@ class Checkfunction(object):
         vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
         LOG.debug("Current vmxml is:\n%s", vmxml)
         source_list = DiskBase.get_source_list(vmxml, disk_type, target_dev)
-
         if source_list != expected_chain:
             self.test.fail('Expect source file to be %s, '
                            'but got %s' % (expected_chain, source_list))
         else:
             LOG.debug('Get correct backingchin')
+            return True
 
     def check_block_operation_result(self, vmxml, blockcommand,
                                      target_dev, bc_chain):

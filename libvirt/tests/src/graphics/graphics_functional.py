@@ -13,10 +13,7 @@ import datetime
 import locale
 import base64
 import ipaddress
-try:
-    import queue as Queue
-except ImportError:
-    import Queue
+import queue
 
 import stat
 
@@ -39,7 +36,7 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_test import libvirt
 
 
-q = Queue.Queue()
+q = queue.Queue()
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -209,7 +206,7 @@ class EnvState(object):
             self.qemu_config.vnc_tls_x509_verify = tls_x509_verify
 
         if vnc_tls_x509_secret_uuid == "not_set":
-            del self.qemu_config.vnc_tls_x509_verify
+            del self.qemu_config.vnc_tls_x509_secret_uuid
         else:
             self.qemu_config.vnc_tls = "1"
             if vnc_secret_uuid == "invalid":
@@ -989,10 +986,11 @@ def check_qemu_command_line(params):
     :param params: dict for parameters
     """
     check_qemu_pattern = params.get('check_qemu_pattern')
+    expect_exist = eval(params.get('expect_exist', 'True'))
     if check_qemu_pattern:
         logging.debug("Checking qemu command line with "
                       "pattern:%s", check_qemu_pattern)
-        libvirt.check_qemu_cmd_line(check_qemu_pattern)
+        libvirt.check_qemu_cmd_line(check_qemu_pattern, expect_exist=expect_exist)
 
 
 def handle_auto_filled_items(given_graphic_attrs, vm, params):
@@ -1006,6 +1004,8 @@ def handle_auto_filled_items(given_graphic_attrs, vm, params):
     """
     vnc_listen_address = params.get("vnc_listen_address")
     vnc_listen_type = params.get("vnc_listen_type")
+    vnc_port = params.get("vnc_port")
+
     if vnc_listen_address == '':
         given_graphic_attrs['listen_attrs'].update({'address': '127.0.0.1'})
     elif vnc_listen_address == 'none':
@@ -1018,6 +1018,14 @@ def handle_auto_filled_items(given_graphic_attrs, vm, params):
             given_graphic_attrs['listen_attrs'].update({'address': utils_net.get_host_ip_address()})
         elif vnc_network_type == 'vnet':
             given_graphic_attrs['listen_attrs'].update({'address': params.get('vnet_address')})
+    elif vnc_listen_type == 'not_exist':
+        given_graphic_attrs.update({'listen_attrs': {'type': 'address'}})
+
+    if vnc_port and vnc_port == '0':
+        del given_graphic_attrs['port']
+        given_graphic_attrs.update({'listen_attrs': {'type': 'address'}})
+    if vnc_port and vnc_port == '65536':
+        given_graphic_attrs.update({'listen_attrs': {'type': 'address'}})
     return given_graphic_attrs
 
 
@@ -1452,7 +1460,7 @@ def check_xml(vm_name, filetransfer, test):
         test.fail('The attribute of filetransfer error.')
 
 
-def check_domdisplay_result(graphic_type, vm_name, expected_result, test):
+def check_domdisplay_result(graphic_type, vm_name, expected_result, test, options="", passwd=None):
     """
     Check domdisplay result
 
@@ -1460,8 +1468,10 @@ def check_domdisplay_result(graphic_type, vm_name, expected_result, test):
     :param vm_name: name of the VM domain
     :param expected_result: expected result
     :param test: test object
+    :param options: domdisplay options
+    :param passwd: graphic password
     """
-    domdisplay_out = virsh.domdisplay(vm_name, debug=True)
+    domdisplay_out = virsh.domdisplay(vm_name, options=options, debug=True)
     if domdisplay_out.exit_status:
         test.fail("Fail to get domain display info. Error:"
                   "%s." % domdisplay_out.stderr.strip())
@@ -1472,8 +1482,10 @@ def check_domdisplay_result(graphic_type, vm_name, expected_result, test):
         if expected_result['spice_tls_port'] != 'not_set':
             expected_uri += "?tls-port=%s" % expected_result['spice_tls_port']
     if graphic_type == 'vnc':
+        if "include-password" in options:
+            expected_uri += ":%s@" % passwd
         expected_uri += "%s:" % expected_result['vnc_options']['addr']
-        expected_uri += "%s" % expected_result['vnc_port']
+        expected_uri += "%s" % str(int(expected_result['vnc_port']) - 5900)
     if domdisplay_out.stdout.strip() != expected_uri:
         test.fail("Use domdisplay to check URI failed. Expected uri: %s" % expected_uri)
 
@@ -1580,6 +1592,17 @@ def cleanup(params):
     libvirtd.restart()
 
 
+def is_enable_fips():
+    """
+    Check FIPS status
+
+    :param return: True or False, True for enable FIPS
+    """
+    cmd = "cat /proc/sys/crypto/fips_enabled"
+    ret = process.run(cmd, shell=True)
+    return True if ret.stdout_text.strip() else False
+
+
 def run(test, params, env):
     """
     Test of libvirt SPICE related features.
@@ -1637,6 +1660,12 @@ def run(test, params, env):
     insecure_channels = params.get("insecure_channels", "not_set")
     autoport = params.get("spice_autoport", "yes")
     spice_tls = params.get("spice_tls", "not_set")
+    check_fips = params.get("check_fips", "no") == 'yes'
+    check_with_domdisplay = params.get("check_with_domdisplay", "no") == 'yes'
+
+    if check_fips:
+        if not is_enable_fips():
+            test.cancel("This test need to disable FIPS.")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1700,25 +1729,28 @@ def run(test, params, env):
         if spice_listen_type == "network" or vnc_listen_type == "network":
             for ip in all_ips:
                 ip.addr = ipaddress.ip_address(ip.addr).compressed
-        try:
-            logging.debug("Before starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
-            vm.start()
-            logging.debug("After starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
-        except virt_vm.VMStartError as detail:
-            if not fail_patts:
+
+        logging.debug("Before starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
+        if vnc_listen_type != "not_exist":
+            try:
+                vm.start()
+                logging.debug("After starting, vm xml:\n%s", VMXML.new_from_dumpxml(vm_name))
+            except virt_vm.VMStartError as detail:
+                compare_guest_xml(vnc_graphic, vm, params, test)
+                if not fail_patts:
+                    test.fail(
+                        "Expect VM can be started, but failed with: %s" % detail)
+                for patt in fail_patts:
+                    if re.search(patt, str(detail)):
+                        return
                 test.fail(
-                    "Expect VM can be started, but failed with: %s" % detail)
-            for patt in fail_patts:
-                if re.search(patt, str(detail)):
-                    return
-            test.fail(
-                "Expect fail with error in %s, but failed with: %s"
-                % (fail_patts, detail))
-        else:
-            if fail_patts:
-                test.fail(
-                    "Expect VM can't be started with %s, but started."
-                    % fail_patts)
+                    "Expect fail with error in %s, but failed with: %s"
+                    % (fail_patts, detail))
+            else:
+                if fail_patts:
+                    test.fail(
+                        "Expect VM can't be started with %s, but started."
+                        % fail_patts)
 
         if spice_xml:
             spice_opts, plaintext_channels, tls_channels = qemu_spice_options(vm)
@@ -1746,6 +1778,10 @@ def run(test, params, env):
             check_qemu_command_line(params)
             vnc_opts = qemu_vnc_options(vm, params)
             check_vnc_result(vnc_opts, expected_result, all_ips, test)
+            if check_with_domdisplay:
+                domdisplay_options = params.get("domdisplay_options", "")
+                check_domdisplay_result('vnc', vm_name, expected_result, test,
+                                        options=domdisplay_options, passwd=graphic_passwd)
             if params.get("hook_path"):
                 test_passwd_hook(params, vm, test)
 

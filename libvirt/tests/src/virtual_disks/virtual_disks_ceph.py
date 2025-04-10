@@ -573,6 +573,7 @@ def run(test, params, env):
     key_opt = ""
     secret_uuid = None
     snapshot_path = None
+    converted_raw_file = ""
     key_file = os.path.join(TMP_DATA_DIR, "ceph.key")
     img_file = os.path.join(TMP_DATA_DIR,
                             "%s_test.img" % vm_name)
@@ -743,11 +744,19 @@ def run(test, params, env):
             first_disk = vm.get_first_disk_devices()
             blk_source = first_disk['source']
             # Convert the image to remote storage
-            disk_cmd = ("rbd -m %s %s info %s 2> /dev/null|| qemu-img convert"
-                        " -O %s %s %s" % (mon_host, key_opt,
-                                          disk_src_name, disk_format,
-                                          blk_source, disk_path))
-            process.run(disk_cmd, ignore_status=False, shell=True)
+            directory = os.path.dirname(blk_source)
+            filename_with_extension = os.path.basename(blk_source)
+
+            # Get the file name without extension and the extension
+            filename, _ = os.path.splitext(filename_with_extension)
+            converted_raw_file = os.path.join(directory, "%s.raw" % filename)
+            convert_cmd = ("qemu-img convert"
+                           " -O %s %s %s" % (disk_format, blk_source, converted_raw_file))
+            process.run(convert_cmd, ignore_status=False, verbose=True, shell=True)
+            disk_cmd = ("rbd -m %s %s info %s 2> /dev/null|| rbd -m %s %s import "
+                        " %s %s" % (mon_host, key_opt, disk_src_name, mon_host, key_opt, converted_raw_file,
+                                    disk_src_name))
+            process.run(disk_cmd, ignore_status=False, verbose=True, shell=True)
 
         elif create_volume:
             vol_params = {"name": vol_name, "capacity": int(vol_cap),
@@ -1043,6 +1052,8 @@ def run(test, params, env):
             os.remove(key_file)
         if os.path.exists(img_file):
             os.remove(img_file)
+        if converted_raw_file and os.path.exists(converted_raw_file):
+            os.remove(converted_raw_file)
         # Clean up volume, pool
         if vol_name and vol_name in str(virsh.vol_list(pool_name).stdout):
             virsh.vol_delete(vol_name, pool_name)

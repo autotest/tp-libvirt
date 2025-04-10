@@ -16,6 +16,7 @@ import pwd
 import re
 import shutil
 import stat
+import platform
 
 from avocado.utils import process
 
@@ -23,6 +24,7 @@ from virttest import libvirt_version
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 from virttest.utils_libvirt import libvirt_bios
 from virttest.utils_libvirt import libvirt_vmxml
 
@@ -129,12 +131,25 @@ def setup_with_unprivileged_user(vm, params, test):
     test.log.debug("Remove 'dac' security driver for unprivileged user")
     vmxml.del_seclabel(by_attr=[('model', 'dac')])
     libvirt_vmxml.modify_vm_device(vmxml, 'interface', interface_attrs)
+    vmxml.xmltreefile.remove_by_xpath("/devices/interface/driver", True)
     boot_disk = vmxml.devices.by_device_tag('disk')[0]
     first_disk_source = boot_disk.fetch_attrs()['source']['attrs']['file']
     unprivileged_boot_disk_path = os.path.join(unprivileged_boot_disk_path, os.path.basename(first_disk_source))
     disk_attrs = {'source': {'attrs': {'file': unprivileged_boot_disk_path}}}
     libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_attrs)
+    try:
+        os_attrs = {
+                "loader": vmxml.os.loader,
+                "loader_readonly": vmxml.os.loader_readonly,
+                "loader_type": vmxml.os.loader_type
+                }
+    except LibvirtXMLNotFoundError:
+        pass
     vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
+    if vmxml.xmltreefile.find('features'):
+        arch = platform.machine().lower()
+        if vmxml.features.has_feature('acpi') and 'aarch64' in arch:
+            vmxml.set_os_attrs(**os_attrs)
     test.log.debug('VM XML after updating:\n%s', vmxml)
 
     test.log.debug("Step: Prepare boot disk image in unprivileged user's home directory")

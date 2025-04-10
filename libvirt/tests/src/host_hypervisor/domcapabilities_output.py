@@ -1,6 +1,7 @@
 import os
 
 from virttest.libvirt_xml import domcapability_xml
+from virttest import libvirt_version
 
 
 def get_ovmf_path():
@@ -59,6 +60,17 @@ def test_rm_ovmf_path(test):
                        "is recovered", dir_ovmf_path)
 
 
+def test_check_iface_backend(test):
+    domcapa_xml = domcapability_xml.DomCapabilityXML()
+    get_iface = domcapa_xml.xmltreefile.findall('/devices/interface/enum/value')
+    get_backend_list = set([i.text for i in get_iface])
+    test.log.debug("interface backend supported includes: %s", get_backend_list)
+    support_list = {'passt', 'default'}
+    if get_backend_list != support_list:
+        test.fail("current support interface backend should be %s, "
+                  "but it's %s", support_list, get_backend_list)
+
+
 def run(test, params, env):
     """
     This file includes to test scenarios for checking outputs of
@@ -69,5 +81,6 @@ def run(test, params, env):
 
     """
     test_case = params.get("test_case", "")
+    libvirt_version.is_libvirt_feature_supported(params)
     run_test = eval("test_%s" % test_case)
     run_test(test)

@@ -209,7 +209,7 @@ def run(test, params, env):
         if cold_plug == "yes":
             reboot()  # Reboot guest if it is cold plug test
         detect_new_nic(mac)
-        if plug_method == 'interface' and cold_plug == 'no':
+        if plug_method == 'interface' and cold_plug == 'no' and check_pci_bridge:
             check_plug_to_pci_bridge(vm_name, mac)
         session = vm.wait_for_login(serial=True)
         # Add nic to VM object for further check
@@ -278,6 +278,8 @@ def run(test, params, env):
     params['disk_model'] = params['virtio_model']
     guest_os_type = params['os_type']
     set_crypto_policy = params.get("set_crypto_policy")
+    bridge_controller_needed = params.get("bridge_controller_needed", "yes") == "yes"
+    check_pci_bridge = params.get("check_pci_bridge", "yes") == "yes"
 
     target_path = None
 
@@ -301,15 +303,16 @@ def run(test, params, env):
     libvirt.set_vm_disk(vm, params)
 
     # Add pcie-to-pci-bridge when there is no one
-    pci_controllers = vmxml.get_controllers('pci')
-    for controller in pci_controllers:
-        if controller.get('model') == 'pcie-to-pci-bridge':
-            break
-    else:
-        contr_dict = {'controller_type': 'pci',
-                      'controller_model': 'pcie-to-pci-bridge'}
-        cntl_add = libvirt.create_controller_xml(contr_dict)
-        libvirt.add_controller(vm_name, cntl_add)
+    if bridge_controller_needed:
+        pci_controllers = vmxml.get_controllers('pci')
+        for controller in pci_controllers:
+            if controller.get('model') == 'pcie-to-pci-bridge':
+                break
+        else:
+            contr_dict = {'controller_type': 'pci',
+                          'controller_model': 'pcie-to-pci-bridge'}
+            cntl_add = libvirt.create_controller_xml(contr_dict)
+            libvirt.add_controller(vm_name, cntl_add)
     try:  # Update interface model as defined
         iface_params = {'model': params['virtio_model']}
         libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)

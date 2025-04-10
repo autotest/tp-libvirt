@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import time
 
 import aexpect
 from avocado.utils import process
@@ -49,7 +50,7 @@ def run(test, params, env):
                                                       test_passwd,
                                                       **unpr_vm_args)
         uri = f'qemu+ssh://{test_user}@localhost/session'
-        virsh_ins = virsh.VirshPersistent(uri=uri)
+        virsh_ins = virsh.Virsh(uri=uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
@@ -59,13 +60,12 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
-    vm_iface = params.get('vm_iface', 'eno1')
     mtu = params.get('mtu')
     qemu_cmd_check = params.get('qemu_cmd_check')
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
@@ -94,7 +94,7 @@ def run(test, params, env):
                                 ignore_status=True).stdout_text.strip()
         process.run(f'kill -9 {pid_passt}', shell=True)
 
-        utils_misc.wait_for(lambda: passt.get_proc_info('passt'), 10,
+        utils_misc.wait_for(lambda: passt.get_proc_info('passt'), 30,
                             ignore_errors=True)
         passt_proc_r = passt.get_proc_info('passt')
         LOG.debug(f'passt process info after reconnect: {passt_proc_r}')
@@ -108,10 +108,13 @@ def run(test, params, env):
         if not os.path.exists(log_file):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
+        # wait for the vm boot before first time to try serial login
+        time.sleep(5)
         session = vm.wait_for_serial_login(timeout=60)
+        vm_iface = utils_net.get_linux_ifname(session, mac)
         passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
-        passt.check_default_gw(session)
+        passt.check_default_gw(session, host_iface)
         passt.check_nameserver(session)
 
         ips = {
@@ -138,6 +141,4 @@ def run(test, params, env):
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
-        else:
-            del virsh_ins
         utils_selinux.set_status(selinux_status)

@@ -111,7 +111,7 @@ def run(test, params, env):
                 session.cmd_output('LANG=C')
                 command = ("virsh -c %s shutdown %s %s"
                            % (remote_uri, vm_name, mode))
-                status = session.cmd_status(command, internal_timeout=5)
+                status = session.cmd_status(command, internal_timeout=10)
                 session.close()
             except process.CmdError:
                 status = 1

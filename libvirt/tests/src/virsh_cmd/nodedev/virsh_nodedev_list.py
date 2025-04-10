@@ -30,6 +30,26 @@ def get_avail_caps(all_caps):
     return avail_caps
 
 
+def get_scm_devices():
+    """
+    Get all Storage Class Memory Increments devices, only for s390.
+
+    :return:  A list contains all available scm devices in string.
+    """
+    scm_devices = []
+    try:
+        utils_path.find_command('lsscm')
+        scm_output = process.run('lsscm', ignore_status=True, shell=True).stdout_text
+        scm_list = scm_output.split('\n')[2:-1]
+        for scm in scm_list:
+            scm_info_list = [info for info in scm.split(' ') if info != '']
+            scm_devices.append('block_' + scm_info_list[2])
+    except utils_path.CmdNotFoundError:
+        logging.warning('Cmd lsscm not found!')
+        logging.warning('You can try to install it by `yum install s390utils*`')
+    return scm_devices
+
+
 def get_storage_devices():
     """
     Retrieve storage devices list from sysfs.
@@ -125,6 +145,9 @@ def get_ccw_io_devices():
                                    timeout=5, ignore_status=True,
                                    shell=True).stdout_text
         is_online = "1" == online_value.strip()
+        # After libvirt version 10.5.0, virsh nodedev list will list all of ccw devices regardless of its state
+        if libvirt_version.version_compare(10, 5, 0):
+            is_online = True
         if is_online:
             dev_name = re.sub(r'\W', '_', 'ccw_' + device)
             devices.append(dev_name)
@@ -248,6 +271,7 @@ def run(test, params, env):
         return True
 
     mode = params.get("comparison_mode", "exact")
+    remove_scm_device = 'yes' == params.get("remove_scm_device", "no")
     all_caps = ['system', 'pci', 'usb_device', 'usb', 'net', 'scsi_host',
                 'scsi_target', 'scsi', 'storage', 'fc_host', 'vports',
                 'scsi_generic', 'ccw', 'css']
@@ -293,6 +317,11 @@ def run(test, params, env):
                 break
             elif result.exit_status == 0 and expect_succeed == 'no':
                 break
+            if cap == 'storage' and remove_scm_device:
+                scm_devices = get_scm_devices()
+                if scm_devices:
+                    devices[cap] = [device for device in devices[cap]
+                                    if device not in scm_devices]
             if not _check_result(cap, devices[cap], result.stdout.strip(), mode):
                 check_failed = True
                 break

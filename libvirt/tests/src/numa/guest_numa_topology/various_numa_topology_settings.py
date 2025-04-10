@@ -27,6 +27,16 @@ def setup_default(test_obj):
     """
     test_obj.setup()
     hpc = test_setup.HugePageConfig(test_obj.params)
+
+    numa_cells = eval(test_obj.params.get('numa_cells', '[]'))
+    if numa_cells:
+        #set target_hugepages according to the setting of 'numa_cells'.
+        total_mem = 0
+        for i in range(len(numa_cells)):
+            total_mem += int(numa_cells[i]['memory'])
+        test_obj.params["target_hugepages"] = int(total_mem/hpc.get_hugepage_size())
+        hpc = test_setup.HugePageConfig(test_obj.params)
+
     hpc.setup()
     test_obj.params['hp_config_obj'] = hpc
     test_obj.test.log.debug("Step: setup is done")

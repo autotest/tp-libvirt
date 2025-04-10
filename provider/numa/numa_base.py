@@ -10,6 +10,7 @@
 import re
 
 from avocado.core import exceptions
+from avocado.utils import memory
 from avocado.utils import process
 
 from virttest import cpu
@@ -39,6 +40,25 @@ class NumaTest(object):
         self.online_nodes_withmem = self.host_numa_info.get_online_nodes_withmem().copy()
         self.virsh_dargs = {'ignore_status': False, 'debug': True}
 
+    def get_available_numa_nodes(self, expect_node_free_mem_min=None):
+        """
+        Get availbe host numa nodes accroding to min free memory
+
+        :param expect_node_free_mem_min: int, the minimum of the node free memory
+        :return: list, available host numa nodes
+        """
+        expected_numa_list = self.online_nodes_withmem.copy()
+        if expect_node_free_mem_min:
+            for a_node in self.online_nodes_withmem:
+                node_free_mem = self.host_numa_info.read_from_node_meminfo(a_node, 'MemFree')
+                if int(node_free_mem) < expect_node_free_mem_min:
+                    expected_numa_list.remove(a_node)
+                    self.test.log.debug("Host numa node '%s' free memory is %s"
+                                        "which doesn't meet requirement", a_node, node_free_mem)
+        self.test.log.debug("Host numa nodes in list %s have free memory bigger than %s" % (expected_numa_list,
+                            (str(expect_node_free_mem_min) if expect_node_free_mem_min else "0")))
+        return expected_numa_list
+
     def check_numa_nodes_availability(self, expect_nodes_num=2, expect_node_free_mem_min=None):
         """
         Check if the host numa nodes are available for testing
@@ -46,32 +66,20 @@ class NumaTest(object):
         :param expect_nodes_num: int, the number of host numa nodes
         :param expect_node_free_mem_min: int, the minimum of the node free memory
         """
-        if len(self.online_nodes_withmem) < expect_nodes_num:
+        self.online_nodes_withmem = self.get_available_numa_nodes(expect_node_free_mem_min)
+        available_node_num = len(self.online_nodes_withmem)
+        if available_node_num < expect_nodes_num:
             self.test.cancel("Expect %d numa nodes at "
                              "least, but found %d" % (expect_nodes_num,
-                                                      len(self.online_nodes_withmem)))
+                                                      available_node_num))
         self.test.log.debug("The number of host numa node with "
                             "memory is %s which meets the "
-                            "requirement", len(self.online_nodes_withmem))
-        if expect_node_free_mem_min:
-            for a_node in self.online_nodes_withmem:
-                free_mem_min = self.host_numa_info.read_from_node_meminfo(a_node, 'MemFree')
-                if int(free_mem_min) < expect_node_free_mem_min:
-                    raise exceptions.TestError("Expect the numa node '%s' "
-                                               "free memory at least %s, "
-                                               "but found %s" % (a_node,
-                                                                 expect_node_free_mem_min,
-                                                                 free_mem_min))
-                self.test.log.debug("Host numa node '%s' free memory "
-                                    "is %s which meets the requirement", a_node, free_mem_min)
+                            "requirement", available_node_num)
 
-    def setup(self, node_index=0, expect_nodes_num=2, expect_node_free_mem_min=None):
+    def setup(self, expect_nodes_num=2, expect_node_free_mem_min=None):
         self.check_numa_nodes_availability(expect_nodes_num, expect_node_free_mem_min)
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.params['backup_vmxml'] = vmxml.copy()
-        kernel_hp_file = self.params.get('kernel_hp_file')
-        if kernel_hp_file and kernel_hp_file.count('/sys/devices/system/node/'):
-            self.params['kernel_hp_file'] = kernel_hp_file % self.online_nodes_withmem[node_index]
 
     def teardown(self):
         if self.vm.is_alive():
@@ -82,8 +90,11 @@ class NumaTest(object):
             backup_vmxml.sync()
         hpc_2M = self.params.get('hp_config_2M')
         hpc_1G = self.params.get('hp_config_1G')
-        for hpc in [hpc_2M, hpc_1G]:
+        hpc_list = self.params.get('hpc_list', [])
+        hpc_list.extend([hpc_2M, hpc_1G])
+        for hpc in hpc_list:
             if hpc:
+                self.test.log.debug("Teardown: clean up hugepage setting for %d", hpc.hugepage_size)
                 hpc.cleanup()
 
     def prepare_vm_xml(self):
@@ -93,14 +104,15 @@ class NumaTest(object):
         :return: VMXML object
         """
         single_host_node = self.params.get('single_host_node')
-        vm_attrs = eval(self.params.get('vm_attrs'))
+        vm_attrs = eval(self.params.get('vm_attrs', '{}'))
         numa_memory = self.params.get('numa_memory')
         numa_memnode = self.params.get('numa_memnode')
         memory_backing = eval(self.params.get('memory_backing', '{}'))
 
         # Setup vm basic attributes
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
-        vmxml.setup_attrs(**vm_attrs)
+        if vm_attrs:
+            vmxml.setup_attrs(**vm_attrs)
 
         # Setup numa tune attributes
         nodeset = None
@@ -180,7 +192,7 @@ def get_host_numa_memory_alloc_info(mem_size):
     :param mem_size: int, the vm memory size
     :return: str, the matched output in numa_maps
     """
-    cmd = 'grep -B1 %s /proc/`pidof qemu-kvm`/smaps' % mem_size
+    cmd = 'grep -B1 "%s " /proc/`pidof qemu-kvm`/smaps' % mem_size
     out = process.run(cmd, shell=True, verbose=True).stdout_text.strip()
     matches = re.findall('(\w+)-', out)
     if not matches:
@@ -213,3 +225,72 @@ def convert_to_list_of_int(cpus_in_short, cpu_num):
     """
     cpu_list = cpu.cpus_string_to_affinity_list(cpus_in_short, cpu_num)
     return [index for index in range(0, len(cpu_list)) if cpu_list[index] == 'y']
+
+
+def check_hugepage_availability(pages_list):
+    """
+    Check if the configured huge page size is supported on the system
+
+    :param pages_list: list, like [{'size': '1048576', 'unit': 'KiB'}]
+    :raises: exceptions.TestSkipError: when hugepage is not supported
+    """
+    unit_mapping = {'G': 1048576, 'M': 1024, 'KiB': 1}
+    supported_hugepages = memory.get_supported_huge_pages_size()
+    for a_page in pages_list:
+        if a_page.get("size") is None or a_page.get("unit") is None:
+            raise exceptions.TestError("'size' and 'unit' are required")
+        if a_page['size'].count("%s"):
+            continue
+        size = int(a_page['size'])
+        unit = a_page['unit']
+        size *= unit_mapping[unit]
+        if size not in supported_hugepages:
+            raise exceptions.TestSkipError("The hugepage size '%s' is "
+                                           "not supported on current "
+                                           "arch (support: %s)" % (size,
+                                                                   supported_hugepages))
+
+
+def adjust_parameters(params, hugepage_size=None, node_index='0', hugepage_mem=1048576):
+    """
+    This function will adjust parameters according to current
+    architecture and given hugepage size and parameters.
+
+    Used parameters:
+    - memory_backing:              optional
+    - kernel_hp_file:              optional
+
+    Adjusted parameters:
+     - hugepage_size: hugepage size in KiB to be allocated
+     - kernel_hp_file: huge page kernel file,
+         like /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
+     - expected_hugepage_size: expected hugepage size for the test
+     - target_hugepages: hugepage numbers to be allocated
+     Above four parameters are used by test_setup.HugePageConfig()
+     - memory_backing: memory backing dict used by test case, like
+        {'hugepages': {'pages': [{'size': '%s', 'unit': 'KiB'}]}}
+
+    :param params: dict, test parameters
+    :param hugepage_size: int, huge page size in KiB
+    :param node_index: str, the numa node index
+    :param hugepage_mem: int, the hugepage memory in KiB to be allocated
+    """
+    default_hugepage_size = memory.get_huge_page_size()
+    page_size = default_hugepage_size if hugepage_size is None else hugepage_size
+    params['hugepage_size'] = page_size
+    memory_backing = params['memory_backing']
+    if memory_backing and memory_backing.count('%s'):
+        params['memory_backing'] = memory_backing % str(page_size)
+    kernel_hp_file = params.get('kernel_hp_file')
+    if kernel_hp_file:
+        if kernel_hp_file.count('/sys/devices/system/node/node%s/hugepages/hugepages-%s'):
+            params['kernel_hp_file'] = kernel_hp_file % (node_index, str(page_size))
+        elif kernel_hp_file.count('/sys/kernel/mm/hugepages/hugepages-%s'):
+            params['kernel_hp_file'] = kernel_hp_file % str(page_size)
+    params['expected_hugepage_size'] = page_size
+    params['target_hugepages'] = hugepage_mem // page_size
+    if page_size == default_hugepage_size:
+        hugepage_path = "/dev/hugepages"
+    else:
+        hugepage_path = "/dev/hugepages%d" % page_size
+    params['vm_hugepage_mountpoint'] = hugepage_path

@@ -31,8 +31,8 @@ def run(test, params, env):
     br_name = br_type + '_' + rand_id
 
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     iface_attrs = eval(params.get('iface_attrs', '{}'))
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -45,8 +45,10 @@ def run(test, params, env):
         elif br_type == 'ovs_br':
             utils_net.create_ovs_bridge(br_name)
 
+        mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
         vmxml.del_device('interface', by_tag=True)
-        iface = libvirt_vmxml.create_vm_device_by_type('interface', iface_attrs)
+        iface = libvirt_vmxml.create_vm_device_by_type(
+            'interface', {**iface_attrs, **{'mac_address': mac}})
         vmxml.add_device(iface)
         LOG.debug(f'Interface to add to vm:\n{iface}')
 

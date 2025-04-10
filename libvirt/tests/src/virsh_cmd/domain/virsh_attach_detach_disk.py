@@ -5,6 +5,7 @@ import logging as log
 import aexpect
 
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import virt_vm
 from virttest import virsh
@@ -15,7 +16,7 @@ from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging import lv_utils
 from virttest.utils_libvirt import libvirt_pcicontr
-from virttest import utils_disk
+from virttest.utils_libvirt import libvirt_disk
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import libvirt_version
@@ -49,7 +50,7 @@ def run(test, params, env):
                % device_source)
         return process.run(cmd, ignore_status=True, shell=True).exit_status == 0
 
-    def check_vm_partition(vm, device, os_type, target_name, old_parts):
+    def check_vm_partition(vm, device, os_type, target_name):
         """
         Check VM disk's partition.
 
@@ -65,8 +66,12 @@ def run(test, params, env):
             attached = False
             if os_type == "linux":
                 session = vm.wait_for_login()
-                new_parts = utils_disk.get_parts_list(session)
-                added_parts = list(set(new_parts).difference(set(old_parts)))
+                added_parts = []
+                try:
+                    added_disks = libvirt_disk.get_non_root_disk_names(session)
+                    added_parts = [x[0] for x in added_disks]
+                except exceptions.TestError as e:
+                    logging.debug(e)
                 logging.debug("Added parts: %s" % added_parts)
                 for i in range(len(added_parts)):
                     if device == "disk":
@@ -225,9 +230,6 @@ def run(test, params, env):
     # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
-    session = vm.wait_for_login()
-    old_parts = utils_disk.get_parts_list(session)
-    session.close()
     vm.destroy(gracefully=False)
 
     # Back up xml file.
@@ -464,7 +466,7 @@ def run(test, params, env):
     # Check in VM after command.
     check_vm_after_cmd = True
     check_vm_after_cmd = check_vm_partition(vm, device, os_type,
-                                            device_target, old_parts)
+                                            device_target)
 
     # Check disk type after attach.
     check_disk_type = True

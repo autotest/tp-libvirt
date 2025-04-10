@@ -10,6 +10,7 @@ from virttest import utils_net
 from virttest import utils_misc
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 
@@ -68,7 +69,18 @@ def run(test, params, env):
             logging.debug(e)
             return re.search(pattern, str(e.__str__))
 
-    def guest_if_state(if_name, session):
+    def guest_ifstate_check(ifname, expected_state, session):
+        """
+        Check guest interface dev state in session
+        """
+        iface_info = utils_net.get_linux_iface_info(mac=mac_address, session=session)
+        logging.debug("guest iface %s info: %s" % (ifname, iface_info))
+        if iface_info['ifname'] == ifname:
+            return iface_info['operstate'] == expected_state
+        else:
+            test.fail("Did not get expected % from mac %s" % (ifname, mac_address))
+
+    def guest_link_state(if_name, session):
         """
         Get the domain link state from the guest
         """
@@ -100,7 +112,7 @@ def run(test, params, env):
         if ret.exit_status:
             logging.error("Failed to update device to up state")
             return False
-        if not utils_misc.wait_for(lambda: guest_if_state(if_name, session), 5):
+        if not utils_misc.wait_for(lambda: guest_link_state(if_name, session), 5):
             logging.error("Guest link should be up now")
             return False
 
@@ -112,7 +124,7 @@ def run(test, params, env):
         if ret.exit_status:
             logging.error("Failed to update device to down state")
             return False
-        if utils_misc.wait_for(lambda: guest_if_state(if_name, session), 5):
+        if utils_misc.wait_for(lambda: guest_link_state(if_name, session), 5):
             logging.error("Guest link should be down now")
             return False
 
@@ -149,6 +161,9 @@ def run(test, params, env):
     # generate a new one suitable for the model
     if vm.is_alive():
         vm.destroy()
+    if model_type != 'virtio':
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        libvirt_vmxml.modify_vm_device(vmxml, 'interface', {'driver': None})
     iface_dict = {'model': model_type, 'del_addr': 'yes'}
     libvirt.modify_vm_iface(vm_name[0], "update_iface", iface_dict)
     # Vm status
@@ -239,6 +254,9 @@ def run(test, params, env):
 
         error_msg = None
         if status_error == "no" and not post_action:
+            # Close then establish a connection with the serial console
+            vm.cleanup_serial_console()
+            vm.create_serial_console()
             # Serial login the vm to check link status
             # Start vm check the link statue
             session = vm.wait_for_serial_login(username=username,
@@ -248,10 +266,10 @@ def run(test, params, env):
             # Check link state in guest
             if check_link_state:
                 if (if_operation == "up" and
-                        not guest_if_state(guest_if_name, session)):
+                        not guest_link_state(guest_if_name, session)):
                     error_msg = "Link state should be up in guest"
                 if (if_operation == "down" and
-                        guest_if_state(guest_if_name, session)):
+                        guest_link_state(guest_if_name, session)):
                     error_msg = "Link state should be down in guest"
                 if error_msg:
                     test.fail(error_msg)
@@ -264,21 +282,18 @@ def run(test, params, env):
             # Set the link up make host connect with vm
             domif_setlink(vm_name[0], device, "up", "")
             if not utils_misc.wait_for(
-                    lambda: guest_if_state(guest_if_name, session), 5):
+                    lambda: guest_link_state(guest_if_name, session), 5):
                 test.fail("Link state isn't up in guest")
 
             # Ignore status of this one
             cmd = 'ip link set %s down;' % guest_if_name
             session.cmd_status_output(cmd, timeout=10)
-            pattern = "%s:.*state DOWN.*" % guest_if_name
-            pattern_cmd = 'ip addr show dev %s' % guest_if_name
-            guest_cmd_check(pattern_cmd, session, pattern)
+            guest_ifstate_check(guest_if_name, 'DOWN', session)
 
             cmd = 'ip link set %s up;' % guest_if_name
             session.cmd_status_output(cmd, timeout=10)
-            pattern = "%s:.*state UP.*" % guest_if_name
-            if not utils_misc.wait_for(lambda: guest_cmd_check(
-                    pattern_cmd, session, pattern), timeout=20):
+            if not utils_misc.wait_for(lambda: guest_ifstate_check(
+                    guest_if_name, 'UP', session), timeout=20):
                 test.fail("Could not bring up interface %s inside guest"
                           % guest_if_name)
         else:  # negative test

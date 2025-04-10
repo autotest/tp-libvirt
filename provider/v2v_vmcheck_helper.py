@@ -37,7 +37,8 @@ FEATURE_SUPPORT = {
     'virtio_rng': '2.6.26',
     'cache_none': 'virt-v2v-1.42.0-4',
     'q35': 'virt-v2v-1.43.3-2',
-    'virtio_model': 'virt-v2v-1.45.97-4'}
+    'virtio_model': 'virt-v2v-1.45.97-4',
+    'virtio_skip': 'virt-v2v-2.0.0-1'}
 # bz#1961107
 V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
 V2V_VSOCK_SUPPORT_LINUX_VER = "[virt-v2v-2.0.2-1,)"
@@ -421,7 +422,7 @@ class VMChecker(object):
                 verbose=False)
             short_id_all = output.stdout_text.splitlines()
             if short_id not in [os_id.strip() for os_id in short_id_all]:
-                LOG.info("Not found shourt_id '%s' on host", short_id)
+                LOG.info("Not found short_id '%s' on host", short_id)
                 long_id = _guess_long_id(short_id)
             else:
                 cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
@@ -783,6 +784,11 @@ class VMChecker(object):
             self.log_err(err_msg)
 
         # Check Red Hat VirtIO drivers and display adapter
+        if not compare_version(FEATURE_SUPPORT['virtio_skip']):
+            reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['virtio_skip']
+            LOG.info('Skip Checking VirtIO drivers: %s' % reason)
+            return
+
         LOG.info("Checking VirtIO drivers and display adapter")
         expect_video = self.get_expect_video_model()
         has_virtio_win, has_qxldod = self.get_virtio_win_config()

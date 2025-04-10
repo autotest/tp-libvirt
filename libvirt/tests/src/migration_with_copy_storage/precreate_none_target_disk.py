@@ -89,6 +89,7 @@ def run(test, params, env):
         cmd = "qemu-img info %s -U" % disk_source_name
         src_image_info = process.run(cmd, ignore_status=True, shell=True).stdout_text.strip()
 
+        remote.run_remote_cmd("mkdir -p %s" % pool_target, params)
         virsh.pool_create_as(pool_name, pool_type, pool_target, uri=dest_uri,
                              ignore_status=True, debug=True)
 

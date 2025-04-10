@@ -32,8 +32,12 @@ def run(test, params, env):
     try:
         vmxml, cli_vmxml = list(
             map(vm_xml.VMXML.new_from_inactive_dumpxml, vms))
+        mac, cli_mac = list(map(vm_xml.VMXML.get_first_mac_by_name, vms))
         [vmxml_i.del_device('interface', by_tag=True) for vmxml_i in
          [vmxml, cli_vmxml]]
+
+        iface_attrs.update({'mac_address': mac})
+        cli_iface_attrs.update({'mac_address': cli_mac})
 
         [libvirt_vmxml.modify_vm_device(vmxml_i, 'interface', attrs)
          for vmxml_i, attrs in [(vmxml, iface_attrs),

@@ -20,6 +20,16 @@ from provider import libvirt_version
 logging = log.getLogger('avocado.' + __name__)
 
 
+def try_set_selinux_label(session):
+    """
+    Per default selinux will block the guest agent
+    from trimming the device. Try to set label for this test
+
+    :param session: VM console session
+    """
+    session.cmd_output("setsebool -P virt_qemu_ga_read_nonsecurity_files on", timeout=120)
+
+
 def run(test, params, env):
     """
     Test domfstrim command, make sure that all supported options work well
@@ -100,6 +110,7 @@ def run(test, params, env):
         if not vm.is_alive():
             vm.start()
         session = vm.wait_for_login()
+        try_set_selinux_label(session)
         bef_list = session.cmd_output("fdisk -l|grep ^/dev|"
                                       "cut -d' ' -f1").split("\n")
         session.close()
@@ -186,7 +197,7 @@ def run(test, params, env):
         def _trim_completed():
             """
             Do empty fstrim check
-            :return: True of False
+            :return: True or False
             """
             cmd_result = virsh.domfstrim(vm_name, minimum, mountpoint, options,
                                          unprivileged_user=unprivileged_user,

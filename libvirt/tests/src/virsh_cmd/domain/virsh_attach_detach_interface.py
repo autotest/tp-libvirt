@@ -283,7 +283,13 @@ def run(test, params, env):
 
     # Get iface name if iface_type is direct
     if iface_type == "direct":
-        iface_source = utils_net.get_net_if(state="UP")[0]
+        links = utils_net.get_net_if(state="UP")
+        for link in links:
+            if utils_net.get_net_if_addrs(link)["ipv4"]:
+                iface_source = link
+                break
+        if not iface_source:
+            test.error("Couldn't find host interface with IP")
     # Get a bridge name for test if iface_type is bridge.
     # If there is no bridge other than virbr0, try to create one
     # or fail test

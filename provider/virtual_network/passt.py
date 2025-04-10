@@ -1,7 +1,7 @@
 import logging
 import os
-import re
 import random
+import re
 import time
 from socket import socket
 
@@ -138,8 +138,8 @@ def check_proc_info(params, log_file, mac):
     socket_dir = params.get('socket_dir')
 
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
 
     proc_info = get_proc_info('passt')
     LOG.debug(proc_info)
@@ -201,7 +201,13 @@ def check_vm_ip(iface_attrs, session, host_iface, vm_iface=None):
             raise exceptions.TestFail('vm ip and prefix should be '
                                       'the same as host')
 
-    set_ipv6_info = get_iface_ip_and_prefix(host_iface, ip_ver='ipv6')[0]
+    host_ipv6_info = get_iface_ip_and_prefix(host_iface, ip_ver='ipv6')
+    # If the host does not support IPv6, the guest will not support it either, cancel the test
+    if host_ipv6_info:
+        set_ipv6_info = host_ipv6_info[0]
+    else:
+        raise exceptions.TestCancel(f'Host ipv6 is not available, skip the test!')
+    # The settings in attrs should take precedence if there is
     if 'ips' in iface_attrs:
         iface_ipv6_info = [ip for ip in iface_attrs['ips']
                            if ip['family'] == 'ipv6'][0]
@@ -234,26 +240,37 @@ def check_vm_mtu(session, iface, mtu):
         raise exceptions.TestFail(f'Wrong vm mtu: {vm_mtu}, should be {mtu}')
 
 
-def check_default_gw(session):
+def check_default_gw(session, host_iface=None):
     """
     Check whether default host gateways of host and guest are consistent,
     i.e. the guest's gateways are available on the host.
 
     :param session: vm shell session instance
+    :param host_iface: if given, only check gateway information on this
+                       host interface
     """
-    host_gw = utils_net.get_default_gateway(force_dhcp=True).split()
-    vm_gw = utils_net.get_default_gateway(session=session,
-                                          force_dhcp=True).split()
+    host_gw = utils_net.get_default_gateway(
+        force_dhcp=True, target_iface=host_iface, json=True).split()
+    vm_gw = utils_net.get_default_gateway(
+        session=session, force_dhcp=True, json=True).split()
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
-    host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6').split()
-    vm_gw_v6 = utils_net.get_default_gateway(session=session,
-                                             ip_ver='ipv6').split()
-    LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
-
     if [x for x in vm_gw if x not in host_gw]:
         raise exceptions.TestFail(
             'Host default ipv4 gateway not consistent with vm.')
-    if [x for x in vm_gw_v6 if x not in host_gw_v6]:
+
+    _host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
+                                                target_iface=host_iface,
+                                                json=True)
+    if not _host_gw_v6:
+        raise exceptions.TestFail('Guest has no ipv6 gateway!')
+    vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6',
+                                             json=True)
+    if not vm_gw_v6:
+        raise exceptions.TestFail('Guest has no ipv6 gateway!')
+    host_gw_v6 = _host_gw_v6 if isinstance(_host_gw_v6, list) else [_host_gw_v6]
+    LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
+
+    if vm_gw_v6 not in host_gw_v6:
         raise exceptions.TestFail(
             'Host default ipv6 gateway not consistent with vm.')
 
@@ -265,11 +282,18 @@ def check_nameserver(session):
     :param session: vm shell session instance
     """
     get_cmd = 'cat /etc/resolv.conf|grep -vE "#|;"'
-    on_host = process.run(get_cmd, shell=True).stdout_text.strip().split()
-    on_vm = session.cmd_output(get_cmd).strip().split()
+    on_host = process.run(get_cmd, shell=True).stdout_text.strip()
+    on_vm = session.cmd_output(get_cmd).strip()
+    LOG.debug(f'Output on host:\n{on_host}\nOutput on vm:\n{on_vm}')
     # remove zone index
-    on_host = [re.sub(r'%.*', '', x) for x in on_host]
-    on_vm = [re.sub(r'%.*', '', x) for x in on_vm]
+    on_host = [re.sub(r'%.*', '', x) for x in on_host.split()]
+    on_vm = [re.sub(r'%.*', '', x) for x in on_vm.split()]
+    # Remove irrelevant items such as "search"
+    on_host = set([(on_host[i], on_host[i + 1]) for i in range(len(on_host))
+                   if on_host[i].lower() == 'nameserver'])
+    on_vm = set([(on_vm[i], on_vm[i + 1]) for i in range(len(on_vm))
+                 if on_vm[i].lower() == 'nameserver'])
+    LOG.debug(f'On host:\n{on_host}\nOn vm:\n{on_vm}')
     if on_host == on_vm:
         LOG.debug(f'Nameserver on vm is consistent with host:\n{on_host}')
     else:
@@ -343,12 +367,13 @@ def check_connection(vm, vm_iface, protocols, host_iface=None):
     """
     default_gw = utils_net.get_default_gateway(force_dhcp=True,
                                                target_iface=host_iface)
-    default_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
-                                                  target_iface=host_iface)
+    vm_session = vm.wait_for_serial_login()
+    default_gw_v6_vm = utils_net.get_default_gateway(
+        session=vm_session, ip_ver='ipv6', json=True)
     for protocol in protocols:
         host_sess = aexpect.ShellSession('su')
         vm_sess = vm.wait_for_serial_login(timeout=60)
-        gw = default_gw if protocol[-1] == '4' else default_gw_v6
+        gw = default_gw if protocol[-1] == '4' else default_gw_v6_vm
         src_iface = None if protocol[-1] == '4' else vm_iface
         try:
             check_protocol_connection(vm_sess, host_sess, protocol, gw,

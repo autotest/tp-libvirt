@@ -466,11 +466,14 @@ class SerialPipe(SerialFile):
 
     @staticmethod
     def make_source(filepath):
-        try:
-            os.unlink(filepath)
-        except OSError:
-            pass
-        os.mkfifo(filepath)
+        pipe_suffixes = [".in", ".out"]
+        for suffix in pipe_suffixes:
+            pipe_path = filepath + suffix
+            try:
+                os.unlink(pipe_path)
+            except OSError:
+                pass
+            os.mkfifo(pipe_path)
 
     def init_device(self, index):
         return super(SerialPipe, self).init_device(index)  # stub for now

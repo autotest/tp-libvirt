@@ -60,7 +60,7 @@ def run(test, params, env):
             dmidecode_version = get_processor_version()
             if dmidecode_version:
                 # Get processor version from result
-                sysinfo_xml = libvirt_xml.SysinfoXML()
+                sysinfo_xml = libvirt_xml.VMSysinfoXML()
                 sysinfo_xml['xml'] = output
                 sysinfo_xml.xmltreefile.write()
 

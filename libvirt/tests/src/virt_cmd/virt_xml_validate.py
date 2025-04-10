@@ -8,6 +8,7 @@ from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest.utils_libvirt import libvirt_secret
 from virttest.utils_test import libvirt
 
@@ -33,6 +34,8 @@ def domainsnapshot_validate(test, vm_name, file=None, **virsh_dargs):
         test.fail(str(e))
 
     cmd_result = virsh.snapshot_dumpxml(vm_name, snapshot_name, to_file=file)
+    libvirt.check_exit_status(cmd_result)
+    cmd_result = virsh.snapshot_delete(vm_name, snapshot_name, to_file=file)
     libvirt.check_exit_status(cmd_result)
 
 
@@ -183,10 +186,21 @@ def interface_validate(test, file=None, **virsh_dargs):
         test.error(str(e))
 
 
+def domcap_validate(file=None, **virsh_dargs):
+    """
+    Prepare schema domcapabilities.
+    :param file: domcapabilities output file
+    :param virsh_dargs: virsh debug args.
+    """
+    cmd_result = virsh.domcapabilities(options="> %s" % file, **virsh_dargs)
+    libvirt.check_exit_status(cmd_result)
+
+
 def run(test, params, env):
     """
     Test for virt-xml-validate
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     # Get the full path of virt-xml-validate command.
     try:
         VIRT_XML_VALIDATE = astring.to_text(process.system_output("which virt-xml-validate", shell=True))
@@ -203,7 +217,7 @@ def run(test, params, env):
 
     valid_schemas = ['domain', 'domainsnapshot', 'network', 'storagepool',
                      'storagevol', 'nodedev', 'capability',
-                     'nwfilter', 'secret', 'interface']
+                     'nwfilter', 'secret', 'interface', 'domcapabilities']
     if schema not in valid_schemas:
         test.fail("invalid %s specified" % schema)
 
@@ -230,6 +244,9 @@ def run(test, params, env):
         secret_validate(test, secret_volume, file=output_path, **virsh_dargs)
     elif schema == "interface":
         interface_validate(test, file=output_path, **virsh_dargs)
+    elif schema == "domcapabilities":
+        domcap_validate(file=output_path, **virsh_dargs)
+        schema = ""
     else:
         # domain
         virsh.dumpxml(vm_name, to_file=output_path)

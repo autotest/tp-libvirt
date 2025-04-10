@@ -189,20 +189,24 @@ def run(test, params, env):
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment.
     """
-    def do_snapshot(vm_name, expected_str):
+    def do_snapshot(vm_name, expected_str, params):
         """
         Run snapshot related commands: snapshot-create-as, snapshot-list
         snapshot-dumpxml, snapshot-revert
 
         :param vm_name: vm name
         :param expected_str: expected string in snapshot-dumpxml
+        :param params: dict, test parameters
         :raise: test.fail if virsh command failed
         """
         snapshot_name = vm_name + "-snap"
+        snapshot_options = params.get("snapshot_options")
         virsh_dargs = {'debug': True}
 
-        cmd_result = virsh.snapshot_create_as(vm_name, snapshot_name,
-                                              **virsh_dargs)
+        vm.start()
+        vm.wait_for_login().close()
+        cmd_result = virsh.snapshot_create_as(
+            vm_name, snapshot_options.format(snapshot_name), **virsh_dargs)
         libvirt.check_exit_status(cmd_result)
 
         try:
@@ -219,6 +223,7 @@ def run(test, params, env):
         cmd_result = virsh.snapshot_revert(vm_name, "", "--current",
                                            **virsh_dargs)
         libvirt.check_exit_status(cmd_result)
+        vm.destroy()
 
     libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
@@ -238,6 +243,7 @@ def run(test, params, env):
     bkxml = vmxml.copy()
     managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
     maxphysaddr = params.get('maxphysaddr')
+    mem_file = params.get('mem_file', "")
 
     try:
         if check_vendor_id:
@@ -269,8 +275,7 @@ def run(test, params, env):
         if test_operations:
             for action in test_operations.split(","):
                 if action == "do_snapshot":
-                    do_snapshot(vm_name, expected_str_before_startup)
-
+                    do_snapshot(vm_name, expected_str_before_startup, params)
         if virsh_edit_cmd:
             status = libvirt.exec_virsh_edit(vm_name, virsh_edit_cmd.split(","))
             if status == status_error:
@@ -310,6 +315,8 @@ def run(test, params, env):
         logging.debug("Recover test environment")
         if os.path.exists(managed_save_file):
             virsh.managedsave_remove(vm_name, debug=True)
+        if os.path.exists(mem_file):
+            os.remove(mem_file)
         if vm.is_alive():
             vm.destroy()
         libvirt.clean_up_snapshots(vm_name, domxml=bkxml)

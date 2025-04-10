@@ -1,10 +1,11 @@
 import logging as log
 import time
 
+from avocado.utils import memory as avocado_mem
+
 from virttest import virsh
 from virttest import test_setup
 from virttest import utils_misc
-from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 
@@ -78,14 +79,19 @@ def check_freepages(output, expect_result_list):
     return False not in check_result
 
 
-def modify_expect(cell, expect, pagesize='4KiB'):
+def modify_expect(cell, expect):
     """
-    For 4KiB freepages checking, if the gap between freepages command return
-    with system current freememory is less than 4*1024Kib, check would pass.
+    For default page size freepages checking, if the gap between freepages command return
+    with system current freememory is less than 'default page size' * 1024Kib, check would pass.
+
+    :params cell: free pages dict of single node
+    :params expect: expected free page dict
     """
-    if pagesize in expect.keys():
-        if abs(int(float(expect[pagesize])) - int(float(cell[pagesize]))) < 1024:
-            expect[pagesize] = cell[pagesize]
+    default_pagesize = int(avocado_mem.get_page_size() / 1024)
+    pagesize_key = f'{default_pagesize}KiB'
+    if pagesize_key in expect.keys():
+        if abs(int(float(expect[pagesize_key])) - int(float(cell[pagesize_key]))) < 1024:
+            expect[pagesize_key] = cell[pagesize_key]
 
 
 def run(test, params, env):
@@ -99,20 +105,19 @@ def run(test, params, env):
 
         :params node: node No
         :params pagesize: page size, for example: '4', '2048', '1048576'
-            For pagesize is '4' which is not hugepage, get free memory from
+            For pagesize is default page size which is not hugepage, get free memory from
                 `grep MemFree /sys/devices/system/node/node${node}/meminfo`
             For pagesize '2048' or '1048576',  get free page number from
                 /sys/devices/system/node/nodei${node}/hugepages/
                 hugepages-${pagesize}/free_hugepages
         :return: integer number of free pagesize
         """
-        if pagesize == '4':
+        if pagesize == default_pagesize:
             node_meminfo = host_numa_node.read_from_node_meminfo(node, 'MemFree')
-            return int(node_meminfo) / 4
-        else:
-            return hp_cl.get_node_num_huge_pages(node, pagesize, type='free')
+            return int(node_meminfo) / int(default_pagesize)
+        return hp_cl.get_node_num_huge_pages(node, pagesize, type='free')
 
-    def check_hugepages_allocated_status(is_type_check, pagesize, quantity):
+    def check_hugepages_allocated_status(pagesize, quantity):
         """
         Allocate some specific hugepages and check whether the number of this
         specific hugepages allocated by kernel totally is equal to the sum that
@@ -120,14 +125,11 @@ def run(test, params, env):
         for each node is equal to the number allocated by kernel for each
         node. If yes, return True, else return False.
 
-        :params is_type_check: Flag to determine do this check or not
         :params pagesize: pagesize type needed to check
         :params quantity: the number will be allocated
         :return: True if current system support this pagesize and allocate
                  page successfully, otherwise return False
         """
-        if not is_type_check or pagesize not in supported_hp_size:
-            return False
         hp_cl.set_kernel_hugepages(pagesize, quantity)
         # kernel need some time to prepare hugepages due to maybe there
         # are some memory fragmentation.
@@ -163,10 +165,19 @@ def run(test, params, env):
                            "equal to kernel allocated totally." % pagesize)
             return True
 
+    def cleanup():
+        """
+        Clean up all supported huge page size allocation
+        """
+        for hp_size in hp_cl.get_multi_supported_hugepage_size():
+            hp_cl.set_kernel_hugepages(hp_size, 0)
+
     option = params.get("freepages_option", "")
     status_error = "yes" == params.get("status_error", "no")
     cellno = params.get("freepages_cellno")
     pagesize = params.get("freepages_pagesize")
+    pagesize_kb = params.get("pagesize_kb")
+    hugepage_allocation_dict = eval(params.get("hugepage_allocation_dict", "{}"))
 
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.get_online_nodes_withmem()
@@ -174,6 +185,8 @@ def run(test, params, env):
 
     hp_cl = test_setup.HugePageConfig(params)
     supported_hp_size = hp_cl.get_multi_supported_hugepage_size()
+
+    default_pagesize = str(int(avocado_mem.get_page_size() / 1024))
 
     cellno_list = []
     if cellno == "EACH":
@@ -183,35 +196,23 @@ def run(test, params, env):
     else:
         cellno_list.append(cellno)
 
-    # Add 4K pagesize
-    supported_hp_size.insert(0, '4')
-    pagesize_list = []
+    # Add default pagesize
+    supported_hp_size.insert(0, str(int(avocado_mem.get_page_size() / 1024)))
+    pagesize_list, pagesize_kb_list = [], []
     if pagesize == "EACH":
-        pagesize_list = supported_hp_size
+        pagesize_list = pagesize_kb_list = supported_hp_size
     else:
         pagesize_list.append(pagesize)
+        pagesize_kb_list.append(pagesize_kb)
 
     if not status_error:
-        # Get if CPU support 2M-hugepages
-        check_2M = vm_xml.VMCPUXML.check_feature_name('pse')
-        # Get if CPU support 1G-hugepages
-        check_1G = vm_xml.VMCPUXML.check_feature_name('pdpe1gb')
-        if not check_2M and not check_1G:
-            test.cancel("pse and pdpe1gb flags are not supported by CPU.")
-
-        num_1G = str(1024*1024)
-        num_2M = str(2048)
-
-        # Let kernel allocate 64 of 2M hugepages at runtime
-        quantity_2M = 64
-        # Let kernel allocate 2 of 1G hugepages at runtime
-        quantity_1G = 2
-        check_2M = check_hugepages_allocated_status(check_2M, num_2M, quantity_2M)
-        check_1G = check_hugepages_allocated_status(check_1G, num_1G, quantity_1G)
-
-        if not check_2M and not check_1G:
-            test.cancel("Not enough free memory to support huge pages "
-                        "in current system.")
+        for page_size in pagesize_kb_list:
+            if page_size is None or page_size == default_pagesize:
+                continue
+            if page_size not in supported_hp_size:
+                test.cancel("Required hugepage size %sKiB is not supported on this host." % page_size)
+            if not check_hugepages_allocated_status(page_size, hugepage_allocation_dict[page_size]):
+                test.cancel("Not enough %sKiB hugepage size allocated in current system." % page_size)
 
     # Run test
     for cell in cellno_list:
@@ -221,11 +222,8 @@ def run(test, params, env):
                                      options=option,
                                      debug=True)
             # Unify pagesize unit to KiB
-            if page is not None:
-                if page.upper() in ['2M', '2048K', '2048KIB']:
-                    page = num_2M
-                elif page.upper() in ['1G', '1048576K', '1048576KIB']:
-                    page = num_1G
+            if page is not None and pagesize_kb is not None:
+                page = pagesize_kb
             # the node without memory will fail and it is expected
             if cell is not None and page is None and not status_error:
                 status_error = True
@@ -265,3 +263,6 @@ def run(test, params, env):
                 else:
                     test.fail("Huge page freepages check failed, "
                               "expect result is %s" % expect_result_list)
+
+    # clean up the huge page allocation
+    cleanup()

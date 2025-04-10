@@ -1,3 +1,5 @@
+from virttest import libvirt_version
+
 from provider.migration import base_steps
 
 
@@ -10,6 +12,8 @@ def run(test, params, env):
     :param env: Dictionary with test environment.
     """
     vm_name = params.get("migrate_main_vm")
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)

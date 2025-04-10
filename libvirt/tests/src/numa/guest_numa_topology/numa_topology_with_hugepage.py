@@ -10,6 +10,7 @@
 
 import re
 
+from avocado.utils import memory
 from avocado.utils import process
 
 from virttest import utils_libvirtd
@@ -39,32 +40,30 @@ def setup_default(test_obj):
 
     :param test_obj: NumaTest object
     """
+    memory_backing = eval(test_obj.params.get('memory_backing', '{}'))
+    if memory_backing:
+        numa_base.check_hugepage_availability(memory_backing["hugepages"]["pages"])
     test_obj.setup()
-    params_2M = {'hugepage_size': '2048',
-                 'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_2M'),
-                 'target_hugepages': test_obj.params.get('target_hugepages_2M'),
-                 'kernel_hp_file': '/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'}
-    params_512M = {'hugepage_size': '524288',
-                   'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_512M'),
-                   'target_hugepages': test_obj.params.get('target_hugepages_512M'),
-                   'kernel_hp_file': '/sys/kernel/mm/hugepages/hugepages-524288kB/nr_hugepages'}
-    params_1G = {'hugepage_size': '1048576',
-                 'vm_hugepage_mountpoint': test_obj.params.get('hugepage_path_1G'),
-                 'target_hugepages': test_obj.params.get('target_hugepages_1G'),
-                 'kernel_hp_file': '/sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'}
     hp_size = test_obj.params.get('hp_size')
-    if hp_size in ['2M', '2M_1G', '2M_512M', 'scarce_mem']:
-        test_obj.params.update(params_2M)
-        hpconfig_2M = setup_hugepage(test_obj.params)
-        test_obj.params['hp_config_2M'] = hpconfig_2M
-    if hp_size in ['512M', '2M_512M']:
-        test_obj.params.update(params_512M)
-        hpconfig_512M = setup_hugepage(test_obj.params)
-        test_obj.params['hp_config_512M'] = hpconfig_512M
-    if hp_size in ['1G', '2M_1G']:
-        test_obj.params.update(params_1G)
-        hpconfig_1G = setup_hugepage(test_obj.params)
-        test_obj.params['hp_config_1G'] = hpconfig_1G
+    hpc_list = []
+    if hp_size in ['default_hugepage', 'scarce_mem']:
+        numa_base.adjust_parameters(test_obj.params,
+                                    hugepage_mem=int(test_obj.params.get('hugepage_mem')))
+        hpconfig = setup_hugepage(test_obj.params)
+        hpc_list.append(hpconfig)
+    mapping_hp_kib = {'2M': 2048, '512M': 524288, '1G': 1048576}
+    for pg_size in ['2M', '512M', '1G']:
+        if hp_size.count(pg_size):
+            hugepage_size = mapping_hp_kib[pg_size]
+            hugepage_mem_by_size = eval(test_obj.params.get("hugepage_mem_by_size"))
+            new_params = test_obj.params.copy()
+            numa_base.adjust_parameters(new_params,
+                                        hugepage_size=hugepage_size,
+                                        hugepage_mem=hugepage_mem_by_size[hugepage_size])
+            hpconfig = setup_hugepage(new_params)
+            hpc_list.append(hpconfig)
+            test_obj.params[pg_size] = new_params
+    test_obj.params['hpc_list'] = hpc_list
     utils_libvirtd.Libvirtd().restart()
 
     test_obj.test.log.debug("Step: setup is done")
@@ -81,21 +80,6 @@ def prepare_vm_xml(test_obj):
     vmxml = test_obj.prepare_vm_xml()
     test_obj.test.log.debug("Step: vm xml before defining:\n%s", vmxml)
     return vmxml
-
-
-def produce_expected_error(test_obj):
-    """
-    produce the expected error message
-
-    :param test_obj: NumaTest object
-
-    :return: str, error message to be checked
-    """
-    hugepage_size = test_obj.params.get('hp_size')
-    err_msg = ""
-    if hugepage_size == 'scarce_mem':
-        err_msg = "unable to map backing store for guest RAM: Cannot allocate memory"
-    return err_msg
 
 
 def verify_hugepage_memory_in_numa_maps(test_obj):
@@ -119,21 +103,26 @@ def verify_hugepage_memory_in_numa_maps(test_obj):
                                "numa_maps output '%s'" % (pat,
                                                           out_numa_maps))
     hp_size = test_obj.params.get('hp_size')
-    if hp_size in ['2M', '2M_512M', '2M_1G']:
+    params_2M = test_obj.params.get('2M')
+    params_512M = test_obj.params.get('512M')
+    params_1G = test_obj.params.get('1G')
+    if hp_size in ['default_hugepage']:
         _check_numa_maps(test_obj.params.get('vm_numa_node0_mem'),
-                         test_obj.params.get('target_hugepages_2M'), '2048')
-    if hp_size == '512M':
+                         test_obj.params.get('target_hugepages'), str(memory.get_huge_page_size()))
+    if hp_size in ['512M_2M']:
         _check_numa_maps(test_obj.params.get('vm_numa_node0_mem'),
-                         test_obj.params.get('target_hugepages_512M'), '524288')
+                         params_512M.get('target_hugepages'), '524288')
+        _check_numa_maps(test_obj.params.get('vm_numa_node1_mem'),
+                         params_2M.get('target_hugepages'), '2048')
+    if hp_size in ['2M_1G']:
+        _check_numa_maps(test_obj.params.get('vm_numa_node0_mem'),
+                         params_2M.get('target_hugepages'), '2048')
+        _check_numa_maps(test_obj.params.get('vm_numa_node1_mem'),
+                         params_1G.get('target_hugepages'), '1048576')
     if hp_size == '1G':
         _check_numa_maps(test_obj.params.get('vm_numa_node0_mem'),
-                         test_obj.params.get('target_hugepages_1G'), '1048576')
-    if hp_size == '2M_512M':
-        _check_numa_maps(test_obj.params.get('vm_numa_node1_mem'),
-                         test_obj.params.get('target_hugepages_512M'), '524288')
-    if hp_size == '2M_1G':
-        _check_numa_maps(test_obj.params.get('vm_numa_node1_mem'),
-                         test_obj.params.get('target_hugepages_1G'), '1048576')
+                         params_1G.get('target_hugepages'), '1048576')
+
     test_obj.test.log.debug("Step: verify hugepage memory in numa_maps: PASS")
 
 
@@ -145,22 +134,23 @@ def check_qemu_cmdline(test_obj):
     """
     pat_in_qemu_cmdline = test_obj.params.get('pat_in_qemu_cmdline')
     hp_size = test_obj.params.get('hp_size')
-    hugepage_path_1G = test_obj.params.get('hugepage_path_1G')
-    hugepage_path_512M = test_obj.params.get('hugepage_path_512M')
-    hugepage_path_2M = test_obj.params.get('hugepage_path_2M')
-    if hp_size in ['2M', '2M_512M', '2M_1G']:
-        node0_mem_path = '%s/libvirt/qemu/.*' % hugepage_path_2M
-    if hp_size == "512M":
-        node0_mem_path = '%s/libvirt/qemu/.*' % hugepage_path_512M
-    if hp_size == "1G":
-        node0_mem_path = '%s/libvirt/qemu/.*' % hugepage_path_1G
+    params_2M = test_obj.params.get('2M')
+    params_512M = test_obj.params.get('512M')
+    params_1G = test_obj.params.get('1G')
     node1_mem_path = ''
-    if hp_size == "2M_512M":
-        node1_mem_path = '"mem-path":"%s/libvirt/qemu/.*",' % hugepage_path_512M
-    if hp_size == "2M_1G":
-        node1_mem_path = '"mem-path":"%s/libvirt/qemu/.*",' % hugepage_path_1G
+    if hp_size == 'default_hugepage':
+        node0_mem_path = '%s/libvirt/qemu/.*' % test_obj.params['vm_hugepage_mountpoint']
+    elif hp_size == '512M_2M':
+        node0_mem_path = '%s/libvirt/qemu/.*' % params_512M.get('vm_hugepage_mountpoint')
+        node1_mem_path = '"mem-path":"%s/libvirt/qemu/.*",' % params_2M.get('vm_hugepage_mountpoint')
+    elif hp_size == '2M_1G':
+        node0_mem_path = '%s/libvirt/qemu/.*' % params_2M.get('vm_hugepage_mountpoint')
+        node1_mem_path = '"mem-path":"%s/libvirt/qemu/.*",' % params_1G.get('vm_hugepage_mountpoint')
+    elif hp_size == '1G':
+        node0_mem_path = '%s/libvirt/qemu/.*' % params_1G.get('vm_hugepage_mountpoint')
+
     node0_mem_size = int(test_obj.params.get('vm_numa_node0_mem')) * 1024
-    node1_prealloc = '"prealloc":true,' if hp_size == '2M_1G' or hp_size == '2M_512M' else ''
+    node1_prealloc = '"prealloc":true,' if hp_size == '2M_1G' or hp_size == '512M_2M' else ''
     node1_mem_size = int(test_obj.params.get('vm_numa_node1_mem')) * 1024
     pat_in_qemu_cmdline = pat_in_qemu_cmdline % (node0_mem_path,
                                                  node0_mem_size,
@@ -186,7 +176,7 @@ def run_default(test_obj):
     test_obj.test.log.debug("Step: start vm and check results")
     test_obj.virsh_dargs.update({'ignore_status': True})
     ret = virsh.start(test_obj.vm.name, **test_obj.virsh_dargs)
-    err_msg_expected = produce_expected_error(test_obj)
+    err_msg_expected = test_obj.params.get("err_msg")
     libvirt.check_result(ret, expected_fails=err_msg_expected)
     if err_msg_expected:
         return
@@ -204,12 +194,6 @@ def teardown_default(test_obj):
     :param test_obj: NumaTest object
     """
     test_obj.teardown()
-    hpconfig_2M = test_obj.params.get('hp_config_2M')
-    hpconfig_512M = test_obj.params.get('hp_config_512M')
-    hpconfig_1G = test_obj.params.get('hp_config_1G')
-    for hpconfig in [hpconfig_2M, hpconfig_512M, hpconfig_1G]:
-        if hpconfig:
-            hpconfig.cleanup()
     test_obj.test.log.debug("Step: hugepage is deallocated")
     test_obj.test.log.debug("Step: teardown is done")
 
@@ -218,11 +202,6 @@ def run(test, params, env):
     """
     Test for numa memory binding with emulator thread pin
     """
-    conf_pagesize = params.get("conf_pagesize")
-    kernel_pagesize = process.run("getconf PAGESIZE", shell=True).stdout_text.strip()
-    if kernel_pagesize != conf_pagesize:
-        test.cancel("The current test does not work with this kernel pagesize.")
-
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     numatest_obj = numa_base.NumaTest(vm, params, test)

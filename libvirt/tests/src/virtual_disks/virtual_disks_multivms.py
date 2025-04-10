@@ -165,7 +165,7 @@ def run(test, params, env):
                 is_setup=True, is_login=True, image_size=image_size)
             logging.debug("iscsi dev name: %s", disk_source)
             # Format the disk and make the file system.
-            libvirt.mk_label(disk_source)
+            libvirt.mk_label(disk_source, "gpt")
             libvirt.mk_part(disk_source, size="10M")
             if not utils_misc.wait_for(lambda: "%s1" % disk_source.split("/")[-1] in utils_disk.get_parts_list(), timeout=5):
                 test.fail("Partition %s1 can not be ready" % disk_source)

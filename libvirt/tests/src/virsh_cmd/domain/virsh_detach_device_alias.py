@@ -1,10 +1,12 @@
-import os
-import uuid
 import logging as log
+import os
+import platform
+import uuid
 
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
+from virttest import utils_sys
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.watchdog import Watchdog
@@ -19,6 +21,34 @@ from avocado.utils import process
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+
+
+def get_suitable_pci_device(test):
+    """
+    Get a suitable pci device ID for attaching to the vm.
+    The host PCI devices will vary on different hardware, so it is hard
+    to always get an usable pci device.
+
+    :param test: test object
+    :return: str, the pci device full id or None
+    """
+    pci_ids = utils_sys.get_host_bridge_id()
+    if not pci_ids:
+        test.error("Not Found any pci devices")
+
+    if platform.machine() != "aarch64":
+        good_pci = utils_misc.get_full_pci_id(pci_ids[-1]).split("\n")[0]
+        return good_pci
+    else:
+        suitable_pci_ids = [id for id in pci_ids if id != "0000:00"]
+        for pci_id in suitable_pci_ids:
+            full_ids = utils_misc.get_full_pci_id(pci_id)
+            good_pci = "%s:00.0" % pci_id
+            if full_ids.count(good_pci):
+                test.log.debug("PCI ID '%s' is chosen", good_pci)
+                return good_pci
+    test.log.warning("No suitable PCI ID is chosen")
+    return None
 
 
 def run(test, params, env):
@@ -39,7 +69,6 @@ def run(test, params, env):
     hostdev_type = params.get("detach_hostdev_type", "")
     hostdev_managed = params.get("detach_hostdev_managed")
     controller_dict = eval(params.get('controller_dict', '{}'))
-    pci_filter = params.get("pci_filter", "")
     # controller params
     contr_type = params.get("detach_controller_type")
     contr_model = params.get("detach_controller_mode")
@@ -159,10 +188,7 @@ def run(test, params, env):
                                                dev_type='controller',
                                                dev_dict=controller_dict,
                                                index=int(params.get("index")))
-
-                pci_id = utils_misc.get_full_pci_id(
-                    utils_misc.get_pci_id_using_filter(pci_filter)[-1])
-
+                pci_id = get_suitable_pci_device(test)
                 if not vm.is_alive():
                     vm.start()
                 vm.wait_for_login()
@@ -266,7 +292,9 @@ def run(test, params, env):
         vmxml.remove_all_device_by_type('input')
         input_dict.update({"alias": {"name": device_alias}})
         if input_type == "passthrough":
-            event = process.run("ls /dev/input/event*", shell=True).stdout
+            event = process.run("ls /dev/input/event*", shell=True, ignore_status=True).stdout
+            if len(event) == 0:
+                test.cancel("Not found any input devices")
             input_dict.update({"source_evdev": event.decode('utf-8').split()[0]})
 
         input_obj = Input(type_name=input_type)

@@ -30,6 +30,10 @@ def run(test, params, env):
         current_os_attrs = os_xml.fetch_attrs()
         for key in os_attrs:
             if key in current_os_attrs:
+                if key == "nvram_attrs":
+                    current_os_attrs[key].pop("templateFormat")
+                    if "format" not in os_attrs[key]:
+                        os_attrs[key]["format"] = "raw"
                 if os_attrs[key] != current_os_attrs[key]:
                     test.fail("Configured os xml value {} doesn't match the"
                               " entry {} in guest xml".format(os_attrs[key], current_os_attrs[key]))

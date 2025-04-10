@@ -1,7 +1,10 @@
 import logging
+import platform
 
 from avocado.core import exceptions
 from avocado.utils import distro
+from avocado.utils import download
+from avocado.utils import process
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -22,11 +25,21 @@ def get_vm(params):
     vms = params.get('vms').split()
     firmware_type = params.get('firmware_type')
     detected_distro = distro.detect()
-    os_type_dict = {
-        ('ovmf' if any([vm_xml.VMXML.new_from_dumpxml(v).os.fetch_attrs().
-                        get('os_firmware') == "efi", vm_xml.VMXML.
-                        new_from_dumpxml(v).os.fetch_attrs().get('nvram')])
-            else 'seabios'): v for v in vms}
+    os_type_dict = {}
+    if platform.machine() == "s390x":
+        return vms[0]
+
+    for _vm in vms:
+        if os_type_dict.get("seabios") and os_type_dict.get("ovmf"):
+            break
+        vm_os_attrs = vm_xml.VMXML.new_from_dumpxml(_vm).os.fetch_attrs()
+        is_ovmf = any([vm_os_attrs.get('os_firmware') == "efi", vm_os_attrs.get('nvram')])
+        if is_ovmf:
+            if not os_type_dict.get("ovmf"):
+                os_type_dict["ovmf"] = _vm
+        elif not os_type_dict.get("seabios"):
+            os_type_dict["seabios"] = _vm
+    LOG.debug(f"VMS: {os_type_dict}")
     if not firmware_type:
         LOG.debug("Get default vm")
         if detected_distro.name == 'rhel':
@@ -95,3 +108,14 @@ def check_vm_startup(vm, vm_name, error_msg=None):
         vm.wait_for_login().close()
         LOG.debug("Succeed to boot %s", vm_name)
     return vmxml
+
+
+def test_file_download(url, path):
+    """
+    Returns true if the file could be successfully downloaded
+
+    :param url: source URL
+    :param path: destination path
+    """
+    download.get_file(url, path)
+    return process.run('ls -d ' + path, ignore_status="yes").exit_status == 0

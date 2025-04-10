@@ -140,7 +140,8 @@ def run(test, params, env):
                 for _ in range(3):
                     session.cmd('curl -O https://avocado-project.org/data/'
                                 'assets/jeos/27/jeos-27-64.qcow2.xz -L',
-                                timeout=240)
+                                timeout=60, ignore_all_errors=True)
+                    session.sendcontrol("c")
                 host_iface_stat = get_host_iface_stat(vm_name,
                                                       iface_target_dev,
                                                       **virsh_args)
@@ -151,7 +152,8 @@ def run(test, params, env):
 
             host_iface = params.get("host_iface")
             if not host_iface:
-                host_iface = utils_net.get_net_if(state="UP")[0]
+                host_iface = utils_net.get_default_gateway(
+                    iface_name=True, force_dhcp=True).split()[0]
             if iface_type == 'direct':
                 iface_dict = {k.replace('new_iface_', ''): v
                               for k, v in params.items()
@@ -186,6 +188,7 @@ def run(test, params, env):
                 unpr_vmxml.del_device('interface', by_tag=True)
                 libvirt_vmxml.modify_vm_device(unpr_vmxml, 'interface',
                                                iface_attrs)
+                unpr_vmxml.del_seclabel(by_attr=[('model', 'dac')])
                 network_base.define_vm_for_unprivileged_user(unpr_user,
                                                              unpr_vmxml)
                 unpr_vm_name = unpr_vmxml.vm_name

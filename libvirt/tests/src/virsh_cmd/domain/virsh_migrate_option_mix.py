@@ -7,7 +7,6 @@ from avocado.utils import process
 
 from virttest import utils_selinux
 from virttest import virsh
-from virttest import utils_package
 from virttest import migration
 from virttest.utils_conn import TLSConnection
 from virttest.utils_test import libvirt
@@ -227,26 +226,8 @@ def run(test, params, env):
         # Prepare for postcopy migration: install and run stress in VM
         if postcopy and src_vm_status == "running":
             logging.debug("Install and run stress in vm for postcopy migration")
-            pkg_name = 'stress'
-
-            # Get a vm session
-            logging.debug("Get a vm session")
-            vm_session = vm.wait_for_login()
-            if not vm_session:
-                test.error("Can't get a vm session successfully")
-
-            # Install package stress if it is not installed in vm
-            logging.debug("Check if stress tool is installed for postcopy migration")
-            pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
-            if not pkg_mgr.is_installed(pkg_name):
-                logging.debug("Stress tool will be installed")
-                if not pkg_mgr.install():
-                    test.error("Package '%s' installation fails" % pkg_name)
-
-            # Run stress in vm
-            logging.debug("Run stress in vm")
-            stress_args = params.get("stress_args")
-            vm_session.cmd('stress %s' % stress_args)
+            params.update({"stress_package": "stress"})
+            obj_migration.run_stress_in_vm(vm, params)
 
         # Prepare for --xml <updated_xml_file>.
         if xml_option:

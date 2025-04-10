@@ -1,11 +1,10 @@
 import os
 
-from avocado.utils import distro
 from avocado.utils import process
 
-from virttest import ceph
 from virttest import libvirt_version
 from virttest import remote
+from virttest import utils_disk
 from virttest import utils_package
 from virttest import virsh
 
@@ -163,34 +162,6 @@ def setup_vtpm(params, test, vm, migration_obj):
     vm.wait_for_login().close()
 
 
-def prepare_ceph_disk(params, test, vm):
-    """
-    Prepare ceph disk
-
-    :param params: dict, test parameters
-    :param vm: VM object
-    :param test: test object
-    """
-    mon_host = params.get("mon_host")
-    disk_source_name = params.get("disk_source_name")
-    seclabel_dict = eval(params.get("seclabel_dict", "{}"))
-    vm_name = params.get("migrate_main_vm")
-
-    detected_distro = distro.detect()
-    rbd_img_prefix = '_'.join(['rbd', detected_distro.name,
-                               detected_distro.version,
-                               detected_distro.release,
-                               detected_distro.arch])
-    disk_source_name = os.path.join(disk_source_name, rbd_img_prefix + '.img')
-    params.update({"disk_source_name": disk_source_name})
-    ceph.rbd_image_rm(mon_host, disk_source_name.split("/")[0],
-                      disk_source_name.split("/")[1])
-    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-    vmxml.set_seclabel([seclabel_dict])
-    vmxml.sync()
-    libvirt.set_vm_disk(vm, params)
-
-
 def run(test, params, env):
     """
     Test migration with vtpm device with shared TPM state.
@@ -206,9 +177,21 @@ def run(test, params, env):
 
         """
         tpm_security_contexts = params.get("tpm_security_contexts")
+        swtpm_path = params.get("swtpm_path")
+        client_ip = params.get("client_ip")
+        nfs_export_dir = params.get("nfs_export_dir")
+        server_ip = params.get("server_ip", params.get("remote_ip"))
+        server_user = params.get("server_user", params.get("remote_user"))
+        server_pwd = params.get("server_pwd", params.get("remote_pwd"))
+        src_mount_path = params.get("src_mount_path")
 
         test.log.info("Setup for nfs storage type.")
         libvirt.set_vm_disk(vm, params)
+        if not os.path.exists(swtpm_path):
+            os.mkdir(swtpm_path)
+        libvirt.setup_or_cleanup_nfs(True, mount_dir=swtpm_path, is_mount=True, export_dir=nfs_export_dir)
+        server_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
+        utils_disk.mount(src_mount_path, swtpm_path, session=server_session)
         setup_vtpm(params, test, vm, migration_obj)
         check_tpm_security_context(params, vm, test, tpm_security_contexts)
         check_swtpm_process(params, test)
@@ -220,18 +203,31 @@ def run(test, params, env):
 
         """
         tpm_security_contexts = params.get("tpm_security_contexts")
-        mon_host = params.get("mon_host")
         set_remote_libvirtd_log = "yes" == params.get("set_remote_libvirtd_log", "no")
+        swtpm_path = params.get("swtpm_path")
+        seclabel_dict = eval(params.get("seclabel_dict", "{}"))
+        ceph_key = params.get("ceph_key")
+        src_mount_path = params.get("src_mount_path")
+        server_ip = params.get("server_ip", params.get("remote_ip"))
+        server_user = params.get("server_user", params.get("remote_user"))
+        server_pwd = params.get("server_pwd", params.get("remote_pwd"))
 
         test.log.info("Setup for ceph storage type.")
         if set_remote_libvirtd_log:
             migration_obj.set_remote_log()
 
-        cmd = "mount -t ceph %s:6789:/  /var/lib/libvirt/swtpm -o name=admin" % mon_host
-        process.run(cmd, ignore_status=False, shell=True)
-        remote.run_remote_cmd(cmd, params)
+        if not os.path.exists(swtpm_path):
+            os.mkdir(swtpm_path)
+        utils_disk.mount(src_mount_path, swtpm_path, fstype="ceph", options="name=admin,secret=%s" % ceph_key)
+        server_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
+        utils_disk.mount(src_mount_path, swtpm_path, fstype="ceph", options="name=admin,secret=%s" % ceph_key, session=server_session)
+        process.run("restorecon -Rv /var/lib/libvirt/swtpm", ignore_status=False, shell=True)
+        server_session.close()
 
-        prepare_ceph_disk(params, test, vm)
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vmxml.set_seclabel([seclabel_dict])
+        vmxml.sync()
+        libvirt.set_vm_disk(vm, params)
         setup_vtpm(params, test, vm, migration_obj)
         check_tpm_security_context(params, vm, test, tpm_security_contexts)
         check_swtpm_process(params, test)
@@ -250,35 +246,53 @@ def run(test, params, env):
         Verify steps for migration back
 
         """
+        migrate_vm_back = "yes" == params.get("migrate_vm_back", "yes")
+        if not migrate_vm_back:
+            return
+
         tpm_security_contexts_restore = params.get("tpm_security_contexts_restore")
         check_vtpm_func(params, vm, test)
         vm.shutdown()
         vm.wait_for_shutdown()
         check_tpm_security_context(params, vm, test, tpm_security_contexts_restore)
 
-    def cleanup_ceph():
+    def cleanup_test():
         """
-        Cleanup steps for ceph case
+        Cleanup steps
 
         """
-        cmd = "umount /var/lib/libvirt/swtpm"
-        process.run(cmd, ignore_status=False, shell=True)
-        remote.run_remote_cmd(cmd, params)
+        src_mount_path = params.get("src_mount_path")
+        swtpm_path = params.get("swtpm_path")
+        nfs_export_dir = params.get("nfs_export_dir")
+        server_ip = params.get("server_ip", params.get("remote_ip"))
+        server_user = params.get("server_user", params.get("remote_user"))
+        server_pwd = params.get("server_pwd", params.get("remote_pwd"))
+
+        test.log.info("Cleanup steps.")
+        server_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
+        if shared_storage_type == "ceph":
+            utils_disk.umount(src_mount_path, swtpm_path, fstype="ceph")
+            utils_disk.umount(src_mount_path, swtpm_path, fstype="ceph", session=server_session)
+        else:
+            utils_disk.umount("127.0.0.1:%s" % nfs_export_dir, swtpm_path)
+            utils_disk.umount(src_mount_path, swtpm_path, session=server_session)
+        server_session.close()
         migration_obj.cleanup_connection()
 
     vm_name = params.get("migrate_main_vm")
     shared_storage_type = params.get('shared_storage_type', '')
+    desturi = params.get("virsh_migrate_desturi")
 
     libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
     setup_test = eval("setup_%s" % shared_storage_type) if "setup_%s" % shared_storage_type in \
         locals() else migration_obj.setup_connection
-    cleanup_test = eval("cleanup_%s" % shared_storage_type) if "cleanup_%s" % shared_storage_type in \
-        locals() else migration_obj.cleanup_connection
 
     try:
         set_secret(params)
+        if not base_steps.check_cpu_for_mig(params):
+            base_steps.sync_cpu_for_mig(params)
         setup_test()
         migration_obj.run_migration()
         verify_test()

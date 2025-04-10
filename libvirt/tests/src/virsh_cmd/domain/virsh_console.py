@@ -81,7 +81,7 @@ def vm_console_config(vm, test, device='ttyS0',
 
 
 def check_duplicated_console(command, force_command, status_error, login_user,
-                             login_passwd, test):
+                             login_passwd, test, prompt_regex):
     """
     Test opening a second console with another console active using --force
     option or not.
@@ -93,7 +93,7 @@ def check_duplicated_console(command, force_command, status_error, login_user,
     :param login_passwd: Password for logging into the VM.
     :param test: Test Object
     """
-    session = aexpect.ShellSession(command)
+    session = aexpect.ShellSession(command, prompt=prompt_regex)
     if not status_error:
         # Test duplicated console session
         res = process.run(command, timeout=CMD_TIMEOUT,
@@ -104,7 +104,7 @@ def check_duplicated_console(command, force_command, status_error, login_user,
                       "but succeeded with:\n%s" % res)
 
         # Test duplicated console session with force option
-        force_session = aexpect.ShellSession(force_command)
+        force_session = aexpect.ShellSession(force_command, prompt=prompt_regex)
         force_status = utils_test.libvirt.verify_virsh_console(
             force_session, login_user, login_passwd,
             timeout=CMD_TIMEOUT, debug=True)
@@ -116,7 +116,7 @@ def check_duplicated_console(command, force_command, status_error, login_user,
 
 
 def check_disconnect_on_shutdown(vm, command, status_error, login_user,
-                                 login_passwd, test):
+                                 login_passwd, test, prompt_regex):
     """
     Test whether an active console will disconnect after shutting down the VM.
 
@@ -127,11 +127,15 @@ def check_disconnect_on_shutdown(vm, command, status_error, login_user,
     :param login_passwd: Password for logging into the VM.
     :param test: Test Object
     """
-    session = aexpect.ShellSession(command)
+    session = aexpect.ShellSession(command, prompt=prompt_regex)
     if not status_error:
         log = ""
         console_cmd = "shutdown -h now"
         try:
+            # Do not use remote.handle_prompts here because it will inhibit
+            # errors.
+            # Login will fail if extra kernel messages are printed after login
+            # prompt. We should keep the failure to force QE do the check.
             while True:
                 match, text = session.read_until_last_line_matches(
                     [r"[E|e]scape character is", r"login:",
@@ -200,6 +204,7 @@ def run(test, params, env):
     domid = ""
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
+    prompt_regex = params.get("prompt_regex", r"(.*)(\[.+@.+\]#)\s(.*)$")
 
     # PAPR guests don't usually have a true serial device (ttyS0),
     # they only have the hypervisor console (/dev/hvc0)
@@ -260,7 +265,7 @@ def run(test, params, env):
         else:
             command = "virsh console %s" % vm_ref
             force_command = "virsh console %s --force" % vm_ref
-        console_session = aexpect.ShellSession(command)
+        console_session = aexpect.ShellSession(command, prompt=prompt_regex)
 
         status = utils_test.libvirt.verify_virsh_console(
             console_session, login_user, login_passwd,
@@ -268,9 +273,9 @@ def run(test, params, env):
         console_session.close()
 
         check_duplicated_console(command, force_command, status_error,
-                                 login_user, login_passwd, test)
+                                 login_user, login_passwd, test, prompt_regex)
         check_disconnect_on_shutdown(vm, command, status_error, login_user,
-                                     login_passwd, test)
+                                     login_passwd, test, prompt_regex)
     finally:
         # Recover state of vm.
         if vm_state == "paused":

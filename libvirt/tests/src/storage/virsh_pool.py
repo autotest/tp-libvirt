@@ -423,7 +423,8 @@ def run(test, params, env):
             # So a directory based storage pool is thus pretty much always active,
             # and so as the SCSI pool.
             if pool_type not in ['dir', 'scsi']:
-                if pool_type == 'disk' and libvirt_version.version_compare(8, 1, 0):
+                if (pool_type == 'disk' and libvirt_version.version_compare(8, 1, 0)) or \
+                   (pool_type == 'logical' and libvirt_version.version_compare(9, 9, 0)):
                     utlv.check_exit_status(result)
                 else:
                     result = virsh.pool_start(pool_name, ignore_status=True)

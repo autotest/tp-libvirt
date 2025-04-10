@@ -55,13 +55,17 @@ def run(test, params, env):
         check_points.check_network_accessibility(
             vm, test_obj=test_obj, config_vdpa=True, **params)
 
-        test.log.info("Save the VM.")
-        save_path = os.path.join(data_dir.get_tmp_dir(), vm.name + '.save')
-        virsh.save(vm.name, save_path, **VIRSH_ARGS)
-        test.log.info("Restore vm.")
-        virsh.restore(save_path, **VIRSH_ARGS)
-        check_points.check_network_accessibility(
-            vm, test_obj=test_obj, config_vdpa=False, **params)
+        save_supported_ver = {
+            'func_supported_since_libvirt_ver': params.get('save_supported_ver',
+                                                           '(8,5,0)')}
+        if libvirt_version.is_libvirt_feature_supported(save_supported_ver, True):
+            test.log.info("Save the VM.")
+            save_path = os.path.join(data_dir.get_tmp_dir(), vm.name + '.save')
+            virsh.save(vm.name, save_path, **VIRSH_ARGS)
+            test.log.info("Restore vm.")
+            virsh.restore(save_path, **VIRSH_ARGS)
+            check_points.check_network_accessibility(
+                vm, test_obj=test_obj, config_vdpa=False, **params)
 
         test.log.info("Suspend and resume the vm.")
         virsh.suspend(vm.name, **VIRSH_ARGS)

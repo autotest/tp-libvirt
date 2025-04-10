@@ -91,10 +91,12 @@ def run(test, params, env):
     label = params.get("con_label")
     vm = env.get_vm(vm_name)
 
+    socket_file_dir_created = False
     if src_path:
         socket_file_dir = os.path.dirname(src_path)
         if not os.path.exists(socket_file_dir):
             os.mkdir(socket_file_dir)
+            socket_file_dir_created = True
         shutil.chown(socket_file_dir, "qemu", "qemu")
         utils_selinux.set_context_of_file(filename=socket_file_dir,
                                           context=label)
@@ -142,3 +144,5 @@ def run(test, params, env):
     finally:
         vm.destroy()
         backup_xml.sync()
+        if socket_file_dir_created and os.path.exists(socket_file_dir):
+            os.rmdir(socket_file_dir)

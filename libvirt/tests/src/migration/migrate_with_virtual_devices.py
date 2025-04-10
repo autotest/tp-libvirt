@@ -552,21 +552,21 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
         """
 
         logging.debug("Check rng device in vm")
-        check_cmd = "dd if=/dev/hwrng of=/dev/null count=2 bs=2"
+        check_cmd = "cat /sys/devices/virtual/misc/hw_random/rng_available"
         timeout = 10
 
         try:
             status, output = vm.session.cmd_status_output(check_cmd, timeout)
-            logging.debug("cmd exit status: %s, cmd output: %s",
+            logging.debug("cmd exit status: %s, current rng available: %s",
                           status, output)
-
-            if status == 0:
+            status = True if output.count("virtio_rng") else False
+            if status is True:
                 if rng_present:
                     return
                 else:
                     raise DeviceNotRemovedError("rng")
             else:
-                if not rng_present and "No such device" in output:
+                if not rng_present:
                     return
                 elif rng_present:
                     raise DeviceNotFoundError("rng")

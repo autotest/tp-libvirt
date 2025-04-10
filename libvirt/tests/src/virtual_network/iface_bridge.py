@@ -17,6 +17,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
 from virttest.libvirt_xml import network_xml
 
+from provider.virtual_network import network_base
+
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
 
@@ -113,7 +115,9 @@ def run(test, params, env):
     filter_name = params.get("filter_name", "vdsm-no-mac-spoofing")
     ping_count = params.get("ping_count", "5")
     ping_timeout = float(params.get("ping_timeout", "10"))
-    iface_name = utils_net.get_net_if(state="UP")[0]
+    host_iface = params.get("host_iface")
+    iface_name = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     bridge_script = NETWORK_SCRIPT + bridge_name
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
@@ -249,7 +253,7 @@ def run(test, params, env):
         remote_url = params.get("remote_ip", "www.google.com")
 
         try:
-            vm1_ip = utils_net.get_guest_ip_addr(session1, mac)
+            vm1_ip = network_base.get_vm_ip(session1, mac)
         except Exception as errs:
             test.fail("vm1 can't get IP with the new create bridge: %s" % errs)
         if test_qos:
@@ -287,7 +291,7 @@ def run(test, params, env):
                     driver_dict = eval(iface_driver)
                     if session1 is None:
                         session1 = vm1.wait_for_serial_login()
-                    guest_iface_info = session1.cmd_output("ip l").strip()
+                    guest_iface_info = session1.cmd_output("ip --color=never l").strip()
                     guest_iface_name = re.findall(r"^\d+: (\S+?)[@:].*state UP.*$", guest_iface_info, re.MULTILINE)[0]
                     comb_size = driver_dict.get('queues')
                     rx_size = driver_dict.get('rx_queue_size')

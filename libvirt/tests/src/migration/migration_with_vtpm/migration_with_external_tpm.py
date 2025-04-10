@@ -197,6 +197,9 @@ def run(test, params, env):
 
         """
         tpm_security_contexts = params.get("tpm_security_contexts")
+        migrate_vm_back = "yes" == params.get("migrate_vm_back", "yes")
+        if not migrate_vm_back:
+            return
 
         check_vtpm_func(params, vm, test)
         vm.shutdown()
@@ -224,12 +227,15 @@ def run(test, params, env):
         migration_obj.cleanup_connection()
 
     vm_name = params.get("migrate_main_vm")
+    desturi = params.get("virsh_migrate_desturi")
 
     libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
+        if not base_steps.check_cpu_for_mig(params):
+            base_steps.sync_cpu_for_mig(params)
         setup_test()
         migration_obj.run_migration()
         verify_test()

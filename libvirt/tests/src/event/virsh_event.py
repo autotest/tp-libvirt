@@ -21,6 +21,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest.libvirt_xml.devices.watchdog import Watchdog
+from virttest.utils_libvirt.libvirt_disk import get_non_root_disk_name
 
 from xml.dom.minidom import parseString
 
@@ -152,6 +153,7 @@ def run(test, params, env):
         vmxml.max_mem_rt_slots = int(params.get("maxmem_slots"))
         mem_unit = params.get("mem_unit")
         vmxml.max_mem_rt_unit = mem_unit
+        cpu_mode = params.get("cpu_mode")
         current_mem = int(params.get("current_mem"))
         vmxml.current_mem = current_mem
         vmxml.current_mem_unit = mem_unit
@@ -176,10 +178,10 @@ def run(test, params, env):
         if vmxml.xmltreefile.find('cpu'):
             vmxml_cpu = vmxml.cpu
             logging.debug("Existing cpu configuration in guest xml:\n%s", vmxml_cpu)
-            vmxml_cpu.mode = 'host-model'
+            vmxml_cpu.mode = cpu_mode
         else:
             vmxml_cpu = vm_xml.VMCPUXML()
-            vmxml_cpu.xml = "<cpu mode='host-model'><numa/></cpu>"
+            vmxml_cpu.xml = "<cpu mode='%s'><numa/></cpu>" % cpu_mode
         vmxml.vcpu = numa_nodes * 2
         vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
         logging.debug(vmxml_cpu.numa_cell)
@@ -378,8 +380,10 @@ def run(test, params, env):
                     logging.debug(process.run('qemu-img info %s -U' % new_disk))
                     virsh.domblkthreshold(vm_name, 'vdb', '100M')
                     session = dom.wait_for_login()
-                    session.cmd("mkfs.ext4 /dev/vdb && mount /dev/vdb /mnt && ls /mnt && "
-                                "dd if=/dev/urandom of=/mnt/bigfile bs=1M count=300 && sync", timeout=90)
+                    disk_name, _ = get_non_root_disk_name(session)
+                    session.cmd("mkfs.ext4 /dev/%s && mount /dev/%s /mnt && ls /mnt && "
+                                "dd if=/dev/urandom of=/mnt/bigfile bs=1M count=300 && sync"
+                                % (disk_name, disk_name), timeout=90)
                     time.sleep(5)
                     session.close()
                     expected_events_list.append("'block-threshold' for %s:"
@@ -539,7 +543,7 @@ def run(test, params, env):
                         test.fail("Failed to trigger watchdog: %s" % details)
                     session.close()
                     # watchdog acts slowly, waiting for it.
-                    time.sleep(30)
+                    time.sleep(60)
                     expected_events_list.append("'watchdog' for %s: " + "%s" % action)
                     if action == 'pause':
                         expected_events_list.append("'lifecycle' for %s: Suspended Watchdog")
@@ -558,8 +562,10 @@ def run(test, params, env):
                     add_disk(dom.name, new_disk, 'vdb', '--subdriver qcow2 --config', 'qcow2')
                     dom.start()
                     session = dom.wait_for_login()
-                    session.cmd("mkfs.ext4 /dev/vdb && mount /dev/vdb /mnt && ls /mnt && "
-                                "dd if=/dev/zero of=/mnt/test.img bs=1M count=50", ignore_all_errors=True)
+                    disk_name, _ = get_non_root_disk_name(session)
+                    session.cmd("mkfs.ext4 /dev/%s && mount /dev/%s /mnt && ls /mnt && "
+                                "dd if=/dev/zero of=/mnt/test.img bs=1M count=50"
+                                % (disk_name, disk_name), ignore_all_errors=True)
                     time.sleep(5)
                     session.close()
                     expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause")

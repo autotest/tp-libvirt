@@ -4,7 +4,7 @@ import re
 import uuid
 import shutil
 import tempfile
-import ovirtsdk4
+import time
 import xml.etree.ElementTree as ET
 
 from virttest import data_dir
@@ -18,7 +18,6 @@ from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
 from virttest.utils_v2v import params_get
 from avocado.utils import process
-from avocado.utils import download
 from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
 from provider.v2v_vmcheck_helper import VMChecker
@@ -233,18 +232,34 @@ def run(test, params, env):
 
         :param vmcheck: VMCheck object for vm checking
         """
-        def _get_vmware_info(cmd):
+        def _get_vmtools_info(cmd):
             _, res = vmcheck.run_cmd(cmd)
-            if res and not re.search('vmtools', res, re.I):
-                return True
-            return False
+            vmtools_info = re.search(r'uninstalling VMware Tools\s+.*exit code\s+(\d+)', res)
+            if vmtools_info:
+                exit_code = vmtools_info.group(1)
+                return int(exit_code)
 
-        cmds = ['tasklist', 'sc query vmtools']
-        for cmd in cmds:
-            res = utils_misc.wait_for(
-                lambda: _get_vmware_info(cmd), 600, step=30)
-            if not res:
-                test.fail("Failed to verification vmtools uninstallation")
+        cmd = r'type "C:\Program Files\Guestfs\Firstboot\log.txt"'
+
+        try:
+            res = utils_misc.wait_for(lambda: _get_vmtools_info(cmd), 900, step=30)
+        except (ShellProcessTerminatedError, ShellStatusError):
+            # Windows guest may reboot after installing qemu-ga service
+            LOG.debug('Windows guest is rebooting')
+            if vmcheck.session:
+                vmcheck.session.close()
+                vmcheck.session = None
+            # VM boots up is extremely slow when all testing in running on
+            # rhv server simultaneously, so set timeout to 1200.
+            vmcheck.create_session(timeout=1200)
+            res = utils_misc.wait_for(lambda: _get_vmtools_info(cmd), 900, step=30)
+
+        if res:
+            if os_version in ['win2025', 'win2019'] and str(res) == '1603':
+                #Some windows guests fail to uninstall vmware tools due to bug RHEL-51169
+                LOG.info('%s guest fail to unintall VMware tools with exit code 1603 which is known issue' % os_version)
+            else:
+                test.fail("Fail to uninstall VMware-tools with exit code %s" % res)
 
     def check_windows_service(vmcheck, service_name):
         """
@@ -259,7 +274,7 @@ def run(test, params, env):
                     'running',
                     vmcheck.get_service_info(service_name),
                     re.I),
-                600,
+                900,
                 step=30)
         except (ShellProcessTerminatedError, ShellStatusError):
             # Windows guest may reboot after installing qemu-ga service
@@ -275,7 +290,7 @@ def run(test, params, env):
                     'running',
                     vmcheck.get_service_info(service_name),
                     re.I),
-                600,
+                900,
                 step=30)
 
         if not res:
@@ -292,7 +307,10 @@ def run(test, params, env):
             Get qemu-guest-agent service info
             """
             status_ptn = r'Active: active \((running|exited)\)|qemu-ga \(pid +[0-9]+\) is running'
-            cmd = 'service qemu-ga status;systemctl status qemu-guest-agent;systemctl status qemu-ga*'
+            if os_version == 'sles':
+                cmd = 'systemctl status qemu-guest-agent'
+            else:
+                cmd = 'service qemu-ga status;systemctl status qemu-guest-agent;systemctl status qemu-ga*'
             _, output = vmcheck.run_cmd(cmd)
             if not re.search(status_ptn, output):
                 return False
@@ -414,12 +432,14 @@ def run(test, params, env):
                 # IP address
                 if i == 0:
                     ip_addr = r'IPv4 Address.*?: %s' % value
+                    LOG.info('static ip addr: %s', re.search(ip_addr, ipconfig, re.S))
                     if not re.search(ip_addr, ipconfig, re.S):
                         LOG.debug('Found IP addr failed')
                         return False
                 # Default gateway
                 if i == 1:
                     ip_gw = r'Default Gateway.*?: .*?%s' % value
+                    LOG.info('static gateway: %s', re.search(ip_gw, ipconfig, re.S))
                     if not re.search(ip_gw, ipconfig, re.S):
                         LOG.debug('Found Gateway failed')
                         return False
@@ -430,12 +450,14 @@ def run(test, params, env):
                     cidr = '.'.join(
                         [str(int(bin_mask[i * 8:i * 8 + 8], 2)) for i in range(4)])
                     sub_mask = r'Subnet Mask.*?: %s' % cidr
+                    LOG.info('static subnet mask: %s', re.search(sub_mask, ipconfig, re.S))
                     if not re.search(sub_mask, ipconfig, re.S):
                         LOG.debug('Found subnet mask failed')
                         return False
                 # DNS server list
                 if i >= 3:
                     dns_server = r'DNS Servers.*?:.*?%s' % value
+                    LOG.info('static DNS: %s', re.search(dns_server, ipconfig, re.S))
                     if not re.search(dns_server, ipconfig, re.S):
                         LOG.debug('Found DNS Server failed')
                         return False
@@ -499,7 +521,7 @@ def run(test, params, env):
                 test.fail('%s of rhsrvany.exe is not correct' % key)
 
     def verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vcenter_ip):
-        process.run('yum install ca-certificates -y | update-ca-trust enable',  shell=True)
+        process.run('yum install ca-certificates -y | update-ca-trust',  shell=True)
         mount_cert_dir = utils_v2v.v2v_mount(certs_src_dir, 'certs_src_dir')
         if not os.path.exists(certs_dest_dir):
             os.makedirs(certs_dest_dir)
@@ -508,6 +530,40 @@ def run(test, params, env):
         process.run('update-ca-trust extract', shell=True)
         with open('/etc/hosts', "w") as f:
             f.write('%s %s' % (vcenter_ip, vcenter_fdqn))
+
+    def check_online_disks(vmcheck):
+        """
+        Check if status of disks are online in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        """
+        def _get_disk_status(cmd):
+
+            for i in range(9):
+                _, res = vmcheck.run_cmd(cmd)
+                if re.search('Offline', res):
+                    time.sleep(100)
+                else:
+                    return res
+            return res
+
+        cmd = r'cmd /c echo list disk^> "%temp%\answer.tmp" ^& (diskpart ^< "%temp%\answer.tmp") ^& ' \
+              r'del "%temp%\answer.tmp"'
+        try:
+            res = utils_misc.wait_for(lambda: _get_disk_status(cmd), 900)
+        except (ShellProcessTerminatedError, ShellStatusError):
+            # Windows guest may reboot after installing qemu-ga service
+            LOG.debug('Windows guest is rebooting')
+            if vmcheck.session:
+                vmcheck.session.close()
+                vmcheck.session = None
+            # VM boots up is extremely slow when all testing in running on
+            # rhv server simultaneously, so set timeout to 1200.
+            vmcheck.create_session(timeout=1200)
+            res = utils_misc.wait_for(lambda: _get_disk_status(cmd), 900)
+        LOG.info('disk status is %s', res)
+        if re.search('Offline', res):
+            test.fail("there is offline additional disk")
 
     def check_result(result, status_error):
         """
@@ -550,7 +606,7 @@ def run(test, params, env):
 
             # Check guest following the checkpoint document after conversion
             LOG.info('Checking common checkpoints for v2v')
-            if 'ogac' in checkpoint:
+            if checkpoint[0].startswith('ogac'):
                 # windows guests will reboot at any time after qemu-ga is
                 # installed. The process cannot be controlled. In order to
                 # don't break vmchecker.run() process, It's better to put
@@ -558,10 +614,7 @@ def run(test, params, env):
                 # check_windows_ogac, it waits until rebooting completes.
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
-                    services = ['qemu-ga']
-                    virtio_win_env = os.getenv('VIRTIO_WIN')
-                    if virtio_win_env and 'rhv-guest-tools' in virtio_win_env:
-                        services.append('spice-ga')
+                    services = ['qemu-ga', 'balloon']
                     for ser in services:
                         check_windows_service(vmchecker.checker, ser)
                 else:
@@ -590,6 +643,8 @@ def run(test, params, env):
                 check_ubuntools(vmchecker.checker)
             if 'vmware_tools' in checkpoint:
                 check_windows_vmware_tools(vmchecker.checker)
+            if 'check_online_disks' in checkpoint:
+                check_online_disks(vmchecker.checker)
             if 'without_default_net' in checkpoint:
                 if virsh.net_state_dict()[net_name]['active']:
                     log_fail("Bridge virbr0 already started during conversion")
@@ -750,26 +805,10 @@ def run(test, params, env):
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
         if 'ovirtsdk4_pkg' in checkpoint:
+            import ovirtsdk4
             ovirt4_path = os.path.dirname(ovirtsdk4.__file__)
             dst_ovirt4_path = ovirt4_path + '.bak'
             os.rename(ovirt4_path, dst_ovirt4_path)
-        if 'ogac' in checkpoint:
-            os.environ['VIRTIO_WIN'] = virtio_win_path
-            if os_type == 'linux' and not utils_v2v.multiple_versions_compare(implementation_change_ver) and os.path.isdir(os.getenv('VIRTIO_WIN')):
-                export_path = os.getenv('VIRTIO_WIN')
-                qemu_guest_agent_dir = os.path.join(export_path, qa_path)
-                if not os.path.exists(qemu_guest_agent_dir) and os.access(
-                        export_path, os.W_OK) and qa_url:
-                    LOG.debug(
-                        'Not found qemu-guest-agent in virtio-win or rhv-guest-tools-iso,'
-                        ' Try to prepare it manually. This is not a permanent step, once'
-                        ' the official build includes it, this step should be removed.')
-                    os.makedirs(qemu_guest_agent_dir)
-                    rpm_name = os.path.basename(qa_url)
-                    download.get_file(
-                        qa_url, os.path.join(
-                            qemu_guest_agent_dir, rpm_name))
-
         if 'vddk_error' in checkpoint:
             fqdn_record = params_get(params, 'fqdn_record')
             with open('/etc/hosts', 'r+') as fd:
@@ -897,8 +936,7 @@ def run(test, params, env):
             params['msg_content_yes'] += '<rasd:num_of_sockets>' + res_cpu_topology.get('sockets') + '%'
             params['msg_content_yes'] += '<rasd:cpu_per_socket>' + res_cpu_topology.get('cores') + '%'
             params['msg_content_yes'] += '<rasd:threads_per_cpu>' + res_cpu_topology.get('threads')
-        if 'empty_cdrom' in checkpoint:
-            v2v_result = raw_dumpxml
+            v2v_result = utils_v2v.v2v_cmd(v2v_params)
         else:
             if 'exist_uuid' in checkpoint:
                 auto_clean = False

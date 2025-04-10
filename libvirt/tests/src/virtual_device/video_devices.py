@@ -223,6 +223,9 @@ def run(test, params, env):
     guest_arch = params.get("vm_arch_name")
     with_packed = params.get("with_packed", "no") == "yes"
     driver_packed = params.get("driver_packed", "on")
+    resolution_test = params.get("resolution_test", "no") == "yes"
+    resolution_x = params.get("resolution_x")
+    resolution_y = params.get("resolution_y")
 
     vm_xml = VMXML.new_from_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
@@ -243,9 +246,11 @@ def run(test, params, env):
         if heads_test and not default_primary_heads:
             kwargs["model_heads"] = primary_heads
         if mem_test and not default_mem_size:
-            kwargs["model_"+mem_type] = mem_size
+            kwargs["model_" + mem_type] = mem_size
         if model_type == "virtio" and with_packed:
             kwargs["driver"] = {"packed": driver_packed}
+        if resolution_test:
+            kwargs["resolution"] = {"x": resolution_x, "y": resolution_y}
         add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
 
         if secondary_video_model:
@@ -266,6 +271,9 @@ def run(test, params, env):
                           "device xml. details: %s " % res)
             logging.debug("vm started successfully in positive cases.")
 
+            if resolution_test:
+                libvirt.check_qemu_cmd_line(params.get("qemu_line"))
+
             if model_test:
                 check_model_test_cmd_line(model_type, is_primary)
 
@@ -283,6 +291,8 @@ def run(test, params, env):
 
                 check_mem_test_xml(model_type, mem_type, mem_size)
                 check_mem_test_cmd_line(model_type, mem_type, mem_size)
+
+            vm.wait_for_login().close()
     finally:
         if vm.is_alive():
             vm.destroy(vm_name)

@@ -2,7 +2,6 @@ import re
 import os
 import shutil
 import logging as log
-import platform
 import time
 import signal
 
@@ -159,15 +158,13 @@ def run(test, params, env):
             vmxml.sync()
 
         if vm_action == "crash":
+            libvirt_version.is_libvirt_feature_supported(params)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
             vmxml.on_crash = vm_oncrash_action
             if not vmxml.xmltreefile.find('devices').findall('panic'):
                 # Add <panic> device to domain
                 panic_dev = Panic()
-                if "ppc" not in platform.machine():
-                    panic_dev.addr_type = "isa"
-                    panic_dev.addr_iobase = "0x505"
                 vmxml.add_device(panic_dev)
             vmxml.sync()
             # Config auto_dump_path in qemu.conf
@@ -204,7 +201,7 @@ def run(test, params, env):
                 if kill_action == "stop_libvirtd":
                     libvirtd.stop()
                     time.sleep(1)
-                    utils_misc.kill_process_by_pattern(vm_name)
+                    process.run('pkill -9 qemu-kvm', ignore_status=True, shell=True)
                     time.sleep(1)
                     libvirtd.restart()
                 elif kill_action == "reboot_vm":

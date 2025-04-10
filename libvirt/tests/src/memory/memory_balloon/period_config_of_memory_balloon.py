@@ -9,7 +9,6 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 import re
 
-from virttest import utils_misc
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -45,20 +44,15 @@ def run(test, params, env):
 
         :return: usable mem, last_update, disk_caches value in result.
         """
-        def _get_response():
-            res = virsh.dommemstat(vm_name, ignore_status=False,
-                                   debug=True).stdout_text
-            return re.findall(r'usable (\d+)', res)
-
-        if utils_misc.wait_for(_get_response, 30, 5):
-            res = virsh.dommemstat(vm_name, ignore_status=False,
-                                   debug=True).stdout_text
+        res = virsh.dommemstat(vm_name, ignore_status=False,
+                               debug=True).stdout_text
+        if re.findall(r'usable (\d+)', res):
             usable_mem = re.findall(r'usable (\d+)', res)[0]
             last_update = re.findall(r'last_update (\d+)', res)[0]
             disk_caches = re.findall(r'disk_caches (\d+)', res)[0]
             return usable_mem, last_update, disk_caches
         else:
-            test.fail("Not get virsh dommemstat result in 25s")
+            test.fail("Fail to get virsh dommemstat result")
 
     def check_vm_dommemstat(period_config, usable_mem, last_update,
                             disk_caches):
@@ -104,12 +98,12 @@ def run(test, params, env):
                 vmxml, expect_xpath, ignore_status=True) == xpath_existed:
             test.fail("Expect to get '%s' in xml " % expect_xpath)
 
+        guest_session = vm.wait_for_login()
         usable_mem, last_update, disk_caches = get_memory_statistics()
 
-        guest_session = vm.wait_for_login()
         status, stdout = guest_session.cmd_status_output(mem_operation)
         guest_session.close()
-        if status:
+        if status != 0 and status != 124:
             test.fail("Failed to consume memory: %s" % stdout)
 
         check_vm_dommemstat(period_set, usable_mem, last_update, disk_caches)

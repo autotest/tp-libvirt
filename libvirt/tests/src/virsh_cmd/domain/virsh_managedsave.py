@@ -1,22 +1,20 @@
+import logging as log
 import os
 import re
 import time
-import logging as log
 
 from avocado.utils import process
 from avocado.utils import software_manager
-
-from virttest import virsh
-from virttest import utils_libvirtd
-from virttest import utils_config
-from virttest import utils_misc
-from virttest import utils_libguestfs
 from virttest import libvirt_version
+from virttest import utils_config
+from virttest import utils_libguestfs
+from virttest import utils_libvirtd
+from virttest import utils_misc
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging.utils_memory import drop_caches
-
+from virttest.utils_test import libvirt
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -83,7 +81,7 @@ def run(test, params, env):
                               " paused after started"
                               " because of '--paused' option")
         else:
-            if params.get("paused_after_start_vm") == "yes":
+            if paused_after_start_vm:
                 if not vm.is_paused():
                     test.fail("Guest state should be"
                               " paused after started"
@@ -314,7 +312,7 @@ def run(test, params, env):
             vm.start()
         except Exception as e:
             logging.error(str(e))
-            test.cancel("Build domain xml failed")
+            test.error("Build domain xml failed")
 
     status_error = ("yes" == params.get("status_error", "no"))
     vm_ref = params.get("managedsave_vm_ref", "name")
@@ -338,6 +336,7 @@ def run(test, params, env):
     remove_test = 'yes' == params.get('remove_test', 'no')
     case = params.get('case', '')
     msave_rm_error = "yes" == params.get("msave_rm_error", "no")
+    paused_after_start_vm = "yes" == params.get('paused_after_start_vm', "no")
     if option:
         if not virsh.has_command_help_match('managedsave', option):
             # Older libvirt does not have this option
@@ -424,6 +423,10 @@ def run(test, params, env):
             vm_ref = params.get(vm_ref)
         elif vm_ref == "name":
             vm_ref = vm_name
+        # Prepare the certain state before managedsave
+        if paused_after_start_vm:
+            logging.debug("Suspend the VM!")
+            virsh.suspend(vm_ref)
 
         # Ignore exception with "ignore_status=True"
         if progress:
@@ -432,7 +435,7 @@ def run(test, params, env):
 
         # For bypass_cache test. Run a shell command to check fd flags while
         # executing managedsave command
-        software_mgr = software_manager.SoftwareManager()
+        software_mgr = software_manager.manager.SoftwareManager()
         if not software_mgr.check_installed('lsof'):
             logging.info('Installing lsof package:')
             software_mgr.install('lsof')
@@ -535,5 +538,5 @@ def run(test, params, env):
         if multi_guests:
             for i in range(int(multi_guests)):
                 virsh.remove_domain("%s_%s" % (vm_name, i),
-                                    "--remove-all-storage",
+                                    "--remove-all-storage --nvram",
                                     debug=True)

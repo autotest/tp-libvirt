@@ -26,6 +26,8 @@ from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest import libvirt_version
 
+from provider.virtual_network import network_base
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -445,11 +447,12 @@ TIMEOUT 3"""
                 ipv6_rules.extend(rules)
             if "mode" in net_forward and net_forward["mode"] == "nat" \
                     and nat_attrs.get('ipv6') == 'yes':
+
                 v6_nat_rules = [
-                    "MASQUERADE\s+tcp\s+{0}\s+!{0}".format(net_ipv6),
-                    "MASQUERADE\s+udp\s+{0}\s+!{0}".format(net_ipv6),
-                    "MASQUERADE\s+all\s+{0}\s+!{0}".format(net_ipv6),
-                ]
+                             "MASQUERADE.*tcp.*{0}.*!{0}".format(net_ipv6),
+                             "MASQUERADE.*udp.*{0}.*!{0}".format(net_ipv6),
+                             "MASQUERADE.*all.*{0}.*!{0}".format(net_ipv6)
+                            ]
                 v6_output = process.run('ip6tables -t nat -L', shell=True).stdout_text
                 for rule in v6_nat_rules:
                     if not re.search(rule, v6_output):
@@ -481,8 +484,8 @@ TIMEOUT 3"""
 
         # It may take some time to get the ip address
         def get_ip_func():
-            return utils_net.get_guest_ip_addr(session, iface_mac,
-                                               ip_version=ip_ver)
+            return network_base.get_vm_ip(session, iface_mac,
+                                          ip_ver=ip_ver)
 
         utils_misc.wait_for(get_ip_func, 5)
         if not get_ip_func():
@@ -672,6 +675,7 @@ TIMEOUT 3"""
     ipt6_rules = []
     define_macvtap = "yes" == params.get("define_macvtap", "no")
     net_dns_forwarders = params.get("net_dns_forwarders", "").split()
+    only_test_define = "yes" == params.get("only_test_define", "no")
 
     # Cancel if not yet supported in libvirt version under test
     if "floor" in ast.literal_eval(iface_bandwidth_inbound):
@@ -794,10 +798,14 @@ TIMEOUT 3"""
                 netxml.sync()
             except xcepts.LibvirtXMLError as details:
                 logging.info(str(details))
+                if only_test_define and libvirt_version.version_compare(10, 8, 0):
+                    define_error = False
                 if define_error:
                     return
                 else:
                     test.fail("Failed to define network")
+            if only_test_define:
+                return
 
         # Check open mode network xml
         if "mode" in forward and forward["mode"] == "open":
@@ -1085,7 +1093,7 @@ TIMEOUT 3"""
                 if test_dhcp_range:
                     dhcp_range = int(params.get("dhcp_range", "252"))
                     utils_net.restart_guest_network(session, iface_mac)
-                    vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
+                    vm_ip = network_base.get_vm_ip(session, iface_mac)
                     logging.debug("Guest has ip: %s", vm_ip)
                     if not vm_ip and dhcp_range:
                         test.fail("Guest has invalid ip address")
@@ -1099,8 +1107,7 @@ TIMEOUT 3"""
                         vms_mac = vms.get_virsh_mac_address()
                         # restart guest network to get ip addr
                         utils_net.restart_guest_network(sess, vms_mac)
-                        vms_ip = utils_net.get_guest_ip_addr(sess,
-                                                             vms_mac)
+                        vms_ip = network_base.get_vm_ip(sess, vms_mac, ignore_error=True)
                         if not vms_ip and dhcp_range:
                             test.fail("Guest has invalid ip address")
                         elif vms_ip and not dhcp_range:

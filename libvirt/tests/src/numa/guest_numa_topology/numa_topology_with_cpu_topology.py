@@ -37,9 +37,9 @@ def prepare_vm_xml(test_obj):
     cpu_topology = eval(test_obj.params.get('cpu_topology', '{}'))
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(test_obj.vm.name)
     if numa_cells:
-        if vmxml.xmltreefile.find('cpu'):
+        if vmxml.xmltreefile.find('cpu') is not None:
             cpuxml = vmxml.cpu
-            if cpuxml.xmltreefile.find('topology'):
+            if cpuxml.xmltreefile.find('topology') is not None:
                 del cpuxml.topology
         else:
             cpuxml = vm_xml.VMCPUXML()
@@ -51,30 +51,21 @@ def prepare_vm_xml(test_obj):
     return vmxml
 
 
-def verify_vm_cpu_info(vm_session, test_obj, cpu_info_type, cmd):
+def verify_vm_cpu_info(test_obj):
     """
     Verify vm's cpu information
 
-    :param vm_session: vm session
     :param test_obj: NumaTest object
-    :param cpu_info_type: str, specified cpu info type, like 'cores', 'threads'
-    :param cmd: str, the command used to check the cpu info
     """
-    status, output = vm_session.cmd_status_output(cmd, timeout=300)
-    if status:
-        test_obj.test.error("Can't get cpu info with command '%s'" % cmd)
-    cpu_info = eval(test_obj.params.get('cpu_topology'))[cpu_info_type]
-    if cpu_info_type == 'cores':
-        dies = eval(test_obj.params.get('cpu_topology'))['dies']
-        cpu_info = str(int(cpu_info) * int(dies))
-    if cpu_info != output.strip():
-        test_obj.test.fail('Guest cpu %s is expected '
-                           'to be %s, but found %s' % (cpu_info_type,
-                                                       cpu_info,
-                                                       output.strip()))
-    else:
-        test_obj.test.log.debug("Step: check vm cpu %s "
-                                "to be '%s': PASS", cpu_info_type, cpu_info)
+    vm_topology = test_obj.vm.get_cpu_topology_in_vm()
+    expect_topology = eval(test_obj.params.get('cpu_topology'))
+    expect_topology['cores'] = str(int(expect_topology['cores']) * int(expect_topology['dies']))
+    for key in expect_topology:
+        if expect_topology[key] != vm_topology[key]:
+            test_obj.test.fail('Guest cpu %s is expected '
+                               'to be %s, but found %s' % (key,
+                                                           expect_topology[key],
+                                                           vm_topology[key]))
 
 
 def verify_vm_numa_node(vm_session, test_obj):
@@ -163,12 +154,7 @@ def run_default(test_obj):
         test_obj.test.log.debug("After vm is started, vm xml:\n"
                                 "%s", vm_xml.VMXML.new_from_dumpxml(test_obj.vm.name))
     vm_session = test_obj.vm.wait_for_login()
-    cmds = {'sockets': 'cat /proc/cpuinfo|grep "physical id"|sort -u|wc -l',
-            'cores': 'cat /proc/cpuinfo|grep "core id"|sort|uniq|wc -l',
-            'dies': 'cat /sys/devices/system/cpu/cpu*/topology/die_id|sort|uniq|wc -l',
-            'threads': 'lscpu|grep Thread|cut -d":" -f2'}
-    for cpu_info_type, cpu_cmd in cmds.items():
-        verify_vm_cpu_info(vm_session, test_obj, cpu_info_type, cpu_cmd)
+    verify_vm_cpu_info(test_obj)
     verify_vm_numa_node(vm_session, test_obj)
     verify_dmesg_vm_numa_mem(vm_session, test_obj)
 

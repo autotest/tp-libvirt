@@ -359,11 +359,22 @@ def prepare_ceph_disk(ceph_params, remote_virsh_dargs, test, runner_on_target):
         if auth_user and auth_key:
             disk_path += (":id=%s:key=%s" %
                           (auth_user, auth_key))
-        disk_cmd = ("rbd -m %s %s info %s || qemu-img convert"
-                    " -O %s %s %s" % (mon_host, key_opt,
-                                      disk_src_name, disk_format,
-                                      blk_source, disk_path))
-        process.run(disk_cmd, ignore_status=False, shell=True)
+
+        # Convert the image to remote storage
+        directory = os.path.dirname(blk_source)
+        filename_with_extension = os.path.basename(blk_source)
+
+        # Get the file name without extension and the extension
+        filename, _ = os.path.splitext(filename_with_extension)
+        converted_raw_file = os.path.join(directory, "%s.raw" % filename)
+        convert_cmd = ("qemu-img convert"
+                       " -O %s %s %s" % (disk_format, blk_source, converted_raw_file))
+        process.run(convert_cmd, ignore_status=False, verbose=True, shell=True)
+        disk_cmd = ("rbd -m %s %s info %s 2> /dev/null|| rbd -m %s %s import "
+                    " %s %s" % (mon_host, key_opt, disk_src_name, mon_host, key_opt, converted_raw_file,
+                                disk_src_name))
+        process.run(disk_cmd, ignore_status=False, verbose=True, shell=True)
+
         return (key_opt, secret_uuid)
 
 
@@ -455,6 +466,7 @@ def run(test, params, env):
     mon_host = params.get("mon_host")
     ceph_key_opt = ""
     attach_disk = False
+    converted_raw_file = ""
     # Disk XML file
     disk_xml = None
     # Define ceph_disk conditional variable
@@ -590,6 +602,8 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, output))
     finally:
+        if converted_raw_file and os.path.exists(converted_raw_file):
+            os.remove(converted_raw_file)
         logging.info("Recovery test environment")
         # Clean up of pre migration setup for local machine
         if migrate_vm_back:

@@ -1,5 +1,6 @@
-import re
 import os
+import re
+import time
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -17,9 +18,10 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_libvirt import libvirt_virtio
 from virttest.utils_libvirt import libvirt_network
-from virttest.utils_libvirt import libvirt_pcicontr
 
 from provider.interface import interface_base
+
+SKIP_CHECKS = False
 
 
 def setup_vf(pf_pci, params, session=None):
@@ -125,6 +127,8 @@ class SRIOVTest(object):
                                                    session=self.session)
 
         utils_sriov.set_vf(self.pf_pci_path, 0, session=self.session)
+        time.sleep(10)
+        self.host_linked_ifaces = utils_net.get_net_if(state="UP")
         setup_vf(self.pf_pci, self.params, session=self.session)
         self.pf_info = utils_sriov.get_pf_info_by_pci(
             self.pf_pci, session=self.session)
@@ -143,37 +147,28 @@ class SRIOVTest(object):
         self.default_vf_mac = utils_sriov.get_vf_mac(
             self.pf_name, session=self.session)
         self.vf_mac = ""
-        self.dev_slot = None
-        self.controller_dicts = eval(self.params.get("controller_dicts", "[]"))
+
+        iface_attrs = self.params.get('iface_dict') if self.params.get(
+            'iface_dict') else self.params.get('hostdev_dict')
+
+        if self.pf_name not in self.host_linked_ifaces:
+            test.log.debug("skip connection check on this host")
+            global SKIP_CHECKS
+            SKIP_CHECKS = True
+        else:
+            if (self.params.get("dev_name", "vf") == "pf" or
+                (not self.params.get("network_dict") and iface_attrs
+                 and iface_attrs.count("pf_"))):
+                self.host_linked_ifaces.remove(self.pf_name)
+                if not self.host_linked_ifaces:
+                    self.test.cancel("This test needs at least 1 linked "
+                                     "interface(excluding PF) available "
+                                     "on the host.")
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.orig_config_xml = new_xml.copy()
 
     def __del__(self):
         recover_vf(self.pf_pci, self.params, 0, session=self.session)
-
-    def update_disk_addr(self, disk_dict):
-        """
-        Update disk address
-
-        :param disk_dict: The original disk attrs
-        :return: The updated disk attrs
-        """
-        if self.controller_dicts:
-            dev_bus = self.controller_dicts[-1].get('index')
-            dev_attrs = {'bus': dev_bus}
-            if disk_dict['target']['bus'] != "scsi":
-                dev_attrs.update({'type': self.controller_dicts[-1].get('type')})
-                if self.controller_dicts[-1].get('model') == 'pcie-to-pci-bridge':
-                    self.dev_slot = 1
-                    dev_attrs.update({'slot': self.dev_slot})
-
-            disk_dict.update({"address": {'attrs': dev_attrs}})
-            if disk_dict['target']['bus'] == "scsi":
-                disk_dict['address']['attrs'].update({'type': 'drive'})
-
-            if self.controller_dicts[-1]['model'] == 'pcie-root-port':
-                self.controller_dicts.pop()
-        return disk_dict
 
     def parse_iface_dict(self):
         """
@@ -197,15 +192,6 @@ class SRIOVTest(object):
             if vf_pci_addr2.get('type'):
                 del vf_pci_addr2['type']
             iface_dict = eval(self.params.get('hostdev_dict', '{}'))
-
-        if self.controller_dicts and iface_dict:
-            iface_bus = "%0#4x" % int(self.controller_dicts[-1].get('index'))
-            iface_attrs = {'bus': iface_bus}
-            if isinstance(self.dev_slot, int):
-                self.dev_slot += 1
-                iface_attrs.update({'slot': self.dev_slot})
-            iface_dict.update({"address": {'attrs': iface_attrs}})
-        self.test.log.debug("iface_dict: %s.", iface_dict)
         return iface_dict
 
     def parse_network_dict(self):
@@ -243,40 +229,6 @@ class SRIOVTest(object):
                         "br_dict": br_dict, "dev_type": dev_type}
         return iommu_params
 
-    def prepare_controller(self):
-        """
-        Prepare controller(s)
-
-        :return: Updated controller attrs
-        """
-        if not self.controller_dicts:
-            return
-
-        for contr_dict in self.controller_dicts:
-            pre_controller = contr_dict.get("pre_controller")
-            if pre_controller:
-                pre_contrs = list(
-                    filter(None, [c.get('index') for c in self.controller_dicts
-                                  if c['type'] == contr_dict['type'] and
-                                  c['model'] == pre_controller]))
-                if pre_contrs:
-                    pre_idx = pre_contrs[0]
-                else:
-                    pre_idx = libvirt_pcicontr.get_max_contr_indexes(
-                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                        contr_dict['type'], pre_controller)
-                if not pre_idx:
-                    self.test.error(
-                        f"Unable to get index of {pre_controller} controller!")
-                contr_dict.pop("pre_controller")
-            libvirt_vmxml.modify_vm_device(
-                vm_xml.VMXML.new_from_dumpxml(self.vm.name), 'controller',
-                contr_dict, 100)
-            contr_dict['index'] = libvirt_pcicontr.get_max_contr_indexes(
-                vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                contr_dict['type'], contr_dict['model'])[-1]
-        return self.controller_dicts
-
     def get_dev_name(self):
         """
         Get device name
@@ -306,12 +258,11 @@ class SRIOVTest(object):
         rom_vendor_device = lspci_stdout[1:-1].replace(':', '') + '.rom'
         rom_file = os.path.join('/usr/share/ipxe', rom_vendor_device)
         if not os.path.exists(rom_file):
-            build_cmd = "git clone https://github.com/ipxe/ipxe.git;\
-                         pushd ipxe/src; make bin/{0}; cp bin/{0} {1}; popd; \
-                         rm -rf ipxe".format(rom_vendor_device, rom_file)
-            process.run(build_cmd, shell=True, verbose=True)
-            if not os.path.exists(rom_file):
-                self.test.error("This test needs rom file: %s." % rom_file)
+            virtio_rom_file = "/usr/share/ipxe/1af41000.rom"
+            if not os.path.exists(virtio_rom_file):
+                self.test.error(f"This test needs a rom file, but neither {rom_file} "
+                                f"nor {virtio_rom_file} exist!")
+            return virtio_rom_file
         return rom_file
 
     def create_iface_dev(self, dev_type, iface_dict):

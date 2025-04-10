@@ -11,14 +11,18 @@
 #
 # Copyright: Red Hat Inc. 2022
 # Author: Sebastian Mitterle <smitterl@redhat.com>
+import logging
+
 from avocado.core.exceptions import TestFail
 
 from virttest.libvirt_xml.vm_xml import VMXML
-from virttest.utils_misc import cmd_status_output
+from virttest.utils_misc import cmd_status_output, wait_for
 from virttest.utils_zcrypt import load_vfio_ap
 
 from provider.vfio import ap
 from provider.vfio.mdev_handlers import MdevHandler
+
+LOG = logging.getLogger("avocado." + __name__)
 
 
 def confirm_device_is_running(uuid, session=None):
@@ -30,11 +34,14 @@ def confirm_device_is_running(uuid, session=None):
                     be executed on the host.
     :raises TestFail: if the device isn't running.
     """
-    cmd = "mdevctl list -u %s" % uuid
-    err, out = cmd_status_output(cmd, shell=True, session=session)
-    if uuid not in out:
-        raise TestFail("Mediated device UUID(%s) not listed in output:"
-                       " %s. Exit code: %s" % (uuid, out, err))
+    def _is_listed():
+        """Parameterless helper function to use with wait_for"""
+        cmd = "mdevctl list -u %s" % uuid
+        err, out = cmd_status_output(cmd, shell=True, session=session)
+        LOG.debug("mediated device status - {}, output - {}.".format(err, out))
+        return uuid in out
+    if not wait_for(_is_listed, timeout=5):
+        raise TestFail("Mediated device UUID(%s) not listed" % uuid)
 
 
 def run(test, params, env):

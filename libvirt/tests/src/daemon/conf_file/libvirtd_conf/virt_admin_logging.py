@@ -16,11 +16,12 @@ import re
 from avocado.utils import process
 
 from virttest import utils_libvirtd
-from virttest import virt_vm
+from virttest import virt_vm, utils_misc
 from virttest import virt_admin
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_test import libvirt
 from virttest.staging import service
 
 
@@ -82,6 +83,10 @@ def create_customized_disk(params):
     source_dict.update({"file": source_file})
     disk_src_dict = {"attrs": source_dict}
 
+    libvirt.create_local_disk("file", source_file, 1, disk_format="qcow2")
+
+    cleanup_files.append(source_file)
+
     customized_disk = libvirt_disk.create_primitive_disk_xml(
         type_name, disk_device,
         device_target, device_bus,
@@ -117,8 +122,7 @@ def check_msg_in_var_log_message(params, test):
     log_config_path = params.get("log_file_path")
     str_to_grep = params.get("str_to_grep")
     cmd = "grep -E -l '%s' %s" % (str_to_grep, log_config_path)
-    if process.run(cmd, shell=True, ignore_status=True).exit_status != 0:
-        test.fail("Check message log:%s failed in log file:%s" % (str_to_grep, log_config_path))
+    return process.run(cmd, shell=True, ignore_status=True).exit_status == 0
 
 
 def run(test, params, env):
@@ -132,6 +136,11 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
+    # Clear log file
+    log_config_path = params.get("log_file_path")
+    truncate_log = "truncate -s 0 %s" % log_config_path
+    process.run(truncate_log, ignore_status=True, shell=True, verbose=True)
+
     # Back up xml file
     if vm.is_alive():
         vm.destroy(gracefully=False)
@@ -144,7 +153,11 @@ def run(test, params, env):
     except virt_vm.VMStartError as e:
         LOG.debug("VM failed to start as expected."
                   "Error: %s", str(e))
-        check_msg_in_var_log_message(params, test)
+        result = utils_misc.wait_for(lambda: check_msg_in_var_log_message(params, test), timeout=20)
+        if not result:
+            log_config_path = params.get("log_file_path")
+            str_to_grep = params.get("str_to_grep")
+            test.fail("Check message log:%s failed in log file:%s" % (str_to_grep, log_config_path))
     finally:
         # Recover VM
         LOG.info("Restoring vm...")

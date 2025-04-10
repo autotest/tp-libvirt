@@ -19,20 +19,23 @@ def run(test, params, env):
     """
     vm_name = guest_os.get_vm(params)
     firmware_type = params.get("firmware_type")
-    smm_state = params.get("smm_state", "off")
+    smm_state = params.get("smm_state")
     error_msg = params.get("error_msg", "")
     template_path = params.get("template_path", "")
-    if template_path:
-        nvram_dict = eval(params.get("nvram_dict", "{}") % template_path)
-    else:
-        nvram_dict = eval(params.get("nvram_dict"))
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
 
     try:
-        guest_os.prepare_smm_xml(vm_name, smm_state, smm_size=None)
+        if template_path:
+            nvram_dict = eval(params.get("nvram_dict", "{}") % template_path)
+            if template_path == "nonexist":
+                vmxml.sync("--nvram")
+        else:
+            nvram_dict = eval(params.get("nvram_dict"))
+        if smm_state:
+            guest_os.prepare_smm_xml(vm_name, smm_state, smm_size=None)
         guest_os.prepare_os_xml(vm_name, nvram_dict, firmware_type)
         guest_os.check_vm_startup(vm, vm_name, error_msg)
     finally:

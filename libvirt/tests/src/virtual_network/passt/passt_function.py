@@ -46,23 +46,22 @@ def run(test, params, env):
                                                       test_passwd,
                                                       **unpr_vm_args)
         uri = f'qemu+ssh://{test_user}@localhost/session'
-        virsh_ins = virsh.VirshPersistent(uri=uri)
+        virsh_ins = virsh.Virsh(uri=uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
         host_session.close()
 
-    host_ip = utils_net.get_host_ip_address(ip_ver='ipv4')
-    params['host_ip_v6'] = host_ip_v6 = utils_net.get_host_ip_address(
-        ip_ver='ipv6')
+    host_iface = params.get('host_iface')
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
+    host_ip = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv4')
+    host_ip_v6 = utils_net.get_ip_address_by_interface(host_iface, ip_ver='ipv6')
+    params['host_ip_v6'] = host_ip_v6
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
-    vm_iface = params.get('vm_iface', 'eno1')
     mtu = params.get('mtu')
     outside_ip = params.get('outside_ip')
-    host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs = eval(params.get('iface_attrs'))
     iface_attrs['backend']['logFile'] = log_file
@@ -97,9 +96,10 @@ def run(test, params, env):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
         session = vm.wait_for_serial_login(timeout=60)
-        passt.check_vm_ip(iface_attrs, session, host_iface)
+        vm_iface = utils_net.get_linux_ifname(session, mac)
+        passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
-        passt.check_default_gw(session)
+        passt.check_default_gw(session, host_iface)
         passt.check_nameserver(session)
 
         ips = {
@@ -111,10 +111,12 @@ def run(test, params, env):
 
         firewalld.stop()
         LOG.debug(f'Status of firewalld: {firewalld.status()}')
-        passt.check_connection(vm, vm_iface, ['TCP4', 'TCP6', 'UDP4', 'UDP6'])
+        passt.check_connection(vm, vm_iface,
+                               ['TCP4', 'TCP6', 'UDP4', 'UDP6'],
+                               host_iface)
 
         if 'portForwards' in iface_attrs:
-            passt.check_portforward(vm, host_ip, params)
+            passt.check_portforward(vm, host_ip, params, host_iface)
 
         vm_sess = vm.wait_for_serial_login(timeout=60)
         vm_sess.cmd('systemctl start firewalld')
@@ -129,6 +131,4 @@ def run(test, params, env):
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
-        else:
-            del virsh_ins
         utils_selinux.set_status(selinux_status)

@@ -15,7 +15,6 @@ from virttest import utils_package
 from virttest import utils_misc
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
-from virttest import libvirt_version
 
 from virttest.libvirt_xml.devices.tpm import Tpm
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -54,6 +53,7 @@ def run(test, params, env):
     tpm_model = params.get("tpm_model")
     backend_type = params.get("backend_type")
     backend_version = params.get("backend_version")
+    backend_debug = params.get("backend_debug")
     device_path = params.get("device_path")
     tpm_num = int(params.get("tpm_num", 1))
     # After first start of vm with vtpm, do operations, check it still works
@@ -86,6 +86,7 @@ def run(test, params, env):
     remove_pcrbank = ('yes' == params.get("remove_pcrbank", "no"))
     pcrbank_change = params.get("pcrbank_change")
     test_rsaencypt = ('yes' == params.get("test_rsaencypt", "no"))
+    test_sign = ('yes' == params.get("test_sign", "no"))
     active_pcr_banks = params.get("active_pcr_banks")
     statedir = params.get("statedir")
     audit_cmd = params.get("audit_cmd")
@@ -283,6 +284,8 @@ def run(test, params, env):
         if backend_version:
             check_ver = backend_version if backend_version not in ["none", "default"] else '2.0'
             xpaths.append({'element_attrs': [".//backend[@version='%s']" % check_ver]})
+        if backend_debug:
+            xpaths.append({'element_attrs': [".//backend[@debug='%s']" % backend_debug]})
         if active_pcr_banks and not remove_pcrbank:
             check_active_pcr_banks(xml_after_adding_device)
         if backend_type == "passthrough":
@@ -397,6 +400,8 @@ def run(test, params, env):
             pattern_list.remove("--log")
         if prepare_secret:
             pattern_list.extend(["--key", "--migration-key"])
+        if backend_debug:
+            pattern_list.extend(["level=%s" % backend_debug])
         for pattern in pattern_list:
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the %s for tpm device "
@@ -572,6 +577,8 @@ def run(test, params, env):
         # Download test suite
         if tpm_testsuite_url.count("EXAMPLE"):
             test.error("Please provide the URL %s" % tpm_testsuite_url)
+        if not utils_package.package_install('wget', session, 60):
+            test.fail("Failed to install wget in guest OS.")
         download_cmd = "wget %s -O %s" % (tpm_testsuite_url, "/root/linux.tar.xz")
         output = session.cmd_output(download_cmd, timeout=480)
         logging.debug("Command output: %s", output)
@@ -606,19 +613,28 @@ def run(test, params, env):
                     test.fail("test suite check failed.")
         logging.info("------PASS on kernel test suite check------")
 
+    def prepare_rsa_key(session, test_msg="my message"):
+        """
+        Create RSA key and load it, also prepare data file.
+
+        :param session: Guest session to be tested
+        :param test_msg: message to put in data file
+        """
+        if not utils_package.package_install(["tpm2-tools"], session, 360):
+            test.error("Failed to install tpm2-tools package in guest")
+        session.cmd_status_output("tpm2_createprimary -C e -c primary.ctx")
+        session.cmd("tpm2_create -C primary.ctx -G rsa2048 -u key.pub -r key.priv")
+        session.cmd("tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx")
+        session.cmd("echo %s > msg.dat" % test_msg)
+
     def test_rsaencypt_in_guest(session):
         """
         Test tpm RSA encryption in guest.
 
         :param session: Guest session to be tested
         """
-        if not utils_package.package_install(["tpm2-tools"], session, 360):
-            test.error("Failed to install tpm2-tools package in guest")
-        session.cmd_status_output("tpm2_createprimary -c primary.ctx")
-        session.cmd("tpm2_create -C primary.ctx -Grsa2048 -u key.pub -r key.priv")
-        session.cmd("tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx")
-        test_msg = 'my message'
-        session.cmd("echo %s > msg.dat" % test_msg)
+        test_msg = 'my encrypt decrypt test message'
+        prepare_rsa_key(session, test_msg)
         for padding_scheme in ['oaep', 'rsaes', 'null']:
             status, output = session.cmd_status_output("tpm2_rsaencrypt -c key.ctx -o msg.enc -s %s msg.dat" % padding_scheme)
             if status:
@@ -632,6 +648,19 @@ def run(test, params, env):
                 test.fail("Data decrypted '%s' with %s padding scheme does not match original '%s'" % (output, padding_scheme, test_msg))
             session.cmd("rm -f msg.enc msg.ptext")
         session.cmd("rm -f primary.ctx key.pub key.priv key.ctx msg.dat")
+
+    def test_sign_in_guest(session):
+        """
+        Test tpm signature in guest.
+
+        :param session: Guest session to be tested
+        """
+        prepare_rsa_key(session)
+        for hash_algorithm in ['sha1', 'sha256', 'sha384', 'sha512']:
+            status, output = session.cmd_status_output("tpm2_sign -c key.ctx -g %s -o sig.rssa msg.dat" % hash_algorithm)
+            if status:
+                test.fail("tpm2_sign failed with %s hash algorithm: %s" % (hash_algorithm, output))
+        session.cmd("rm -f primary.ctx key.pub key.priv key.ctx msg.dat sig.rssa")
 
     def persistent_test(vm, vm_xml):
         """
@@ -724,6 +753,20 @@ def run(test, params, env):
         if swtpm_pidfile and libvirt_version.version_compare(8, 7, 0):
             test.error('swtpm.pid still exists after %s: %s' % (test_stage, swtpm_pidfile))
 
+    def test_swtpm_logging():
+        """
+        test logging level for swtpm when backend_debug is set
+        """
+        log_pattern_list = ["SWTPM_IO_Read",  "SWTPM_IO_Write"]
+        swtpm_log = "/var/log/swtpm/libvirt/qemu/" + vm.name + "-swtpm.log"
+        with open(swtpm_log) as f:
+            lines = "".join(f.readlines())
+            for log_pattern in log_pattern_list:
+                if re.search(log_pattern, lines):
+                    logging.info("Finding msg<%s> in swtpm log", log_pattern)
+                else:
+                    test.fail("Can not find msg:<%s> in swtpm log" % log_pattern)
+
     try:
         tpm_real_v = None
         sec_uuids = []
@@ -751,6 +794,8 @@ def run(test, params, env):
                 if backend_type == "emulator":
                     if backend_version != 'none':
                         backend.backend_version = backend_version
+                    if backend_debug:
+                        backend.backend_debug = backend_debug
                     if persistent_state:
                         backend.persistent_state = "yes"
                     if prepare_secret:
@@ -805,18 +850,20 @@ def run(test, params, env):
             return
         if tpm_model and backend_version != 'default':
             expect_fail = False
+            if ausearch_check:
+                cmd = "truncate -s 0  /var/log/audit/audit.log*"
+                process.run(cmd, shell=True)
+                ausearch_ret = process.run(audit_cmd, verbose=True, shell=True, ignore_status=True)
+                if not ausearch_ret:
+                    test.fail('audit log is not cleaned well.')
             try:
                 vm.start()
             except VMStartError as detail:
-                if secret_value == 'none' or secret_uuid == 'nonexist' or not source_socket:
+                if secret_value == 'none' or secret_uuid == 'nonexist' or (source_attrs_str and not source_socket):
                     logging.debug("Expected failure: %s", detail)
                     return
                 else:
                     test.fail(detail)
-            if ausearch_check:
-                process.run("echo > /var/log/audit/audit.log", ignore_status=True)
-                ausearch_result = process.run(audit_cmd, verbose=True, shell=True)
-                libvirt.check_result(ausearch_result, expected_match=ausearch_check)
             if undefine_flag:
                 time.sleep(5)
                 vm.destroy()
@@ -921,6 +968,9 @@ def run(test, params, env):
                         return
             domid = vm.get_id()
             check_qemu_cmd_line(vm, vm_name, domid)
+            if ausearch_check:
+                ausearch_result = process.run(audit_cmd, verbose=True, shell=True)
+                libvirt.check_result(ausearch_result, expected_match=ausearch_check)
             if backend_type == "passthrough":
                 if tpm_real_v == "1.2" and tpm_model == "tpm-crb":
                     expect_fail = True
@@ -937,9 +987,13 @@ def run(test, params, env):
                 run_test_suite_in_guest(session)
             elif test_rsaencypt:
                 test_rsaencypt_in_guest(session)
+            elif test_sign:
+                test_sign_in_guest(session)
             else:
                 test_guest_tpm(expect_version, session, expect_fail)
             session.close()
+            if backend_debug:
+                test_swtpm_logging()
             if multi_vms:
                 reuse_by_vm2(tpm_dev)
                 if backend_type != "passthrough":

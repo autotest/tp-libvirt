@@ -265,8 +265,9 @@ def run(test, params, env):
                 shutil.copy(src_dir, dest_dir)
             LOG.info('Copy ova from %s to %s', src_dir, dest_dir)
             if checkpoint == 'cpu_topology':
-                dest_ova = os.path.join(dest_dir, input_file)
-                process.run('tar xvf %s -C %s' % (dest_ova, dest_dir), shell=True)
+                ova_file = params.get('ova_file_name')
+                dest_ova = os.path.join(dest_dir, ova_file)
+                process.run('tar xvf %s -C %s' % (input_file, dest_dir), shell=True)
                 with open(dest_ova[:-1] + 'f') as fd:
                     buf = fd.read()
                 res = re.search('<rasd:ElementName>(\d+) virtual CPU', buf)
@@ -287,6 +288,11 @@ def run(test, params, env):
                 log_fail('fail to download guest image from libvirt-ci resource')
             image_name = re.search(r'RHEL-\S*\w*.qcow2', params.get('image_url')).group()
             v2v_params.update({'input_file': os.path.join(tmp_path, image_name)})
+            if checkpoint == 'virt_v2v_in_place':
+                output = utils_v2v.cmd_run('/usr/libexec/virt-v2v-in-place -i disk %s/%s' % (tmp_path, image_name))
+                log_check = utils_v2v.check_log(params, output.stdout_text)
+                if log_check:
+                    log_fail(log_check)
         if output_format:
             v2v_params.update({'of_format': output_format})
         # Create libvirt dir pool
@@ -316,13 +322,28 @@ def run(test, params, env):
         if checkpoint == 'permission':
             os.environ['LIBGUESTFS_BACKEND'] = ''
         process.run('echo $LIBGUESTFS_BACKEND', shell=True)
-
-        v2v_result = utils_v2v.v2v_cmd(v2v_params)
+        if checkpoint == 'special_character':
+            v2v_result = utils_v2v.cmd_run(str(utils_v2v.v2v_cmd(v2v_params, cmd_only=True)).replace('.vmx', '.vm*'),
+                                           params.get('v2v_dirty_resources'))
+        elif checkpoint == 'wrong_vmx':
+            esxi_passwd_file = "/tmp/v2v_esxi_passwd"
+            with open(esxi_passwd_file, 'w') as f:
+                f.write(esxi_password)
+            v2v_cmd = str(utils_v2v.v2v_cmd(v2v_params, cmd_only=True) + ' -ip %s' % esxi_passwd_file)
+            v2v_result = utils_v2v.cmd_run(v2v_cmd.replace('.vmx', '.vmdk'), params.get('v2v_dirty_resources'))
+        elif checkpoint == 'no_ssh_agent':
+            esxi_passwd_file = "/tmp/v2v_esxi_passwd"
+            with open(esxi_passwd_file, 'w') as f:
+                f.write(esxi_password)
+            v2v_cmd = str(utils_v2v.v2v_cmd(v2v_params, cmd_only=True) + ' -ip %s' % esxi_passwd_file)
+            v2v_result = utils_v2v.cmd_run(v2v_cmd, params.get('v2v_dirty_resources'))
+        else:
+            v2v_result = utils_v2v.v2v_cmd(v2v_params)
 
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
-
-        check_result(v2v_result, status_error)
+        if checkpoint != 'virt_v2v_in_place':
+            check_result(v2v_result, status_error)
     finally:
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)

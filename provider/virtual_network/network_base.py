@@ -1,20 +1,60 @@
 import logging
+import math
+import re
 import shutil
 
 import aexpect
-
 from avocado.core import exceptions
 from avocado.utils import process
-
 from virttest import remote
+from virttest import utils_misc
 from virttest import utils_net
+from virttest import utils_package
 from virttest import virsh
-
 from virttest.libvirt_xml import network_xml
+from virttest.libvirt_xml import vm_xml
 
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 
 LOG = logging.getLogger('avocado.' + __name__)
+
+
+def get_vm_ip(session, mac, ip_ver="ipv4", timeout=5, ignore_error=False):
+    """
+    Get vm ip address
+
+    :param session: vm session
+    :param mac: mac address of vm
+    :param ip_ver: ip version, defaults to "ipv4"
+    :param ignore_error: True to return None, False to raise exception,
+           defaults to False
+    :return: ip address of given mac
+    """
+    def _get_vm_ip():
+        iface_info = utils_net.get_linux_iface_info(mac=mac, session=session)
+        addr_list = iface_info['addr_info']
+        if ip_ver == "ipv4":
+            target_addr = [addr for addr in addr_list if addr['family'] == 'inet']
+        elif ip_ver == "ipv6":
+            target_addr = [addr for addr in addr_list if addr['family'] == 'inet6'
+                           and addr['scope'] == 'global'
+                           and addr.get('mngtmpaddr') is not True]
+
+        if len(target_addr) == 0:
+            LOG.warning(f'No ip addr of given mac: {mac}')
+            return
+        elif len(target_addr) > 1:
+            LOG.warning(f'Multiple ip addr: {target_addr}')
+
+        return target_addr[0]['local']
+
+    vm_ip = utils_misc.wait_for(_get_vm_ip, timeout, ignore_errors=True)
+
+    if not vm_ip and not ignore_error:
+        raise exceptions.TestError(
+            f'Cannot find {ip_ver} addr with given mac: {mac}')
+
+    return vm_ip
 
 
 def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
@@ -32,9 +72,8 @@ def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
     :return: a dict of ip addresses
     """
     ips = {}
-    ips['vm_ip'], ips['ep_vm_ip'] = [utils_net.get_guest_ip_addr(
-        sess, mac_ad, ip_version=ip_ver)
-        for sess, mac_ad in [(session, mac), (ep_session, ep_mac)]]
+    ips['vm_ip'] = get_vm_ip(session, mac, ip_ver=ip_ver)
+    ips['ep_vm_ip'] = get_vm_ip(ep_session, ep_mac, ip_ver=ip_ver)
     if not host_iface:
         host_public_ip = utils_net.get_host_ip_address(ip_ver=ip_ver)
     else:
@@ -63,20 +102,15 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
     :param force_ipv4: whether to force ping with ipv4
     :param args: other kwargs
     """
-    outside_ip = ips.get('outside_ip')
-    vm_ip = ips.get('vm_ip')
-    ep_vm_ip = ips.get('ep_vm_ip')
-    host_public_ip = ips.get('host_public_ip')
-    host_virbr_ip = ips.get('host_virbr_ip')
-    outside_ip = ips.get('outside_ip')
     ping_patterns = {k: v for k, v in params.items() if '_ping_' in k}
+    failures = []
 
     for pattern, expect_result in ping_patterns.items():
         source, destination = pattern.split('_ping_')
         if destination == 'outside' and not force_ipv4:
             LOG.debug('No need to test ping outside with ipv6')
             continue
-        dest_ip = eval(f'{destination}_ip')
+        dest_ip = ips.get(f'{destination}_ip')
         if dest_ip is None:
             raise exceptions.TestError(f'IP of {destination} is None')
 
@@ -85,22 +119,33 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
         LOG.info(f'TEST_STEP: Ping from {source} to {destination} '
                  f'(ip: {dest_ip})')
         ping_session = session if source == 'vm' else None
-        status, _ = utils_net.ping(dest=dest_ip, count=5,
-                                   timeout=10,
-                                   session=ping_session,
-                                   force_ipv4=force_ipv4,
-                                   **ping_args)
+
+        def _ping():
+            """ Helper function to make use of wait_for """
+            status, output = utils_net.ping(dest=dest_ip, count=5,
+                                            timeout=10,
+                                            session=ping_session,
+                                            force_ipv4=force_ipv4,
+                                            **ping_args)
+            if status and "unreachable" in output and expect_result == 'pass':
+                return False
+            return status == 0
+
+        status = utils_misc.wait_for(_ping, timeout=15)
+        ping_result = (status is True) == (expect_result == 'pass')
         msg = f'Expect ping from {source} to {destination} should ' \
               f'{expect_result.upper()}, actual result is ' \
-              f'{"PASS" if status == 0 else "FAIL"}'
-        ping_result = (status == 0) == (expect_result == 'pass')
+              f'{"PASS" if ping_result else "FAIL"}'
         if ping_result:
             LOG.debug(msg)
         else:
-            raise exceptions.TestFail(msg)
+            LOG.error(msg)
+            failures.append(msg)
+    if failures:
+        raise exceptions.TestFail('.'.join(failures))
 
 
-def create_tap(tap_name, bridge_name, user):
+def create_tap(tap_name, bridge_name, user, flag=''):
     """
     Create tap device
 
@@ -110,7 +155,7 @@ def create_tap(tap_name, bridge_name, user):
     """
     # Create tap device with ip command
     tap_cmd = f'ip tuntap add mode tap user {user} group {user} name ' \
-              f'{tap_name};ip link set {tap_name} up;' \
+              f'{tap_name} {flag};ip link set {tap_name} up;' \
               f'ip link set {tap_name} master {bridge_name}'
     # Execute command as root
     process.run(tap_cmd, shell=True, verbose=True)
@@ -264,3 +309,151 @@ def set_static_ip(iface, ip, netmask, session):
     """
     session.cmd('systemctl stop NetworkManager'),
     session.cmd(f'ifconfig {iface} {ip}/{netmask}')
+
+
+def get_iface_xml_inst(vm_name, comment, index=0, options='', virsh_ins=virsh):
+    """
+    Get iface xml instance with given vm and index
+
+    :param vm_name: name of vm
+    :param comment: comment to log
+    :param index: index of interface on vm, defaults to 0
+    :return: xml instance of interface
+    """
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name, options=options,
+                                          virsh_instance=virsh_ins)
+    iface = vmxml.get_devices('interface')[index]
+    LOG.debug(f'Interface xml ({comment}):\n{iface}')
+    return iface
+
+
+def get_ethtool_coalesce(iface):
+    """
+    Get coalesce parameters from ethtool command output
+
+    :param iface: interface name
+    :return: dict-type coalesce parameters
+    """
+    eth_out = process.run(f'ethtool -c {iface}').stdout_text
+    eth_out = re.sub("[\t ]+", "", eth_out)
+    eth_out = re.sub("n/a", "0", eth_out)
+    items = [x.split(':') for x in eth_out.splitlines() if x]
+    coalesce = {item[0]: item[1].strip() for item in items[1:] if len(item) == 2}
+
+    return coalesce
+
+
+def check_iface_attrs(iface, key, expect_val):
+    """
+    Check whether interface attribute value meets expectation
+
+    :param iface: interface name
+    :param key: interface attribute key
+    :param expect_val: expect attribute value
+    """
+    actual_val = iface.fetch_attrs().get(key)
+    LOG.debug(f'Expect {key}: {expect_val}\n'
+              f'Actual {key}: {actual_val}')
+    if actual_val != expect_val:
+        raise exceptions.TestFail(f'Updated {key} of iface should be '
+                                  f'{expect_val}, NOT {actual_val}')
+
+
+def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type):
+    """
+    Check actual thoughput of network using netperf
+
+    :param serv_runner: runner of netserver
+    :param cli_runner: runner of netperf client
+    :param ip_addr: ip address
+    :param bw: bandwidth setting
+    :param th_type: inbound or outbound
+    """
+
+    serv_runner('netserver')
+    netperf_out = cli_runner(f'netperf -H {ip_addr}')
+    LOG.debug(netperf_out)
+    serv_runner('pkill netserver')
+
+    actual_throu = float(netperf_out.strip().splitlines()[-1].split()[-1])
+    expect_throu = int(bw) * 8 / 1024
+
+    msg = f'Expected {th_type}: {expect_throu}, actual {th_type}: {actual_throu}'
+    if not math.isclose(expect_throu, actual_throu, rel_tol=0.1):
+        raise exceptions.TestFail(f'Actual {th_type} is not close to expected '
+                                  f'{th_type}:\n{msg}')
+    LOG.debug(msg)
+
+
+def exec_netperf_test(params, env):
+    """
+    Verify the guest can work well under the netperf stress test
+
+    :param params: Dictionary with the test parameters.
+    :param env: Dictionary with test environment.
+    """
+    netperf_client = params.get("netperf_client")
+    netperf_server = params.get("netperf_server")
+    extra_cmd_opts = params.get("extra_cmd_opts", "")
+    netperf_timeout = params.get("netperf_timeout", "60")
+    test_protocol = params.get("test_protocol")
+    vms = params.get('vms').split()
+    vm_objs = {vm_i: env.get_vm(vm_i) for vm_i in vms}
+    before_test_cores = process.run("coredumpctl list", ignore_status=True, verbose=True).stdout_text
+
+    def _get_access_info(netperf_address):
+        LOG.debug(f"check {netperf_address}...")
+        session = None
+        if re.match(r"((\d){1,3}\.){3}(\d){1,3}", netperf_address):
+            func = process.run
+            test_ip = netperf_address
+        else:
+            if netperf_address not in vms:
+                raise exceptions.TestError(f"Unable to get {netperf_address} from {vms}!")
+            vm = vm_objs.get(netperf_address)
+            if not vm.is_alive():
+                vm.start()
+            session = vm.wait_for_login()
+            test_ip = vm.get_address()
+            func = session.cmd
+        return func, test_ip, session
+
+    c_func, c_ip, c_session = _get_access_info(netperf_client)
+    s_func, s_ip, s_session = _get_access_info(netperf_server)
+
+    try:
+        if not utils_package.package_install("netperf", c_session):
+            raise exceptions.TestError("Unable to install netperf in the client host!")
+        if not utils_package.package_install("netperf", s_session):
+            raise exceptions.TestError("Unable to install netperf in the server host!")
+        c_func("systemctl stop firewalld")
+        s_func("systemctl stop firewalld")
+
+        LOG.debug("Start netserver...")
+        if s_ip == netperf_server:
+            s_func("killall netserver", ignore_status=True)
+        s_func("netserver")
+
+        LOG.debug("Run netperf command...")
+        test_cmd = f"netperf -H {s_ip} -l {netperf_timeout} -C -c -t {test_protocol} {extra_cmd_opts}"
+        c_func(test_cmd, timeout=120)
+
+        for vm in vm_objs.values():
+            try:
+                vm.wait_for_login().close()
+            except (remote.LoginError, aexpect.ShellError) as e:
+                LOG.error(f"Unable to access to {vm.name}, guest os may have crashed - {e}")
+                vm.destroy()
+                vm.start()
+                vm.wait_for_login().close()
+        after_test_cores = process.run("coredumpctl list",
+                                       ignore_status=True, verbose=True).stdout_text
+        if after_test_cores != before_test_cores:
+            raise exceptions.TestFail("There are coredump files during the test!")
+
+    finally:
+        LOG.info("Test teardown: Cleanup env.")
+        s_func("killall netserver")
+        s_func("systemctl start firewalld")
+        # TODO: Start firewalld on guest
+        process.run("systemctl start firewalld", ignore_status=True)

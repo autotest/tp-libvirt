@@ -351,6 +351,7 @@ def run(test, params, env):
     # Get start,restore configuration parameters.
     start_error = "yes" == params.get("start_error", "no")
     restore_error = "yes" == params.get("restore_error", "no")
+    revert_error = "yes" == params.get("revert_error", "no")
     virsh_dargs = {'debug': True, 'ignore_status': True}
     attach_option = params.get("attach_option")
 
@@ -415,6 +416,9 @@ def run(test, params, env):
             logging.debug("Attach device throws exception:%s", str(attach_device_exception))
             os.remove(media_file)
             test.error("Attach %s fail" % device_type)
+        # The guest can restore successfully for optional cdrom disk.
+        if device_type == "cdrom" and startup_policy == "optional":
+            restore_error = False
         # Check update policy operations.
         if disk_type == "file" and update_policy:
             vm.start()
@@ -445,6 +449,10 @@ def run(test, params, env):
 
             # Step 4. Save the domain normally, then remove the source file
             # and restore it back
+            if startup_policy == "optional":
+                # Restart the guest with optional disk because the previous optional disk will be lost after the above steps
+                vm.destroy()
+                vm.start()
             vm.save_to_file(save_file)
             rename_file(media_file, media_file_new)
             result = virsh.restore(save_file, **virsh_dargs)
@@ -485,6 +493,10 @@ def run(test, params, env):
                 vm.start()
 
             # Step 4 Save the domain normally, then remove the source file,then restore domain.
+            if startup_policy == "optional":
+                # Restart the guest with optional disk because the previous optional disk will be lost after the above steps
+                vm.destroy()
+                vm.start()
             vm.save_to_file(save_file)
             rename_file(vol_path, vol_path_new)
             cmd_result = virsh.pool_refresh(pool_name)
@@ -500,10 +512,12 @@ def run(test, params, env):
                 if restore_error:
                     result = virsh.restore(save_file, **virsh_dargs)
                     libvirt.check_exit_status(result)
-                ret = virsh.snapshot_create_as(vm_name, snapshot_name, **virsh_dargs)
+                snapshot_options = params.get("snapshot_options", "") % (snapshot_name, target_dev, snapshot_name)
+                ret = virsh.snapshot_create_as(vm_name, "%s %s" % (snapshot_name, snapshot_options), **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 rename_file(vol_path, vol_path_new)
-                ret = virsh.snapshot_revert(vm_name, snapshot_name, **virsh_dargs)
+                result = virsh.snapshot_revert(vm_name, snapshot_name, **virsh_dargs)
+                libvirt.check_exit_status(result, expect_error=revert_error)
                 # Clean up snapshot.
                 libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
     finally:

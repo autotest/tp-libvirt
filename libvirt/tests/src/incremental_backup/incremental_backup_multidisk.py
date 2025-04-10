@@ -49,6 +49,8 @@ def run(test, params, env):
     total_test_disk = int(params.get("total_test_disk", 3))
     tmp_dir = data_dir.get_tmp_dir()
     backup_error = "yes" == params.get("backup_error")
+    with_data_file = "yes" == params.get("with_data_file", "no")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Backup setting
     scratch_type = params.get("scratch_type", "file")
@@ -108,9 +110,13 @@ def run(test, params, env):
             """
             image_name = "{}_image.qcow2".format(test_disk)
             image_path = os.path.join(tmp_dir, image_name)
+            data_file = os.path.join(tmp_dir, test_disk)
+            if with_data_file:
+                data_file_option = params.get("data_file_option", "") % data_file
+            extra_cmd = "" if not with_data_file else data_file_option
             libvirt.create_local_disk("file", image_path, test_disk_size,
-                                      "qcow2")
-            return image_path
+                                      "qcow2", extra=extra_cmd)
+            return image_path, data_file
 
         def prepare_disk_xml(test_disk, image_path):
             """
@@ -209,7 +215,7 @@ def run(test, params, env):
                 enable_incremental_backup = True
                 backup_params["backup_incremental"] = checkpoint_list[-1]
             # Prepare disk image
-            image_path = prepare_disk_img(test_disk)
+            image_path, data_file = prepare_disk_img(test_disk)
             # Prepare disk xml to be hotplugged
             test_disk_xml = prepare_disk_xml(test_disk, image_path)
             # Hotplug disk
@@ -217,6 +223,11 @@ def run(test, params, env):
                                 ignore_status=False)
             test_disk_dict[test_disk]['path'] = image_path
             test_disk_dict[test_disk]['is_attached'] = True
+            guest_xml = virsh.dumpxml(vm_name).stdout_text
+            logging.debug("The current guest xml is:%s" % guest_xml)
+            if with_data_file:
+                if data_file not in guest_xml:
+                    test.fail("The datastore file xml can't be generated automatically in guest!")
             # Now we use attached disk as backup disks
             backup_disks = get_disks_need_backup(test_disk_dict)
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)

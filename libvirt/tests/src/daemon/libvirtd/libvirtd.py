@@ -5,14 +5,13 @@ import os.path
 import re
 import threading
 
-try:
-    import queue as Queue
-except ImportError:
-    import Queue
+import queue
 
 from avocado.utils import process
 
+from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 from virttest import utils_misc
 from virttest import utils_package
 from virttest import virsh
@@ -21,8 +20,9 @@ from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt
 
 
-msg_queue = Queue.Queue()
-
+msg_queue = queue.Queue()
+daemon_conf = None
+daemon = None
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -289,6 +289,63 @@ def teardown_default(params, test):
     :param test: test object
     """
     pass
+
+
+def test_check_max_anonymous_clients(params, test):
+    """
+    Test the default value of max_anonymous_clients.
+
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    check_string_in_log = params.get("check_string_in_log")
+    daemon_name = params.get("daemon_name")
+    conf_list = eval(params.get("conf_list"))
+    log_level = params.get("log_level")
+    log_file = params.get("log_file")
+    log_filters = params.get("log_filters")
+    virsh_uri = params.get("virsh_uri")
+    require_modular_daemon = params.get('require_modular_daemon', "no") == "yes"
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
+
+    utils_split_daemons.daemon_mode_check(require_modular_daemon)
+    global daemon
+    global daemon_conf
+    daemon = utils_libvirtd.Libvirtd(daemon_name)
+    daemon_conf = utils_config.get_conf_obj(daemon_name)
+
+    for item in conf_list:
+        try:
+            del daemon_conf[item]
+        except utils_config.ConfigNoOptionError:
+            test.log.info("No '%s' in config file.", item)
+
+    daemon_conf.log_level = log_level
+    daemon_conf.log_outputs = "1:file:%s" % log_file
+    daemon_conf.log_filters = log_filters
+    daemon.restart()
+
+    if daemon_name == "virtproxyd":
+        virtproxy_tcp = utils_libvirtd.DaemonSocket("virtproxyd-tcp.socket")
+        virtproxy_tcp.restart()
+
+    virsh.start(vm_name, uri=virsh_uri, debug=True, ignore_status=True)
+    libvirt.check_logfile(check_string_in_log, log_file, str_in_log=True)
+
+
+def teardown_check_max_anonymous_clients(params, test):
+    """
+    Teardown for test the default value of max_anonymous_clients.
+
+    :param params: dict, test parameters
+    :param test: test object
+    """
+    global daemon
+    global daemon_conf
+    if daemon_conf:
+        daemon_conf.restore()
+    if daemon:
+        daemon.restart()
 
 
 def run(test, params, env):

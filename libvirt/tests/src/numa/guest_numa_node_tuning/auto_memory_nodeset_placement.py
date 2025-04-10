@@ -114,7 +114,7 @@ def verify_cgroup_mem_binding(test_obj):
     """
     mem_mode = test_obj.params.get('mem_mode')
     nodeset = test_obj.params.get('nodeset')
-    online_nodes = libvirt_numa.parse_numa_nodeset_to_str('x-y', test_obj.online_nodes)
+    online_nodes = libvirt_numa.convert_all_nodes_to_string(test_obj.online_nodes)
     vcpu_placement = eval(test_obj.params.get('vm_attrs')).get('placement')
     vm_pid = test_obj.vm.get_pid()
     cg = libvirt_cgroup.CgroupTest(vm_pid)
@@ -391,8 +391,6 @@ def get_cpus_by_numad_advisory(test_obj):
         if cpus_from_numactl:
             cpus_from_numactl = cpus_from_numactl[0].strip().split(' ')
             cpus_from_numactl = [int(item) for item in cpus_from_numactl]
-        else:
-            test_obj.test.error("Can not find node %s's cpus" % nodeset_numad)
         cpus += cpus_from_numactl
     test_obj.test.log.debug("The cpus on the node advised by numad: %s", cpus)
     return sorted(cpus)

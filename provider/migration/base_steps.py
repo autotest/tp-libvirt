@@ -1,4 +1,5 @@
 import os
+import platform
 import time
 
 from six import itervalues
@@ -13,6 +14,7 @@ from virttest import utils_conn
 from virttest import utils_libvirtd
 from virttest import utils_iptables
 from virttest import utils_misc
+from virttest import virsh
 
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_vmxml
@@ -47,6 +49,8 @@ class MigrationBase(object):
         self.src_full_uri = libvirt_vm.complete_uri(
                         self.params.get("migrate_source_host"))
         self.conn_list = []
+        self.check_cont_ping = "yes" == self.params.get("check_cont_ping", "no")
+        self.check_cont_ping_log = self.params.get("check_cont_ping_log", "/tmp/log_file")
         self.remote_libvirtd_log = None
 
         migration_test = migration.MigrationTest()
@@ -89,6 +93,11 @@ class MigrationBase(object):
         if start_vm == "yes" and not self.vm.is_alive():
             self.vm.start()
             self.vm.wait_for_login().close()
+        if self.check_cont_ping:
+            self.test.log.debug("Starting ping command to check network during migration...")
+            vm_session = self.vm.wait_for_login()
+            ping_cmd = "ping 8.8.8.8 > %s 2>&1 &" % self.check_cont_ping_log
+            vm_session.sendline(ping_cmd)
 
     def run_migration(self):
         """
@@ -171,7 +180,7 @@ class MigrationBase(object):
         do_mig_param = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
                         "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                         "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args}
-        migration_base.do_migration(do_mig_param)
+        migration_base.do_migration(**do_mig_param)
 
     def run_migration_again(self):
         """
@@ -222,12 +231,15 @@ class MigrationBase(object):
         do_mig_param = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
                         "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                         "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args}
-        migration_base.do_migration(do_mig_param)
+        migration_base.do_migration(**do_mig_param)
 
     def run_migration_back(self):
         """
         Execute migration from target host to source host
         """
+        migrate_vm_back = "yes" == self.params.get("migrate_vm_back", "yes")
+        if not migrate_vm_back:
+            return
         virsh_options = self.params.get("virsh_options", "")
         extra = self.params.get("virsh_migrate_extra")
         options = self.params.get("virsh_migrate_options", "--live --verbose")
@@ -267,6 +279,28 @@ class MigrationBase(object):
                            % (cmd, cmd_result))
         self.vm.connect_uri = self.src_uri
 
+    def check_vm_cont_ping(self, check_on_dest=True):
+        """
+        Check continuous ping command in VM
+
+        :param check_on_dest: Check whether on the destination machine
+        """
+        dest_uri = self.params.get("virsh_migrate_desturi")
+        if self.check_cont_ping:
+            self.test.log.debug("Checking the output of %s", self.check_cont_ping_log)
+            if check_on_dest:
+                backup_uri, self.vm.connect_uri = self.vm.connect_uri, dest_uri
+            self.vm.cleanup_serial_console()
+            self.vm.create_serial_console()
+            vm_session = self.vm.wait_for_serial_login(timeout=360)
+            vm_session.cmd(
+                "> {0}; sleep 5; grep time= {0}".format(self.check_cont_ping_log))
+            o = vm_session.cmd_output(f"cat {self.check_cont_ping_log}")
+            self.test.log.debug(f"ping command output: {o}")
+            vm_session.close()
+            if check_on_dest:
+                self.vm.connect_uri = backup_uri
+
     def verify_default(self):
         """
         Verify steps by default
@@ -281,6 +315,7 @@ class MigrationBase(object):
         if int(self.migration_test.ret.exit_status) == 0:
             self.migration_test.post_migration_check([self.vm], self.params,
                                                      dest_uri=dest_uri, src_uri=self.src_uri)
+            self.check_vm_cont_ping(check_on_dest=True)
         self.check_local_and_remote_log()
 
     def cleanup_default(self):
@@ -343,9 +378,9 @@ class MigrationBase(object):
         log_level = self.params.get("libvirtd_debug_level")
         log_file = self.params.get("libvirtd_debug_file")
         log_filters = self.params.get("libvirtd_debug_filters")
-        file_type = self.params.get("libvirtd_file_type")
+        remote_file_type = self.params.get("remote_file_type")
 
-        service_name = utils_libvirtd.Libvirtd(file_type).service_name
+        service_name = utils_libvirtd.Libvirtd(remote_file_type).service_name
         file_path = utils_config.get_conf_obj(service_name).conf_path
         self.test.log.debug("Config file path: %s" % file_path)
         cmd = "ls {0} || mkdir -p {0}".format(os.path.dirname(log_file))
@@ -364,25 +399,46 @@ class MigrationBase(object):
         :param remote_str_in_log: True if the remote file should include the given string,
                                   otherwise, False
         """
-        check_str_local_log = eval(self.params.get("check_str_local_log", "[]"))
-        check_str_remote_log = self.params.get("check_str_remote_log", "")
+        try:
+            check_str_local_log = eval(self.params.get("check_str_local_log", "[]"))
+            check_no_str_local_log = eval(self.params.get("check_no_str_local_log", "[]"))
+            check_str_remote_log = eval(self.params.get("check_str_remote_log", "[]"))
+            check_no_str_remote_log = eval(self.params.get("check_no_str_remote_log", "[]"))
+        except Exception as e:
+            self.test.error(f"Wrong test configuration. Unable to eval one or more parameter(s): {str(e)}")
         log_file = self.params.get("libvirtd_debug_file")
+        runner_on_target = None
+
         if check_str_local_log:
             for check_log in check_str_local_log:
                 libvirt.check_logfile(check_log, log_file, str_in_log=local_str_in_log)
-        if check_str_remote_log:
-            runner_on_target = None
+        if check_no_str_local_log:
+            for check_log in check_no_str_local_log:
+                local_str_in_log = False
+                libvirt.check_logfile(check_log, log_file, str_in_log=local_str_in_log)
+        if check_str_remote_log or check_no_str_remote_log:
             server_ip = self.params.get("server_ip")
             server_user = self.params.get("server_user", "root")
             server_pwd = self.params.get("server_pwd")
             runner_on_target = remote.RemoteRunner(host=server_ip,
                                                    username=server_user,
                                                    password=server_pwd)
-            libvirt.check_logfile(check_str_remote_log,
-                                  log_file,
-                                  str_in_log=remote_str_in_log,
-                                  cmd_parms=self.params,
-                                  runner_on_target=runner_on_target)
+
+        if check_str_remote_log:
+            for check_log in check_str_remote_log:
+                libvirt.check_logfile(check_log,
+                                      log_file,
+                                      str_in_log=remote_str_in_log,
+                                      cmd_parms=self.params,
+                                      runner_on_target=runner_on_target)
+        if check_no_str_remote_log:
+            remote_str_in_log = False
+            for check_log in check_no_str_remote_log:
+                libvirt.check_logfile(check_log,
+                                      log_file,
+                                      str_in_log=remote_str_in_log,
+                                      cmd_parms=self.params,
+                                      runner_on_target=runner_on_target)
 
     def remote_add_or_remove_port(self, port, add=True):
         """
@@ -475,3 +531,64 @@ def cleanup_disks_remote(params, vm):
         disk_path = disk.get("source")
         cmd = "rm -f %s" % disk_path
         remote.run_remote_cmd(cmd, params, ignore_status=False)
+
+
+def sync_cpu_for_mig(params):
+    """
+    Sync cpu xml for migration
+
+    :param params: Dictionary with the test parameters
+    """
+    dest_uri = params.get("virsh_migrate_desturi")
+    vm_name = params.get("main_vm")
+
+    cpu_dest_xml = virsh.domcapabilities(uri=dest_uri)
+    cpu_src_xml = virsh.domcapabilities()
+    mig_cpu_xml = os.path.join(data_dir.get_tmp_dir(), "cpu_xml")
+    with open(mig_cpu_xml, 'w+') as fd:
+        fd.write(cpu_dest_xml.stdout.strip())
+        fd.write(cpu_src_xml.stdout.strip())
+    out = virsh.hypervisor_cpu_baseline(mig_cpu_xml, options="--migratable")
+    dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    cpuxml = vm_xml.VMCPUXML()
+    cpuxml.xml = out.stdout.strip()
+    dom_xml.cpu = cpuxml
+    dom_xml.sync()
+
+
+def check_cpu_for_mig(params):
+    """
+    Check cpu for migration
+
+    :param params: Dictionary with the test parameters
+    :return: if the cpu on the source and target hosts are the same, return True
+    """
+    dest_uri = params.get("virsh_migrate_desturi")
+    remote_ip = params.get("server_ip")
+    remote_user = params.get("server_user")
+    remote_pwd = params.get("server_pwd")
+
+    # aarch64 only supports migration tests between hosts with the same CPU, so
+    # no need to check the CPU.
+    if platform.machine() == "aarch64":
+        return True
+
+    cpu_src_xml = virsh.domcapabilities(debug=True).stdout_text.strip()
+    mig_src_xml = os.path.join(data_dir.get_tmp_dir(), "mig_src.xml")
+    with open(mig_src_xml, 'w+') as fd:
+        fd.write(cpu_src_xml)
+
+    remote_session = remote.remote_login("ssh", remote_ip, "22",
+                                         remote_user, remote_pwd,
+                                         r'[$#%]')
+    utils_misc.make_dirs(os.path.dirname(mig_src_xml), remote_session)
+    remote_session.close()
+    remote.scp_to_remote(remote_ip, '22', remote_user, remote_pwd, mig_src_xml,
+                         mig_src_xml, limit="", log_filename=None, timeout=60,
+                         interface=None)
+
+    ret = virsh.hypervisor_cpu_compare(xml_file=mig_src_xml, uri=dest_uri, debug=True).stdout_text.strip()
+    if "identical" in ret or "superset" in ret:
+        return True
+    else:
+        return False

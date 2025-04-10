@@ -4,6 +4,7 @@ import logging as log
 import platform
 import time
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import virt_vm
@@ -53,6 +54,9 @@ def run(test, params, env):
         with open(hook_file, 'w') as hf:
             hf.write('\n'.join(hook_lines))
         os.chmod(hook_file, 0o755)
+        if distro.detect().name == 'rhel' and int(distro.detect().version) > 9:
+            process.run("restorecon -Rv /etc/libvirt/hooks", ignore_status=False, shell=True)
+            process.run("setsebool -P virt_hooks_unconfined on", ignore_status=False, shell=True)
 
         # restart libvirtd
         libvirtd.restart()
@@ -85,6 +89,7 @@ def run(test, params, env):
         """
         Do start/stop operation and check the results.
         """
+        release_reason = params.get("release_reason", "-")
         logging.info("Try to test start/stop hooks...")
         hook_para = "%s %s" % (hook_file, vm_name)
         prepare_hook_file(hook_script %
@@ -102,7 +107,10 @@ def run(test, params, env):
             vm.destroy()
             hook_str = hook_para + " stopped end -"
             assert check_hooks(hook_str)
-            hook_str = hook_para + " release end -"
+            if libvirt_version.version_compare(10, 5, 0):
+                hook_str = hook_para + " release end " + release_reason
+            else:
+                hook_str = hook_para + " release end -"
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()
@@ -488,11 +496,11 @@ def run(test, params, env):
                 lxc_hook()
 
         except virt_vm.VMStartError as e:
-            logging.info(str(e))
             if start_error:
+                logging.info(str(e))
                 pass
             else:
-                test.fail('VM Failed to start for some reason!')
+                test.fail(f"VM Failed to start: {str(e)}")
         else:
             if start_error:
                 test.fail('VM started unexpected')

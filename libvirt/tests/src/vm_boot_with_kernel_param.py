@@ -53,7 +53,7 @@ def run(test, params, env):
         cpu_model = cpu.get_cpu_info()['Model name'].upper()
         if cpu_check not in cpu_model:
             logging.info("This test will work for %s", cpu_check)
-            test.skip("Test is not applicable for %s" % cpu_model)
+            test.cancel("Test is not applicable for %s" % cpu_model)
     # back up vmxml
     for vm_name in vms:
         vm_dict[vm_name] = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -78,7 +78,7 @@ def run(test, params, env):
                         test.error("couldn't get cpu information from guest "
                                    "%s" % vm.name)
                     if cpu_check not in output.upper() and "radix" in boot_log:
-                        test.skip("radix MMU not supported in %s" % output)
+                        test.cancel("radix MMU not supported in %s" % output)
                 status, output = session.cmd_status_output("dmesg")
                 if status:
                     logging.error(output)

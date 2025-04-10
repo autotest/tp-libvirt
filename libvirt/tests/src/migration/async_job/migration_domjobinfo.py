@@ -16,12 +16,18 @@ def run(test, params, env):
         Verify steps
 
         """
-        expected_domjobinfo_complete = params.get("expected_domjobinfo_complete")
+        expected_domjobinfo_complete = eval(params.get("expected_domjobinfo_complete"))
+        remote_ip = params.get("server_ip")
+        postcopy_options = params.get("postcopy_options")
 
+        test.log.info("Verify test.")
         migration_obj.verify_default()
         if expected_domjobinfo_complete:
-            params.update({"domjobinfo_options": "--completed"})
-            libvirt_monitor.check_domjobinfo_output(params)
+            libvirt_monitor.check_domjobinfo_output(vm_name,
+                                                    expected_domjobinfo_complete=expected_domjobinfo_complete,
+                                                    options="--completed",
+                                                    postcopy_options=postcopy_options,
+                                                    remote_ip=remote_ip)
 
     vm_name = params.get("migrate_main_vm")
 

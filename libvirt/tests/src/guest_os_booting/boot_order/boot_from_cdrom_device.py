@@ -1,20 +1,22 @@
 import os
+import platform
 
-from avocado.utils import download
 from avocado.utils import process
 
 from virttest import data_dir
 from virttest import remote
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import disk
 
-from provider.guest_os_booting import guest_os_booting_base
+from provider.guest_os_booting import guest_os_booting_base as guest_os
 
 
-def parse_cdroms_attrs(params):
+def parse_cdroms_attrs(test, params):
     """
     Parse cdrom devices' attrs
 
+    :param test: test object
     :param params: Dictionary with the test parameters
     :return: (boot image path, list of cdrom devices' attrs)
     """
@@ -29,12 +31,13 @@ def parse_cdroms_attrs(params):
         cdrom_attrs_list.append(cdrom2_attrs)
 
     if cdrom1_attrs.get('source') or cdrom2_attrs.get('source'):
-        cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {print $NF}'"
+        cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {res=$NF} END{print res}'"
         repo_url = process.run(cmd, shell=True).stdout_text.strip()
         boot_img_url = os.path.join(repo_url, 'images', 'boot.iso')
         if os.path.exists(boot_img_path):
             os.remove(boot_img_path)
-        download.get_file(boot_img_url, boot_img_path)
+        if not utils_misc.wait_for(lambda: guest_os.test_file_download(boot_img_url, boot_img_path), 60):
+            test.fail('Unable to download boot image')
     return boot_img_path, cdrom_attrs_list
 
 
@@ -53,13 +56,12 @@ def update_vm_xml(vm, params, cdrom_attrs_list):
         os_attrs = {'boots': os_attrs_boots}
         vmxml.setup_attrs(os=os_attrs)
     else:
-        vm_os = vmxml.os
-        vm_os.del_boots()
-        vmxml.os = vm_os
+        vmxml.remove_all_boots()
     if "yes" == params.get("check_bootable_iso", "no"):
-        os_attrs.update({'bios_useserial': 'yes',
-                         'bootmenu_enable': 'yes',
+        os_attrs.update({'bootmenu_enable': 'yes',
                          'bootmenu_timeout': '3000'})
+        if platform.machine() == "x86_64":
+            os_attrs.update({'bios_useserial': 'yes'})
         vmxml.setup_attrs(os=os_attrs)
 
     index = 0
@@ -80,7 +82,7 @@ def run(test, params, env):
     Boot VM from cdrom devices
     This case covers per-device(cdrom) boot elements and os/boot elements.
     """
-    vm_name = guest_os_booting_base.get_vm(params)
+    vm_name = guest_os.get_vm(params)
     status_error = "yes" == params.get("status_error", "no")
     check_bootable_iso = "yes" == params.get("check_bootable_iso", "no")
     bootable_patterns = eval(params.get('bootable_patterns', '[]'))
@@ -91,14 +93,14 @@ def run(test, params, env):
     boot_img_path = None
 
     try:
-        boot_img_path, cdrom_attrs_list = parse_cdroms_attrs(params)
+        boot_img_path, cdrom_attrs_list = parse_cdroms_attrs(test, params)
         update_vm_xml(vm, params, cdrom_attrs_list)
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
 
         vm.start()
-        if check_bootable_iso:
+        if bootable_patterns:
             vm.serial_console.read_until_output_matches(
-                bootable_patterns, timeout=60, internal_timeout=0.5)
+                bootable_patterns, timeout=360, internal_timeout=0.5)
         else:
             try:
                 vm.wait_for_serial_login().close()

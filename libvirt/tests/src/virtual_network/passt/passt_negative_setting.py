@@ -17,6 +17,7 @@ from virttest.utils_test import libvirt
 
 from provider.virtual_network import passt
 
+VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 LOG = logging.getLogger('avocado.' + __name__)
 DOWN_IFACE_NAME = "br1234"
 
@@ -42,7 +43,7 @@ def run(test, params, env):
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
         host_session.close()
-        virsh_ins = virsh.VirshPersistent(uri=virsh_uri)
+        virsh_ins = virsh.Virsh(uri=virsh_uri)
 
     scenario = params.get('scenario')
     operation = params.get('operation')
@@ -50,8 +51,8 @@ def run(test, params, env):
     error_msg = params.get('error_msg')
     iface_attrs = eval(params.get('iface_attrs'))
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     log_file = f'/run/user/{user_id}/passt.log' \
         if not params.get('log_file') else params['log_file']
     iface_attrs['backend']['logFile'] = log_file
@@ -119,12 +120,24 @@ def run(test, params, env):
         if operation == 'start_vm':
             vmxml.add_device(iface_device)
             vmxml.sync(virsh_instance=virsh_ins)
+            LOG.debug(
+                f'VMXML: {virsh.dumpxml(vm_name, uri=virsh_uri).stdout_text}')
             result = virsh.start(vm_name, uri=virsh_uri, debug=True)
         if operation == 'hotplug':
-            virsh.start(vm_name, uri=virsh_uri)
+            vmxml.sync(virsh_instance=virsh_ins)
+            LOG.debug(
+                f'VMXML: {virsh.dumpxml(vm_name, uri=virsh_uri).stdout_text}')
+            virsh.start(vm_name, uri=virsh_uri, **VIRSH_ARGS)
             result = virsh.attach_device(vm_name, iface_device.xml,
                                          uri=virsh_uri, debug=True)
-
+        if scenario == 'inactive_host_iface':
+            passt_ver_cmp = params.get("passt_version")
+            passt_ver = process.run("rpm -q passt", shell=True,
+                                    ignore_status=True).stdout_text.strip().split('-')[1]
+            # With newer passt version, vm can start successfully
+            # with inactive interface
+            if passt_ver >= passt_ver_cmp:
+                status_error, error_msg = False, ''
         libvirt.check_exit_status(result, status_error)
         if error_msg:
             libvirt.check_result(result, error_msg)
@@ -137,8 +150,6 @@ def run(test, params, env):
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
-        else:
-            del virsh_ins
         utils_selinux.set_status(selinux_status)
         process.run(f'ip link del {DOWN_IFACE_NAME}',
                     shell=True, ignore_status=True)

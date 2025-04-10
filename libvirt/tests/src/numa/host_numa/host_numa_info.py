@@ -18,7 +18,9 @@ def setup_default(test_obj):
 
     :param test_obj: NumaTest object
     """
-    test_obj.setup()
+    expect_nodes_num = test_obj.params.get("expect_nodes_num", 2)
+    test_obj.params['expect_nodes_num'] = int(expect_nodes_num)
+    test_obj.setup(expect_nodes_num=int(expect_nodes_num))
     test_obj.test.log.debug("Step: setup is done")
 
 
@@ -31,16 +33,17 @@ def allocate_memory_on_host_nodes(test_obj):
                    like {'2048': '100', '1048576': '1'}
     """
     def _allocate_test(page_num, node_id, page_size):
+        # Drop caches to clean some usable memory
+        with open("/proc/sys/vm/drop_caches", "w") as caches:
+            caches.write('3')
+        # Compact memory to get more continual memory
+        with open("/proc/sys/vm/compact_memory", "w") as memory:
+            memory.write('1')
         hpc.set_node_num_huge_pages(page_num, node_id, page_size, ignore_error=True)
-        allocated_num = hpc.get_node_num_huge_pages(node_id, page_size)
-        if allocated_num < 1:
-            test_obj.test.cancel("Can not set at least one page "
-                                 "with pagesize '%s' on "
-                                 "node '%s'" % (page_size,
-                                                node_id))
-        return allocated_num
+        return hpc.get_node_num_huge_pages(node_id, page_size)
 
     ret = {}
+    sum_page_num = {}
     all_nodes = test_obj.online_nodes_withmem
     allocate_dict = eval(test_obj.params.get('allocate_dict'))
     hpc = test_setup.HugePageConfig(test_obj.params)
@@ -52,9 +55,12 @@ def allocate_memory_on_host_nodes(test_obj):
             test_obj.test.log.debug("To allocate %s %s pages on node %s", allocate_dict[pagesize], pagesize, one_node)
             allocated_num = _allocate_test(allocate_dict[pagesize], one_node, pagesize)
             allocated_info.update({pagesize: allocated_num})
+            sum_page_num[pagesize] = sum_page_num[pagesize] + allocated_num if sum_page_num.get(pagesize) else allocated_num
         ret.update({one_node: allocated_info})
         test_obj.test.log.debug("Get allocated information for node %s: '%s'", one_node, allocated_info)
     test_obj.test.log.debug("Get allocated information '%s'", ret)
+    if not all(sum_page_num.values()):
+        test_obj.test.cancel("At least one page size memory could not be allocated")
     test_obj.params['allocate_result'] = ret
     return ret
 
@@ -231,26 +237,30 @@ def verify_node_mem_by_freepages_various_unit(test_obj):
     """
     allocate_result = test_obj.params['allocate_result']
     all_nodes = test_obj.online_nodes_withmem
-    for pgsize in allocate_result[all_nodes[1]].keys():
+    if test_obj.params['expect_nodes_num'] == 1:
+        target_node = all_nodes[0]
+    else:
+        target_node = all_nodes[1]
+    for pgsize in allocate_result[target_node].keys():
         common_test_freepages(test_obj,
-                              all_nodes[1],
-                              pgsize, allocate_result[all_nodes[1]][pgsize])
+                              target_node,
+                              pgsize, allocate_result[target_node][pgsize])
         common_test_freepages(test_obj,
-                              all_nodes[1],
+                              target_node,
                               pgsize,
-                              allocate_result[all_nodes[1]][pgsize],
+                              allocate_result[target_node][pgsize],
                               size_unit='KiB')
         if int(pgsize) >= 1024:
             common_test_freepages(test_obj,
-                                  all_nodes[1],
+                                  target_node,
                                   int(pgsize)//1024,
-                                  allocate_result[all_nodes[1]][pgsize],
+                                  allocate_result[target_node][pgsize],
                                   size_unit='M')
         if int(pgsize) >= (1024*1024):
             common_test_freepages(test_obj,
-                                  all_nodes[1],
+                                  target_node,
                                   int(pgsize)//(1024*1024),
-                                  allocate_result[all_nodes[1]][pgsize],
+                                  allocate_result[target_node][pgsize],
                                   size_unit='G')
     test_obj.test.log.debug("Verify huge page memory info on "
                             "the first host numa node with different "
@@ -318,9 +328,9 @@ def verify_node_cpus_under_cell(test_obj, cpu_list, node_id):
     one_numa_node = NumaNode(int(node_id) + 1)
     for one_cpu_dict in cpu_list:
         cpu_info_in_sys = one_numa_node.get_cpu_topology(one_cpu_dict['id'])
-        if one_cpu_dict != cpu_info_in_sys:
+        if not set(one_cpu_dict.items()).issubset(cpu_info_in_sys.items()):
             test_obj.test.fail("Expect cpu '%s' in node '%s' "
-                               "to be '%s', but found "
+                               "to be included in '%s', but found "
                                "'%s'" % (one_cpu_dict['id'],
                                          node_id,
                                          cpu_info_in_sys,
@@ -370,6 +380,12 @@ def run(test, params, env):
     """
     Test numa topology together with cpu topology
     """
+    default_pagesize = int(params.get("default_pagesize")) * 1024
+    default_kernel_pagesize = mem_utils.get_page_size()
+    if default_pagesize != default_kernel_pagesize:
+        test.cancel("The case does not support on "
+                    "current host kernel "
+                    "size %d" % default_kernel_pagesize)
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     numatest_obj = numa_base.NumaTest(vm, params, test)

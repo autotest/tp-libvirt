@@ -6,6 +6,7 @@ from aexpect import ShellProcessTerminatedError
 
 from multiprocessing.pool import ThreadPool
 
+from virttest import utils_disk
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -86,7 +87,7 @@ def prepare_vm_state(vm, vm_state):
         logging.error("Unknown state for this test")
 
 
-def check_output(output, vm, vm_state, options):
+def check_output(output, vm, vm_state, options, params):
     """
     Check virsh domstats output according to vm state and command options;
     For now, we only check given state domain can be find by list option.
@@ -95,6 +96,7 @@ def check_output(output, vm, vm_state, options):
     :param vm: Libvirt VM instance
     :param vm_state: Domain state
     :param options: Virsh command options
+    :param params: Dictionary with the test parameters
     """
     check_pass = []
     list_option = ""
@@ -105,6 +107,7 @@ def check_output(output, vm, vm_state, options):
     block_option_pass = False
     cpu_option = ""
     cpu_option_pass = False
+    vcpu_wait_sum_pass = False
     balloon_option = ""
     balloon_option_pass = False
     nowait_option = ""
@@ -188,6 +191,12 @@ def check_output(output, vm, vm_state, options):
         if 'vcpu' in output:
             cpu_option_pass = True
         check_pass.append(cpu_option_pass)
+        if params.get("vcpu_wait_sum"):
+            wait_sum = re.findall(r"vcpu.\d+.wait=(\d+)", output)
+            for sum in wait_sum:
+                if sum != "0":
+                    vcpu_wait_sum_pass = True
+                check_pass.append(vcpu_wait_sum_pass)
     if balloon_option == '--balloon':
         if 'balloon' in output:
             balloon_option_pass = True
@@ -295,6 +304,8 @@ def run(test, params, env):
     iothread_add_ids = eval(params.get("iothread_add_ids", '[]'))
     iothread_del_ids = eval(params.get("iothread_del_ids", '[]'))
     status_error = (params.get("status_error", "no") == "yes")
+    params.update(
+        {"vcpu_wait_sum": vm_state == "running" and domstats_option == "--vcpu"})
 
     if "--nowait" in domstats_option and not libvirt_version.version_compare(4, 5, 0):
         test.cancel("--nowait option is supported until libvirt 4.5.0 version...")
@@ -328,6 +339,11 @@ def run(test, params, env):
                         test.cancel("No 'panic' device in the guest, maybe "
                                     "your libvirt version doesn't support it.")
                 prepare_vm_state(vm, vm_state)
+                if params.get("vcpu_wait_sum"):
+                    session = vm.wait_for_login()
+                    utils_disk.dd_data_to_vm_disk(session, "/tmp/file1")
+                    session.close()
+
         if enforce_command:
             domstats_option += " --enforce"
         if raw_print:
@@ -355,8 +371,9 @@ def run(test, params, env):
                 test.fail("Run failed with right command")
             else:
                 for vm in vms:
-                    if not check_output(output, vm, vm_state, domstats_option):
-                        test.fail("Check command output failed")
+                    if not check_output(output, vm, vm_state, domstats_option, params):
+                        test.fail("Check command output failed "
+                                  "due to %s option" % domstats_option)
             if "--iothread" in domstats_option:
                 test_iothread(vm_list, iothread_add_ids,
                               iothread_del_ids, output, test)

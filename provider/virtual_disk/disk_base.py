@@ -1,5 +1,7 @@
 import logging
 import os
+import re
+import time
 
 from avocado.utils import lv_utils
 from avocado.utils import process
@@ -48,6 +50,7 @@ class DiskBase(object):
         self.new_image_path = ''
         self.path_list = ''
         self.disk_backend = ''
+        self.disk_size = "50M"
 
     @staticmethod
     def get_source_list(vmxml, disk_type, target_dev):
@@ -73,12 +76,17 @@ class DiskBase(object):
                 backing_list = disk.get_backingstore_list()
                 if disk_type != 'rbd_with_auth' and backing_list != []:
                     backing_list.pop()
-                source_list = [elem.find('source').get('file') or
-                               elem.find('source').get('name') or
-                               elem.find('source').get('dev') or
-                               elem.find('source').get('volume')
-                               for elem in backing_list
-                               if elem.find("source") is not None]
+                for elem in backing_list:
+                    source_ele = elem.find("source")
+                    if source_ele is not None:
+                        source_list.append(source_ele.get('file') or
+                                           source_ele.get('name') or
+                                           source_ele.get('dev') or
+                                           source_ele.get('volume'))
+                        if source_ele.find("dataStore"):
+                            source_list.append(
+                                source_ele.find("dataStore").find('source').get('file'))
+
                 source_list.insert(0, active_level_path)
                 break
 
@@ -120,15 +128,21 @@ class DiskBase(object):
                 size = kwargs.get("size", "50M")
                 if kwargs.get("size"):
                     kwargs.pop("size")
-                libvirt.create_local_disk("file", path=new_image_path, size=size,
-                                          disk_format=self.params.get("disk_image_format", 'qcow2'),
-                                          **kwargs)
+                libvirt.create_local_disk(
+                    "file", path=new_image_path, size=size,
+                    disk_format=self.params.get("disk_image_format", 'qcow2'),
+                    **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
         elif disk_type == 'block':
             if not new_image_path:
                 new_image_path = self.create_lvm_disk_path(
-                    vg_name=self.vg_name, lv_name=self.lv_name, **kwargs)
+                    vg_name=self.vg_name, lv_name=self.lv_name,
+                    simulated_iscsi=self.params.get("simulated_iscsi"), **kwargs)
+                if self.params.get('convert_format'):
+                    process.run("qemu-img create -f %s /dev/%s/%s %s" % (
+                            self.params.get('convert_format'), self.vg_name,
+                            self.lv_name, self.disk_size), shell=True)
             disk_dict.update({'source': {'attrs': {'dev': new_image_path}}})
 
         elif disk_type == 'volume':
@@ -146,7 +160,7 @@ class DiskBase(object):
                 new_image_path = nfs_res['mount_dir'] + '/test.img'
 
                 libvirt.create_local_disk("file", path=new_image_path,
-                                          size='50M',
+                                          size=self.disk_size,
                                           disk_format="qcow2", **kwargs)
             disk_dict.update({'source': {'attrs': {'file': new_image_path}}})
 
@@ -163,6 +177,17 @@ class DiskBase(object):
                     "auth": {"auth_user": auth_username,
                              "secret_usage": "cephlibvirt",
                              "secret_type": "ceph"}}})
+        elif disk_type == 'rbd_with_luks_and_auth':
+            mon_host, auth_username, new_image_path, _ = \
+                self.create_rbd_disk_path(self.params, create_img_by_qemu_cmd=True)
+            disk_dict.update({'source': {
+                'attrs': {'protocol': "rbd", "name": new_image_path},
+                "hosts": [{"name": mon_host}],
+                "auth": {"auth_user": auth_username,
+                         "secret_usage": self.params.get("ceph_usage_name"),
+                         "secret_type": "ceph"}}})
+            self.add_luks_encryption_to_disk_dict(
+                disk_dict, self.params.get("luks_sec_dict") % new_image_path)
 
         elif disk_type == "nbd":
             nbd_server_host = process.run('hostname', ignore_status=False,
@@ -198,6 +223,22 @@ class DiskBase(object):
 
         return disk_obj, new_image_path
 
+    def add_luks_encryption_to_disk_dict(self, disk_dict, secret_dict):
+        """
+        Add luks encryption to disk dict.
+
+        :param disk_dict: disk dict.
+        :param secret_dict: secret dict to define a secret.
+        """
+        sec_uuid = libvirt_secret.create_secret(sec_dict=eval(secret_dict))
+        virsh.secret_set_value(sec_uuid, self.params.get("secret_pwd"),
+                               debug=True, ignore_status=False)
+        disk_source = disk_dict["source"]
+        disk_source.update(
+            {"encryption": {"secret": {"type": "passphrase", "uuid": sec_uuid},
+                            "encryption": "luks", "attrs": {"engine": "librbd"}}})
+        return disk_dict
+
     def cleanup_disk_preparation(self, disk_type):
         """
         Clean up the preparation of different type disk
@@ -205,7 +246,9 @@ class DiskBase(object):
         :param disk_type: disk type
         """
         if disk_type == 'block':
-            self.cleanup_block_disk_preparation(self.vg_name, self.lv_name)
+            self.cleanup_block_disk_preparation(
+                self.vg_name, self.lv_name,
+                simulated_iscsi=self.params.get("simulated_iscsi"))
 
         elif disk_type == 'file':
             if os.path.exists(self.new_image_path):
@@ -219,7 +262,7 @@ class DiskBase(object):
         elif disk_type == 'nfs':
             libvirt.setup_or_cleanup_nfs(is_setup=False)
 
-        elif disk_type == "rbd_with_auth":
+        elif disk_type in ["rbd_with_auth", "rbd_with_luks_and_auth"]:
             self.cleanup_rbd_disk_path(self.params)
 
         elif disk_type == "nbd":
@@ -229,18 +272,24 @@ class DiskBase(object):
                 self.test.log.debug("Clean Up nbd failed: %s", str(ndbEx))
 
     @staticmethod
-    def cleanup_block_disk_preparation(vg_name, lv_name):
+    def cleanup_block_disk_preparation(vg_name, lv_name, **kwargs):
         """
         Clean up volume group, logical volume, iscsi target.
 
-        :params vg_name: volume group name
-        :params lv_name: volume name
+        :param vg_name: volume group name
+        :param lv_name: volume name
+        :param kwargs: optional keyword arguments.
         """
         lv_utils.lv_remove(vg_name, lv_name)
         lv_utils.vg_remove(vg_name)
-        libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        if os.path.exists('/dev/%s' % vg_name):
-            os.rmdir('/dev/%s' % vg_name)
+        if kwargs.get("simulated_iscsi"):
+            time.sleep(3)
+            process.run("modprobe %s -r" % re.findall(
+                r"modprobe (\S+)", kwargs.get("simulated_iscsi"))[0])
+        else:
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            if os.path.exists('/dev/%s' % vg_name):
+                os.rmdir('/dev/%s' % vg_name)
 
     @staticmethod
     def create_volume_for_disk_path(test, params, pool_name='pool_name',
@@ -282,13 +331,17 @@ class DiskBase(object):
         :params lv_name: volume name
         :return path: path for disk image
         """
-        device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
+        if kwargs.get("simulated_iscsi"):
+            process.run(kwargs.get("simulated_iscsi"), shell=True)
+            device_name = get_simulated_iscsi()
+        else:
+            device_name = libvirt.setup_or_cleanup_iscsi(is_setup=True)
         lv_utils.vg_create(vg_name, device_name)
         size = kwargs.get("size", "200M")
         if kwargs.get("size"):
             kwargs.pop("size")
         path = libvirt.create_local_disk("lvm", size=size, vgname=vg_name,
-                                         lvname=lv_name, **kwargs)
+                                         lvname=lv_name)
 
         return path
 
@@ -311,11 +364,13 @@ class DiskBase(object):
             os.remove(params.get('configfile'))
 
     @staticmethod
-    def create_rbd_disk_path(params):
+    def create_rbd_disk_path(params, create_img_by_qemu_cmd=False):
         """
         Prepare rbd type disk image path
 
         :params params: Dict with the test parameters.
+        :params create_img_by_qemu_cmd: The flag for whether creating rbd type
+        image by qemu, default False
         :return: tuple, include monitor host, auth username,
                         new image path and secret uuid
         """
@@ -337,10 +392,17 @@ class DiskBase(object):
         sec_uuid = libvirt_secret.create_secret(sec_dict=sec_dict)
         virsh.secret_set_value(sec_uuid, auth_key, debug=True)
 
-        ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
-                          new_image_path.split("/")[1])
-        ceph.rbd_image_create(mon_host, new_image_path.split("/")[0],
-                              new_image_path.split("/")[1], rbd_image_size)
+        if not create_img_by_qemu_cmd:
+            ceph.rbd_image_rm(mon_host, new_image_path.split("/")[0],
+                              new_image_path.split("/")[1])
+            ceph.rbd_image_create(mon_host, new_image_path.split("/")[0],
+                                  new_image_path.split("/")[1], rbd_image_size)
+        else:
+            libvirt.create_local_disk(
+                disk_type="file", path='',
+                extra=params.get("rbd_image_parameter").format(
+                    new_image_path, auth_username, auth_key, mon_host),
+                disk_format=params.get("rbd_image_format"), size=rbd_image_size)
 
         return mon_host, auth_username, new_image_path, sec_uuid
 
@@ -483,3 +545,14 @@ class DiskBase(object):
         process.run(backing_cmd, shell=True, verbose=True)
 
         return based_image, backing_file
+
+
+def get_simulated_iscsi():
+    """
+    Get simulated iscsi device.
+
+    :return simulated iscsi device name.
+    """
+    res = process.run("lsscsi", shell=True).stdout_text.strip()
+    device_name = re.findall(r"Linux\s*scsi_debug\s*\d+\s+(\S+)\s*", res)[0]
+    return device_name

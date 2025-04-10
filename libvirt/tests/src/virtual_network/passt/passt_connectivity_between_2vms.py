@@ -1,5 +1,6 @@
 import logging
 import shutil
+import time
 
 import aexpect
 from virttest import libvirt_version
@@ -51,7 +52,7 @@ def run(test, params, env):
                                                         test_passwd,
                                                         **unpr_vm_args)
         uri = f'qemu+ssh://{test_user}@localhost/session'
-        virsh_ins = virsh.VirshPersistent(uri=uri)
+        virsh_ins = virsh.Virsh(uri=uri)
         host_session = aexpect.ShellSession('su')
         remote.VMManager.set_ssh_auth(host_session, 'localhost', test_user,
                                       test_passwd)
@@ -64,10 +65,9 @@ def run(test, params, env):
     iface_c_attrs = eval(params.get('iface_c_attrs'))
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
-    vm_c_iface = params.get('vm_c_iface', 'eno1')
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_net_if(
-        state="UP")[0]
+    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True).split()[0]
     iface_attrs['backend']['logFile'] = log_file
     iface_c_attrs['backend']['logFile'] = log_file_c
     iface_attrs['source']['dev'] = host_iface
@@ -95,16 +95,20 @@ def run(test, params, env):
         [LOG.debug(virsh.dumpxml(vm_name, uri=virsh_uri).stdout_text)
          for vm_name in (vm_name, vm_c.name)]
 
+        # wait for the vm boot before first time to try serial login
+        time.sleep(5)
         server_session = vm.wait_for_serial_login(60)
         client_session = vm_c.wait_for_serial_login(60)
+        mac = vm_c.get_virsh_mac_address()
+        vm_c_iface = utils_net.get_linux_ifname(client_session, mac)
 
         [LOG.debug(session.cmd_output('ip a'))
          for session in (server_session, client_session)]
 
         server_default_gw = utils_net.get_default_gateway(
-            session=server_session, force_dhcp=True)
+            session=server_session, force_dhcp=True, json=True)
         server_default_gw_v6 = utils_net.get_default_gateway(
-            session=server_session, ip_ver='ipv6')
+            session=server_session, ip_ver='ipv6', json=True)
 
         firewalld.stop()
         server_session.cmd('systemctl stop firewalld')
@@ -128,6 +132,4 @@ def run(test, params, env):
         bkxml_c.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
-        else:
-            del virsh_ins
         utils_selinux.set_status(selinux_status)

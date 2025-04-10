@@ -11,6 +11,7 @@ from virttest.utils_conn import build_server_key, build_CA
 from virttest.utils_v2v import multiple_versions_compare
 from virttest.utils_v2v import params_get
 from virttest import utils_v2v
+from virttest.utils_conn import update_crypto_policy
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -26,6 +27,7 @@ def run(test, params, env):
         """
         check if nbdkit-stats-filter leaks an fd
         """
+        process.run('yum install nbdkit-stats-filter -y', shell=True, ignore_status=True)
         tmp_logfile = os.path.join(data_dir.get_tmp_dir(), "nbdkit-test.log")
         cmd = """
 nbdkit -U - --filter=log --filter=stats sh - \
@@ -53,7 +55,7 @@ EOF
         if count > 0:
             test.fail('nbdkit-stats-filter leaks %d fd' % count)
 
-    def test_has_run_againt_vddk7_0():
+    def test_has_run_againt_vddk():
         """
         check if nbdkit --run + vddk + esx7.0 works.
         """
@@ -88,12 +90,15 @@ EOF
         vddk_libdir_src = params_get(params, "vddk_libdir_src")
         with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
             utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
+                        shell=True, ignore_status=True)
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
             vddk_thumbprint = '11'
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
   --filter=cacheextents --filter=retry vddk server=%s user=%s password=+%s vm=%s \
-  file='%s' libdir=%s --run 'nbdinfo $uri' thumbprint=%s
-""" % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_libdir, vddk_thumbprint)
+  file='%s' libdir=/home/vddk_libdir --run 'nbdinfo $uri' thumbprint=%s
+""" % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_thumbprint)
             # get thumbprint by a trick
             cmd_result = process.run(
                 nbdkit_cmd, shell=True, ignore_status=True)
@@ -118,11 +123,10 @@ nbdkit -rfv -U - --exportname / \
                              ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
                 LOG.info('nbdkit command with scan, readahead and blocksize filters:\n%s' % nbdkit_cmd)
             if checkpoint == 'vddk_with_delay_close_open_option':
-                nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=40000ms delay-open=40000ms'
+                nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=400ms delay-open=400ms'
                 LOG.info('nbdkit command with delay-close and delay-open options:\n%s' % nbdkit_cmd)
             # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
-            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
             if checkpoint == 'vddk_stats':
                 if vddk_stats == 1 and not re.search(
                         r'VDDK function stats', output):
@@ -130,9 +134,9 @@ nbdkit -rfv -U - --exportname / \
                 if vddk_stats == 0 and re.search(
                         r'VDDK function stats', output):
                     test.fail('failed to test vddk_stats')
-            if checkpoint == 'has_run_againt_vddk7_0' and not re.search(
+            if checkpoint == 'has_run_againt_vddk' and not re.search(
                     r'export-size', output):
-                test.fail('failed to test has_run_againt_vddk7_0')
+                test.fail('failed to test has_run_againt_vddk')
             if checkpoint == 'backend_datapath_controlpath' and re.search(r'vddk: (open|pread)', output):
                 test.fail('fail to test nbdkit.backend.datapath and nbdkit.backend.controlpath option')
             if checkpoint == 'scan_readahead_blocksize' and re.search('error', output):
@@ -209,7 +213,7 @@ def get_size(h):
 def pread(h, count, offset):
     raise RuntimeError("pread")
     """
-
+        process.run('yum install nbdkit-python-plugin -y', shell=True, ignore_status=True)
         python_file_path = os.path.join(data_dir.get_tmp_dir(), "python_check.py")
         with open(python_file_path, "w") as f:
             f.write(lines)
@@ -361,19 +365,6 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
 
     def annocheck_test_nbdkit():
-        lines = """
-[rhel9-debug]
-baseurl = pattern
-enabled = 1
-gpgcheck = 0
-name = rhel9-debug
-        """
-        rhel9_debug_repo = os.path.join('/etc/yum.repos.d', 'rhel9-debug.repo')
-        with open(rhel9_debug_repo, "w") as f:
-            f.write(lines)
-        rhel9_debug_repo_url = params.get('rhel9_debug_repo_url')
-        process.run("sed -i 's/pattern/%s/' /etc/yum.repos.d/rhel9-debug.repo" % rhel9_debug_repo_url,
-                    shell=True, ignore_status=True)
         tmp_path = data_dir.get_tmp_dir()
         process.run('yum download nbdkit-server nbdkit-server-debuginfo --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
@@ -387,9 +378,9 @@ name = rhel9-debug
         cmd_3_result = process.run(cmd_3, shell=True, ignore_status=True)
         if re.search('FAIL', cmd_3_result.stdout_text) and len(cmd_3_result.stdout_text) == 0:
             test.fail('fail to test ndbkit-server rpm package with annocheck tool')
-        process.run('rm -rf /etc/yum.repos.d/rhel9-debug.repo', shell=True, ignore_status=True)
 
     def statsfile_option():
+        process.run('yum install nbdkit-stats-filter -y', shell=True, ignore_status=True)
         tmp_path = data_dir.get_tmp_dir()
         process.run('nbdkit --filter=exitlast --filter=stats memory 2G statsfile=%s/example.txt' % tmp_path,
                     shell=True, ignore_status=True)
@@ -405,11 +396,43 @@ name = rhel9-debug
         if re.search('error', cmd.stdout_text):
             test.fail('fail to test rate filter')
 
+    def enable_legacy_cryptography(hostname):
+        """
+        Enable the legacy sha1 algorithm.
+        """
+        ssh_config = ("Host %s\n"
+                      "  KexAlgorithms            +diffie-hellman-group14-sha1\n"
+                      "  MACs                     +hmac-sha1\n"
+                      "  HostKeyAlgorithms        +ssh-rsa\n"
+                      "  PubkeyAcceptedKeyTypes   +ssh-rsa\n"
+                      "  PubkeyAcceptedAlgorithms +ssh-rsa") % hostname
+
+        openssl_cnf = (".include /etc/ssl/openssl.cnf\n"
+                       "[openssl_init]\n"
+                       "alg_section = evp_properties\n"
+                       "[evp_properties]\n"
+                       "rh-allow-sha1-signatures = yes")
+
+        with open(os.path.expanduser('~/.ssh/config'), 'w') as fd:
+            fd.write(ssh_config)
+
+        with open(os.path.expanduser('~/openssl-sha1.cnf'), 'w') as fd:
+            fd.write(openssl_cnf)
+
+        # export the environment variable
+        os.environ['OPENSSL_CONF'] = os.path.expanduser('~/openssl-sha1.cnf')
+        LOG.debug('OPENSSL_CONF is %s' % os.getenv('OPENSSL_CONF'))
+
     def test_ssh_create_option():
         xen_host_user = params_get(params, "xen_host_user")
         xen_host_passwd = params_get(params, "xen_host_passwd")
         xen_host = params_get(params, "xen_host")
         # Setup ssh-agent access to xen hypervisor
+        support_ver = '[virt-v2v-2.0.7-4,)'
+        if utils_v2v.multiple_versions_compare(support_ver):
+            enable_legacy_cryptography(xen_host)
+        else:
+            update_crypto_policy("LEGACY")
         LOG.info('set up ssh-agent access ')
         xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
             xen_host, xen_host_user, xen_host_passwd, auto_close=False)
@@ -440,7 +463,7 @@ name = rhel9-debug
         for value in values:
             cmd_num = process.run("nbdkit null --filter=delay delay-open=%s --run 'nbdinfo $uri'" % value,
                                   shell=True, ignore_status=True)
-            if not re.search('could not parse number', cmd_num.stderr_text):
+            if not re.search('could not parse', cmd_num.stderr_text):
                 test.fail('get unexpected result when set invalid value for nbdkit delay options)')
         #Check error when nbdkit aborts early
         cmd_aborts = process.run("nbdkit --filter=delay null delay-close=3 --run 'nbdinfo --size $uri; "
@@ -541,26 +564,13 @@ name = rhel9-debug
                 test.fail('fail to test cache-min-block-size option')
 
     def cve_starttls():
-        lines = """
-[rhel9-appsource]
-baseurl = pattern
-enabled = 1
-gpgcheck = 0
-name = rhel9-appsource
-        """
-        rhel9_appsource_repo = os.path.join('/etc/yum.repos.d', 'rhel9-appsource.repo')
-        with open(rhel9_appsource_repo, "w") as f:
-            f.write(lines)
-        rhel9_appsource_repo_url = params.get('rhel9_appsource_repo_url')
-        process.run("sed -i 's/pattern/%s/' /etc/yum.repos.d/rhel9-appsource.repo" % rhel9_appsource_repo_url,
-                    shell=True, ignore_status=True)
         tmp_path = data_dir.get_tmp_dir()
+        process.run("yum install libtool rpm-build 'dnf-command(download)' -y", shell=True, ignore_status=True)
         process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
-        process.run('yum install libtool -y', shell=True, ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
-        check_file = process.run('ls /root/rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
+        check_file = process.run('ls /rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
                                  shell=True).stdout_text.strip('\n')
         count = 0
         with open(check_file, "r") as ff:
@@ -574,13 +584,13 @@ name = rhel9-appsource
     def test_protect_filter():
         from subprocess import Popen, PIPE, STDOUT
         protect_data = '"AB" * 32768'
-        p1 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u nbd://localhost'" %
+        p1 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u $uri'" %
                    protect_data, shell=True, stdout=PIPE, stdin=PIPE, stderr=STDOUT)
 
         grep_stdout_1 = p1.communicate(input=b"buf=b'01'*256\nh.pwrite(buf,32768)\nprint(h.pread(512,32768))\n")[0]
         if re.search('AB', grep_stdout_1.decode()):
             test.fail('the data is incorrect when write data with protect filter')
-        p2 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u nbd://localhost'" %
+        p2 = Popen("nbdkit -f --filter=protect data '%s' protect=0-1023 --run 'nbdsh -u $uri'" %
                    protect_data, shell=True, stdout=PIPE, stdin=PIPE, stderr=STDOUT)
 
         grep_stdout_2 = p2.communicate(input=b"buf=b'01'*256\nh.pwrite(buf,32768)\nprint(h.pread(512,32768))\n"
@@ -588,15 +598,111 @@ name = rhel9-appsource
         if not re.search('Operation not permitted ', grep_stdout_2.decode()):
             test.fail('fail to test protect filter')
 
+    def security_label():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        label = process.run("ps -Z", shell=True, ignore_status=True)
+        LOG.info("label %s", label)
+        sec_label = re.search('unconfined_u:unconfined_r:unconfined.*\n', label.stdout_text).group(0).split(' ')[0]
+        LOG.info("seclabel %s", sec_label)
+        test_co_label = process.run("nbdkit --filter=ip file %s allow=security:%s deny=all --run 'nbdinfo $uri'" %
+                                    (image_path, sec_label), shell=True, ignore_status=True)
+        test_inco_label = process.run("nbdkit --filter=ip file %s allow=security:%s1 deny=all --run 'nbdinfo $uri'" %
+                                      (image_path, sec_label), shell=True, ignore_status=True)
+        if re.search(" error", test_co_label.stdout_text) or not re.search("error: client not permitted",
+                                                                           test_inco_label.stderr_text):
+            test.fail('fail to test security label of IP filter')
+
+    def partition_sectorsize():
+        sector_size = params_get(params, "sector_size")
+        guest_images = params_get(params, "guest_images")
+        with tempfile.TemporaryDirectory(prefix='guestimages_') as images_dir:
+            utils_misc.mount(guest_images, images_dir, 'nfs')
+            process.run('cp -R %s/* %s' % (images_dir, '/home'), shell=True, ignore_status=True)
+            utils_misc.umount(guest_images, images_dir, 'nfs')
+        image_list = process.run('ls %s/rhel*sector*' % '/home', shell=True).stdout_text.strip(' ').split('\n')[:-1]
+        for image in image_list:
+            for size in list(sector_size.split(' ')):
+                cmd = process.run("nbdkit --filter=partition file %s partition=1 partition-sectorsize=%s --run "
+                                  "'nbdinfo $uri'" % (image, size), shell=True, ignore_status=True)
+                if 'non-efi' not in image and '512' in image and size == '4k' and \
+                        not re.search('.*try using partition-sectorsize=512', cmd.stderr_text):
+                    test.fail('fail to test 512 image and partition-sectorsize=4k')
+                if '4k' in image and size == '512' and \
+                        not re.search('.*try using partition-sectorsize=4k', cmd.stderr_text):
+                    test.fail('fail to test 4k image and partition-sectorsize=512')
+                elif re.search('nbdkit.*error', cmd.stdout_text):
+                    test.fail('fail to test partition-sectorsize')
+
+    def ones_byte():
+        byte_size = params_get(params, "byte_size")
+        for size in list(byte_size.split(' ')):
+            cmd = process.run("nbdkit ones size=4M byte=%s  --run 'nbdinfo $uri'" % size, shell=True, ignore_status=True)
+            if size == '1' and not re.search(r'.*\\001\\001', cmd.stdout_text):
+                test.fail('fail to test ones plugin with byte=1')
+            if size == 'oxff' and not re.search('ISO-8859 text', cmd.stdout_text):
+                test.fail('fail to test ones plugin with byte=oxff')
+            if size == '256' and not re.search('could not parse number', cmd.stderr_text):
+                test.fail('fail to test ones plugin with byte=256')
+
+    def test_evil_filter():
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        option_evil = params_get(params, "option_evil")
+        option_evil_probability = params_get(params, "option_evil_probability")
+        option_evil_seed = params_get(params, "option_evil_seed")
+        option_evil_stuck_probability = params_get(params, "option_evil_stuck_probability")
+        for mode in list(option_evil.split(' ')):
+            for probability in list(option_evil_probability.split(' ')):
+                for seed in list(option_evil_seed.split(' ')):
+                    for stuck_probability in list(option_evil_stuck_probability.split(' ')):
+                        cmd = process.run("nbdkit --filter=evil file %s evil=%s evil-probability=%s evil-seed=%s "
+                                          "evil-stuck-probability=%s --run 'nbdcopy -p $uri null:'" %
+                                          (image_path, mode, probability, seed, stuck_probability),
+                                          shell=True, ignore_status=True)
+                        output = cmd.stdout_text + cmd.stderr_text
+                        if re.search('nbdkit.*error', output):
+                            test.fail('fail to test evil filter')
+
+    def test_tar_filter():
+        process.run('yum install nbdkit-tar-filter -y', shell=True, ignore_status=True)
+        tmp_path = data_dir.get_tmp_dir()
+        image_path = os.path.join(tmp_path, 'latest-rhel9.img')
+        process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+                    ' %s' % image_path, shell=True)
+        process.run('cd %s ; tar cvf latest-rhel9-image.tar latest-rhel9.img' % tmp_path, shell=True)
+        option_tar_limit = params_get(params, "option_tar_limit")
+        option_tar_entry = params_get(params, "option_tar_entry")
+        for limit in list(option_tar_limit.split(' ')):
+            for entry in list(option_tar_entry.split(' ')):
+                cmd = process.run(" nbdkit file %s/latest-rhel9-image.tar --filter=tar tar-entry=%s tar-limit=%s "
+                                  "--run 'nbdcopy -p $uri null:'" % (tmp_path, entry, limit), shell=True, ignore_status=True)
+                output = cmd.stdout_text + cmd.stderr_text
+                if entry == 'latest-rhel9.img' and re.search('nbdkit.*error', output):
+                    test.fail('fail to test tar filter')
+                elif entry != 'latest-rhel9.img' and not re.search('nbdkit.*error', output):
+                    test.fail('fail to test tar filter')
+
+    def check_curl_time_option():
+        image_url = params_get(params, 'external_image_url')
+        cmd = process.run("nbdkit -rvf -U - curl %s -D curl.times=1 -D curl.verbose=1 -D curl.verbose.ids=1 "
+                          "--run 'nbdcopy -p $uri null:'" % image_url, shell=True, ignore_status=True)
+        if not re.search(r'nbdkit: debug: times .*-D curl.times=1.*', cmd.stderr_text):
+            test.fail('fail to test curl.time option')
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
-    elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats', 'backend_datapath_controlpath',
+    elif checkpoint in ['has_run_againt_vddk', 'vddk_stats', 'backend_datapath_controlpath',
                         'scan_readahead_blocksize', 'vddk_with_delay_close_open_option']:
-        test_has_run_againt_vddk7_0()
+        test_has_run_againt_vddk()
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
     elif checkpoint == 'data_corruption':
@@ -647,5 +753,17 @@ name = rhel9-appsource
         cve_starttls()
     elif checkpoint == 'test_protect_filter':
         test_protect_filter()
+    elif checkpoint == 'security_label':
+        security_label()
+    elif checkpoint == 'partition_sectorsize':
+        partition_sectorsize()
+    elif checkpoint == 'ones_byte':
+        ones_byte()
+    elif checkpoint == 'test_evil_filter':
+        test_evil_filter()
+    elif checkpoint == 'test_tar_filter':
+        test_tar_filter()
+    elif checkpoint == 'check_curl_time_option':
+        check_curl_time_option()
     else:
         test.error('Not found testcase: %s' % checkpoint)

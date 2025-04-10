@@ -26,7 +26,6 @@ def run(test, params, env):
     1:byte/KB/KiB/MB/MiB/GB/GiB/invalid
     2:with numa/without numa
     """
-
     def run_positive_test():
         """
         Start guest
@@ -50,12 +49,12 @@ def run(test, params, env):
         test.log.info("TEST_STEP4: Check guest memory value")
         session = vm.wait_for_login()
         guest_mem = utils_misc.get_mem_info(session)
-        session.close()
         test.log.debug("Get memory value in guest: %s", guest_mem)
 
         test.log.info("TEST_STEP5: Check currentmemory change to "
                       "the value and round up to a multiple of default pagesize")
-        check_mem_after_operation('login')
+        check_mem_after_operation('login', session)
+        session.close()
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         current_mem_new = vmxml.get_current_mem()
 
@@ -107,14 +106,14 @@ def run(test, params, env):
         for item in eval(pattern):
             libvirt_vmxml.check_guest_xml_by_xpaths(vmxml, item)
 
-    def check_mem_after_operation(operation="start"):
+    def check_mem_after_operation(operation="start", session=None):
         """
         Check mem after operation
 
         :param operation: guest operation
         """
         new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        result = get_expected_result(operation)
+        result = get_expected_result(operation, session)
         for attr in eval(params.get("vm_attrs")).keys():
             if attr == "cpu":
                 numa_memory = new_vmxml.cpu.numa_cell[0]['memory']
@@ -134,7 +133,7 @@ def run(test, params, env):
                     test.fail('%s should be %s instead of %s ' %
                               (attr, result[attr], new_value))
                 else:
-                    test.log.debug("Get correct %s=%s in xml", (attr, result[attr]))
+                    test.log.debug("Get correct %s=%s in xml", attr, result[attr])
 
     def set_negative_memory(case):
         """
@@ -161,7 +160,7 @@ def run(test, params, env):
         cmd_result = virsh.define(vmxml.xml, debug=True)
         libvirt.check_result(cmd_result, error_msg)
 
-    def get_dest_size(source_size, operation="start", check_current_mem=False):
+    def get_dest_size(source_size, operation="start", check_current_mem=False, session=None):
         """
         Round up the source size and convert dest size
         according to the operation
@@ -177,10 +176,10 @@ def run(test, params, env):
 
         1) When the operation is guest login, Verify the current memory
         value would change to the value set in defined xml and round up to a
-        multiple of 4KiB(default pagesize), other memory value same as 2):
+        multiple of 4KiB(default guest pagesize), other memory value same as 2):
 
-            2000000KB = 1953125 KiB, and divide default_pagesize = 488281.25
-            rounds up to 488282, than 488282 * default_page = 1953128 KiB
+            2000000KB = 1953125 KiB, and divide default guest pagesize = 488281.25
+            rounds up to 488282, than 488282 * default guest page = 1953128 KiB
 
         2) When the operation is guest start or login and non-current memory,
          Verify the memory value
@@ -194,9 +193,16 @@ def run(test, params, env):
             dest_unit = 'KiB'
             convert_size = memory_base.convert_data_size(source_size,
                                                          dest_unit)
-            round_up_size = math.ceil(convert_size/default_pagesize)
-            dest_size = round_up_size * default_pagesize
-
+            conf_page_size = session.cmd_output('getconf PAGE_SIZE')
+            balloon_pagesize = 4
+            test.log.debug('The PAGE_SIZE of guest is %s', conf_page_size)
+            pagesize_kib = int(conf_page_size) // 1024
+            remainder = convert_size % pagesize_kib
+            if pagesize_kib - remainder < balloon_pagesize:
+                round_up_size = math.ceil(convert_size / pagesize_kib)
+            else:
+                round_up_size = math.floor(convert_size / pagesize_kib)
+            dest_size = round_up_size * pagesize_kib
         else:
             dest_unit = 'MiB'
             convert_size = memory_base.convert_data_size(source_size,
@@ -210,7 +216,7 @@ def run(test, params, env):
 
         return int(dest_size)
 
-    def get_expected_result(operation='start'):
+    def get_expected_result(operation='start', session=None):
         """
         Get expected memory result.
 
@@ -220,7 +226,8 @@ def run(test, params, env):
         result_dict.update({
             'memory': get_dest_size(mem_value+mem_unit, operation),
             'current_mem': get_dest_size(current_mem+current_mem_unit,
-                                         operation, check_current_mem=True),
+                                         operation, check_current_mem=True,
+                                         session=session),
             "max_mem_rt": get_dest_size(max_mem+max_mem_unit, operation),
             "numa_memory": get_dest_size(mem_value+mem_unit, operation),
         })
@@ -233,7 +240,6 @@ def run(test, params, env):
 
     case = params.get("case")
     error_msg = params.get("error_msg")
-    default_pagesize = int(params.get("default_pagesize"))
     mem_value = params.get("mem_value")
     mem_unit = params.get("mem_unit")
     current_mem = params.get("current_mem")

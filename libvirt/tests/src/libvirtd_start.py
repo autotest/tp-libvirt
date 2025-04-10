@@ -82,7 +82,7 @@ def run(test, params, env):
     # In RHEL6 iptables-services and firewalld is not supported
     # So try to install all required packages but ignore failures
     logging.info('Preparing firewall related packages')
-    software_mgr = software_manager.SoftwareManager()
+    software_mgr = software_manager.manager.SoftwareManager()
     for pkg in ['iptables', 'iptables-services', 'firewalld']:
         if not software_mgr.check_installed(pkg):
             software_mgr.install(pkg)
@@ -149,6 +149,7 @@ def run(test, params, env):
         _check_errors()
     finally:
         logging.info('Recovering services status')
+        process.run("rm -rf /run/virtnetworkd.pid", ignore_status=True)
         #Restart socket service after starting process at foreground
         utils_libvirtd.Libvirtd("virtnetworkd.socket").restart()
         # If service do not exists, then backup status and current status

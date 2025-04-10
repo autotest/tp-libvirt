@@ -1,9 +1,30 @@
 from uuid import uuid4
 
+from virttest.utils_misc import wait_for, cmd_status_output
 from virttest.utils_zchannels import ChannelPaths
 from virttest.libvirt_xml.vm_xml import VMXML
 
 from provider.vfio import ccw
+
+
+def mdev_listed(uuid):
+    """
+    Returns a function that will check if the mediated device
+    with given uuid is listed
+
+    :param uuid: uuid of the mediated device
+    """
+
+    def _mdev_listed():
+        """
+        True if uuid is listed, False else
+        """
+        cmd = "lsmdev"
+        _, o = cmd_status_output(cmd)
+        LOG.debug(o)
+        return uuid in o
+
+    return _mdev_listed
 
 
 def run(test, params, env):
@@ -55,7 +76,7 @@ def run(test, params, env):
 
             ccw.set_override(schid)
             ccw.start_device(uuid, schid)
-
+            wait_for(lambda: mdev_listed(uuid), timeout=10)
             vm.start()
             session = vm.wait_for_login()
 

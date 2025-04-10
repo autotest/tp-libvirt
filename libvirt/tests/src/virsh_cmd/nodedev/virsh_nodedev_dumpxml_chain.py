@@ -3,6 +3,9 @@ import re
 
 from virttest import virsh
 from virttest.libvirt_xml.base import LibvirtXMLBase
+from virttest.utils_zchannels import SubchannelPaths as paths
+
+from provider.vfio import ccw
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -16,28 +19,37 @@ def run(test, params, env):
     going up per parent.
     """
 
+    device_ids = params.get("device_ids", "").split(",")
+    device = None
     chain_start_device_pattern = params.get("chain_start_device_pattern")
     checks = eval(params.get("checks"))
-    result = virsh.nodedev_list(ignore_status=False)
-    selected_device = get_device(result.stdout_text.strip().splitlines(),
-                                 chain_start_device_pattern)
-    if not selected_device:
-        test.error("No suitable device found for test."
-                   "Pattern: %s. Available devices: %s." %
-                   (chain_start_device_pattern, result.stdout))
+    try:
+        device = ccw.select_first_available_device(device_ids)
+        if device[paths.HEADER["Use"]] != "yes":
+            ccw.set_device_online(device[paths.HEADER["Device"]])
+        result = virsh.nodedev_list(ignore_status=False)
+        selected_device = get_device(result.stdout_text.strip().splitlines(),
+                                     chain_start_device_pattern)
+        if not selected_device:
+            test.error("No suitable device found for test."
+                       "Pattern: %s. Available devices: %s." %
+                       (chain_start_device_pattern, result.stdout))
 
-    xml = get_nodedev_dumpxml(selected_device)
-    validate_nodedev_xml(test, xml)
-    for check in checks:
-        for xpath, pattern in check.items():
-            value = xml.xmltreefile.findtext(xpath)
-            value = value if value else ""
-            if not re.search(pattern, value):
-                test.fail("Unexpected value on xpath '%s':"
-                          " '%s' does not match '%s'" %
-                          (xpath, value, pattern))
-        xml = get_nodedev_dumpxml(xml.xmltreefile.findtext("parent"))
+        xml = get_nodedev_dumpxml(selected_device)
         validate_nodedev_xml(test, xml)
+        for check in checks:
+            for xpath, pattern in check.items():
+                value = xml.xmltreefile.findtext(xpath)
+                value = value if value else ""
+                if not re.search(pattern, value):
+                    test.fail("Unexpected value on xpath '%s':"
+                              " '%s' does not match '%s'" %
+                              (xpath, value, pattern))
+            xml = get_nodedev_dumpxml(xml.xmltreefile.findtext("parent"))
+            validate_nodedev_xml(test, xml)
+    finally:
+        if device and device[paths.HEADER["Use"]] == "yes":
+            ccw.set_device_offline(device[paths.HEADER["Device"]])
 
 
 def validate_nodedev_xml(test, xml):

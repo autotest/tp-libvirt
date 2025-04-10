@@ -4,6 +4,7 @@ import random
 import re
 import string
 import aexpect
+import time
 
 from avocado.utils import linux_modules
 from avocado.utils import process
@@ -452,7 +453,7 @@ def check_scsi_cdrom_hot_eject(vm, params, test):
     virsh_session = aexpect.ShellSession(virsh.VIRSH_EXEC, auto_close=True)
     event_cmd = "event --domain %s --event tray-change --loop" % vm.name
     virsh_session.sendline(event_cmd)
-
+    time.sleep(60)
     device_target = params.get("target_dev")
     virsh.change_media(vm.name, device_target, " --eject --live",
                        ignore_status=False, debug=True)
@@ -478,6 +479,7 @@ def check_scsi_cdrom_hot_eject(vm, params, test):
     # check tray-change event
     virsh_session.send_ctrl("^C")
     ret_output = virsh_session.get_stripped_output().replace("\n", "").strip()
+    LOG.debug("event:\n%s", ret_output)
 
     event_matched_opened = r"event 'tray-change' for domain '%s' disk .*opened" % vm.name
     if not re.search(event_matched_opened, ret_output):
@@ -491,6 +493,23 @@ def check_scsi_cdrom_hot_eject(vm, params, test):
     cdrom_devices = cdrom_vmxml.get_disk_all_by_expr('device==cdrom')
     if len(cdrom_devices) > 0:
         test.fail("cdrom disk can not be detached successfully")
+
+
+def check_empty_source_cdrom(vm, params, test):
+    """
+    Check hotplug empty source cdrom
+
+    :param vm: one object representing VM
+    :param params: wrapped parameters in dictionary format
+    :param test: test assert object
+    """
+    vm.wait_for_login().close()
+    # hotplug cdrom device
+    device_obj = params.get("cdrom_xml")
+    virsh.attach_device(vm.name, device_obj.xml, flagstr="--live", ignore_status=False, debug=True)
+
+    # Check cdrom is present in disk xml
+    check_source_in_cdrom_device(vm, None, test)
 
 
 def run(test, params, env):
@@ -557,6 +576,9 @@ def run(test, params, env):
                                ignore_status=False, debug=True)
         if backend_device == "block_lun_source":
             device_obj = create_block_lun_source_disk(params)
+        if backend_device == "empty_source_cdrom_backend":
+            device_obj = create_customized_disk(params)
+            params.update({'cdrom_xml': device_obj})
         if not hotplug:
             # Sync VM xml.
             vmxml.add_device(device_obj)
@@ -614,6 +636,8 @@ def run(test, params, env):
             check_cdrom_reboot_reset(vm, params, test)
         elif backend_device == "scsi_cdrom_hot_eject_backend":
             check_scsi_cdrom_hot_eject(vm, params, test)
+        elif backend_device == "empty_source_cdrom_backend":
+            check_empty_source_cdrom(vm, params, test)
     finally:
         # Recover VM.
         if vm.is_alive():

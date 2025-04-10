@@ -242,7 +242,7 @@ def test_disable_enable_cpu(test, host_cpus_list, params):
     libvirt.check_result(output, expected_fails=[err_msg])
 
     logging.debug("Online host cpu %s" % host_cpus_list[-1])
-    if cpuutil.online(host_cpus_list[-1]):
+    if not cpuutil.online(host_cpus_list[-1]):
         test.error("Failed to online host cpu %s" % host_cpus_list[-1])
     subtest_cpu_percentage_option(test, host_cpus_list[-1], with_cpu_option=False)
 

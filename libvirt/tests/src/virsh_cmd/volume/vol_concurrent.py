@@ -2,10 +2,7 @@ import logging as log
 import os
 import threading
 import re
-try:
-    import queue as Queue
-except ImportError:
-    import Queue
+import queue
 
 from avocado.core import exceptions
 
@@ -15,7 +12,7 @@ from virttest import libvirt_storage
 from virttest.utils_test import libvirt as utlv
 
 
-q = Queue.Queue()
+q = queue.Queue()
 
 
 # Using as lower capital is not the best way to do, but this is just a

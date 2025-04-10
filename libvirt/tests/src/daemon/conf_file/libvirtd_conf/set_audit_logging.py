@@ -103,12 +103,14 @@ def run(test, params, env):
 
         """
         log_for_util = params.get("log_for_util")
-        if not libvirt.check_logfile(log_for_util, log_config_path, str_in_log=True):
+        if not libvirt.check_logfile(log_for_util, log_config_path,
+                                     ignore_status=True, str_in_log=True):
             test.fail("Can not find expected message :%s in log file:%s" % (log_for_util, log_config_path))
         log_for_filter_list = eval(params.get("log_for_filter_list"))
         for filter in log_for_filter_list:
             str_to_grep = "%s" % filter
-            if not libvirt.check_logfile(str_to_grep, log_config_path, str_in_log=False):
+            if libvirt.check_logfile(str_to_grep, log_config_path,
+                                     ignore_status=True, str_in_log=True):
                 test.fail("Find unexpected message :%s in log file:%s" % (str_to_grep, log_config_path))
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
@@ -140,9 +142,12 @@ def run(test, params, env):
             check_virt_type_from_audit_log()
             check_msg_in_libvirtd_log("virDomainAudit")
         elif test_scenario == "default_audit_log":
+            vm.wait_for_login().close()
             ausearch_audit_log()
         elif test_scenario == "concurrent_filters":
             check_concurrent_filters()
     finally:
         libvirtd_config.restore()
         utils_libvirtd.Libvirtd('virtqemud').restart()
+        if log_config_path and os.path.exists(log_config_path):
+            os.remove(log_config_path)

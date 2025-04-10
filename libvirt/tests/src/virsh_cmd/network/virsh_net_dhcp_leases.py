@@ -11,8 +11,9 @@ from virttest.utils_test import libvirt as utlv
 from avocado.utils import process
 from datetime import datetime, timedelta
 from virttest.libvirt_xml import LibvirtXMLError
+from provider.virtual_network import network_base
 
-from virttest import libvirt_version
+from virttest import libvirt_version, utils_package
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -154,7 +155,9 @@ def run(test, params, env):
             if ip_addr is None:
                 iface_name = utils_net.get_linux_ifname(session, mac_addr)
                 if try_dhclint:
-                    session.cmd("dhclient %s" % iface_name)
+                    if not utils_package.package_install('dhcpcd', session, 60):
+                        test.fail("Failed to install dhcpcd in guest OS.")
+                    session.cmd("dhcpcd %s" % iface_name)
                     ip_addr = utils_misc.wait_for(f, 10)
                 else:
                     # No IP for the interface, just print the interface name
@@ -189,7 +192,8 @@ def run(test, params, env):
             else:
                 logging.debug("Not find '%s' in domain XML", net_mac)
                 continue
-            iface_ip = get_ip_by_mac(net_mac)
+            session = vm.wait_for_login(login_nic_index, timeout=120, serial=True)
+            iface_ip = network_base.get_vm_ip(session, net_mac)
             if iface_ip and iface_ip != net_ip:
                 test.fail("Address '%s' is not expected" % iface_ip)
             #check if lease time is correct

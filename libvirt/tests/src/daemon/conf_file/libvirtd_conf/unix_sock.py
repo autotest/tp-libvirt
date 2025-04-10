@@ -10,6 +10,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 
 from virttest import libvirt_version
 
@@ -95,6 +96,7 @@ def run(test, params, env):
 
         result = virsh.net_define(xml_path, uri=uri, ignore_status=True)
         logging.debug('Result of virsh test run is:\n %s' % result)
+        process.run("ls -lZ /run/libvirt/", shell=True, ignore_status=True)
         try:
             if result.exit_status and not readonly:
                 logging.error('Error encountered when running virsh net-define '
@@ -123,12 +125,16 @@ def run(test, params, env):
         :param root_path: Absolute path of the directory that target file in.
         :return : True if success or False if any test fails.
         """
-        rw_path = os.path.join(root_path, 'libvirt-sock')
+        if utils_split_daemons.is_modular_daemon():
+            rw_path = os.path.join(root_path, 'virtqemud-sock')
+            ro_path = os.path.join(root_path, 'virtqemud-sock-ro')
+        else:
+            rw_path = os.path.join(root_path, 'libvirt-sock')
+            ro_path = os.path.join(root_path, 'libvirt-sock-ro')
         logging.debug("Checking read-write socket file %s" % rw_path)
         if not check_unix_sock(group, rw_perms, rw_path):
             return False
 
-        ro_path = os.path.join(root_path, 'libvirt-sock-ro')
         logging.debug("Checking read-only socket file %s" % ro_path)
         return check_unix_sock(group, ro_perms, ro_path, readonly=True)
 
