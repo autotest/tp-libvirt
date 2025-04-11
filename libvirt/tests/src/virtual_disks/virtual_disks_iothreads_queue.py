@@ -254,30 +254,16 @@ def run_test_define_start(vm, params, vmxml, test):
 
 def run_test_update_delete_iothread(vm, params, vmxml, test):
     """
-    Test to delete an iothread being used by a disk and
-    update the disk with new driver iothreads information
+    Test to delete an iothread being used by a disk
 
     :param vm: vm instance
     :param params: dict, test parameters
     :param vmxml:  VMXML instance
     :param test:   test object
     """
-    def _get_driver_iothreads(vmxml):
-        """
-        Utility function for getting the device object and driver iothreads
-
-        :param vmxml: VMXML instance
-        :return tuple: device xml object, dict of driver_iothreads
-        """
-        dev_obj, _ = libvirt.get_vm_device(vmxml, 'disk')
-        iothreads = dev_obj.driver_iothreads
-        return dev_obj, iothreads
-
     vm_name = params.get("main_vm")
     err_msg = params.get("err_msg")
     del_iothread_id = params.get("del_iothread_id")
-    old_driver_iothreads = eval(params.get("driver_iothreads"))
-    new_driver_iothreads = eval(params.get("new_driver_iothreads"))
     virsh_dargs = {"debug": True, "ignore_status": True}
 
     run_common(params, vmxml, test)
@@ -285,23 +271,65 @@ def run_test_update_delete_iothread(vm, params, vmxml, test):
     ret = virsh.iothreaddel(vm_name, del_iothread_id, **virsh_dargs)
     libvirt.check_result(ret, expected_fails=err_msg)
 
+
+def run_test_live_update_disk(vm, params, vmxml, test):
+    """
+    Test to live update iothread_vq_mapping of a disk.
+
+    :param vm: vm instance
+    :param params: dict, test parameters
+    :param vmxml:  VMXML instance
+    :param test:   test object
+    """
+
+    def _get_driver_iothreads(vmxml):
+        """
+        Utility function for getting the device object and driver iothreads
+
+        :param vmxml: VMXML instance
+        :return tuple: device xml object, dict of driver_iothreads
+        """
+        dev_obj, _ = libvirt.get_vm_device(vmxml, "disk")
+        iothreads = None
+        if dev_obj.fetch_attrs().get("driver_iothreads") is not None:
+            iothreads = dev_obj.driver_iothreads
+        return dev_obj, iothreads
+
+    vm_name = params.get("main_vm")
+    status_error = "yes" == params.get("status_error", "no")
+    err_msg = params.get("err_msg")
+    old_driver_iothreads = eval(params.get("driver_iothreads"))
+    new_driver_iothreads = eval(params.get("new_driver_iothreads"))
+    virsh_dargs = {"debug": True, "ignore_status": True}
+
+    run_common(params, vmxml, test)
     test.log.debug("Step: update the disk with new driver iothreads")
     dev_obj, iothreads = _get_driver_iothreads(vmxml)
     iothreads.update(**new_driver_iothreads)
     dev_obj.driver_iothreads = iothreads
-    test.log.debug("After updated with driver iothreads, "
-                   "the disk is:\n%s", dev_obj)
+    test.log.debug("The new disk xml is:\n%s", dev_obj)
     ret = virsh.update_device(vm_name, dev_obj.xml, **virsh_dargs)
     updated_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     _, new_iothreads = _get_driver_iothreads(updated_vmxml)
-    if new_iothreads.fetch_attrs() != old_driver_iothreads:
-        test.fail("Expect driver iothreads in the disk "
-                  "to be '%s', but found '%s'" % (old_driver_iothreads,
-                                                  new_iothreads.fetch_attrs()))
+    if new_iothreads is None and old_driver_iothreads != {}:
+        test.fail(
+            "Expect driver iothreads in the disk "
+            "to be '%s', but found None" % (old_driver_iothreads)
+        )
+    elif (
+        new_iothreads is not None
+        and new_iothreads.fetch_attrs() != old_driver_iothreads
+    ):
+        test.fail(
+            "Expect driver iothreads in the disk "
+            "to be '%s', but found '%s'"
+            % (old_driver_iothreads, new_iothreads.fetch_attrs())
+        )
     else:
-        test.log.debug("Verify: the disk's driver iothreads "
-                       "is not changed - PASS")
-    libvirt.check_exit_status(ret, True)
+        test.log.debug("Verify: the disk's driver iothreads is not changed - PASS")
+    libvirt.check_exit_status(ret, status_error)
+    if err_msg:
+        libvirt.check_result(ret, expected_fails=err_msg)
 
 
 def run(test, params, env):
