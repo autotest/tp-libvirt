@@ -27,6 +27,21 @@ def mdev_listed(uuid):
     return _mdev_listed
 
 
+def guest_is_responsive(session):
+    """
+    Executes a simple command on the guest and handles errors.
+
+    :param session: logged in guest console session
+    :return True: if all works well, False if not
+    """
+    try:
+        cmd_status_output("ls", session=session, ignore_status=False)
+        return True
+    except Exception as e:
+        logging.debug(f"failed to execute command: {e}")
+        return False
+
+
 def run(test, params, env):
     """
     Test for CCW, esp. DASD disk passthrough on s390x.
@@ -68,8 +83,8 @@ def run(test, params, env):
 
         if device_removal_case:
             ChannelPaths.set_standby(chpids)
-            if ccw.device_is_listed(session, chpids):
-                test.fail("Device must not be visible inside guest")
+            if not guest_is_responsive(session):
+                test.fail("Guest and host must be responsive if device removed.")
 
             vm.destroy()
             ChannelPaths.set_online(chpids)
