@@ -172,7 +172,8 @@ def teardown_default(test_obj):
     """
     test_obj.teardown()
     hpc = test_obj.params.get('hp_config_obj')
-    hpc.cleanup()
+    if hpc:
+        hpc.cleanup()
     test_obj.test.log.debug("Step: teardown is done")
 
 
