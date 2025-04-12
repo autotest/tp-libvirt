@@ -174,9 +174,10 @@ def teardown_default(test_obj):
     :param test_obj: NumaTest object
     """
     test_obj.teardown()
-    backup_numad_status = test_obj.params['backup_numad_status']
-    libvirt_service.ensure_service_status('numad',
-                                          expect_active=backup_numad_status)
+    backup_numad_status = test_obj.params.get("backup_numad_status")
+    if backup_numad_status:
+        libvirt_service.ensure_service_status('numad',
+                                              expect_active=backup_numad_status)
     test_obj.test.log.info("Step: teardown is done")
 
 
