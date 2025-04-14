@@ -65,7 +65,14 @@ def create_customized_disk(params, test):
     device_target = params.get("target_dev")
     device_bus = params.get("target_bus")
     device_format = params.get("target_format")
-    source_file_path = setup_scsi_debug_block_device()
+    source_file_path = None
+    source_raw_file_path = params.get("source_raw_file_path")
+    if source_raw_file_path:
+        libvirt.create_local_disk("file", source_raw_file_path, "1M", device_format)
+        cleanup_files.append(source_raw_file_path)
+        source_file_path = source_raw_file_path
+    else:
+        source_file_path = setup_scsi_debug_block_device()
     overlay_source_file_path = params.get("overlay_source_file_path")
     expected_size = params.get("block_size_in_bytes")
     source_dict = {}
@@ -73,7 +80,9 @@ def create_customized_disk(params, test):
     # check block size
     check_image_virtual_size(source_file_path, expected_size, test)
 
-    if source_file_path:
+    if source_raw_file_path:
+        source_dict.update({"file": source_file_path})
+    else:
         source_dict.update({"dev": source_file_path})
 
     if overlay_source_file_path:
@@ -180,6 +189,8 @@ def run(test, params, env):
     target_bus = params.get("target_bus")
     target_dev = params.get('target_dev')
     status_error = "yes" == params.get("status_error")
+    type_name = params.get("type_name")
+    source_raw_file_path = params.get("source_raw_file_path")
     try:
         device_obj = create_customized_disk(params, test)
         if not hotplug:
@@ -216,6 +227,9 @@ def run(test, params, env):
         result = virsh.blockresize(vm_name, target_dev,
                                    resize_value, **virsh_dargs)
         libvirt.check_exit_status(result, status_error)
+        if test_scenario in ["not_align_with_multiple_1024"]:
+            actual_expectd_size = params.get("actual_resize_value")
+            check_image_virtual_size(source_raw_file_path, actual_expectd_size, test)
 
         if not status_error:
             check_vm_dumpxml(params, test, False)
@@ -228,7 +242,8 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         vmxml_backup.sync()
-        libvirt.delete_scsi_disk()
+        if type_name in ["block"]:
+            libvirt.delete_scsi_disk()
         for file_path in cleanup_files:
             if os.path.exists(file_path):
                 os.remove(file_path)
