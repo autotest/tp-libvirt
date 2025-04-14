@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest.libvirt_xml import domcapability_xml
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.libvirt_xml import xcepts
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -180,6 +181,7 @@ def run(test, params, env):
     pkgs = params.get('pkgs')
     features_from_domcap = params.get('features_from_domcap')
     status_error = params.get('status_error') == 'yes'
+    check_xml = params.get('check_xml') == 'yes'
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -206,6 +208,9 @@ def run(test, params, env):
         try:
             ret = virsh.start(vm_name, debug=True)
             libvirt.check_exit_status(ret, status_error)
+            if check_xml:
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                libvirt_vmxml.check_guest_xml_by_xpaths(vmxml, eval(params.get("expected_xpaths")))
         except exceptions.TestFail as details:
             if re.search(r"host doesn\'t support paravirtual spinlocks",
                          str(details)):
