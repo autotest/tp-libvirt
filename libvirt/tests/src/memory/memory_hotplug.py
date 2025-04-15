@@ -79,6 +79,7 @@ def create_mem_device(params):
 def check_event(target_event, event_output):
     """
     Check whether target_event exists in actual event_output
+    Add test info
 
     :param target_event: event that's supposed to exist
     :param event_output: actual event output
