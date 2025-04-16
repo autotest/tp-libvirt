@@ -110,6 +110,10 @@ def prepare_env_and_execute_bib(params, test):
         options += f" -v {root_dir}/policy.json:/etc/containers/policy.json -v {root_dir}/bib_lookaside.yaml:/etc/containers/registries.d/bib_lookaside.yaml "
         options += f" -v /var/lib/containers/sigstore:/var/lib/containers/sigstore -v {root_dir}/key.gpg:{root_dir}key.gpg "
 
+    # Pull images first
+    if "local" not in container_url:
+        bib_utils.podman_pull(container_url)
+
     result = bib_utils.podman_command_build(bib_image_url, disk_image_type, container_url, config_json_file,
                                             local_container, enable_tls_verify, ownership,
                                             key_store_mounted, target_arch, roofs, options, **aws_config_dict)
