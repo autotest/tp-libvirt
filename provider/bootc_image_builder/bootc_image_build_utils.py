@@ -34,7 +34,7 @@ def install_bib_packages():
     install necessary bootc image builder necessary packages
 
     """
-    package_list = ["podman", "skopeo", "virt-install", "curl", "virt-manager"]
+    package_list = ["podman", "skopeo", "virt-install", "curl"]
     for pkg in package_list:
         try:
             path.find_command(pkg)
@@ -71,8 +71,7 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
         else:
             cmd += " -v %s:/config.json  " % config
 
-    if local_container:
-        cmd += " -v /var/lib/containers/storage:/var/lib/containers/storage "
+    cmd += " -v /var/lib/containers/storage:/var/lib/containers/storage "
 
     if options is not None:
         cmd += " %s " % options
@@ -85,6 +84,9 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
 
     cmd += " %s " \
         " --type %s --tls-verify=%s " % (bib_image_url, disk_image_type, tls_verify)
+
+    if type in ['anaconda-iso'] and "9.4" not in bib_image_url and "9.5" not in bib_image_url:
+        cmd += " --use-librepo "
 
     if config:
         if "toml" in config:
@@ -169,6 +171,17 @@ def podman_push(podman_username, podman_password, registry, container_url):
         command, timeout=1200, verbose=True, ignore_status=False, shell=True)
 
 
+def podman_pull(container_url):
+    """
+    Use podman pull registry image
+
+    :param container_url: image url
+    :return: CmdResult object
+    """
+    pull_image_cmd = f"sudo podman pull {container_url}"
+    process.run(pull_image_cmd, timeout=600, verbose=True, ignore_status=False, shell=True)
+
+
 def create_config_json_file(params):
     """
     create json configuration file
@@ -184,6 +197,7 @@ def create_config_json_file(params):
     enable_lvm_disk_partitions = "yes" == params.get("enable_lvm_disk_partitions")
     enable_plain_disk_partitions = "yes" == params.get("enable_plain_disk_partitions")
     enable_btrf_disk_partitions = "yes" == params.get("enable_btrf_disk_partitions")
+    file_dir_set = "yes" == params.get("file_dir_set")
 
     filesystem_dict = {"filesystem": [
         {
@@ -194,6 +208,22 @@ def create_config_json_file(params):
             "mountpoint": "/var/data",
             "minsize": "15 GiB"
         }
+        ]
+    }
+
+    files_dict = {"files": [
+        {
+            "path": "/etc/custom_file",
+            "data": "hello world"
+        },
+        ]
+    }
+
+    directories_dict = {"directories": [
+        {
+            "path": "/etc/custom_dir",
+
+        },
         ]
     }
 
@@ -352,6 +382,10 @@ def create_config_json_file(params):
     if filesystem_size_set:
         cfg['blueprint']['customizations'].update(filesystem_dict)
 
+    if file_dir_set:
+        cfg['blueprint']['customizations'].update(files_dict)
+        cfg['blueprint']['customizations'].update(directories_dict)
+
     LOG.debug("what is cfg:%s", cfg)
     config_json_path = pathlib.Path(folder) / "config.json"
     config_json_path.write_text(json.dumps(cfg), encoding="utf-8")
@@ -372,6 +406,8 @@ def create_config_toml_file(params):
     filesystem_size_set = "yes" == params.get("filesystem_size_set")
     filesystem_size_str = ""
     fips_content = ""
+    file_dir_set = "yes" == params.get("file_dir_set")
+    file_dir_str = ""
 
     if not os.path.exists(public_key_path):
         LOG.debug("public key doesn't exist, will help create one")
@@ -391,6 +427,16 @@ def create_config_toml_file(params):
             mountpoint = "/var/data"
             minsize = "20 GiB"
             """
+    if file_dir_set:
+        file_dir_str = f"""
+            [[customizations.files]]
+            path = "/etc/custom_file"
+            data = "hello world"
+
+            [[customizations.directories]]
+            path = "/etc/custom_dir"
+            """
+
     if not kickstart:
         container_file_content = f"""\n
             [[customizations.user]]
@@ -399,6 +445,7 @@ def create_config_toml_file(params):
             key = "{key_value}"
             groups = ["wheel"]
             {filesystem_size_str}
+            {file_dir_str}
             [customizations.kernel]
             append = "mitigations=auto,nosmt"
             """
@@ -407,7 +454,7 @@ def create_config_toml_file(params):
                       "rootpw --lock --iscrypted locked\n"
                       "sshkey --username %s \"%s\"\ntext --non-interactive\nzerombr\n"
                       "clearpart --all --initlabel --disklabel=gpt\nautopart --noswap --type=lvm\n"
-                      "network --bootproto=dhcp --device=eno1 --activate --onboot=on\n reboot" % (username, password, username, key_value)
+                      "network --bootproto=dhcp --device=link --activate --onboot=on\n reboot" % (username, password, username, key_value)
                       }
         if params.get("fips_enable") == "yes":
             fips_content = f"""
@@ -427,6 +474,7 @@ def create_config_toml_file(params):
               "org.fedoraproject.Anaconda.Modules.Timezone"
             ]
             {filesystem_size_str}
+            {file_dir_str}
             [customizations.installer.kickstart]
             contents = \"""{kick_start.get("contents")}\"""
             """
@@ -930,6 +978,9 @@ def virt_install_vm(params):
     if disk_image_type in ["anaconda-iso"]:
         if os.path.exists(iso_install_path):
             os.remove(iso_install_path)
+        check_squashfs = params.get("check_squashfs") == "yes"
+        if check_squashfs:
+            check_image_filesystem(params)
         cmd = ("virt-install --name %s"
                " --disk path=%s,bus=virtio,format=qcow2,size=12"
                " --vcpus 3 --memory 3096"
@@ -958,6 +1009,21 @@ def virt_install_vm(params):
                " --noreboot" %
                (vm_name, disk_path, format, machine_type, boot_option))
     process.run(cmd, shell=True, verbose=True, ignore_status=True)
+
+
+def check_image_filesystem(params):
+    """
+    Check image file system
+
+    @param params: one dictionary containing parameters
+    """
+    disk_path = params.get("vm_disk_image_path")
+    mount_cmd = f"mount {disk_path} /mnt"
+    process.run(mount_cmd, shell=True, verbose=True, ignore_status=False)
+    check_squashfs_cmd = "file /mnt/images/install.img"
+    ret = process.run(check_squashfs_cmd, verbose=True, ignore_status=False, shell=True).stdout_text
+    if "Squashfs" not in ret:
+        raise exceptions.TestFail(f"Squashfs is not enabled")
 
 
 def verify_in_vm_internal(vm, params):
