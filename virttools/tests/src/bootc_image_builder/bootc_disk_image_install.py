@@ -111,6 +111,10 @@ def prepare_env_and_execute_bib(params, test):
         bib_utils.podman_push(params.get("podman_quay_username"), params.get("podman_quay_password"),
                               params.get("registry"), container_url)
 
+    # Pull images first
+    if "local" not in container_url:
+        bib_utils.podman_pull(container_url)
+
     result = bib_utils.podman_command_build(bib_image_url, disk_image_type, container_url, config_json_file,
                                             local_container, enable_tls_verify, ownership,
                                             key_store_mounted, None, roofs, options, **aws_config_dict)
