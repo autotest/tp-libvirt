@@ -848,9 +848,9 @@ def run(test, params, env):
             time.sleep(20)
             # use raw virsh console command since we need to output message from virsh console VM
             result = process.run("virsh console %s" % vm_name, shell=True, verbose=True, ignore_status=True).stderr_text
-            error_msg = params.get("error_msg")
-            if error_msg not in result:
-                test.fail(f"Fail to get expected error message:{error_msg} from console")
+            error_msgs = params.get("error_msg")
+            if not any(msg in result for msg in error_msgs):
+                test.fail(f"Fail to get expected error message:{error_msgs} from console")
 
         if params.get("hotunplug_serial", "no") == "yes":
             error_msg = params.get("error_msg", "").format("detach")
