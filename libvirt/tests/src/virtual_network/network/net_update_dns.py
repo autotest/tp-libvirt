@@ -32,7 +32,7 @@ def run(test, params, env):
     net_name = 'default'
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
     operation = params.get('operation')
     dns_ele = params.get('dns_ele')
     update_xml = params.get('update_xml')
