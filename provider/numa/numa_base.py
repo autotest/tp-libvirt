@@ -27,15 +27,16 @@ class NumaTest(object):
     :param params: dict with the test parameters
     :param test: test object
     """
-    def __init__(self, vm, params, test):
+    def __init__(self, vm, params, test, session=None):
         self.params = params
         self.test = test
         self.vm = vm
+        self.session = session
         cmd = "numactl --hardware"
-        status, self.host_numactl_info = utils_misc.cmd_status_output(cmd, shell=True)
+        status, self.host_numactl_info = utils_misc.cmd_status_output(cmd, shell=True, session=self.session)
         if status != 0:
             test.error("Failed to get information from %s", cmd)
-        self.host_numa_info = utils_misc.NumaInfo()
+        self.host_numa_info = utils_misc.NumaInfo(session=self.session)
         self.online_nodes = self.host_numa_info.get_online_nodes().copy()
         self.online_nodes_withmem = self.host_numa_info.get_online_nodes_withmem().copy()
         self.virsh_dargs = {'ignore_status': False, 'debug': True}
@@ -78,11 +79,12 @@ class NumaTest(object):
 
     def setup(self, expect_nodes_num=2, expect_node_free_mem_min=None):
         self.check_numa_nodes_availability(expect_nodes_num, expect_node_free_mem_min)
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
-        self.params['backup_vmxml'] = vmxml.copy()
+        if self.vm:
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
+            self.params['backup_vmxml'] = vmxml.copy()
 
     def teardown(self):
-        if self.vm.is_alive():
+        if self.vm and self.vm.is_alive():
             self.vm.destroy()
         backup_vmxml = self.params.get("backup_vmxml")
         if backup_vmxml:
@@ -97,10 +99,11 @@ class NumaTest(object):
                 self.test.log.debug("Teardown: clean up hugepage setting for %d", hpc.hugepage_size)
                 hpc.cleanup()
 
-    def prepare_vm_xml(self):
+    def prepare_vm_xml(self, required_nodes=None):
         """
         Prepare vm xml
 
+        :param required_nodes: list, the specified numa node ids, like [0, 1, 2]
         :return: VMXML object
         """
         single_host_node = self.params.get('single_host_node')
@@ -117,15 +120,16 @@ class NumaTest(object):
         # Setup numa tune attributes
         nodeset = None
         if single_host_node:
-            all_nodes = self.online_nodes_withmem
+            nodes_used = required_nodes if required_nodes else self.online_nodes_withmem
             if single_host_node == 'no':
                 # When memory bind to multiple numa nodes,
                 # the test only selects the first two numa nodes with memory on the host
-                nodeset = ','.join(['%d' % all_nodes[0], '%d' % all_nodes[1]])
+                nodeset = ','.join(['%d' % nodes_used[0], '%d' % nodes_used[1]])
+                nodeset = convert_to_string_with_dash(nodeset)
             elif single_host_node == 'yes':
                 # When memory bind to single numa node, the test only selects
                 # the first host numa node.
-                nodeset = '%d' % all_nodes[0]
+                nodeset = '%d' % nodes_used[0]
             self.params['nodeset'] = nodeset
 
         numa_tune_dict = {}
@@ -138,10 +142,13 @@ class NumaTest(object):
                 if nodeset:
                     numa_memory.update({'nodeset': nodeset})
             numa_tune_dict.update({'numa_memory': numa_memory})
+            self.params["numa_memory"] = numa_memory
         if numa_memnode:
             if numa_memnode.count('%s'):
-                numa_memnode = numa_memnode % nodeset
-            numa_tune_dict.update({'numa_memnode': eval(numa_memnode)})
+                numa_memnode = eval(numa_memnode % nodeset)
+                self.params["numa_memnode"] = numa_memnode
+            numa_tune_dict.update({'numa_memnode': numa_memnode})
+        self.test.log.debug(numa_tune_dict)
         if numa_tune_dict:
             vmxml.setup_attrs(**numa_tune_dict)
 
@@ -251,7 +258,7 @@ def check_hugepage_availability(pages_list):
                                                                    supported_hugepages))
 
 
-def adjust_parameters(params, hugepage_size=None, node_index='0', hugepage_mem=1048576):
+def adjust_parameters(params, hugepage_size=None, node_index="0", hugepage_mem=1048576, target_nodes=""):
     """
     This function will adjust parameters according to current
     architecture and given hugepage size and parameters.
@@ -274,6 +281,7 @@ def adjust_parameters(params, hugepage_size=None, node_index='0', hugepage_mem=1
     :param hugepage_size: int, huge page size in KiB
     :param node_index: str, the numa node index
     :param hugepage_mem: int, the hugepage memory in KiB to be allocated
+    :param target_nodes: str, numa nodes to set, for example "0 1"
     """
     default_hugepage_size = memory.get_huge_page_size()
     page_size = default_hugepage_size if hugepage_size is None else hugepage_size
@@ -293,4 +301,6 @@ def adjust_parameters(params, hugepage_size=None, node_index='0', hugepage_mem=1
         hugepage_path = "/dev/hugepages"
     else:
         hugepage_path = "/dev/hugepages%d" % page_size
+    if target_nodes:
+        params['target_nodes'] = target_nodes
     params['vm_hugepage_mountpoint'] = hugepage_path
