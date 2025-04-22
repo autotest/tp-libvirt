@@ -45,20 +45,40 @@ def run(test, params, env):
         :param target_name: the target name for the attached disk
         :return: the attached disk info returned from virsh guestinfo --disk
         """
-        attached_disk_info_reported = False
+        serial_num_reported = False
+        bus_type_reported = False
         disk_logical_name = '/dev/%s' % target_name
         for i in range(int(disk_info['disk.count'])):
             prefix = 'disk.' + str(i) + '.'
             try:
-                if disk_info[prefix + 'alias'] == target_name:
-                    if (disk_info[prefix + 'name'] == disk_logical_name and
-                            disk_info[prefix + 'partition'] == 'no' and
-                            disk_info[prefix + 'serial'] == serial_num):
-                        attached_disk_info_reported = True
-                        break
+                if (disk_info[prefix + 'alias'] == target_name and
+                        disk_info[prefix + 'name'] == disk_logical_name and
+                        disk_info[prefix + 'partition'] == 'no'):
+                    support_dict = {}
+                    support_dict["func_supported_since_libvirt_ver"] = "(7, 3, 0)"
+                    if libvirt_version.is_libvirt_feature_supported(support_dict, ignore_error=True):
+                        if disk_info[prefix + 'serial'] == serial_num:
+                            serial_num_reported = True
+                            logging.debug("Disk serial num is returned in guestinfo")
+                        else:
+                            return False
+                    else:
+                        # If serial is unsupported, treat it as already reported
+                        serial_num_reported = True
+                    support_dict["func_supported_since_libvirt_ver"] = "(11, 2, 0)"
+                    if libvirt_version.is_libvirt_feature_supported(support_dict, ignore_error=True):
+                        if disk_info[prefix + 'guest_bus'] == disk_target_bus:
+                            bus_type_reported = True
+                            logging.debug("Disk bus type is returned in guestinfo")
+                        else:
+                            return False
+                    else:
+                        # If bus_type is unsupported, treat it as already reported
+                        bus_type_reported = True
+                    break
             except KeyError:
                 logging.error("Num %i is not the attached disk", i)
-        return attached_disk_info_reported
+        return serial_num_reported and bus_type_reported
 
     def check_guest_os_info():
         """
@@ -322,6 +342,7 @@ def run(test, params, env):
     disk_target_name = params.get("disk_target_name")
     disk_name = params.get("disk_name")
     serial_num = params.get("serial_num")
+    disk_target_bus = params.get("disk_target_bus")
     readonly_mode = ("yes" == params.get("readonly_mode"))
 
     if not libvirt_version.version_compare(6, 0, 0):
