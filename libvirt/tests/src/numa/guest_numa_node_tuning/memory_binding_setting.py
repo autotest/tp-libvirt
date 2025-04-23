@@ -7,6 +7,7 @@
 #
 #   Author: Dan Zheng <dzheng@redhat.com>
 #
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 import os
@@ -17,8 +18,9 @@ from avocado.utils import process
 
 from virttest import libvirt_cgroup
 from virttest import libvirt_version
-from virttest import virsh
 from virttest import test_setup
+from virttest import utils_libvirtd
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_numa
@@ -42,6 +44,8 @@ def setup_default(test_obj):
         target_hugepages = test_obj.params.get('target_hugepages')
         hpc.set_node_num_huge_pages(target_hugepages, all_nodes[0], expected_hugepage_size)
         hpc.set_node_num_huge_pages(target_hugepages, all_nodes[1], expected_hugepage_size)
+        hpc.mount_hugepage_fs()
+        utils_libvirtd.Libvirtd().restart()
         test_obj.test.log.debug("Get first node hugepage is "
                                 "%d", hpc.get_node_num_huge_pages(all_nodes[0],
                                                                   expected_hugepage_size))
