@@ -161,24 +161,14 @@ def check_iothreadinfo(vm_name, cpu_range, config=''):
     """
     result = virsh.iothreadinfo(vm_name, options=config, debug=True,
                                 ignore_status=False)
-    range_found = False
     live_vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
-    iothreadid_list = live_vmxml.iothreadids.iothread
-    for one_iothread in iothreadid_list:
-        iothread_attrs = one_iothread.fetch_attrs()
-        iothread_id = iothread_attrs['id']
-        if re.search('{}\s*{}'.format(iothread_id, cpu_range),
-                     result.stdout_text):
-            logging.debug(
-                'Expected cpu affinity: {} found in stdout for '
-                'iothread: {}.'.format(cpu_range, iothread_id))
-            range_found = True
-        else:
-            logging.debug('Iothread {} has no cpu affinity'.format(iothread_id))
-
-    if not range_found:
-        raise TestFail('Expected cpu affinity: {} not found in stdout of '
-                       'iothreadinfo command.'.format(cpu_range))
+    iothread_num = live_vmxml.iothreads
+    for iothread_id in range(1, iothread_num + 1):
+        if not re.search('{}\s*{}'.format(iothread_id, cpu_range),
+                         result.stdout_text):
+            raise TestFail(
+                'Iothread {} has no expected cpu affinity {} according to stdout of '
+                'iothreadinfo cmd {}.'.format(iothread_id, cpu_range, result.stdout_text))
 
 
 def check_cgget_output(test, vm, expected_value):
