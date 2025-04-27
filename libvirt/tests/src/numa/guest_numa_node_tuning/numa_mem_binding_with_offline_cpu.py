@@ -44,10 +44,10 @@ def run(test, params, env):
         online_nodes = numa_info.get_online_nodes_withmem()
         test.log.debug("Get online node with memory:%s", online_nodes)
 
-        if online_nodes < 2:
+        if len(online_nodes) < 2:
             test.cancel("Expect %d numa nodes at "
                         "least, but found %d" % (2,
-                                                 online_nodes))
+                                                 len(online_nodes)))
         node_cpus = numa_info.get_all_node_cpus()[
             online_nodes[offline_node_index]].strip().split(' ')
 
