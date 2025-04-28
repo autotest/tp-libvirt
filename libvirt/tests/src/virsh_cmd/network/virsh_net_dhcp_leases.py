@@ -1,20 +1,19 @@
+from datetime import datetime, timedelta
 import re
 import logging as log
 import signal
 
+from avocado.utils import process
+
+from virttest import libvirt_version
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import virsh
-from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml import network_xml
-from virttest.utils_test import libvirt as utlv
-from avocado.utils import process
-from datetime import datetime, timedelta
 from virttest.libvirt_xml import LibvirtXMLError
+from virttest.libvirt_xml import network_xml
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt as utlv
 from provider.virtual_network import network_base
-
-from virttest import libvirt_version, utils_package
-
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -155,9 +154,7 @@ def run(test, params, env):
             if ip_addr is None:
                 iface_name = utils_net.get_linux_ifname(session, mac_addr)
                 if try_dhclint:
-                    if not utils_package.package_install('dhcpcd', session, 60):
-                        test.fail("Failed to install dhcpcd in guest OS.")
-                    session.cmd("dhcpcd %s" % iface_name)
+                    session.cmd(f"dhcpcd {iface_name} || dhclient {iface_name}")
                     ip_addr = utils_misc.wait_for(f, 10)
                 else:
                     # No IP for the interface, just print the interface name
