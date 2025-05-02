@@ -109,6 +109,7 @@ def run(test, params, env):
             test.cancel(migration_res.stderr)
 
     def do_migration(delay, vm, dest_uri, options, extra, **virsh_args):
+        migration_msg = "Migration done."
         logging.info("Sleeping %d seconds before migration", delay)
         time.sleep(delay)
         # Migrate the guest.
@@ -119,8 +120,9 @@ def run(test, params, env):
         logging.info("Migration stderr: %s", migration_res.stderr)
         check_migration_result(migration_res)
         if int(migration_res.exit_status) != 0:
-            logging.error("Migration failed for %s.", vm_name)
-            return False
+            migration_msg = f"Migration failed for {vm_name}, with stderr: {migration_res.stderr}"
+            logging.error(migration_msg)
+            return (False, migration_msg)
 
         if options.count("dname") or extra.count("dname"):
             vm.name = extra.split()[1].strip()
@@ -129,8 +131,9 @@ def run(test, params, env):
             logging.info("Alive guest found on destination %s.", dest_uri)
         else:
             if not options.count("offline"):
-                logging.error("VM not alive on destination %s", dest_uri)
-                return False
+                migration_msg = f"VM not alive on destination {dest_uri}"
+                logging.error(migration_msg)
+                return (False, migration_msg)
 
         # Throws exception if console shows panic message
         if not options.count("dname") and not extra.count("dname"):
@@ -246,6 +249,7 @@ def run(test, params, env):
                                                r"[\#\$]\s*$")
         cmd_output = server_session.cmd_status_output(command)
         server_session.close()
+        dest_HP_free = ""
         if (cmd_output[0] == 0):
             dest_HP_free = cmd_output[1].strip('HugePages_Free:').strip()
         else:
@@ -735,12 +739,12 @@ def run(test, params, env):
                         "single node")
 
     # To check if Hugepage supported and configure
+    default_hp_unit = "KiB"
     if enable_HP or enable_HP_pin:
         try:
             hp_obj = test_setup.HugePageConfig(params)
             host_hp_size = hp_obj.get_hugepage_size()
             # libvirt xml takes HP sizes in KiB
-            default_hp_unit = "KiB"
             hp_pin_nodes = int(params.get("HP_pin_node_count", "2"))
             vm_max_mem = vmxml.max_mem
             no_of_HPs = int(vm_max_mem // host_hp_size) + 1
@@ -826,6 +830,7 @@ def run(test, params, env):
     remote_libvirt_file = None
     src_libvirt_file = None
     scsi_disk = None
+    migration_msg = "No info."
 
     try:
         # Change the disk of the vm to shared disk
@@ -1000,6 +1005,7 @@ def run(test, params, env):
 
         # Prepare for --xml.
         xml_option = params.get("xml_option", "no")
+        new_nic_mac = ""
         if xml_option == "yes":
             if not extra.count("--dname") and not extra.count("--xml"):
                 logging.debug("Preparing new xml file for --xml option.")
@@ -1128,7 +1134,7 @@ def run(test, params, env):
             else:
                 ret_migrate = False
         if not asynch_migration:
-            ret_migrate = do_migration(delay, vm, dest_uri, options, extra, **virsh_args)
+            (ret_migrate, migration_msg) = do_migration(delay, vm, dest_uri, options, extra, **virsh_args)
 
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
@@ -1170,8 +1176,8 @@ def run(test, params, env):
                     .remove_key_for_modular_daemon(remove_dict, remote_dargs)
 
                 if not asynch_migration:
-                    ret_migrate = do_migration(delay, vm, src_uri, options,
-                                               extra)
+                    (ret_migrate, migration_msg) = do_migration(delay, vm, src_uri, options,
+                                                                extra)
                 elif extra.count("--timeout-suspend"):
                     func = check_migration_timeout_suspend
                     try:
@@ -1250,7 +1256,7 @@ def run(test, params, env):
         # Check unsafe result and may do migration again in right mode
         if ret_migrate is False and unsafe_test:
             options = params.get("virsh_migrate_options")
-            ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
+            (ret_migrate, migration_msg) = do_migration(delay, vm, dest_uri, options, extra)
         elif ret_migrate and unsafe_test:
             check_unsafe_result = False
         if vm_ref != vm_name:
@@ -1322,10 +1328,10 @@ def run(test, params, env):
         # Check test result.
         if status_error == 'yes':
             if ret_migrate:
-                test.fail("Migration finished with unexpected status.")
+                test.fail(f"Migration finished with unexpected status {migration_msg}.")
         else:
             if not ret_migrate:
-                test.fail("Migration finished with unexpected status.")
+                test.fail(f"Migration finished with unexpected status {migration_msg}.")
             if not check_dest_persistent:
                 test.fail("VM is not persistent on destination.")
             if not check_src_undefine:
