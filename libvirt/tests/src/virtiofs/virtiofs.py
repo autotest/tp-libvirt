@@ -565,9 +565,9 @@ def run(test, params, env):
 
         for index in range(guest_num):
             end_test = set_up_and_start_vm(index)
-            check_qemu_cmdline()
             if end_test:
                 return
+            check_qemu_cmdline()
 
         shared_data(vm_names, fs_devs)
 
