@@ -79,7 +79,7 @@ def run(test, params, env):
     host_iface = params.get('host_iface')
     backend = params.get('backend')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True, json=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
 
     ipv4_addr = params.get('ipv4_addr')
     ipv4_prefix = params.get('ipv4_prefix')
