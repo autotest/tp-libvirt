@@ -2,12 +2,14 @@ import os
 import re
 import logging as log
 import operator
+import aexpect
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_version
 from virttest import utils_disk
 from virttest import utils_backup
+from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import checkpoint_xml
 from virttest.libvirt_xml.devices import graphics
@@ -41,6 +43,34 @@ def run(test, params, env):
             virsh.checkpoint_create_as(vm_name, options, **virsh_dargs)
             current_checkpoints.append(checkpoint_name)
 
+    def edit_checkpoints(vm_name, checkpoint_name, edit_value):
+        """
+        Edit the checkpoints.
+
+        :param vm_name: the domain name
+        :param checkpoint_name: the checkpoint name
+        :param edit_value: the values to be updated
+        """
+        session = aexpect.ShellSession("sudo -s")
+        try:
+            session.sendline("virsh checkpoint-edit %s %s" % (vm_name, checkpoint_name))
+            edit_cmd = ":%s#<creationTime>.*</creationTime>#" + edit_value + "#"
+            session.sendline(edit_cmd)
+            session.send('\x1b')
+            session.send('ZZ')
+            remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
+            session.close()
+            edit_result = virsh.checkpoint_dumpxml(vm_name,
+                                                   checkpoint_name).stdout_text.strip()
+            if edit_value in edit_result:
+                test.log.debug("Succeed to do checkpoint edit!")
+            else:
+                test.fail("Edit the checkpoint failed!")
+        except (aexpect.ShellError, aexpect.ExpectError) as details:
+            log = session.get_output()
+            session.close
+            test.fail("Failed to do checkpoint edit: %s\n%s" % (details, log))
+
     # Cancel the test if libvirt version is too low
     if not libvirt_version.version_compare(6, 0, 0):
         test.cancel("Current libvirt version doesn't support "
@@ -56,6 +86,7 @@ def run(test, params, env):
     current_checkpoints = []
     virsh_dargs = {'debug': True, 'ignore_status': False}
     with_data_file = "yes" == params.get("with_data_file", "no")
+    edit_value = params.get("edit_value")
     libvirt_version.is_libvirt_feature_supported(params)
 
     try:
@@ -310,6 +341,8 @@ def run(test, params, env):
             if ((vm_name in stdout and cmd_flag == "--without-checkpoint") or
                     (vm_name not in stdout and cmd_flag == "--with-checkpoint")):
                 test.fail("virsh list with '%s' contains wrong data" % cmd_flag)
+        elif checkpoint_cmd == "checkpoint_edit":
+            edit_checkpoints(vm_name, current_checkpoints[0], edit_value)
         # Make sure vm is running and check checkpoints can be normally deleted
         if not vm.is_alive():
             vm.start()
