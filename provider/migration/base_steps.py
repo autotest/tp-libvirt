@@ -241,7 +241,8 @@ class MigrationBase(object):
         if not migrate_vm_back:
             return
         virsh_options = self.params.get("virsh_options", "")
-        extra = self.params.get("virsh_migrate_extra")
+        extra = self.params.get("virsh_migrate_extra", "")
+        vm_name = self.params.get("migrate_main_vm")
         options = self.params.get("virsh_migrate_options", "--live --verbose")
         dest_uri = self.params.get("virsh_migrate_desturi")
         self.vm.connect_uri = dest_uri
@@ -269,7 +270,7 @@ class MigrationBase(object):
         # Pre migration setup for remote machine
         self.migration_test.migrate_pre_setup(self.src_full_uri, self.params)
 
-        cmd = "virsh migrate %s %s %s %s" % (self.vm.name, options,
+        cmd = "virsh migrate %s %s %s %s" % (vm_name, options,
                                              self.src_full_uri,
                                              extra)
         self.test.log.info("Start migration: %s", cmd)
@@ -335,7 +336,7 @@ class MigrationBase(object):
         self.migration_test.cleanup_vm(self.vm, dest_uri)
         self.orig_config_xml.sync()
 
-    def setup_connection(self):
+    def setup_connection(self, setup_default=True):
         """
         Setup connection
 
