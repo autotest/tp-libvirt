@@ -11,6 +11,7 @@ from virttest import utils_selinux
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
+from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
 
@@ -79,10 +80,12 @@ def run(test, params, env):
     log_file = f'/run/user/{user_id}/passt.log'
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
+    vhostuser = 'yes' == params.get('vhostuser', 'no')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
     bkxml = vmxml.copy()
+    shp_orig_num = utils_memory.get_num_huge_pages()
 
     selinux_status = passt.ensure_selinux_enforcing()
     passt.check_socat_installed()
@@ -93,6 +96,12 @@ def run(test, params, env):
             passt.make_log_dir(user_id, log_dir)
 
         vmxml.del_device('interface', by_tag=True)
+        if vhostuser:
+            # set static hugepage
+            utils_memory.set_num_huge_pages(2048)
+            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
+            # update vm xml with shared memory and vhostuser interface
+            iface_attrs['type_name'] = 'vhostuser'
         iface_device = libvirt_vmxml.create_vm_device_by_type('interface',
                                                               iface_attrs)
         LOG.debug(f'iface_device: {iface_device}')
@@ -150,7 +159,7 @@ def run(test, params, env):
         if 'detach' not in scenario:
             vm.destroy()
             passt.check_passt_pid_not_exist()
-            if os.listdir(socket_dir):
+            if not vhostuser and os.listdir(socket_dir):
                 test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
         else:
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name,
@@ -183,3 +192,4 @@ def run(test, params, env):
         if root:
             shutil.rmtree(log_dir)
         utils_selinux.set_status(selinux_status)
+        utils_memory.set_num_huge_pages(shp_orig_num)

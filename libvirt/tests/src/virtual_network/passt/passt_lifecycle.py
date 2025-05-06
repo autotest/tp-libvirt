@@ -11,6 +11,7 @@ from virttest import utils_selinux
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
+from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
 
@@ -29,6 +30,7 @@ def run(test, params, env):
     """
     libvirt_version.is_libvirt_feature_supported(params)
     root = 'root_user' == params.get('user_type', '')
+    test_user = params.get('test_user')
     if root:
         vm_name = params.get('main_vm')
         vm = env.get_vm(vm_name)
@@ -70,14 +72,16 @@ def run(test, params, env):
     iface_attrs['backend']['logFile'] = log_file
     operation_a = params.get('operation_a')
     operation_b = params.get('operation_b')
-    save_path = f'/home/{test_user}/save_{utils_misc.generate_random_string(3)}'
+    save_path = f'/tmp/save_{utils_misc.generate_random_string(3)}'
     options_a = eval(params.get('options_a', '{}'))
     options_b = eval(params.get('options_b', '{}'))
     passt_running = 'yes' == params.get('passt_running', 'no')
+    vhostuser = 'yes' == params.get('vhostuser', 'no')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
     bkxml = vmxml.copy()
+    shp_orig_num = utils_memory.get_num_huge_pages()
 
     selinux_status = passt.ensure_selinux_enforcing()
     passt.check_socat_installed()
@@ -97,6 +101,12 @@ def run(test, params, env):
         vmxml.sync(virsh_instance=virsh_ins)
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
+        if vhostuser:
+            # set static hugepage
+            utils_memory.set_num_huge_pages(2048)
+            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
+            # update vm xml with shared memory and vhostuser interface
+            iface_attrs['type_name'] = 'vhostuser'
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
         mac = vm.get_virsh_mac_address()
 
@@ -148,7 +158,7 @@ def run(test, params, env):
         vm.destroy()
 
         passt.check_passt_pid_not_exist()
-        if os.listdir(socket_dir):
+        if not vhostuser and os.listdir(socket_dir):
             test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
 
     finally:
@@ -159,3 +169,4 @@ def run(test, params, env):
         utils_selinux.set_status(selinux_status)
         if os.path.exists(save_path):
             os.remove(save_path)
+        utils_memory.set_num_huge_pages(shp_orig_num)
