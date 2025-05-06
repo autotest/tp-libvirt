@@ -336,14 +336,16 @@ def select_first_available_device(device_ids):
     raise TestError(f"None of the devices is available, {device_ids}")
 
 
-def get_device_info(devid=None):
+def get_device_info(devid=None, full=False):
     """
     Gets the device info for passthrough.
     It selects a device that's safely removable if devid
     is not given.
 
     :param devid: The ccw device id, e.g. 0.0.5000
-    :return: Subchannel and Channel path ids (schid, chpids)
+    :param full: per default only return schid, chpids; return
+                 full device info if True
+    :return: The device info
     """
 
     paths = get_subchannel_info()
@@ -352,6 +354,8 @@ def get_device_info(devid=None):
         device = paths.get_device(devid)
     else:
         device = paths.get_first_unused_and_safely_removable()
+    if full:
+        return device
     schid = device[paths.HEADER["Subchan."]]
     chpids = device[paths.HEADER["CHPIDs"]]
     return schid, chpids

@@ -28,15 +28,7 @@ def get_partitioned_dasd_path(devid):
     :param devid: the ccw device id, e.g. 0.0.5200
     :return path: absolute path to block device, e.g. '/dev/dasda'
     """
-    paths = SubchannelPaths()
-    paths.get_info()
-    device = None
-    if devid:
-        device = paths.get_device(devid)
-    else:
-        device = paths.get_first_unused_and_safely_removable()
-    if not device:
-        raise TestError("Couldn't find dasd device for test")
+    device = ccw.get_device_info(devid, True)
     global TEST_DASD_ID
     TEST_DASD_ID = device[paths.HEADER["Device"]]
     enable_disk(TEST_DASD_ID)
