@@ -131,7 +131,7 @@ def run(test, params, env):
         if without_hostdev:
             test.log.info("TEST_STEP: Hot-unplug iface device and check locked memory limit.")
             virsh.detach_device(vm_name, iface_dev.xml, debug=True, ignore_status=False,
-                                wait_for_event=True)
+                                wait_for_event=True, event_timeout=30)
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
             check_memory_limit(vmxml, first_mem, with_hostdev_device=False)
     finally:
