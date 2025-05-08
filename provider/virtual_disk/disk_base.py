@@ -218,6 +218,32 @@ class DiskBase(object):
                                        "port": nbd_server_port}]},
                  })
 
+        elif disk_type == "ssh_with_key":
+            new_image_path, known_hosts_path, keyfile = \
+                self.create_ssh_disk_path(self.params, **kwargs)
+            ssh_user = os.environ.get("USER")
+            disk_dict.update(
+                {'source': {"attrs": {"protocol": "ssh",
+                                      "name": new_image_path},
+                            "identity": [{"username": "%s" % ssh_user,
+                                          "keyfile": keyfile}],
+                            "knownhosts": known_hosts_path,
+                            "hosts": [{"name": "127.0.0.1",
+                                       "port": "22"}]}})
+
+        elif disk_type == "ssh_with_passwd":
+            new_image_path, known_hosts_path, _ = \
+                self.create_ssh_disk_path(self.params, **kwargs)
+            disk_dict.update(
+                {'source': {"attrs": {"protocol": "ssh",
+                                      "name": new_image_path},
+                            "knownhosts": known_hosts_path,
+                            "hosts": [{"name": "127.0.0.1",
+                                       "port": "22"}],
+                            "auth": {"auth_user": self.params.get("iscsi_user"),
+                                     "secret_usage": "libvirtiscsi",
+                                     "secret_type": "iscsi"}}})
+
         disk_obj = libvirt_vmxml.create_vm_device_by_type("disk", disk_dict)
         self.test.log.debug('Create disk object is :%s', disk_obj)
 
@@ -239,7 +265,7 @@ class DiskBase(object):
                             "encryption": "luks", "attrs": {"engine": "librbd"}}})
         return disk_dict
 
-    def cleanup_disk_preparation(self, disk_type):
+    def cleanup_disk_preparation(self, disk_type, **kwargs):
         """
         Clean up the preparation of different type disk
 
@@ -270,6 +296,9 @@ class DiskBase(object):
                 self.disk_backend.cleanup()
             except Exception as ndbEx:
                 self.test.log.debug("Clean Up nbd failed: %s", str(ndbEx))
+
+        elif disk_type == "ssh_with_key" or disk_type == "ssh_with_passwd":
+            self.cleanup_ssh_disk_path(self.new_image_path, **kwargs)
 
     @staticmethod
     def cleanup_block_disk_preparation(vg_name, lv_name, **kwargs):
@@ -346,6 +375,20 @@ class DiskBase(object):
         return path
 
     @staticmethod
+    def cleanup_ssh_disk_path(new_image_path, **kwargs):
+        """
+        Clean up ssh disk image
+
+        :params new_image_path: the new image path.
+        :param kwargs: optional keyword arguments.
+        """
+        keyfile = kwargs.get("keyfile")
+        known_hosts_path = kwargs.get("known_hosts_path")
+        for file in [keyfile, f"{keyfile}.pub", known_hosts_path, new_image_path]:
+            if os.path.exists(file):
+                os.remove(file)
+
+    @staticmethod
     def cleanup_rbd_disk_path(params):
         """
         Clean up rbd disk image
@@ -405,6 +448,47 @@ class DiskBase(object):
                 disk_format=params.get("rbd_image_format"), size=rbd_image_size)
 
         return mon_host, auth_username, new_image_path, sec_uuid
+
+    @staticmethod
+    def create_ssh_disk_path(params, **kwargs):
+        """
+        Prepare ssh type disk image path
+
+        :params params: Dict with the test parameters.
+        :param kwargs: optional keyword arguments.
+        :params return: tuple, include new_image_path, known_hosts_path and keyfile.
+        """
+        authorized_path = "/root/.ssh/authorized_keys"
+        sec_dict = eval(params.get("sec_dict", "{}"))
+        secret_pwd = params.get("secret_pwd")
+        new_image_path = params.get("new_image_path")
+        with_secret_passwd = "yes" == params.get("with_secret_passwd", "no")
+
+        if not new_image_path:
+            new_image_path = data_dir.get_data_dir() + '/test.img'
+            size = kwargs.get("size", "50M")
+            if kwargs.get("size"):
+                kwargs.pop("size")
+            libvirt.create_local_disk(
+                "file", path=new_image_path, size=size,
+                disk_format=params.get("disk_image_format", 'qcow2'))
+
+        keyfile = kwargs.get("keyfile")
+        known_hosts_path = kwargs.get("known_hosts_path")
+        for file in [keyfile, f"{keyfile}.pub", known_hosts_path]:
+            if os.path.exists(file):
+                os.remove(file)
+
+        process.run("ssh-keygen -t rsa -q -N '' -f %s" % keyfile, shell=True)
+        process.run("ssh-keyscan -p 22 127.0.0.1 >> %s" % known_hosts_path, shell=True)
+        process.run("cat %s >> %s" % (f"{keyfile}.pub", authorized_path), shell=True)
+
+        if with_secret_passwd:
+            libvirt_secret.clean_up_secrets()
+            sec_uuid = libvirt_secret.create_secret(sec_dict=sec_dict)
+            virsh.secret_set_value(sec_uuid, secret_pwd,
+                                   debug=True, ignore_status=False)
+        return new_image_path, known_hosts_path, keyfile
 
     def prepare_relative_path(self, disk_type, **kwargs):
         """
