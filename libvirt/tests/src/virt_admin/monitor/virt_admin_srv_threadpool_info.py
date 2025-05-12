@@ -1,3 +1,4 @@
+import time
 from virttest import virt_admin
 from virttest import utils_libvirtd
 
@@ -34,6 +35,7 @@ def run(test, params, env):
             config.prio_workers = prio_workers
 
         daemon.restart()
+        time.sleep(10)
         result = virt_admin.srv_threadpool_info(server_name, ignore_status=True,
                                                 debug=True)
 
