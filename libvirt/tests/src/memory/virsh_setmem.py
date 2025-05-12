@@ -1,6 +1,7 @@
 import re
 import os
 import logging as log
+import platform
 import time
 
 from virttest import virsh
@@ -116,6 +117,30 @@ def run(test, params, env):
             elif mem_unit.lower() == "mb":
                 total_physical_mem += mem_size * 1024
             elif mem_unit.lower() == "gb":
+                total_physical_mem += mem_size * 1048576
+        return total_physical_mem - get_vm_usable_mem(session)
+
+    def vm_unusable_mem_ppc64(session):
+        """
+        Get the unusable RAM of the VM for Arch PPC64.
+        """
+        # Get total physical memory from lshw
+        cmd = "lshw -C memory"
+        lshw_mem = session.cmd_output(cmd)
+        lshw_mem_size = re.findall(r'\*-\s*memory\s*[\s\S]*?size:\s*(\d+[K|M|G]iB)', lshw_mem)
+        if not lshw_mem_size:
+            test.fail("Cannot get memory size info inside VM.")
+        total_physical_mem = 0
+        for mem in lshw_mem_size:
+            size_value = re.match(r'(\d+)\s*([K|M|G]iB)', mem)
+            if size_value:
+                mem_size = int(size_value.group(1))  # Convert the numeric part to an integer
+                mem_unit = size_value.group(2)
+            if mem_unit.lower() == "kib":
+                total_physical_mem += mem_size
+            elif mem_unit.lower() == "mib":
+                total_physical_mem += mem_size * 1024
+            elif mem_unit.lower() == "gib":
                 total_physical_mem += mem_size * 1048576
         return total_physical_mem - get_vm_usable_mem(session)
 
@@ -266,7 +291,8 @@ def run(test, params, env):
     expect_xml_line = params.get("expect_xml_line")
     expect_qemu_line = params.get("expect_qemu_line")
     reset_vm_memory = "yes" == params.get("reset_vm_memory", "no")
-    use_dmidecode = "yes" == params.get("use_dmidecode", "yes")
+    use_pkg = "yes" == params.get("use_dmidecode", "yes")
+    arch = platform.machine()
 
     vm = env.get_vm(vm_name)
     # Back up domain XML
@@ -357,15 +383,26 @@ def run(test, params, env):
     if not vm.is_alive():
         vm.start()
     session = vm.wait_for_login()
-    if use_dmidecode:
-        # try make dmidecode available if not present
-        use_dmidecode &= 0 == session.cmd_status(
-            "dmidecode"
-        ) or utils_package.package_install("dmidecode", session)
-    if use_dmidecode:
-        unusable_mem = vm_unusable_mem(session)
+    if arch != "ppc64le":
+        if use_pkg:
+            # try make dmidecode or lshw available if not present
+            use_pkg &= 0 == session.cmd_status(
+                "dmidecode"
+            ) or utils_package.package_install("dmidecode", session)
+        if use_pkg:
+            unusable_mem = vm_unusable_mem(session)
+        else:
+            unusable_mem = int(vmxml.memory) - get_vm_usable_mem(session)
     else:
-        unusable_mem = int(vmxml.memory) - get_vm_usable_mem(session)
+        if use_pkg:
+            # try make dmidecode or lshw available if not present
+            use_pkg &= 0 == session.cmd_status(
+                "lshw"
+            ) or utils_package.package_install("lshw", session)
+        if use_pkg:
+            unusable_mem = vm_unusable_mem_ppc64(session)
+        else:
+            unusable_mem = int(vmxml.memory) - get_vm_usable_mem(session)
     original_outside_mem = vm.get_used_mem()
     original_inside_mem = get_vm_usable_mem(session)
     session.close()
