@@ -40,7 +40,7 @@ test_passwd = ""
 _params = {}
 backup_huge_pages_num = 0
 user_config_path = ""
-hugepages_user_path = "/user_hugepages"
+hugepages_user_path = "/var/user_hugepages"
 with_hugepages = False
 qemu_config = None
 
