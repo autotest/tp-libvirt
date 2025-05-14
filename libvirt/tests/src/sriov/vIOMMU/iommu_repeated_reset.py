@@ -19,7 +19,7 @@ def run(test, params, env):
 
     def setup_test():
         utils_logfile.clear_log_file(log_file_name, '/var/log/libvirt/qemu')
-        test_obj.setup_iommu_test(iommu_dict=iommu_dict, cleanup_ifaces=cleanup_ifaces)
+        test_obj.setup_iommu_test(iommu_dict=iommu_dict, cleanup_ifaces=False)
         test_obj.prepare_controller()
         test.log.debug("---------------------------------------------------------------------------")
         dev_dict = eval(params.get('disk_dict', '{}'))
@@ -33,14 +33,7 @@ def run(test, params, env):
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(vm.name), 'disk', dev_dict)
 
-        if cleanup_ifaces:
-            libvirt_vmxml.modify_vm_device(
-                    vm_xml.VMXML.new_from_dumpxml(vm.name),
-                    "interface", iface_dict)
-
-    cleanup_ifaces = "yes" == params.get("cleanup_ifaces", "yes")
     iommu_dict = eval(params.get('iommu_dict', '{}'))
-    iface_dict = eval(params.get('iface_dict', '{}'))
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     log_file_name = f"{vm_name}.log"
@@ -56,10 +49,7 @@ def run(test, params, env):
         vm.start()
         vm.wait_for_login().close()
         test.log.info("TEST_STEP: Reboot the VM and wait for event 'reboot'")
-        res = virsh.reboot(vm_name, wait_for_event=True)
-        if res.exit_status != 0:
-            test.fail(f"Unexpected result when rebooting VM:{res.stderr}")
-        test.log.debug(f"reboot result: {res}")
+        virsh.reboot(vm_name, wait_for_event=True, debug=True, ignore_status=False)
         test.log.debug("TEST_STEP: verify user is able to login also after restarts")
         vm.wait_for_login().close()
 
@@ -78,7 +68,7 @@ def run(test, params, env):
         test.log.debug("TEST_STEP: verify user is able to login also after restarts")
         vm.wait_for_login().close()
         log_messages = params.get('log_messages', "")
-        str_in_log = (params.get('str_in_log', False) == "True")
+        str_in_log = (params.get('str_in_log', "False") == "True")
         test.log.debug("TEST_STEP: check log for error messages")
         libvirt.check_logfile(log_messages, log_file, str_in_log)
 
