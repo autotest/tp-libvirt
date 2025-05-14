@@ -117,7 +117,7 @@ def run(test, params, env):
     ping_timeout = float(params.get("ping_timeout", "10"))
     host_iface = params.get("host_iface")
     iface_name = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=True, json=True)
     bridge_script = NETWORK_SCRIPT + bridge_name
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
