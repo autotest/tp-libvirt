@@ -61,7 +61,7 @@ def run(test, params, env):
 
         unpr_vmxml = network_base.prepare_vmxml_for_unprivileged_user(unpr_user,
                                                                       vmxml)
-        unpr_vm_name = unpr_vmxml.vm_name
+        vm_name = unpr_vmxml.vm_name
 
         unpr_vmxml.del_device('interface', by_tag=True)
         iface_attrs = {'source': {'bridge': linux_bridge},
@@ -72,9 +72,9 @@ def run(test, params, env):
 
         # Switch to unprivileged user and modify vm's interface
         # Start vm as unprivileged user and test network
-        virsh.start(unpr_vm_name, debug=True, ignore_status=False,
+        virsh.start(vm_name, debug=True, ignore_status=False,
                     unprivileged_user=unpr_user)
-        session = network_base.unprivileged_user_login(unpr_vm_name, unpr_user,
+        session = network_base.unprivileged_user_login(vm_name, unpr_user,
                                                        params.get('username'),
                                                        params.get('password'))
 
@@ -87,8 +87,8 @@ def run(test, params, env):
         session.close()
 
     finally:
-        virsh.destroy(unpr_vm_name, unprivileged_user=unpr_user, debug=True)
-        virsh.undefine(unpr_vm_name, options='--nvram',
+        virsh.destroy(vm_name, unprivileged_user=unpr_user, debug=True)
+        virsh.undefine(vm_name, options='--nvram',
                        unprivileged_user=unpr_user, debug=True)
         utils_net.delete_linux_bridge_tmux(linux_bridge, host_iface)
         process.run(f'pkill -u {unpr_user};userdel -f -r {unpr_user}',
