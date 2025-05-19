@@ -64,7 +64,7 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
     """
     if not os.path.exists("/var/lib/libvirt/images/output"):
         os.makedirs("/var/lib/libvirt/images/output")
-    cmd = "sudo podman run --rm -it --privileged --pull=newer --security-opt label=type:unconfined_t -v /var/lib/libvirt/images/output:/output"
+    cmd = "sudo podman run --quiet --rm -it --privileged --pull=newer --log-level=info --security-opt label=type:unconfined_t -v /var/lib/libvirt/images/output:/output"
     if config:
         if "toml" in config:
             cmd += " -v %s:/config.toml  " % config
@@ -85,8 +85,10 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
     cmd += " %s " \
         " --type %s --tls-verify=%s " % (bib_image_url, disk_image_type, tls_verify)
 
-    if type in ['anaconda-iso'] and "9.4" not in bib_image_url and "9.5" not in bib_image_url:
+    if disk_image_type in ['anaconda-iso']:
         cmd += " --use-librepo "
+        os.environ["PODMAN_LOG_LEVEL"] = "error"
+        cmd = cmd.replace("--log-level=info", "--log-level=error")
 
     if config:
         if "toml" in config:
@@ -115,7 +117,6 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
 
     if rootfs:
         cmd += " --rootfs %s " % rootfs
-
     debug = dargs.get("debug", True)
 
     ignore_status = dargs.get("ignore_status", False)
@@ -596,9 +597,21 @@ def create_and_build_container_file(params):
         if "rhel-9.6" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-9.6.repo"
             repo_prefix = "rhel-9.6"
+        if "rhel-9.7" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-9.7.repo"
+            repo_prefix = "rhel-9.7"
+        if "rhel-9.8" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-9.8.repo"
+            repo_prefix = "rhel-9.8"
         if "rhel-10.0" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-10.0.repo"
             repo_prefix = "rhel-10.0"
+        if "rhel-10.1" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-10.1.repo"
+            repo_prefix = "rhel-10.1"
+        if "rhel-10.2" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-10.2.repo"
+            repo_prefix = "rhel-10.2"
         compose_url = params.get("compose_url")
         baseurl = get_baseurl_from_repo_file("/etc/yum.repos.d/beaker-AppStream.repo")
         if baseurl:
@@ -646,14 +659,14 @@ def create_and_build_container_file(params):
         {dnf_fips_install}
         Run dnf clean all
         """
-    build_cmd = "sudo podman build -t %s -f %s" % (container_tag, str(container_path))
+    build_cmd = "sudo podman build --quiet -t %s -f %s" % (container_tag, str(container_path))
     if manifest:
         container_file_content = f"""\n
         FROM {build_container}
         {create_sudo_file}
         {enable_root_ssh}
         """
-        build_cmd = "sudo podman build  --platform linux/arm64,linux/amd64 --manifest %s -f %s" % (manifest, str(container_path))
+        build_cmd = "sudo podman build  --quiet --platform linux/arm64,linux/amd64 --manifest %s -f %s" % (manifest, str(container_path))
 
     container_path.write_text(textwrap.dedent(container_file_content), encoding="utf8")
     process.run(build_cmd, shell=True, ignore_status=False)
@@ -1328,7 +1341,7 @@ def ensure_registry(params):
 
     if registry_container_name != "registry":
         subprocess.run([
-            "podman", "run", "-d", "-p", "5000:5000", "--restart", "always", "--name", "registry", "registry:2"
+            "podman", "run", "-d", "-p", "5000:5000", "--restart", "always", "--name", "registry", "ghcr.io/osbuild/bootc-image-builder/registry:2"
         ], check=True, capture_output=True)
 
     registry_container_state = subprocess.run([
