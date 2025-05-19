@@ -115,7 +115,6 @@ def podman_command_build(bib_image_url, disk_image_type, image_ref, config=None,
 
     if rootfs:
         cmd += " --rootfs %s " % rootfs
-
     debug = dargs.get("debug", True)
 
     ignore_status = dargs.get("ignore_status", False)
@@ -596,9 +595,15 @@ def create_and_build_container_file(params):
         if "rhel-9.6" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-9.6.repo"
             repo_prefix = "rhel-9.6"
+        if "rhel-9.7" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-9.7.repo"
+            repo_prefix = "rhel-9.7"
         if "rhel-10.0" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-10.0.repo"
             repo_prefix = "rhel-10.0"
+        if "rhel-10.1" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-10.1.repo"
+            repo_prefix = "rhel-10.1"
         compose_url = params.get("compose_url")
         baseurl = get_baseurl_from_repo_file("/etc/yum.repos.d/beaker-AppStream.repo")
         if baseurl:
@@ -1328,7 +1333,7 @@ def ensure_registry(params):
 
     if registry_container_name != "registry":
         subprocess.run([
-            "podman", "run", "-d", "-p", "5000:5000", "--restart", "always", "--name", "registry", "registry:2"
+            "podman", "run", "-d", "-p", "5000:5000", "--restart", "always", "--name", "registry", "ghcr.io/osbuild/bootc-image-builder/registry:2"
         ], check=True, capture_output=True)
 
     registry_container_state = subprocess.run([
