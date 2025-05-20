@@ -27,11 +27,9 @@ def run(test, params, env):
         vm.start()
         vm_session = vm.wait_for_login()
         test.log.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
-        cuda_samples_path = os.path.join(os.path.dirname(__file__), params.get("cuda_samples_path"))
+        cuda_samples_path = params.get("cuda_samples_path")
         cuda_sample_guest_path = os.path.join("/tmp", os.path.basename(cuda_samples_path))
-        vm.copy_files_to(
-            cuda_samples_path, os.path.dirname(cuda_sample_guest_path),
-            timeout=240)
+        vm_session.cmd(f"wget {cuda_samples_path} -O {cuda_sample_guest_path}")
         vm_session.cmd(f"tar -xf {cuda_sample_guest_path} -C /root")
         vm_session.cmd(f"rm -rf {cuda_sample_guest_path}")
 
