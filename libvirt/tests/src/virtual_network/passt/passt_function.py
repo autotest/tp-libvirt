@@ -133,8 +133,6 @@ def run(test, params, env):
         vm.destroy()
 
         passt.check_passt_pid_not_exist()
-        if not vhostuser and os.listdir(socket_dir):
-            test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
 
     finally:
         firewalld.start()

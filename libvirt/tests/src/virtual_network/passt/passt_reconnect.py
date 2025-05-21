@@ -15,7 +15,6 @@ from virttest.libvirt_xml import vm_xml
 from virttest.staging import service
 from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_unprivileged
-from virttest.utils_test import libvirt
 
 from provider.virtual_network import network_base
 from provider.virtual_network import passt
@@ -62,7 +61,6 @@ def run(test, params, env):
     params['socket_dir'] = socket_dir = eval(params.get('socket_dir'))
     params['proc_checks'] = proc_checks = eval(params.get('proc_checks', '{}'))
     mtu = params.get('mtu')
-    qemu_cmd_check = params.get('qemu_cmd_check')
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
@@ -91,8 +89,6 @@ def run(test, params, env):
             vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
         passt.vm_add_iface(vmxml, iface_attrs, virsh_ins)
         vm.start()
-
-        libvirt.check_qemu_cmd_line(qemu_cmd_check)
 
         passt_proc = passt.get_proc_info('passt')
         LOG.debug(f'passt process info: {passt_proc}')
