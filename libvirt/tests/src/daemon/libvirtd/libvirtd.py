@@ -96,11 +96,15 @@ def get_installable_old_libvirt(installed_version, test):
                           shell=True,
                           ignore_status=False,
                           verbose=True)
-    versions = re.findall(r"\s+(\d+.*\d+)\s+\w+", cmd_ret.stdout_text.strip())
+    versions = re.findall(r"\s+(\d+[^:\s]*\.[^:\s]*\d+)\s+", cmd_ret.stdout_text.strip())
     versions = versions[::-1]
     old_version = None
+    utils_package.package_install("rpmdevtools")
     for one_version in versions:
-        if one_version < installed_version:
+        cmd = 'rpmdev-vercmp %s %s' % (one_version, installed_version)
+        cmd_ret = process.run(cmd, shell=True, ignore_status=True)
+        # Exit status is 0 if the EVR's are equal, 11 if EVR1 is newer, and 12 if EVR2
+        if cmd_ret.exit_status == 12:
             old_version = one_version
             break
     if not old_version:
