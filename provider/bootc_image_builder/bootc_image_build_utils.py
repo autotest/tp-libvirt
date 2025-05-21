@@ -596,6 +596,9 @@ def create_and_build_container_file(params):
         if "rhel-9.6" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-9.6.repo"
             repo_prefix = "rhel-9.6"
+        if "rhel-9.7" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-9.7.repo"
+            repo_prefix = "rhel-9.7"
         if "rhel-10.0" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-10.0.repo"
             repo_prefix = "rhel-10.0"
