@@ -92,9 +92,10 @@ def run(test, params, env):
         """
         Check host has at least 2 numa nodes.
         """
-        test.log.info("TEST_SETUP: Check the numa nodes")
-        numa_obj = numa_base.NumaTest(vm, params, test)
-        numa_obj.check_numa_nodes_availability()
+        if with_numa:
+            test.log.info("TEST_SETUP: Check the numa nodes")
+            numa_obj = numa_base.NumaTest(vm, params, test)
+            numa_obj.check_numa_nodes_availability()
 
     def run_test():
         """
@@ -129,6 +130,7 @@ def run(test, params, env):
         bkxml.sync()
 
     vm_name = params.get("main_vm")
+    with_numa = params.get("with_numa", "yes") == "yes"
     vm = env.get_vm(vm_name)
     original_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = original_vmxml.copy()

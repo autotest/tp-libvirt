@@ -61,15 +61,18 @@ def get_virtio_objs(test, params):
     :return mem_objs: virtio memory device object list.
     """
     default_pagesize = params.get('default_pagesize')
+    virtio_config = eval(params.get("virtio_config"))
     mem_objs = []
-    for item in [(None, 0),  (default_pagesize, 1)]:
+    for item in virtio_config:
         single_mem = {'mem_model': 'virtio-mem'}
-        if item[0] is not None:
-            single_mem.update({'source': {'pagesize': item[0]}})
+        if item[0] == "huge_page":
+            single_mem.update({'source': {'pagesize': default_pagesize}})
         single_mem.update(
-            {'target': {'node': item[1], 'size': int(params.get('target_size')),
+            {'target': {'size': int(params.get('target_size')),
                         'requested_size': int(params.get('request_size')),
                         'block_size': int(default_pagesize)}})
+        if len(item) == 2:
+            single_mem['target'].update({'node': item[1]})
         test.log.debug("Get the virtio-mem dict: %s", single_mem)
         mem_obj = libvirt_vmxml.create_vm_device_by_type('memory', single_mem)
         mem_objs.append(mem_obj)
@@ -113,10 +116,12 @@ def check_mb_setting(test, params):
     :param params: dictionary with the test parameters.
     """
     virtio_mem_num = int(params.get("virtio_mem_num"))
-    expected_allocated = eval(params.get("expected_allocated", "{}"))
-    expected_backing_type = eval(params.get("expected_backing_type", "{}"))
-    expected_mem_path = eval(params.get("expected_mem_path", "{}"))
+    expected_prealloc_config = eval(params.get("expected_prealloc_config", "[]"))
+    expected_allocated = eval(params.get("expected_allocated", "[]"))
+    expected_backing_type = eval(params.get("expected_backing_type", "[]"))
+    expected_mem_path = eval(params.get("expected_mem_path", "[]"))
     memory_backing = params.get("memory_backing")
+    check_prealloc_config = params.get("check_prealloc_config")
     check_backing_type = params.get("check_backing_type")
     check_mem_path = params.get("check_mem_path")
     allocation_mode = params.get("allocation_mode")
@@ -126,10 +131,12 @@ def check_mb_setting(test, params):
         memory_backing == "undefined" and allocation_mode == "set_hugepage"
 
     mem_name_list = []
+    alias_name_list = []
     # Check virtio memory pre-allocated value
     ret = virsh.qemu_monitor_command(vm_name, "info memdev", "--hmp",
                                      debug=True).stdout_text.replace("\r\n", "")
     for index in range(virtio_mem_num):
+        alias_name = "virtiomem%d" % index
         mem_name = "memvirtiomem%d" % index
         pattern = "memory backend: %s.*prealloc: %s " % (
             mem_name, expected_allocated[index])
@@ -139,6 +146,12 @@ def check_mb_setting(test, params):
         else:
             test.log.debug("Check access pre-allocated value is '%s': PASS", pattern)
         mem_name_list.append(mem_name)
+        alias_name_list.append(alias_name)
+
+    # Check virtio memory device prealloc.
+    check_qemu_monitor_json(test, params, alias_name_list,
+                            'memory device prealloc config', check_prealloc_config,
+                            expected_prealloc_config)
 
     # Check virtio memory backing type.
     check_qemu_monitor_json(test, params, mem_name_list,
