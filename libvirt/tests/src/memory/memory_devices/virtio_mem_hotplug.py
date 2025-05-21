@@ -166,6 +166,7 @@ def check_guest_xml(test, params, mem_index=0):
     vm_name = params.get("main_vm")
     mem_value = int(params.get("mem_value"))
     current_mem = int(params.get("current_mem"))
+    numa_dict = params.get("numa_dict")
 
     target_size, request_size, plug_target_size, plug_request_size = \
         adjust_virtio_size(params)
@@ -182,9 +183,12 @@ def check_guest_xml(test, params, mem_index=0):
 
     check_source_and_addr_xml(test, params, virtio_mem_xml, mem_index)
     if mem_index == 0:
+        expected_mem0 = mem_value + target_size if numa_dict else mem_value
+        expected_curr0 = current_mem + acutal_virtio_current if numa_dict else current_mem - \
+            target_size + acutal_virtio_current
         params.update({"first_virtio_curr": acutal_virtio_current})
-        params.update({"expected_mem0": mem_value + target_size})
-        params.update({"expected_curr0": current_mem + acutal_virtio_current})
+        params.update({"expected_mem0": expected_mem0})
+        params.update({"expected_curr0": expected_curr0})
 
         compare_two_values(
             test, params.get("expected_mem0"), acutal_mem, 'memory')
@@ -213,9 +217,13 @@ def check_guest_xml(test, params, mem_index=0):
         check_delayed_current(test, params, mem_index, plug_request_size)
 
         curr1, curr2 = params.get("first_virtio_curr"), params.get("second_virtio_curr")
+        expected_mem1 = mem_value + target_size + \
+            plug_target_size if numa_dict else mem_value + plug_target_size
+        expected_curr1 = current_mem + curr1 + \
+            curr2 if numa_dict else current_mem - target_size + curr1 + curr2
         params.update(
-            {"expected_mem1": mem_value + target_size + plug_target_size})
-        params.update({"expected_curr1": current_mem + curr1 + curr2})
+            {"expected_mem1": expected_mem1})
+        params.update({"expected_curr1": expected_curr1})
         compare_two_values(
             test, params.get("expected_mem1"), acutal_mem, 'memory')
         compare_two_values(
@@ -259,12 +267,16 @@ def check_after_attach(vm, test, params):
     mem_value = int(params.get("mem_value"))
     expected_log = params.get("expected_log")
     audit_cmd = params.get("audit_cmd")
+    numa_dict = params.get("numa_dict")
     target_size, request_size, plug_target_size, plug_request_size = \
         adjust_virtio_size(params)
+    ori_mem = mem_value + target_size if numa_dict else mem_value
+    pluged_mem = mem_value + target_size + \
+        plug_target_size if numa_dict else mem_value + plug_target_size
 
     libvirtd_log_file = os.path.join(test.debugdir, "libvirtd.log")
     ausearch_check = params.get("ausearch_check") % (
-        mem_value + target_size, mem_value + target_size + plug_target_size)
+        ori_mem, pluged_mem)
 
     # Check the audit log by ausearch.
     ausearch_result = process.run(audit_cmd, shell=True)

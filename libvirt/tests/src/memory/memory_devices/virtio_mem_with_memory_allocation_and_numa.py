@@ -59,7 +59,8 @@ def check_guest_xml(vm, params, test):
     virtio_mem = vmxml.get_devices("memory")[0]
     target = virtio_mem.target
     target_size = int(target.get_size())
-    target_node = target.get_node()
+    if params.get("node"):
+        target_node = target.get_node()
     target_block = target.get_block_size()
     target_request = target.get_requested_size()
     target_current = int(target.get_current_size())

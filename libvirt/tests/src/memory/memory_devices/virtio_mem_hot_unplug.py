@@ -15,6 +15,7 @@ from avocado.utils import memory
 from virttest import virsh
 from virttest import utils_misc
 from virttest import utils_sys
+from virttest import utils_test
 from virttest import test_setup
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
@@ -137,6 +138,7 @@ def check_guest_xml(test, params, hot_unplugged=False):
     vm_name = params.get("main_vm")
     mem_value = int(params.get("mem_value"))
     current_mem = int(params.get("current_mem"))
+    with_numa = params.get('with_numa', 'yes') == 'yes'
 
     target_size, request_size, unplug_target_size, unplug_request_size = \
         adjust_virtio_size(params, test)
@@ -152,8 +154,12 @@ def check_guest_xml(test, params, hot_unplugged=False):
         acutal_virtio_block = virtio_mem_xml[0].target.block_size
         acutal_virtio_requested = virtio_mem_xml[0].target.requested_size
         acutal_virtio_current = virtio_mem_xml[0].target.current_size
-        params.update({"expected_mem0": mem_value + target_size})
-        params.update({"expected_curr0": current_mem + acutal_virtio_current})
+        if with_numa:
+            params.update({"expected_mem0": mem_value + target_size})
+            params.update({"expected_curr0": current_mem + acutal_virtio_current})
+        else:
+            params.update({"expected_mem0": mem_value})
+            params.update({"expected_curr0": current_mem - target_size + acutal_virtio_current})
         params.update({"curr1": acutal_virtio_current})
 
         check_source_and_addr_xml(test, params, virtio_mem_xml[0])
@@ -256,13 +262,16 @@ def run(test, params, env):
     """
     def setup_test():
         """
-        Allocate memory on the host.
+        Allocate memory on the host, add kernel parameter to guest.
         """
         if case == "source_mib_and_hugepages":
             if not libvirt_vmxml.check_guest_machine_type(vmxml, machine_version):
                 test.fail("Guest config machine should be >= rhel{}".format(
                     machine_version))
             hpc.setup()
+        if kernel_params_add:
+            utils_test.update_boot_option(
+                vm, args_added=kernel_params_add, guest_arch_name=vm_arch_name)
 
     def run_test():
         """
@@ -312,6 +321,11 @@ def run(test, params, env):
         test.log.info("TEST_TEARDOWN: Clean up env.")
         bkxml.sync()
         hpc.cleanup()
+        if kernel_params_remove:
+            if not vm.is_alive():
+                vm.start()
+            utils_test.update_boot_option(
+                vm, args_removed=kernel_params_remove, guest_arch_name=vm_arch_name)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -329,6 +343,9 @@ def run(test, params, env):
     detach_method = params.get("detach_method")
     unplug_error = params.get("unplug_error")
     unplug_event = params.get('unplug_event')
+    kernel_params_add = params.get('kernel_params_add')
+    kernel_params_remove = params.get('kernel_params_remove')
+    vm_arch_name = params.get('vm_arch_name')
 
     params.update({"kernel_hp_file": kernel_hp_file % default_hugepage_size})
     params.update({"target_hugepages": allocate_size / default_hugepage_size})
