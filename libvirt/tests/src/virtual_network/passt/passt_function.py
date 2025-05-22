@@ -87,10 +87,8 @@ def run(test, params, env):
         vmxml.del_device('interface', by_tag=True)
         vmxml.sync(virsh_instance=virsh_ins)
         if vhostuser:
-            # set static hugepage
-            utils_memory.set_num_huge_pages(2048)
-            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
             # update vm xml with shared memory and vhostuser interface
+            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=False, memfd=True, vmxml=vmxml)
             iface_attrs['type_name'] = 'vhostuser'
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
@@ -140,4 +138,3 @@ def run(test, params, env):
         if root:
             shutil.rmtree(log_dir)
         utils_selinux.set_status(selinux_status)
-        utils_memory.set_num_huge_pages(shp_orig_num)
