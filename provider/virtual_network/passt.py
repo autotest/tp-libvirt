@@ -467,6 +467,7 @@ def check_passt_pid_not_exist():
     pid_passt = process.run('pidof passt',
                             ignore_status=True).stdout_text.strip()
     if pid_passt:
+        utils_misc.kill_process_tree(pid_passt)
         raise exceptions.TestFail(f'Process of passt still exists: '
                                   f'{pid_passt}')
 

@@ -85,8 +85,8 @@ def run(test, params, env):
 
         if vhostuser:
             iface_attrs['type_name'] = 'vhostuser'
-            utils_memory.set_num_huge_pages(2048)
-            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
+            # update vm xml with shared memory and vhostuser interface
+            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=False, memfd=True, vmxml=vmxml)
         passt.vm_add_iface(vmxml, iface_attrs, virsh_ins)
         vm.start()
 
@@ -145,4 +145,3 @@ def run(test, params, env):
         if root:
             shutil.rmtree(log_dir)
         utils_selinux.set_status(selinux_status)
-        utils_memory.set_num_huge_pages(shp_orig_num)
