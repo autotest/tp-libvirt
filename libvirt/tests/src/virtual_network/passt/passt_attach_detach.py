@@ -81,6 +81,7 @@ def run(test, params, env):
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
     vhostuser = 'yes' == params.get('vhostuser', 'no')
+    multiple_nexthops = 'yes' == params.get('multiple_nexthops', 'no')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
@@ -136,7 +137,7 @@ def run(test, params, env):
             vm_iface = utils_net.get_linux_ifname(session, mac)
             passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
             passt.check_vm_mtu(session, vm_iface, mtu)
-            passt.check_default_gw(session, host_iface)
+            passt.check_default_gw(session, host_iface, multiple_nexthops)
             passt.check_nameserver(session)
 
             ips = {
