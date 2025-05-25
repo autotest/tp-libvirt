@@ -240,7 +240,7 @@ def check_vm_mtu(session, iface, mtu):
         raise exceptions.TestFail(f'Wrong vm mtu: {vm_mtu}, should be {mtu}')
 
 
-def check_default_gw(session, host_iface=None):
+def check_default_gw(session, host_iface=None, multiple_nexthops=False):
     """
     Check whether default host gateways of host and guest are consistent,
     i.e. the guest's gateways are available on the host.
@@ -249,28 +249,35 @@ def check_default_gw(session, host_iface=None):
     :param host_iface: if given, only check gateway information on this
                        host interface
     """
+    LOG.debug(f'Get host default ipv4 gateway')
     host_gw = utils_net.get_default_gateway(
-        force_dhcp=True, target_iface=host_iface, json=True)
+        force_dhcp=True, target_iface=host_iface, json=True, multiple_nexthops=multiple_nexthops)
+    LOG.debug(f'Get guest default ipv4 gateway')
     vm_gw = utils_net.get_default_gateway(
-        session=session, force_dhcp=True, json=True)
+        session=session, force_dhcp=True, json=True, multiple_nexthops=multiple_nexthops)
     LOG.debug(f'Host and vm default ipv4 gateway: {host_gw}, {vm_gw}')
     if [x for x in vm_gw if x not in host_gw]:
         raise exceptions.TestFail(
             'Host default ipv4 gateway not consistent with vm.')
-
+    LOG.debug(f'Get host default ipv6 gateway')
     _host_gw_v6 = utils_net.get_default_gateway(ip_ver='ipv6',
                                                 target_iface=host_iface,
-                                                json=True)
+                                                json=True,
+                                                multiple_nexthops=multiple_nexthops)
     if not _host_gw_v6:
         raise exceptions.TestFail('Guest has no ipv6 gateway!')
-    vm_gw_v6 = utils_net.get_default_gateway(session=session, ip_ver='ipv6',
-                                             json=True)
+    LOG.debug(f'Get guest default ipv6 gateway')
+    vm_gw_v6 = utils_net.get_default_gateway(session=session,
+                                             ip_ver='ipv6',
+                                             json=True,
+                                             multiple_nexthops=multiple_nexthops)
     if not vm_gw_v6:
         raise exceptions.TestFail('Guest has no ipv6 gateway!')
     host_gw_v6 = _host_gw_v6 if isinstance(_host_gw_v6, list) else [_host_gw_v6]
+    vm_gw_v6 = vm_gw_v6 if isinstance(vm_gw_v6, list) else [vm_gw_v6]
     LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
 
-    if vm_gw_v6 not in host_gw_v6:
+    if [x for x in vm_gw_v6 if x not in host_gw_v6]:
         raise exceptions.TestFail(
             'Host default ipv6 gateway not consistent with vm.')
 
