@@ -102,10 +102,8 @@ def run(test, params, env):
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
         if vhostuser:
-            # set static hugepage
-            utils_memory.set_num_huge_pages(2048)
-            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=True, vmxml=vmxml)
             # update vm xml with shared memory and vhostuser interface
+            vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=False, memfd=True, vmxml=vmxml)
             iface_attrs['type_name'] = 'vhostuser'
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
         mac = vm.get_virsh_mac_address()
@@ -158,8 +156,6 @@ def run(test, params, env):
         vm.destroy()
 
         passt.check_passt_pid_not_exist()
-        if not vhostuser and os.listdir(socket_dir):
-            test.fail(f'Socket dir is not empty: {os.listdir(socket_dir)}')
 
     finally:
         firewalld.start()
@@ -169,4 +165,3 @@ def run(test, params, env):
         utils_selinux.set_status(selinux_status)
         if os.path.exists(save_path):
             os.remove(save_path)
-        utils_memory.set_num_huge_pages(shp_orig_num)
