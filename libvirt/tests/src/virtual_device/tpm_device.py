@@ -6,6 +6,7 @@ import time
 import platform
 import shutil
 import glob
+import subprocess
 
 from virttest import data_dir
 from virttest import libvirt_version
@@ -92,8 +93,7 @@ def run(test, params, env):
     audit_cmd = params.get("audit_cmd")
     ausearch_check = params.get("ausearch_check")
     skip_start = ('yes' == params.get("skip_start", "no"))
-    swtpm_setup_path = params.get("swtpm_setup_path")
-    swtpm_path = params.get("swtpm_path")
+    p2 = None
     source_attrs_str = params.get("source_attrs")
     if source_attrs_str:
         source_attrs = ast.literal_eval(source_attrs_str)
@@ -305,7 +305,7 @@ def run(test, params, env):
 
     def launch_external_swtpm(skip_setup):
         """
-        Launch externally swtpm
+        Launch external swtpm
 
         :param skip_setup: whether skip swtpm_setup steps
         """
@@ -314,16 +314,19 @@ def run(test, params, env):
                 shutil.rmtree(statedir)
             os.mkdir(statedir)
             process.run("ls -lZd %s" % statedir)
-            process.run('chcon -t virtd_exec_t %s' % swtpm_setup_path, ignore_status=False, shell=True)
-            cmd1 = "systemd-run %s --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % (swtpm_setup_path, statedir)
-            process.run('chcon -t virtd_exec_t %s' % swtpm_path, ignore_status=False, shell=True)
-        cmd2 = "systemd-run %s socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate" % (swtpm_path, source_socket, statedir)
+            cmd1 = "swtpm_setup --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % statedir
+        cmd2 = "swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate" % (source_socket, statedir)
         try:
             if not skip_setup:
                 process.run(cmd1, ignore_status=False, shell=True)
-            process.run(cmd2, ignore_status=False, shell=True)
+            logging.debug("Running '%s'", cmd2)
+            p2 = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
+            process.run("ps aux|grep 'swtpm socket'|grep -v avocado-runner-avocado-vt|grep -v grep", ignore_status=True, shell=True)
+            if p2.poll() is not None:
+                test.error('External swtpm socket process does not exist')
             # Make sure the socket is created
-            utils_misc.wait_for(lambda: os.path.isdir(source_socket), timeout=3)
+            utils_misc.wait_for(lambda: os.path.exists(source_socket), timeout=3)
             process.run('chcon -t svirt_image_t %s' % source_socket, ignore_status=False, shell=True)
             process.run('chown qemu:qemu %s' % source_socket, ignore_status=False, shell=True)
         except Exception as err:
@@ -1036,10 +1039,11 @@ def run(test, params, env):
         vm_xml_backup.sync(options="--nvram --managed-save")
         check_swtpmpidfile(vm_name, "test finished")
         if backend_type == 'external' and not status_error:
-            process.run("restorecon %s" % swtpm_setup_path, ignore_status=False, shell=True)
-            process.run("restorecon %s" % swtpm_path, ignore_status=False, shell=True)
             if os.path.exists(statedir):
                 shutil.rmtree(statedir)
+            if p2 and p2.poll() is None:
+                p2.kill()
+            process.run("rm -rf /var/lib/swtpm-localca/*", shell=True, ignore_status=True)
         # Remove swtpm log file in case of impact on later runs
         if os.path.exists("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name):
             os.remove("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name)
