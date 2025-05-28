@@ -12,6 +12,7 @@ import re
 from avocado.utils import memory
 
 from virttest import utils_misc
+from virttest import utils_test
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -189,6 +190,7 @@ def check_guest_xml(test, vm_name, params):
     target_size = int(params.get("target_size"))
     mem_value = int(params.get("mem_value"))
     current_mem = int(params.get("current_mem"))
+    with_numa = params.get("with_numa", "yes") == "yes"
     basic_request = int(re.findall(r'\d+', params.get("basic_request"))[0])
     update_request_size = int(memory_base.convert_data_size(
         params.get("update_request_size"), 'KiB'))
@@ -199,8 +201,13 @@ def check_guest_xml(test, vm_name, params):
         virtio_mem_value = current_0 = current_1 = update_request_size
     elif params.get('bigger_or_not_muti_request'):
         virtio_mem_value = current_0 = current_1 = basic_request
-    xpath = expect_xpath % (mem_value + target_size * 2,
-                            current_mem + current_0 + current_1)
+
+    expect_memory = mem_value + target_size * 2 \
+        if with_numa else mem_value + target_size
+    expect_current = current_mem + current_0 + current_1 \
+        if with_numa else current_mem - target_size + current_0 + current_1
+    xpath = expect_xpath % (expect_memory,
+                            expect_current)
     test.log.debug("Checking xml pathern is :%s", xpath)
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -273,6 +280,10 @@ def run(test, params, env):
         default_pagesize = memory.get_huge_page_size()
         params.update({'default_pagesize': default_pagesize})
         utils_memory.set_num_huge_pages(int(allocate_huge_pages)/default_pagesize)
+        if kernel_params_add:
+            test.log.info("TEST_SETUP: Add kernel parmater")
+            utils_test.update_boot_option(
+                vm, args_added=kernel_params_add, guest_arch_name=vm_arch_name)
 
     def run_test_shutoff_guest():
         """
@@ -344,6 +355,11 @@ def run(test, params, env):
         test.log.info("TEST_TEARDOWN: Clean up env.")
         utils_memory.set_num_huge_pages(0)
         bkxml.sync()
+        if kernel_params_remove:
+            if not vm.is_alive():
+                vm.start()
+            utils_test.update_boot_option(
+                vm, args_removed=kernel_params_remove, guest_arch_name=vm_arch_name)
 
     vm_name = params.get("main_vm")
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -351,6 +367,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
 
     allocate_huge_pages = re.findall(r'\d+', params.get("allocate_huge_pages"))[0]
+    vm_arch_name = params.get("vm_arch_name")
     guest_state = params.get("guest_state")
     basic_node = params.get("basic_node")
     target_size = int(params.get("target_size"))
@@ -362,6 +379,8 @@ def run(test, params, env):
     update_request_size = params.get("update_request_size")
     requested_unit = params.get("requested_unit")
     requested_setting = params.get("requested_setting")
+    kernel_params_add = params.get("kernel_params_add")
+    kernel_params_remove = params.get("kernel_params_remove")
     params.update(
         {'normal_or_zero_request': requested_setting in [
             "normal_requested", "zero_requested"]})

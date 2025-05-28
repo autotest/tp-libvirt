@@ -48,25 +48,24 @@ def get_vm_attrs(test, params):
 
 def get_virtio_mem(test, params):
     """
-    Get 6 basic different virtio-mem memory devices.
+    Get basic different virtio-mem memory devices.
 
     :param test: test object.
     :param params: dictionary with the test parameters.
     :return mem_list: virtio-mem attr dict list.
     """
+    mem_conf_list = eval(params.get("mem_conf_list"))
+    conf_map = {0: 'mem_access', 1: 'mem_discard', 2: 'node'}
     mem_list = []
-    for item in [(None, None, 0), ('shared', 'yes', 0),
-                 (None, None, 1), ('private', 'no', 1),
-                 (None, None, 2), ('shared', 'yes', 2)]:
-
+    for item in mem_conf_list:
         single_mem = eval(params.get("mem_basic"))
         target = single_mem['target']
-        target.update({'node': item[2]})
-
-        if item[0] is not None:
-            single_mem.update({'mem_access': item[0]})
-        if item[1] is not None:
-            single_mem.update({'mem_discard': item[1]})
+        for k, v in conf_map.items():
+            if item[k] is not None:
+                if v == "node":
+                    target.update({v: item[k]})
+                else:
+                    single_mem.update({v: item[k]})
         mem_list.append(single_mem)
 
     test.log.debug("Get all virtio-mem list:'%s'", mem_list)
@@ -84,7 +83,7 @@ def check_access_and_discard(test, params, vm,
     :param expected_share: expected access shared value list.
     :param expected_discard: expected discard value list.
     """
-    virtio_mem_num = int(params.get("virtio_mem_num"))
+    virtio_mem_num = len(eval(params.get("mem_conf_list")))
     check_discard = params.get("check_discard")
     discard_error_msg = params.get("discard_error_msg")
     mem_name_list = []
@@ -184,11 +183,12 @@ def run(test, params, env):
         Clean data.
         """
         test.log.info("TEST_TEARDOWN: Clean up env.")
-        bkxml.sync()
+        orig_vmxml.sync()
 
     vm_name = params.get("main_vm")
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
+    orig_vmxml = vmxml.copy()
     vm = env.get_vm(vm_name)
 
     expected_share = eval(params.get("expected_share"))
