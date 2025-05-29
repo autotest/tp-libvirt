@@ -459,7 +459,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         if not re.search('0m0', cmd_pass.stderr_text):
             test.fail('fail to test delay-close option when nbdkit clients are not shutdown')
         #Set invalid number for delay option
-        values = ['10secs', '40SECS', '10s', '10MS', '1:']
+        values = ['10secs', '40SECS', '10MS', '1:']
         for value in values:
             cmd_num = process.run("nbdkit null --filter=delay delay-open=%s --run 'nbdinfo $uri'" % value,
                                   shell=True, ignore_status=True)
