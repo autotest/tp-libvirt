@@ -145,10 +145,9 @@ def run(test, params, env):
         :param source_dir:  the dir shared on host
         :param source_socket: the socket file listened on
         """
-        process.run('chcon -t virtd_exec_t %s' % path, ignore_status=False, shell=True)
-        cmd = "systemd-run %s --socket-path=%s -o source=%s" % (path, source_socket, source_dir)
+        cmd = "%s --socket-path=%s -o source=%s &" % (path, source_socket, source_dir)
         try:
-            process.run(cmd, ignore_status=False, shell=True)
+            process.run(cmd, ignore_status=False, shell=True, ignore_bg_processes=True)
             # Make sure the socket is created
             utils_misc.wait_for(lambda: os.path.isdir(source_socket), timeout=3)
             process.run("chown qemu:qemu %s" % source_socket, ignore_status=False)
