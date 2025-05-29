@@ -23,7 +23,6 @@ from virttest import libvirt_vm
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_misc
-from virttest import utils_netperf
 from virttest import utils_package
 from virttest import utils_selinux
 from virttest import utils_test
@@ -777,83 +776,62 @@ def run_remote_cmd(command, server_ip, server_user, server_pwd,
         return (session, status, output)
 
 
-def setup_netsever_and_launch_netperf(test, params):
+def run_cmd(cmd, params):
     """
-    Setup netserver and run netperf client
+    Run cmd on source host and target host
+
+    :param cmd: command
+    :param params: parameters used
+    """
+    process.run(cmd, shell=True, ignore_status=True)
+    remote.run_remote_cmd(cmd, params, ignore_status=True)
+
+
+def setup_netperf(test, params):
+    """
+    Setup netserver and run netperf cmd
 
     :param test: test object
     :param params: parameters used
-    :raise: test.error if automake installation fails
     """
     server_ip = params.get("server_ip")
-    server_user = params.get("server_user")
+    server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
-    client_ip = params.get("client_ip")
-    client_user = params.get("client_user")
-    client_pwd = params.get("client_pwd")
-    netperf_source = params.get("netperf_source")
-    netperf_source = os.path.join(data_dir.get_root_dir(), netperf_source)
-    client_md5sum = params.get("client_md5sum")
-    client_path = params.get("client_path", "/var/tmp")
-    server_md5sum = params.get("server_md5sum")
-    server_path = params.get("server_path", "/var/tmp")
-    compile_option_client = params.get("compile_option_client", "")
-    compile_option_server = params.get("compile_option_server", "")
-    # Run netperf with message size defined in range.
-    netperf_test_duration = int(params.get("netperf_test_duration", 60))
-    netperf_para_sess = params.get("netperf_para_sessions", "1")
-    test_protocol = params.get("test_protocols", "TCP_STREAM")
-    netperf_cmd_prefix = params.get("netperf_cmd_prefix", "")
-    netperf_output_unit = params.get("netperf_output_unit", " ")
-    netperf_package_sizes = params.get("netperf_package_sizes")
-    test_option = params.get("test_option", "")
-    direction = params.get("direction", "remote")
-    remote_session = remote.remote_login("ssh", server_ip, "22", server_user,
-                                         server_pwd, r'[$#%]')
-    for loc in ['source', 'target']:
-        session = None
-        if loc == 'target':
-            session = remote_session
-        if not utils_package.package_install("automake", session):
-            test.error("Failed to install automake on %s host." % loc)
+    netperf_cmd_src = params.get("netperf_cmd_src")
+    netperf_cmd_dst = params.get("netperf_cmd_dst")
+
+    if not utils_package.package_install("netperf"):
+        test.error("Failed to install netperf on source host.")
+
+    remote_session = remote.wait_for_login('ssh', server_ip, '22', server_user,
+                                           server_pwd, r"[\#\$]\s*$")
+    if not utils_package.package_install("netperf", remote_session):
+        test.error("Failed to install netperf on target host.")
     remote_session.close()
-    n_client = utils_netperf.NetperfClient(client_ip,
-                                           client_path,
-                                           client_md5sum,
-                                           netperf_source,
-                                           client="ssh",
-                                           port="22",
-                                           username=client_user,
-                                           password=client_pwd,
-                                           compile_option=compile_option_client)
 
-    logging.info("Start netserver on %s", server_ip)
-    n_server = utils_netperf.NetperfServer(server_ip,
-                                           server_path,
-                                           server_md5sum,
-                                           netperf_source,
-                                           client="ssh",
-                                           port="22",
-                                           username=server_user,
-                                           password=server_pwd,
-                                           compile_option=compile_option_server)
+    run_cmd("systemctl stop firewalld", params)
+    run_cmd("killall netserver", params)
+    test.log.debug("Start netserver.")
+    run_cmd("netserver", params)
 
-    n_server.start()
+    test.log.debug("Run netperf on source host.")
+    process.run(netperf_cmd_src, shell=True, ignore_bg_processes=True)
 
-    test_option += " -l %s" % netperf_test_duration
-    start_time = time.time()
-    stop_time = start_time + netperf_test_duration
-    t_option = "%s -t %s" % (test_option, test_protocol)
-    logging.info("Start netperf on %s", client_ip)
-    n_client.bg_start(server_ip, t_option,
-                      netperf_para_sess, netperf_cmd_prefix,
-                      package_sizes=netperf_package_sizes)
-    if utils_misc.wait_for(n_client.is_netperf_running, 10, 0, 1,
-                           "Wait netperf test start"):
-        logging.info("Start netperf on %s successfully.", client_ip)
-        return (True, n_client, n_server)
-    else:
-        return (False, n_client, n_server)
+    test.log.debug("Run netperf on target host.")
+    remote.run_remote_cmd(netperf_cmd_dst, params, ignore_status=True)
+
+
+def cleanup_netperf(test, params):
+    """
+    Cleanup netserver and netperf cmd
+
+    :param test: test object
+    :param params: parameters used
+    """
+    test.log.debug("Cleanup netserver and netperf.")
+    run_cmd("killall netperf", params)
+    run_cmd("killall netserver", params)
+    run_cmd("systemctl start firewalld", params)
 
 
 def cleanup(objs_list):
@@ -1279,6 +1257,7 @@ def run(test, params, env):
     block_time = test_dict.get("block_time")
     restart_vm = "yes" == test_dict.get("restart_vm", "no")
     diff_cpu_vendor = "yes" == test_dict.get("diff_cpu_vendor", "no")
+    netperf_network = "yes" == test_dict.get("netperf_network", "no")
 
     # Get iothread parameters.
     driver_iothread = test_dict.get("driver_iothread")
@@ -1474,10 +1453,6 @@ def run(test, params, env):
     nfs_cli = None
     se_obj = None
     libvirtd_conf = None
-    n_server_c = None
-    n_client_c = None
-    n_server_s = None
-    n_client_s = None
     need_mkswap = False
     LOCAL_SELINUX_ENFORCING = True
     REMOTE_SELINUX_ENFORCING = True
@@ -2203,43 +2178,8 @@ def run(test, params, env):
             result = virsh.migrate_compcache(vm_name, size=set_migr_cache_size)
             logging.debug(result)
 
-        netperf_version = test_dict.get("netperf_version")
-        if netperf_version:
-            # Install tar on client
-            # Note: tar is used to untar netperf package later.
-            if not utils_package.package_install(["tar"]):
-                test.error("Failed to install tar on client")
-
-            # Install tar on server
-            # Note: tar is used to untar netperf package later.
-            remote_session = remote.wait_for_login('ssh', server_ip, '22', server_user,
-                                                   server_pwd, r"[\#\$]\s*$")
-            if not utils_package.package_install(["tar"], remote_session):
-                test.error("Failed to install tar on server")
-
-            ret, n_client_c, n_server_c = setup_netsever_and_launch_netperf(
-                test, test_dict)
-            if not ret:
-                test.error("Can not start netperf on %s" % client_ip)
-
-            new_args_dict = dict(test_dict)
-            new_args_dict["server_ip"] = client_ip
-            new_args_dict["server_user"] = client_user
-            new_args_dict["server_pwd"] = client_pwd
-            new_args_dict["client_ip"] = server_ip
-            new_args_dict["client_user"] = server_user
-            new_args_dict["client_pwd"] = server_pwd
-            new_args_dict["server_md5sum"] = test_dict.get("client_md5sum")
-            new_args_dict["server_path"] = test_dict.get("client_path", "/var/tmp")
-            new_args_dict["compile_option_server"] = test_dict.get("compile_option_client", "")
-            new_args_dict["client_md5sum"] = test_dict.get("server_md5sum")
-            new_args_dict["client_path"] = test_dict.get("server_path", "/var/tmp")
-            new_args_dict["compile_option_client"] = test_dict.get("compile_option_server", "")
-
-            ret, n_client_s, n_server_s = setup_netsever_and_launch_netperf(
-                test, new_args_dict)
-            if not ret:
-                test.error("Can not start netperf on %s" % client_ip)
+        if netperf_network:
+            setup_netperf(test, params)
 
         speed = test_dict.get("set_migration_speed")
         if speed:
@@ -2987,18 +2927,9 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on the remote: %s"
                           % (cmd, output))
 
-        # Stop netserver service and clean up netperf package
-        if n_server_c:
-            n_server_c.stop()
-            n_server_c.package.env_cleanup(True)
-        if n_client_c:
-            n_client_c.package.env_cleanup(True)
-
-        if n_server_s:
-            n_server_s.stop()
-            n_server_s.package.env_cleanup(True)
-        if n_client_s:
-            n_client_s.package.env_cleanup(True)
+        # Stop netserver service and clean up netperf cmd
+        if netperf_network:
+            cleanup_netperf(test, params)
 
         if objs_list and len(objs_list) > 0:
             logging.debug("Clean up the objects")
