@@ -35,17 +35,18 @@ def run(test, params, env):
         mount_dir = params.get("mount_dir")
         expect_str = params.get("expect_str")
 
-        cmd1 = f"chcon -t virtd_exec_t /usr/libexec/virtiofsd"
-        cmd2 = f"mkdir -p {mnt_path_name}"
-        cmd3 = f"systemd-run /usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name}"
-        multi_cmd1 = f"{cmd1}; {cmd2}; {cmd3}"
-        process.run(multi_cmd1, shell=True, ignore_status=False)
-        remote.run_remote_cmd(multi_cmd1, params, ignore_status=False)
+        cmd1 = f"mkdir -p {mnt_path_name}"
+        cmd2 = f"/usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name} &"
+        multi_cmd1 = f"{cmd1}; {cmd2}"
+        process.run(multi_cmd1, shell=True, ignore_status=False, ignore_bg_processes=True)
+        cmd3 = f"/usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name} > /dev/null 2>&1 &"
+        multi_cmd2 = f"{cmd1}; {cmd3}"
+        remote.run_remote_cmd(multi_cmd2, params, ignore_status=False)
         cmd4 = f"chcon -t svirt_image_t {socket_path}"
         cmd5 = f"chown qemu:qemu {socket_path}"
-        multi_cmd2 = f"{cmd4}; {cmd5}"
-        process.run(multi_cmd2, shell=True, ignore_status=False)
-        remote.run_remote_cmd(multi_cmd2, params, ignore_status=False)
+        multi_cmd3 = f"{cmd4}; {cmd5}"
+        process.run(multi_cmd3, shell=True, ignore_status=False)
+        remote.run_remote_cmd(multi_cmd3, params, ignore_status=False)
 
         migration_obj.setup_connection()
 
