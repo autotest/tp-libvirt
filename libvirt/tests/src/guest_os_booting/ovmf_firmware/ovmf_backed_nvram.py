@@ -9,10 +9,9 @@ from virttest import libvirt_version
 from virttest import virsh
 from virttest.data_dir import get_data_dir
 from virttest.libvirt_xml import vm_xml
+from virttest import utils_misc
 from provider.guest_os_booting import guest_os_booting_base as guest_os
 from provider.virtual_disk import disk_base
-import random
-import string
 
 
 def run(test, params, env):
@@ -44,17 +43,13 @@ def run(test, params, env):
                 test.fail("Configured os attributes {} don't existed in guest.".format(key))
         test.log.debug("Get expected os xml of guest.")
 
-    def generate_random_string(length=4):
-        letters = string.ascii_letters
-        return ''.join(random.choices(letters, k=length))
-
     def create_block_device():
         """
         Setup one scsi_debug block device
 
         :return: device name
         """
-        name_term = generate_random_string(length=4)
+        name_term = utils_misc.generate_random_string(4)
         disk_obj.lv_name = 'lv_' + name_term
         disk_obj.vg_name = 'vg_' + name_term
         _, new_image_path = disk_obj.prepare_disk_obj(disk_type='block', disk_dict={}, size='8M', convert_format='qcow2')
