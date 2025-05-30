@@ -159,6 +159,7 @@ def run(test, params, env):
     iface_attrs['backend']['logFile'] = log_file
     iface_attrs['source']['dev'] = host_iface
     direction = params.get('direction')
+    multiple_nexthops = 'yes' == params.get('multiple_nexthops', 'no')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
@@ -177,7 +178,7 @@ def run(test, params, env):
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
 
         session = vm.wait_for_serial_login(timeout=60)
-        passt.check_default_gw(session, host_iface)
+        passt.check_default_gw(session, host_iface, multiple_nexthops)
 
         prot = 'TCP' if ip_ver == 'ipv4' else 'TCP6'
         if direction == 'host_to_vm':
