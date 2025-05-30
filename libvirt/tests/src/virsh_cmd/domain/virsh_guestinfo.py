@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_version
 from virttest import utils_misc
+from virttest.utils_test import VMStress
 from virttest.utils_test import libvirt
 
 
@@ -332,6 +333,8 @@ def run(test, params, env):
         logging.debug("if_info is %s", if_info)
         return if_info
 
+    libvirt_version.is_libvirt_feature_supported(params)
+
     vm_name = params.get("main_vm")
     option = params.get("option", " ")
     added_user_name = params.get("added_user_name")
@@ -344,9 +347,10 @@ def run(test, params, env):
     serial_num = params.get("serial_num")
     disk_target_bus = params.get("disk_target_bus")
     readonly_mode = ("yes" == params.get("readonly_mode"))
+    stress_in_vm = ("yes" == params.get("stress_in_vm"))
+    remove_exist = ("yes" == params.get("remove_exist_qa"))
+    expected_match = params.get("expected_match")
 
-    if not libvirt_version.version_compare(6, 0, 0):
-        test.cancel("Guestinfo command is not supported before version libvirt-6.0.0 ")
     import dateutil.parser
 
     added_user_session = None
@@ -359,7 +363,12 @@ def run(test, params, env):
             virsh_dargs["readonly"] = True
 
         if start_ga and prepare_channel:
-            vm.prepare_guest_agent(start=True, channel=True)
+            vm.prepare_guest_agent(start=True, channel=True, remove_exist=remove_exist)
+
+        if stress_in_vm:
+            params.update({"stress_dependency_packages_list": "['gcc', 'make']"})
+            vm_stress = VMStress(vm, "stress", params)
+            vm_stress.load_stress_tool()
 
         if "user" in option:
             add_user(added_user_name, added_user_passwd)
@@ -378,7 +387,7 @@ def run(test, params, env):
         if readonly_mode:
             error_msg.append("read only access prevents virDomainGetGuestInfo")
         libvirt.check_result(result, expected_fails=error_msg,
-                             any_error=status_error)
+                             any_error=status_error, expected_match=expected_match)
 
         if status_error:
             return
@@ -387,7 +396,7 @@ def run(test, params, env):
         out_dict = dict(item.split(": ") for item in out)
         info_from_agent_cmd = dict((x.strip(), y.strip()) for x, y in out_dict.items())
         logging.debug("info from the guest is %s", info_from_agent_cmd)
-
+        info_from_guest = {}
         if "disk" in option:
             if not check_attached_disk_info(info_from_agent_cmd, disk_target_name):
                 test.fail("The disk info reported by agent cmd is not correct. "
@@ -396,15 +405,15 @@ def run(test, params, env):
         else:
             if "filesystem" in option:
                 info_from_guest = check_guest_filesystem_info(info_from_agent_cmd)
-            else:
+            elif "load" not in option:
                 func_name = "check_guest_%s_info" % option[2:]
                 info_from_guest = locals()[func_name]()
             logging.debug('%s_info_from_guest is %s', option[2:], info_from_guest)
 
-        if ("user" not in option) and ("filesystem" not in option):
+        if not any(x in option for x in ["user", "filesystem", "load"]):
             if info_from_guest != info_from_agent_cmd:
                 test.fail("The %s info get from guestinfo cmd is not correct." % option[2:])
-        else:
+        elif "load" not in option:
             for key, value in info_from_guest.items():
                 if "used-bytes" in key:
                     # The guest block size may change by about 16000Kib after
