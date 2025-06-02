@@ -175,8 +175,6 @@ class CcwMdevHandler(MdevHandler):
             # need to sleep to avoid issue with setting device offline
             # adding a wait_for would likely be more complicated
             sleep(1)
-        if self.device_id:
-            ccw.set_device_offline(self.device_id)
 
 
 class ApMdevHandler(MdevHandler):
