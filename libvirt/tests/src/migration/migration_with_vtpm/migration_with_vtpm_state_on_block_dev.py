@@ -92,7 +92,7 @@ def check_capability(params, test):
             check_items(eval(params.get("expected_list_1"), "[]"), log_file, test)
         else:
             if libvirt_version.version_compare(11, 0, 0):
-                check_items(eval(params.get("expected_list_2"), "[]"), log_file, test)
+                check_items(eval(params.get("expected_list_2", "[]")), log_file, test)
             else:
                 check_items(eval(params.get("unexpected_list_3", "[]")), log_file, test, str_in_log=False)
                 check_items(eval(params.get("expected_list_3", "[]")), log_file, test)
