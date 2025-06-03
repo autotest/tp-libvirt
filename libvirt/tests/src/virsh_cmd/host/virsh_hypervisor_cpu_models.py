@@ -1,5 +1,6 @@
 import logging as log
 
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.domcapability_xml import DomCapabilityXML
@@ -35,6 +36,8 @@ def run(test, params, env):
     """
     options = params.get("options", "")
     status_error = "yes" == params.get("status_error", "no")
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     result = virsh.hypervisor_cpu_models(options, ignore_status=True, debug=True)
     utlv.check_exit_status(result, expect_error=status_error)
