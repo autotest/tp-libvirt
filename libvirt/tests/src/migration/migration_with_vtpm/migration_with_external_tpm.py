@@ -11,7 +11,6 @@ from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
-from virttest.utils_test import libvirt
 
 from provider.migration import base_steps
 
@@ -84,41 +83,35 @@ def launch_external_swtpm(params, test, skip_setup=False, on_remote=False):
     tpm_dict = eval(params.get('tpm_dict', '{}'))
     source_socket = tpm_dict['backend']['source']['path']
     statedir = params.get("statedir")
-    swtpm_setup_path = params.get("swtpm_setup_path")
-    swtpm_path = params.get("swtpm_path")
 
     test.log.info("Launch external swtpm process: (on_remote: %s)",  on_remote)
     if not skip_setup:
-        cmd1 = 'chcon -t virtd_exec_t %s' % swtpm_setup_path
-        cmd2 = 'chcon -t virtd_exec_t %s' % swtpm_path
         if on_remote:
             remote.run_remote_cmd("rm -rf %s" % statedir, params)
             remote.run_remote_cmd("mkdir %s" % statedir, params)
-            remote.run_remote_cmd(cmd1, params)
-            remote.run_remote_cmd(cmd2, params)
         else:
             if os.path.exists(statedir):
                 shutil.rmtree(statedir)
             os.mkdir(statedir)
             process.run("ls -lZd %s" % statedir)
-            process.run(cmd1, ignore_status=False, shell=True)
-            process.run(cmd2, ignore_status=False, shell=True)
-        cmd3 = "systemd-run %s --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % (swtpm_setup_path, statedir)
-    cmd4 = "systemd-run %s socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate" % (swtpm_path, source_socket, statedir)
+        cmd1 = "swtpm_setup --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % statedir
     try:
         if not skip_setup:
             if on_remote:
-                remote.run_remote_cmd(cmd3, params)
+                remote.run_remote_cmd(cmd1, params)
             else:
-                process.run(cmd3, ignore_status=False, shell=True)
+                process.run(cmd1, ignore_status=False, shell=True)
         if on_remote:
-            remote.run_remote_cmd(cmd4, params)
+            cmd2 = "nohup swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate > /dev/null 2>&1 &" % (source_socket, statedir)
+            remote.run_remote_cmd(cmd2, params)
             remote.run_remote_cmd('chcon -t svirt_image_t %s' % source_socket, params)
             remote.run_remote_cmd('chown qemu:qemu %s' % source_socket, params)
         else:
-            process.run(cmd4, ignore_status=False, shell=True)
+            cmd2 = "swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate &" % (source_socket, statedir)
+            process.run(cmd2, ignore_status=False, shell=True, ignore_bg_processes=True)
+            process.run("ps aux|grep 'swtpm socket'|grep -v avocado-runner-avocado-vt|grep -v grep", ignore_status=True, shell=True)
             # Make sure the socket is created
-            utils_misc.wait_for(lambda: os.path.isdir(source_socket), timeout=3)
+            utils_misc.wait_for(lambda: os.path.exists(source_socket), timeout=3)
             process.run('chcon -t svirt_image_t %s' % source_socket, ignore_status=False, shell=True)
             process.run('chown qemu:qemu %s' % source_socket, ignore_status=False, shell=True)
     except Exception as err:
@@ -177,7 +170,8 @@ def run(test, params, env):
         """
         tpm_security_contexts = params.get("tpm_security_contexts")
 
-        libvirt.set_vm_disk(vm, params)
+        test.log.debug("Setup steps.")
+        migration_obj.setup_connection()
         launch_external_swtpm(params, test)
         launch_external_swtpm(params, test, skip_setup=False, on_remote=True)
         setup_vtpm(params, test, vm)
@@ -211,18 +205,14 @@ def run(test, params, env):
         Cleanup steps
 
         """
-        swtpm_setup_path = params.get("swtpm_setup_path")
-        swtpm_path = params.get("swtpm_path")
         statedir = params.get("statedir")
 
-        cmd1 = "restorecon %s" % swtpm_setup_path
-        cmd2 = "restorecon %s" % swtpm_path
-        process.run(cmd1, ignore_status=False, shell=True)
-        process.run(cmd2, ignore_status=False, shell=True)
+        remote.run_remote_cmd('pkill swtpm', params, ignore_status=True)
+        remote.run_remote_cmd("rm -rf /var/lib/swtpm-localca/*", params, ignore_status=True)
+        process.run("pkill swtpm", shell=True, ignore_status=True)
+        process.run("rm -rf /var/lib/swtpm-localca/*", shell=True, ignore_status=True)
         if os.path.exists(statedir):
             shutil.rmtree(statedir)
-        remote.run_remote_cmd(cmd1, params)
-        remote.run_remote_cmd(cmd2, params)
         remote.run_remote_cmd("rm -rf %s" % statedir, params)
         migration_obj.cleanup_connection()
 
