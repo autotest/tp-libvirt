@@ -139,7 +139,7 @@ def run(test, params, env):
         if not options.count("dname") and not extra.count("dname"):
             vm.verify_kernel_crash()
 
-        return True
+        return (True, migration_msg)
 
     def numa_pin(memory_mode, memnode_mode, numa_dict_list, host_numa_node):
         """
