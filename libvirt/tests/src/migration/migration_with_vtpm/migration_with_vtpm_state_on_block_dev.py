@@ -80,7 +80,7 @@ def check_capability(params, test):
     :param params: Dictionary with the test parameters
     :param test: test object
     """
-    with open(params.get("libvirtd_debug_file"), 'r') as f:
+    with open(params.get("libvirtd_debug_file"), 'r', errors='ignore') as f:
         log_file = f.read()
         if migration_vtpm.compare_swtpm_version(0, 10):
             cmd = "swtpm socket --print-capabilities"
@@ -89,7 +89,7 @@ def check_capability(params, test):
                 test.fail(f"Not found 'tpmstate-opt-lock' in {ret}")
 
             check_items(eval(params.get("unexpected_list_1", "[]")), log_file, test, str_in_log=False)
-            check_items(eval(params.get("expected_list_1"), "[]"), log_file, test)
+            check_items(eval(params.get("expected_list_1", "[]")), log_file, test)
         else:
             if libvirt_version.version_compare(11, 0, 0):
                 check_items(eval(params.get("expected_list_2", "[]")), log_file, test)
