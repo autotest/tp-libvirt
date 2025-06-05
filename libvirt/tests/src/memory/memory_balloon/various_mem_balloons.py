@@ -1,5 +1,3 @@
-from virttest import virsh
-from virttest import utils_libvirtd
 import re
 import time
 
@@ -9,6 +7,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
+from virttest import virsh
+from virttest import utils_libvirtd
 
 from provider.virsh_cmd_check import virsh_cmd_check_base
 
@@ -117,7 +117,6 @@ def run(test, params, env):
         status, stdout = guest_session.cmd_status_output(guest_cmd)
         guest_session.close()
         test.log.debug(f"guest cmd result: {status}, stdout: {stdout}")
-        #test.log.debug(f"guest cmd result: {res}")
 
         if memballoon_model == "none":
             if status != 1 or stdout != "":
@@ -143,23 +142,40 @@ def run(test, params, env):
         vm.start()
 
     def check_vm_xml(expect_xpath, xpath_exists=True):
+        """
+        Check if the given XPath exists in the VM XML.
+
+        :param expect_xpath: The expected XPath to check for.
+        :type expect_xpath: str
+        :param xpath_exists: Whether the XPath is expected to exist, default True.
+        :type xpath_exists: bool, optional
+        """
         if not libvirt_vmxml.check_guest_xml_by_xpaths(
                 vmxml, expect_xpath, ignore_status=True) == xpath_exists:
-            test.fail("Expects to get '%s' in xml " % expect_xpath)
+            test.fail(f"Expects to get '{expect_xpath}' in xml")
         test.log.info('Correct element found in XML')
 
-    def check_dominfo(changed_mem_value):
-        dominfo = virsh.dominfo(vm_name, ignore_status=True, debug=True)
-        dominfo_check = rf"Max memory:\s+{mem_value} KiB\nUsed memory:\s+{changed_mem_value} KiB"
-        libvirt.check_result(dominfo, expected_match=dominfo_check)
-
     def wait_for_dominfo(changed_mem_value, timeout=20):
+        """
+        Wait for the dominant output to match the expected memory usage pattern.
+
+        This function checks the DOMINFO command output periodically until it matches
+        the expected pattern of Max and Used memory values. If the expected state is not reached within
+        the specified timeout period, an exception is raised.
+
+        Args:
+            changed_mem_value (int): The expected used memory value in KiB.
+            timeout (int, optional): The maximum time to wait for the condition to be met, default is 20 seconds.
+
+        Raises:
+            Exception: If the dominant output does not match the expected pattern within the specified timeout.
+        """
         start_time = time.time()
         dominfo_check = rf"Max memory:\s+{mem_value} KiB\nUsed memory:\s+{changed_mem_value} KiB"
         last_exception = None
         while time.time() - start_time < timeout:
             dominfo = virsh.dominfo(vm_name, ignore_status=True, debug=True)
-            test.log.debug(f"checkk {dominfo}, {start_time}, {time.time()}")
+            test.log.debug(f"check {dominfo}, {start_time}, {time.time()}")
             try:
                 libvirt.check_result(dominfo, expected_match=dominfo_check)
                 return
