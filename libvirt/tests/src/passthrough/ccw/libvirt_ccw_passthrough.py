@@ -45,9 +45,6 @@ def guest_is_responsive(session):
 def run(test, params, env):
     """
     Test for CCW, esp. DASD disk passthrough on s390x.
-
-    The CCW disk/its subchannel for passthrough is expected to
-    be listed on the host but not enabled for use.
     """
 
     vm_name = params.get("main_vm")
