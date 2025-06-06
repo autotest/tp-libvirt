@@ -179,6 +179,7 @@ def run(test, params, env):
         attach_option = ""
         if not hotplug_disk:
             attach_option = "--config"
+        time.sleep(15)
         result = virsh.attach_device(vm_name, disk_xml, flagstr=attach_option,
                                      ignore_status=True, debug=True)
         libvirt.check_exit_status(result, status_error)
