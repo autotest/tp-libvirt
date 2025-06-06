@@ -596,9 +596,15 @@ def create_and_build_container_file(params):
         if "rhel-9.6" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-9.6.repo"
             repo_prefix = "rhel-9.6"
+        if "rhel-9.7" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-9.7.repo"
+            repo_prefix = "rhel-9.7"
         if "rhel-10.0" in custom_repo:
             repo_path = pathlib.Path(folder) / "rhel-10.0.repo"
             repo_prefix = "rhel-10.0"
+        if "rhel-10.1" in custom_repo:
+            repo_path = pathlib.Path(folder) / "rhel-10.1.repo"
+            repo_prefix = "rhel-10.1"
         compose_url = params.get("compose_url")
         baseurl = get_baseurl_from_repo_file("/etc/yum.repos.d/beaker-AppStream.repo")
         if baseurl:
