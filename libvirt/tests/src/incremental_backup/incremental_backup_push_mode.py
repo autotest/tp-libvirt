@@ -68,6 +68,7 @@ def run(test, params, env):
     expect_backup_canceled = "yes" == params.get("expect_backup_canceled")
     tmp_dir = data_dir.get_data_dir()
     with_data_file = "yes" == params.get("with_data_file", "no")
+    with_readonly = "yes" == params.get("with_readonly", "no")
     libvirt_version.is_libvirt_feature_supported(params)
     virsh_dargs = {'debug': True, 'ignore_status': True}
 
@@ -263,6 +264,10 @@ def run(test, params, env):
 
             # Start backup
             backup_options = backup_xml.xml + " " + checkpoint_xml.xml
+            if with_readonly:
+                backup_options = backup_xml.xml
+                if backup_index == 0:
+                    virsh.checkpoint_create(vm_name, checkpoint_xml.xml, **virsh_dargs)
 
             # Create some data in vdb
             dd_count = params.get("dd_count", "1")
@@ -275,6 +280,18 @@ def run(test, params, env):
 
             if reuse_target_file:
                 backup_options += " --reuse-external"
+            if with_readonly and backup_index == 0:
+                virsh.detach_device(vm_name, disk_xml,
+                                    flagstr="--config", debug=True)
+                virsh.destroy(vm_name)
+                disk_params.update({"readonly": "yes"})
+                disk_xml_readonly = libvirt.create_disk_xml(disk_params)
+                virsh.attach_device(vm.name, disk_xml_readonly,
+                                    flagstr="--config", debug=True)
+                virsh.start(vm_name, debug=True)
+                vm.wait_for_login().close()
+                test.log.debug("The current disk xml is: %s"
+                               % virsh.dumpxml(vm_name, "--xpath //disk").stdout_text)
             backup_result = virsh.backup_begin(vm_name, backup_options,
                                                debug=True)
             if backup_result.exit_status:
@@ -296,9 +313,16 @@ def run(test, params, env):
             if not utils_misc.wait_for(
                     lambda: backup_job_done(vm_name, original_disk_target), 60):
                 test.fail("Backup job not finished in 60s")
+            if with_readonly:
+                img_info = utils_misc.get_image_info(target_file_path)
+                if img_info['dsize'] >= 100:
+                    test.log.info("The disk size is acceptable.")
+                else:
+                    test.fail("Can't get the expected disk size!")
 
-        for checkpoint_name in checkpoint_list:
-            virsh.checkpoint_delete(vm_name, checkpoint_name, debug=True)
+        if not with_readonly:
+            for checkpoint_name in checkpoint_list:
+                virsh.checkpoint_delete(vm_name, checkpoint_name, debug=True)
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
