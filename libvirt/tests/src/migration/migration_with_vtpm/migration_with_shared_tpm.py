@@ -186,7 +186,7 @@ def run(test, params, env):
         src_mount_path = params.get("src_mount_path")
 
         test.log.info("Setup for nfs storage type.")
-        libvirt.set_vm_disk(vm, params)
+        migration_obj.setup_connection()
         if not os.path.exists(swtpm_path):
             os.mkdir(swtpm_path)
         libvirt.setup_or_cleanup_nfs(True, mount_dir=swtpm_path, is_mount=True, export_dir=nfs_export_dir)
@@ -227,7 +227,7 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.set_seclabel([seclabel_dict])
         vmxml.sync()
-        libvirt.set_vm_disk(vm, params)
+        migration_obj.setup_connection()
         setup_vtpm(params, test, vm, migration_obj)
         check_tpm_security_context(params, vm, test, tpm_security_contexts)
         check_swtpm_process(params, test)
