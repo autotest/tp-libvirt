@@ -3,6 +3,7 @@ import os
 import re
 
 from avocado.utils import cpu as cpuutils
+from avocado.utils import process
 
 from virttest import data_dir
 from virttest import utils_misc
@@ -365,6 +366,65 @@ def test_vcpupin_current_inactive_vm(test, vm, cpu_max_id, params):
     check_vcpuinfo_affinity(test, affinity, vcpupin_new_values)
 
 
+def test_cpuset_limilted_in_cgroup(test, vm, cpu_max_id, params):
+    """
+    Test Start VM with vcpupin config when machine cpuset is limited in cgroup
+
+    :param test: test object
+    :param vm: vm object
+    :param cpu_max_id: maximum id of host cpu id
+    :param params: test parameters
+    """
+    vm_attrs = eval(params.get('vm_attrs', '{}'))
+    rand_id = utils_misc.generate_random_string(3)
+    tmp_vm_name = 'test-vcpupin-' + rand_id
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+
+    config_path = '/sys/fs/cgroup/machine.slice/cpuset.cpus'
+
+    bk_cpu_set = process.run(
+        f'cat {config_path}', shell=True, ignore_status=True).stdout_text
+    try:
+        process.run(f'echo "0,2,4,6,8" > {config_path}', shell=True)
+        process.run(f'cat {config_path}', shell=True)
+
+        vm.destroy()
+
+        # Create a new vm with vcpupin config
+        tmp_vmxml = vmxml.copy()
+        tmp_vmxml.setup_attrs(**vm_attrs)
+        tmp_vmxml.vm_name = tmp_vm_name
+        tmp_vmxml.del_uuid()
+        osxml = tmp_vmxml.os
+        os_attrs = osxml.fetch_attrs()
+        for k, v in list(os_attrs.items()):
+            if k.startswith('nvram'):
+                os_attrs.pop(k)
+        new_os = vm_xml.VMOSXML()
+        new_os.setup_attrs(**os_attrs)
+        tmp_vmxml.os = new_os
+
+        tmp_vmxml.xmltreefile.write()
+        logging.debug(tmp_vmxml)
+
+        virsh.create(tmp_vmxml.xml, debug=True, ignore_status=False)
+        logging.debug(virsh.dumpxml(tmp_vm_name).stdout_text)
+
+        out = virsh.vcpupin(tmp_vm_name, debug=True,
+                            ignore_status=False).stdout_text
+        out_dict = libvirt_misc.convert_to_dict(out)
+        vcpupin_conf = eval(params.get('vcpupin_conf'))
+        if out_dict != vcpupin_conf:
+            test.fail(
+                f'vcpupin output is not expected, should be {vcpupin_conf}')
+
+    finally:
+        virsh.destroy(tmp_vm_name, debug=True)
+        if not vm.is_alive():
+            vm.start()
+        process.run(f'echo {bk_cpu_set} > {config_path}', shell=True)
+
+
 def run(test, params, env):
     """
     Run some tests for vcpupin with --live, --config
@@ -373,6 +433,7 @@ def run(test, params, env):
     run_test = eval("test_%s" % test_case)
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
+    update_xml = 'yes' == params.get("update_xml", "no")
 
     # Backup for recovery.
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -381,7 +442,8 @@ def run(test, params, env):
     try:
         if vm.is_alive():
             vm.destroy()
-        update_vm_xml(vmxml, params)
+        if update_xml:
+            update_vm_xml(vmxml, params)
         vm.start()
         logging.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
         # Get the host cpu max id
