@@ -2,12 +2,14 @@ import os
 import re
 import logging as log
 import operator
+import aexpect
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_version
 from virttest import utils_disk
 from virttest import utils_backup
+from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import checkpoint_xml
 from virttest.libvirt_xml.devices import graphics
@@ -40,6 +42,45 @@ def run(test, params, env):
             options = option_pattern.format(checkpoint_name, disk)
             virsh.checkpoint_create_as(vm_name, options, **virsh_dargs)
             current_checkpoints.append(checkpoint_name)
+
+    def edit_checkpoint(vm_name, checkpoint_name, restore=False):
+        """
+        Edit the checkpoints.
+
+        :param vm_name: the domain name
+        :param checkpoint_name: the checkpoint name
+        :params restore: determine whether to restore the modified checkpoint
+        """
+        checkpoint_dumpxml = virsh.checkpoint_dumpxml(vm_name, checkpoint_name, "--no-domain")
+        session = aexpect.ShellSession("sudo -s")
+        try:
+            session.sendline("virsh checkpoint-edit %s %s" % (vm_name, checkpoint_name))
+            if not restore:
+                test.log.debug("The checkpoint dumpxml before edit: %s",
+                               checkpoint_dumpxml.stdout_text)
+                edit_cmd = ":%s#checkpoint='no'#checkpoint='bitmap'#"
+            else:
+                edit_cmd = ":%s#<disk name='vda'.*>#<disk name='vda' checkpoint='no'\/>#"
+            session.sendline(edit_cmd)
+            session.send('\x1b')
+            session.send('ZZ')
+            remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
+            session.close()
+            edit_result = virsh.checkpoint_dumpxml(
+                vm_name,
+                checkpoint_name,
+                "--no-domain",
+                debug=True
+            ).stdout_text.strip()
+            if not restore:
+                if edit_result.count("bitmap") == 4:
+                    test.log.debug("Edit checkpoint succeeded!")
+                else:
+                    test.fail("Expect 'bitmap' for four times, but not found!")
+        except (aexpect.ShellError, aexpect.ExpectError) as details:
+            log = session.get_output()
+            session.close()
+            test.fail("Edit checkpoint failed: %s" % details)
 
     # Cancel the test if libvirt version is too low
     if not libvirt_version.version_compare(6, 0, 0):
@@ -310,6 +351,9 @@ def run(test, params, env):
             if ((vm_name in stdout and cmd_flag == "--without-checkpoint") or
                     (vm_name not in stdout and cmd_flag == "--with-checkpoint")):
                 test.fail("virsh list with '%s' contains wrong data" % cmd_flag)
+        elif checkpoint_cmd == "checkpoint_edit":
+            edit_checkpoint(vm_name, current_checkpoints[0])
+            edit_checkpoint(vm_name, current_checkpoints[0], restore=True)
         # Make sure vm is running and check checkpoints can be normally deleted
         if not vm.is_alive():
             vm.start()
