@@ -13,6 +13,7 @@ import shutil
 
 from avocado.utils import process
 
+from virttest import ceph
 from virttest import data_dir
 from virttest import remote
 from virttest import utils_misc
@@ -164,6 +165,27 @@ def get_disk_size(disk_file, remote_host=False, params=False):
     return ret.split('\n')[3].split(':')[1].strip()
 
 
+def copy_file_to_remote(params, file_list):
+    """
+    Copy files from source host to target host
+
+    :param params: dictionary with the test parameter
+    :param file_list: list, the list of files
+    """
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+
+    remote_session = remote.remote_login("ssh", server_ip, "22",
+                                         server_user, server_pwd,
+                                         r'[$#%]')
+    for f in file_list:
+        utils_misc.make_dirs(os.path.dirname(f), remote_session)
+        remote.copy_files_to(server_ip, 'scp', server_user, server_pwd,
+                             '22', f, f)
+    remote_session.close()
+
+
 def run(test, params, env):
     """
     To verify that live migration with copying storage can retain sparsity with
@@ -297,6 +319,10 @@ def run(test, params, env):
             _remove_disk_local(src_disk1_name)
         if disk2_name:
             _remove_disk_local(disk2_name)
+        for rm_file in [ceph_cfg, keyring_file]:
+            if os.path.exists(rm_file):
+                os.remove(rm_file)
+            remote.run_remote_cmd(f"rm -f {rm_file}", params, ignore_status=True)
         base_steps.cleanup_disks_remote(params, vm)
 
     vm_name = params.get("migrate_main_vm")
@@ -304,9 +330,15 @@ def run(test, params, env):
     old_disk_size = []
     src_rbd_dev = None
     dest_rbd_dev = None
+    ceph_cfg = ''
+    keyring_file = ''
 
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
+    # Create config file if it doesn't exist
+    ceph_cfg = ceph.create_config_file(params.get("mon_host"))
+    keyring_file = ceph.create_keyring_file(params.get("client_name"), params.get('client_key'))
+    copy_file_to_remote(params, [ceph_cfg, keyring_file])
 
     try:
         setup_test()
