@@ -254,6 +254,9 @@ def verify_test_mem_nvdimm(vm, params, test):
 
     vm_session.cmd("echo '{}.back' > /mnt/nvdimm_test_back".format(expected_content))
     vm_session.cmd('umount /mnt')
+    # Cleanup nvram file on source host
+    vm_name = params.get("migrate_main_vm")
+    process.run(f"rm -rf /var/lib/libvirt/qemu/nvram/{vm_name}_VARS.fd", shell=True, ignore_status=True)
 
 
 def verify_test_back_default(vm, params, test):
@@ -333,7 +336,9 @@ def cleanup_test_mem_nvdimm(vm, params, test):
     """
     cleanup_test_default(vm, params, test)
     test.log.debug("Recover test environment for memory nvdimm device test")
-    os.remove(params.get('nfs_mount_src') + '/nvdimm')
+    nvdimm_file_path = params.get("nvdimm_file_path")
+    if os.path.exists(nvdimm_file_path):
+        os.remove(nvdimm_file_path)
 
 
 def run_migration_back(params, test):
