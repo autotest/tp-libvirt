@@ -139,6 +139,10 @@ def prepare_iscsi_disk(params, test, block_dev):
     process.run(cmd, shell=True, verbose=True)
     remote.run_remote_cmd(cmd, params, ignore_status=False)
 
+    cmd = f'cat /etc/selinux/targeted/contexts/files/file_contexts.local|grep iscsiswtpm'
+    process.run(cmd, shell=True, verbose=True)
+    remote.run_remote_cmd(cmd, params, ignore_status=False)
+
     cmd = f"mkfs.xfs -f {dev_target}"
     remote.run_remote_cmd(cmd, params, ignore_status=False)
 
@@ -207,13 +211,13 @@ def run(test, params, env):
         test.log.info("Setup steps for auto_create_file.")
         process.run(f"mkdir {block_dir}", shell=True, verbose=True)
         utils_disk.mount(dev_src, block_dir)
-        process.run(f"restorecon -Rv {block_dir}", shell=True, verbose=True)
+        process.run(f"restorecon -Rv {block_path}", shell=True, verbose=True)
         process.run(f"chown tss:tss {block_dir}", shell=True, verbose=True)
 
         server_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
         remote.run_remote_cmd(f"mkdir {block_dir}", params, ignore_status=False)
         utils_disk.mount(dev_target, block_dir, session=server_session)
-        remote.run_remote_cmd(f"restorecon -Rv {block_dir}", params, ignore_status=False)
+        remote.run_remote_cmd(f"restorecon -Rv {block_path}", params, ignore_status=False)
         remote.run_remote_cmd(f"chown tss:tss {block_dir}", params, ignore_status=False)
         server_session.close()
 
