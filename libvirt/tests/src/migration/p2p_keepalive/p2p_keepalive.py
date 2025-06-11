@@ -1,6 +1,7 @@
 from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_config
+from virttest import utils_libvirtd
 from virttest import virsh
 
 from virttest.utils_test import libvirt
@@ -46,6 +47,9 @@ def update_conf_on_target(params, test, remote_obj):
     default_conf_on_target = eval(params.get("default_conf_on_target", "[]"))
     target_conf_type = params.get("target_conf_type")
     conf_on_target = params.get("conf_on_target")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
 
     if default_conf_on_target:
         file_path = utils_config.get_conf_obj(target_conf_type).conf_path
@@ -59,6 +63,10 @@ def update_conf_on_target(params, test, remote_obj):
         remote_obj.append(libvirt_remote.update_remote_file(params,
                                                             conf_on_target,
                                                             file_path))
+    remote_runner = remote.RemoteRunner(host=server_ip,
+                                        username=server_user,
+                                        password=server_pwd)
+    utils_libvirtd.Libvirtd(target_conf_type, session=remote_runner.session).restart()
 
 
 def add_port_for_ssh(params):
@@ -189,6 +197,8 @@ def run(test, params, env):
     test_case = params.get('test_case', '')
     migrate_again = "yes" == params.get("migrate_again", "no")
     vm_name = params.get("migrate_main_vm")
+    tcp_config_list = params.get("tcp_config_list")
+    recover_tcp_config_list = params.get("recover_tcp_config_list")
 
     virsh_session = None
     remote_virsh_session = None
@@ -201,6 +211,8 @@ def run(test, params, env):
 
     try:
         setup_test()
+        if tcp_config_list:
+            libvirt_network.change_tcp_config(eval(tcp_config_list))
         if test_case != "src_and_dest_keepalive_disabled":
             # Monitor event on source/target host
             virsh_session, remote_virsh_session = migration_base.monitor_event(params)
@@ -212,4 +224,6 @@ def run(test, params, env):
             migration_obj.run_migration_again()
             migration_obj.verify_default()
     finally:
+        if recover_tcp_config_list:
+            libvirt_network.change_tcp_config(eval(recover_tcp_config_list))
         cleanup_test()
