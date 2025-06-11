@@ -13,6 +13,9 @@ import logging as log
 from avocado.utils import process
 
 from virttest.utils_misc import cmd_status_output
+from virttest.utils_zchannels import SubchannelPaths as paths
+
+from provider.vfio import ccw
 
 
 logging = log.getLogger("avocado." + __name__)
@@ -34,9 +37,9 @@ def run(test, params, env):
         kickstart_url = params.get("kickstart_url")
 
         process.run("curl -k -o /tmp/ks.cfg %s" % kickstart_url)
-        process.run("chzdev -e %s" % devid)
+        device = ccw.get_device_info(devid, True)
+        devid = device[paths.HEADER["Device"]]
         disk_path = "/dev/disk/by-path/ccw-%s" % devid
-        cleanup_actions.insert(0, lambda: process.run("chzdev -d %s" % devid))
 
         cmd = ("virt-install --name %s"
                " --disk %s"
