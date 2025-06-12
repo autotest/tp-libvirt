@@ -23,26 +23,6 @@ from provider.virtual_network import network_base
 logging = log.getLogger('avocado.' + __name__)
 
 
-def create_bridge(br_name, iface_name):
-    """
-    Create bridge attached to physical interface
-
-    :param br_name: bridge to be created
-    :param iface_name: physical interface name
-    :return:
-    """
-    # Make sure the bridge not exist
-    if libvirt.check_iface(br_name, "exists", "--all"):
-        return
-
-    # Create bridge using commands
-    utils_package.package_install('tmux')
-    cmd = 'tmux -c "ip link add name {0} type bridge; ip link set {1} up;' \
-          ' ip link set {1} master {0}; ip link set {0} up; pkill dhclient; ' \
-          'sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
-    process.run(cmd, shell=True, verbose=True)
-
-
 def ping_func(session, **expect):
     """
     Check whether ping result meet expectation
@@ -424,7 +404,4 @@ def run(test, params, env):
 
         # Remove test bridge
         if bridge_created:
-            cmd = 'tmux -c "ip link set {1} nomaster;  ip link delete {0};' \
-                  'pkill dhclient; sleep 6; dhclient {1}"'.format(
-                   bridge_name, iface_name)
-            process.run(cmd, shell=True, verbose=True, ignore_status=True)
+            utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
