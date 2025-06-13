@@ -371,7 +371,7 @@ def test_with_label(vm, params, test):
                 ]
             )
 
-	if libvirt_version.version_compare(9, 9, 0):
+        if libvirt_version.version_compare(9, 9, 0):
             virsh.snapshot_delete(vm_name, vm_s1,
                                   ignore_status=False, debug=True)
         else:
