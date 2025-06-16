@@ -34,6 +34,7 @@ def run(test, params, env):
     4. Check the boot log in guest dmesg and validate
     5. Perform any test operation if any, based on kernel param change
     6. Recover test environment
+    7. This line is only for testing upstream push
     """
     vms = params.get("vms").split()
     kernel_param = params.get("kernel_param", "quiet")
