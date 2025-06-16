@@ -87,6 +87,7 @@ def run(test, params, env):
     mount_point = tmpdir + "/smalldiskmountpoint"
     os.mkdir(mount_point)
     small_part = os.path.join(tmpdir, params.get("part_name", "io-error_part"))
+    mount_device = None
 
     def create_iface_xml():
         """
@@ -558,6 +559,13 @@ def run(test, params, env):
                     process.run("truncate -s %s %s" % (part_size, small_part), shell=True)
                     utlv.mkfs(small_part, part_format)
                     utils_misc.mount(small_part, mount_point, None)
+
+                    def _get_mount_device():
+                        with open("/proc/mounts") as f:
+                            last_line = f.readlines()[-1]
+                        mount_device = last_line.split()[0]
+                        return mount_device
+                    mount_device = _get_mount_device()
                     new_disk = mount_point + "/%s_new_disk.img" % dom.name
                     add_disk(dom.name, new_disk, 'vdb', '--subdriver qcow2 --config', 'qcow2')
                     dom.start()
@@ -716,8 +724,8 @@ def run(test, params, env):
         if os.path.exists(dump_path):
             shutil.rmtree(dump_path)
             os.mkdir(dump_path)
-        if utils_misc.is_mounted("/dev/loop0", mount_point, part_format):
-            utils_misc.umount("/dev/loop0", mount_point, part_format)
+        if utils_misc.is_mounted(mount_device, mount_point, part_format):
+            utils_misc.umount(mount_device, mount_point, part_format)
         if os.path.exists(small_part):
             os.unlink(small_part)
         if os.path.exists(mount_point):
