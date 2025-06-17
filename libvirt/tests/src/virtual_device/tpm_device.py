@@ -859,6 +859,9 @@ def run(test, params, env):
                 ausearch_ret = process.run(audit_cmd, verbose=True, shell=True, ignore_status=True)
                 if not ausearch_ret:
                     test.fail('audit log is not cleaned well.')
+            if backend_type == "external":
+                process.run("ps aux|grep swtpm", verbose=True, shell=True, ignore_status=True)
+                process.run("ls -hZ %s" % source_socket, verbose=True, shell=True, ignore_status=True)
             try:
                 vm.start()
             except VMStartError as detail:
@@ -1043,6 +1046,7 @@ def run(test, params, env):
                 shutil.rmtree(statedir)
             if p2 and p2.poll() is None:
                 p2.kill()
+            process.run("pkill -9 swtpm", shell=True, ignore_status=True)
             process.run("rm -rf /var/lib/swtpm-localca/*", shell=True, ignore_status=True)
         # Remove swtpm log file in case of impact on later runs
         if os.path.exists("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name):
