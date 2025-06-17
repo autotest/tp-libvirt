@@ -33,6 +33,7 @@ def revert_snap_and_check_files(params, vm, test, snap_name, expected_files):
     virsh.snapshot_revert(vm.name, snap_name, **virsh_dargs)
 
     vm.cleanup_serial_console()
+    vm.start()
     vm.create_serial_console()
     session = vm.wait_for_serial_login()
     for file in expected_files:
@@ -66,6 +67,7 @@ def run(test, params, env):
         mem_file = " "
         for index, sname in enumerate(snap_names):
             session.cmd("touch %s" % file_list[index])
+            session.cmd("sync")
             if snap_type == "disk_and_memory":
                 mem_file = sname
             virsh.snapshot_create_as(vm.name, snap_options % (sname, mem_file),
