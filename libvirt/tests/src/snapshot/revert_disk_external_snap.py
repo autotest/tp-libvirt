@@ -30,7 +30,13 @@ def revert_snap_and_check_files(params, vm, test, snap_name, expected_files):
     :param snap_name: snapshot name.
     :param expected_files: expected file list.
     """
-    virsh.snapshot_revert(vm.name, snap_name, **virsh_dargs)
+    snap_type = params.get("snap_type")
+    options = ""
+
+    if snap_type == "disk_only" and libvirt_version.version_compare(10, 10, 0):
+        options = " --running"
+
+    virsh.snapshot_revert(vm.name, snap_name, options=options, **virsh_dargs)
 
     vm.cleanup_serial_console()
     vm.create_serial_console()
@@ -66,6 +72,7 @@ def run(test, params, env):
         mem_file = " "
         for index, sname in enumerate(snap_names):
             session.cmd("touch %s" % file_list[index])
+            session.cmd("sync")
             if snap_type == "disk_and_memory":
                 mem_file = sname
             virsh.snapshot_create_as(vm.name, snap_options % (sname, mem_file),
