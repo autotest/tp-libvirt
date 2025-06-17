@@ -2,9 +2,12 @@ import logging
 
 from avocado.core.exceptions import TestError
 from provider.vfio.mdev_handlers import MdevHandler
+from virttest import virsh
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_misc import cmd_status_output
-from virttest import virsh
+from virttest.utils_zchannels import SubchannelPaths as paths
+
+from provider.vfio import ccw
 
 LOG = logging.getLogger('avocado.' + __name__)
 
@@ -76,6 +79,8 @@ def run(test, params, env):
 
     try:
 
+        device = ccw.get_device_info(devid, True)
+        devid = device[paths.HEADER["Device"]]
         vm.undefine()
         handler = MdevHandler.from_type(mdev_type)
         disk = get_disk_for_import(vmxml)

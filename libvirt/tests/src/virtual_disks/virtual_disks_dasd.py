@@ -6,7 +6,7 @@ import re
 from avocado.core.exceptions import TestError
 
 from virttest import virsh
-from virttest.utils_zchannels import SubchannelPaths
+from virttest.utils_zchannels import SubchannelPaths as paths
 from virttest.utils_misc import cmd_status_output, wait_for
 from virttest.libvirt_xml.vm_xml import VMXML
 
@@ -14,6 +14,7 @@ from provider.vfio import ccw
 
 TEST_DASD_ID = None
 TARGET = "vdb"  # suppose guest has only one disk 'vda'
+cleanup_actions = []
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -28,25 +29,17 @@ def get_partitioned_dasd_path(devid):
     :param devid: the ccw device id, e.g. 0.0.5200
     :return path: absolute path to block device, e.g. '/dev/dasda'
     """
-    paths = SubchannelPaths()
-    paths.get_info()
-    device = None
-    if devid:
-        device = paths.get_device(devid)
-    else:
-        device = paths.get_first_unused_and_safely_removable()
-    if not device:
-        raise TestError("Couldn't find dasd device for test")
+    device = ccw.get_device_info(devid, True)
     global TEST_DASD_ID
     TEST_DASD_ID = device[paths.HEADER["Device"]]
-    enable_disk(TEST_DASD_ID)
+    try_enable_disk(TEST_DASD_ID)
     disk_path = get_device_path(TEST_DASD_ID)
     wait_for(lambda: ccw.format_dasd(disk_path, None), 10, first=1.0)
     wait_for(lambda: ccw.make_dasd_part(disk_path, None), 10, first=1.0)
     return disk_path
 
 
-def enable_disk(disk_id):
+def try_enable_disk(disk_id):
     """
     Enables the disk so it can be used
 
@@ -56,8 +49,10 @@ def enable_disk(disk_id):
 
     cmd = "chzdev -e %s" % disk_id
     err, out = cmd_status_output(cmd, shell=True)
-    if err:
-        raise TestError("Couldn't enable dasd '%s'. %s" % (disk_id, out))
+    if 'already configured' not in out:
+        cleanup_actions.append(lambda: disable_disk(disk_id))
+        if err:
+            raise TestError("Couldn't enable dasd '%s'. %s" % (disk_id, out))
 
 
 def disable_disk(disk_id):
@@ -155,17 +150,15 @@ def run(test, params, env):
     devid = params.get("devid")
 
     try:
+        cleanup_actions.append(lambda: vm.destroy())
         disk_path = get_partitioned_dasd_path(devid)
+
         attach_disk(vm_name, TARGET, disk_path)
 
         session = vm.wait_for_login()
         check_dasd_partition_table(session, TARGET)
         detach_disk(vm_name, TARGET)
     finally:
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-        # sync will release attached disk, precondition for disablement
-        backup_xml.sync()
-        global TEST_DASD_ID
-        if TEST_DASD_ID:
-            disable_disk(TEST_DASD_ID)
+        cleanup_actions.reverse()
+        for action in cleanup_actions:
+            action()
