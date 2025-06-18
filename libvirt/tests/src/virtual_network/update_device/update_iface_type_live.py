@@ -56,7 +56,7 @@ def run(test, params, env):
 
         iface = libvirt_vmxml.create_vm_device_by_type(
             'interface', iface_attrs)
-        LOG.debug(f'Interface to attach/add:\n{iface.xmltreefile.str_out()}')
+        LOG.debug(f'Interface to attach/add:\n{iface.xmltreefile.__str__()}')
 
         if operation == 'default':
             vmxml.add_device(iface)
