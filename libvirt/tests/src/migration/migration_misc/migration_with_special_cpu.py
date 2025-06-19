@@ -96,17 +96,22 @@ def prepare_env_in_vm(vm, vm_hostname, mount_src, mount_dir, desturi_port):
     vm_session.close()
 
 
-def prepare_nfs_server_in_vm(vm_ip, params):
+def prepare_nfs_server_in_vm(vm_ip, vm, params):
     """
     Prepare nfs server in vm
 
     :param vm_ip: VM ip
+    :param vm: VM object
     :param params: Dictionary with the test parameters
     """
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
     mount_src = params.get("nfs_mount_src")
     mount_dir = params.get("nfs_mount_dir")
+
+    vm_session = vm.wait_for_login()
+    vm_session.cmd("systemctl restart nfs-server; systemctl restart rpcbind")
+    vm_session.close()
 
     # prepare nfs server in vm
     nfs_server_params = {
@@ -164,7 +169,7 @@ def prepare_both_vms(params, vm1, vm2, vm1_xml, vm2_xml, test):
     ssh_key.setup_remote_ssh_key(vm2_ip, client_user, client_pwd, vm1_ip, server_user, server_pwd, port=22)
 
     test.log.debug("Prepare nfs server in %s.", vm1_ip)
-    prepare_nfs_server_in_vm(vm1_ip, params)
+    prepare_nfs_server_in_vm(vm1_ip, vm1, params)
 
     hosts_dict = {"%s" % vm1_hostname: "%s" % vm1_ip, "%s" % vm2_hostname: "%s" % vm2_ip}
     mount_src = vm1_ip + ":" + mount_src
