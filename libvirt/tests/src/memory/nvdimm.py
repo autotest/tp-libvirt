@@ -359,12 +359,24 @@ def test_with_label(vm, params, test):
         virsh.snapshot_create_as(vm_name, "%s --disk-only" % vm_s1,
                                  ignore_status=False, debug=True)
         revert_result = virsh.snapshot_revert(vm_name, vm_s1, debug=True)
-        libvirt.check_result(revert_result, expected_fails=([params.get('error_msg_1'),
-                                                            params.get('error_msg_2')]))
-        if libvirt_version.version_compare(9, 10, 0):
-            virsh.snapshot_delete(vm_name, vm_s1, ignore_status=False, debug=True)
+        if libvirt_version.version_compare(9, 9, 0):
+            libvirt.check_exit_status(revert_result)
         else:
-            virsh.snapshot_delete(vm_name, "%s --metadata" % vm_s1, ignore_status=False, debug=True)
+            libvirt.check_result(
+                revert_result,
+                expected_fails=[
+                    params.get('error_msg_1'),
+                    params.get('error_msg_2')
+                ]
+            )
+
+        if libvirt_version.version_compare(9, 9, 0):
+            virsh.snapshot_delete(vm_name, vm_s1,
+                                  ignore_status=False, debug=True)
+        else:
+            virsh.snapshot_delete(vm_name,
+                                  "%s --metadata" % vm_s1,
+                                  ignore_status=False, debug=True)
             snap_file_path = libvirt_disk.get_first_disk_source(vm)
             if os.path.exists(snap_file_path):
                 os.remove(snap_file_path)
