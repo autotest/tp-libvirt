@@ -40,12 +40,12 @@ def define_guest(test, params):
     # Check libvirt version
     if libvirt_version.version_compare(9, 0, 0) and \
             invalid_setting == "unexisted_node":
-        define_error = params.get("start_vm_error")
+        define_error = eval(params.get("start_vm_error", "[]"))
     elif not libvirt_version.version_compare(9, 9, 0) and \
             invalid_setting == "invalid_addr_type":
-        define_error = params.get("define_error_8")
+        define_error = eval(params.get("define_error_8", "[]"))
     else:
-        define_error = params.get("define_error")
+        define_error = eval(params.get("define_error", "[]"))
 
     # Redefine define_error for checking start_vm_error
     params.update({"define_error": define_error})
@@ -54,7 +54,7 @@ def define_guest(test, params):
         vmxml.sync()
     except Exception as e:
         if define_error:
-            if define_error not in str(e):
+            if not any(s in str(e) for s in define_error):
                 test.fail("Expect to get '%s' error, but got '%s'" % (define_error, e))
         else:
             test.fail("Expect define successfully, but failed with '%s'" % e)
@@ -106,8 +106,8 @@ def run(test, params, env):
         test.log.info("TEST_STEP4: Hotplug nvdimm memory device")
         mem_obj = memory_base.prepare_mem_obj(nvdimm_dict)
         result = virsh.attach_device(vm_name, mem_obj.xml, debug=True).stderr_text
-        if attach_error not in result:
-            test.fail("Expected get error '%s', but got '%s'" % (attach_error, result))
+        if not any(s in result for s in attach_error):
+            test.fail("Expected get error in '%s', but got '%s'" % (attach_error, result))
 
     def teardown_test():
         """
@@ -130,18 +130,18 @@ def run(test, params, env):
     # Get start vm error
     if libvirt_version.version_compare(9, 0, 0) and \
             invalid_setting == "unexisted_node":
-        start_vm_error = ""
+        start_vm_error = []
     else:
-        start_vm_error = params.get("start_vm_error")
+        start_vm_error = eval(params.get("start_vm_error", "[]"))
 
     # Get attach error
     if invalid_setting == "max_addr":
-        attach_error = params.get('attach_error')
+        attach_error = eval(params.get("attach_error", "[]"))
     elif not libvirt_version.version_compare(9, 9, 0) and \
             invalid_setting == "invalid_addr_type":
-        attach_error = params.get('attach_error_8')
+        attach_error = eval(params.get("attach_error_8", "[]"))
     else:
-        attach_error = params.get("start_vm_error", params.get("define_error"))
+        attach_error = eval(params.get("start_vm_error", params.get("define_error", "[]")))
 
     try:
         setup_test()
