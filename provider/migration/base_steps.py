@@ -379,6 +379,9 @@ class MigrationBase(object):
         log_file = self.params.get("libvirtd_debug_file")
         log_filters = self.params.get("libvirtd_debug_filters")
         remote_file_type = self.params.get("remote_file_type")
+        server_ip = self.params.get("server_ip")
+        server_user = self.params.get("server_user")
+        server_pwd = self.params.get("server_pwd")
 
         service_name = utils_libvirtd.Libvirtd(remote_file_type).service_name
         file_path = utils_config.get_conf_obj(service_name).conf_path
@@ -389,6 +392,10 @@ class MigrationBase(object):
                               '".*log_filters\s*=.*": \'log_filters="%s"\', '
                               '".*log_outputs\s*=.*": \'log_outputs="1:file:%s"\'}') % (log_level, log_filters, log_file)
         self.remote_libvirtd_log = libvirt_remote.update_remote_file(self.params, libvirtd_conf_dest, file_path)
+        remote_runner = remote.RemoteRunner(host=server_ip,
+                                            username=server_user,
+                                            password=server_pwd)
+        utils_libvirtd.Libvirtd(remote_file_type, session=remote_runner.session).restart()
 
     def check_local_and_remote_log(self, local_str_in_log=True, remote_str_in_log=True):
         """

@@ -1,6 +1,7 @@
 from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_config
+from virttest import utils_libvirtd
 from virttest import virsh
 
 from virttest.utils_test import libvirt
@@ -46,6 +47,9 @@ def update_conf_on_target(params, test, remote_obj):
     default_conf_on_target = eval(params.get("default_conf_on_target", "[]"))
     target_conf_type = params.get("target_conf_type")
     conf_on_target = params.get("conf_on_target")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
 
     if default_conf_on_target:
         file_path = utils_config.get_conf_obj(target_conf_type).conf_path
@@ -59,6 +63,10 @@ def update_conf_on_target(params, test, remote_obj):
         remote_obj.append(libvirt_remote.update_remote_file(params,
                                                             conf_on_target,
                                                             file_path))
+    remote_runner = remote.RemoteRunner(host=server_ip,
+                                        username=server_user,
+                                        password=server_pwd)
+    utils_libvirtd.Libvirtd(target_conf_type, session=remote_runner.session).restart()
 
 
 def add_port_for_ssh(params):
