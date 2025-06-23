@@ -293,7 +293,7 @@ def execute_statistics_command(params):
     """
     vm_name = params.get("migrate_main_vm")
     disk_type = params.get("loop_disk_type")
-    loop_time = params.get("loop_time", "20")
+    loop_time = params.get("loop_time", "1")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     if disk_type:
