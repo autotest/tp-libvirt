@@ -477,7 +477,7 @@ def run(test, params, env):
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options and not no_root:
                     virsh.start(vm_name, debug=True, ignore_status=False)
-            if checkpoint in ['vmx', 'vmx_ssh']:
+            if checkpoint == 'vmx':
                 vmchecker = VMChecker(test, params, env)
                 params['vmchecker'] = vmchecker
                 params['vmcheck_flag'] = True
@@ -821,18 +821,6 @@ def run(test, params, env):
             input_option = '-i vmx %s' % vmx
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
-
-        if checkpoint == 'vmx_ssh':
-            esx_user = params.get("esx_host_user", "root")
-            esx_pwd = params.get("esx_host_passwd")
-            vmx = params.get('vmx')
-            esx_pubkey, esx_session = utils_v2v.v2v_setup_ssh_key(
-                esx_ip, esx_user, esx_pwd, server_type='esx', auto_close=False)
-            utils_misc.add_identities_into_ssh_agent()
-            input_option = '-i vmx -it ssh %s' % vmx
-            v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
-                                             params.get("output_network"))
-
         if checkpoint == 'simulate_nfs':
             simulate_images = params.get("simu_images_path")
             simulate_vms = params.get("simu_vms_path")
@@ -941,9 +929,6 @@ def run(test, params, env):
         if checkpoint == 'vmx':
             utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
             os.rmdir(params['mount_point'])
-        if checkpoint == 'vmx_ssh':
-            utils_v2v.v2v_setup_ssh_key_cleanup(esx_session, esx_pubkey, 'esx')
-            process.run("ssh-agent -k")
         if checkpoint == 'simulate_nfs':
             process.run('rm -rf /tmp/rhv/')
         if os.path.exists(estimate_file):
