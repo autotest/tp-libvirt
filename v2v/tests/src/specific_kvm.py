@@ -2,6 +2,7 @@ import os
 import re
 import logging
 import string
+import time
 
 import aexpect
 import xml.etree.ElementTree as ET
@@ -520,8 +521,18 @@ def run(test, params, env):
         Check time drift after conversion.
         """
         LOG.info('Check time drift')
-        output = vmcheck.session.cmd('chronyc tracking')
-        LOG.debug(output)
+
+        def chronyc_output():
+            for i in range(3):
+                output = vmcheck.session.cmd('chronyc tracking')
+                LOG.debug(output)
+                if 'Not synchronised' in output:
+                    time.sleep(20)
+                else:
+                    return output
+            return output
+
+        output = chronyc_output()
         if 'Not synchronised' in output:
             log_fail('Time not synchronised')
         lst_offset = re.search('Last offset *?: *(.*) ', output).group(1)
@@ -765,9 +776,9 @@ def run(test, params, env):
         if checkpoint.startswith('host_no_space'):
             session = aexpect.ShellSession('sh')
             large_file = create_large_file(session, 800)
-            if checkpoint == 'host_no_space_setcache':
-                LOG.info('Set LIBGUESTFS_CACHEDIR=/home')
-                os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
+        if checkpoint == 'set_cache_dir':
+            LOG.info('Set LIBGUESTFS_CACHEDIR=/home')
+            os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
         if checkpoint.startswith('network'):
             change_network_model(checkpoint[8:])
         if checkpoint == 'multi_netcards':
