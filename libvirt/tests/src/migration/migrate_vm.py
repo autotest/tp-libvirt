@@ -2494,29 +2494,31 @@ def run(test, params, env):
 
             try:
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
-                logging.debug("Check if remote guest exists")
+                logging.debug(f"TEST_STEP: Check if remote guest '{target_vm_name}' exists on remote '{server_ip}'")
+                logging.debug("--------------------------------------------------")
                 if remote_virsh_session.domain_exists(target_vm_name) is False:
                     test.cancel("The guest '%s' on remote '%s' should be "
                                 "installed before the test."
                                 % (target_vm_name, server_ip))
                 # Check the prepared guest state on remote host.
                 # 'shut off' is expected.
-                logging.debug("Check if remote guest is in shutoff")
+                actual_domstate = remote_virsh_session.domstate(target_vm_name)
+                logging.debug(f"-------------------------------------------------- domstate:{actual_domstate}--------------------------------------------------")
+                logging.debug("TEST_STEP: Check if remote guest is in shutoff")
                 if remote_virsh_session.is_alive(target_vm_name):
                     test.error("The guest '%s' on remote "
                                "'%s' should not be alive."
                                % (target_vm_name, server_ip))
 
                 # Replace the disk of the remote guest
-                logging.debug("Replace guest image with nfs image")
+                logging.debug("TEST_STEP: Replace guest image with nfs image")
                 image_name = os.path.basename(disk_source)
 
                 # Dumpxml of remote guest to temporary file for updating
                 # its disk image
                 logging.debug("Dumpxml of remote guest")
                 cmd = "virsh dumpxml %s > %s" % (target_vm_name, xml_path)
-                status, output = run_remote_cmd(cmd, server_ip,
-                                                server_user, server_pwd)
+                status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)  # type: ignore
                 logging.debug("Remote guest original xml:\n%s\n", output)
                 # Update the disk image to nfs shared storage on remote guest
                 logging.debug("Create a remote file")
@@ -2543,16 +2545,16 @@ def run(test, params, env):
                 guest_config.sub(pattern2repl)
 
                 # undefine remote guest
-                logging.debug("Undefine remote guest")
+                logging.debug("TEST_STEP: Undefine remote guest")
                 remote_virsh_session.undefine(target_vm_name, options="--nvram")
 
                 # redefine remote guest using updated XML
-                logging.debug("Redefine remote guest")
+                logging.debug("TEST_STEP: Redefine remote guest")
                 result = remote_virsh_session.define(xml_path)
                 logging.debug(result.stdout.strip())
 
                 # start remote guest
-                logging.debug("Start remote guest")
+                logging.debug("TEST_STEP: Start remote guest")
                 remote_virsh_session.start(target_vm_name)
 
                 # dumpxml remote guest
@@ -2795,8 +2797,7 @@ def run(test, params, env):
                           % (cmd, output))
 
     finally:
-        logging.info("Recovery test environment")
-
+        logging.info("TEST_STEP: Recovery test environment")
         logging.debug("Removing vm on remote if it exists.")
         virsh.remove_domain(vm.name, options='--nvram', uri=uri)
         if src_libvirt_file:
@@ -2881,11 +2882,13 @@ def run(test, params, env):
         #if status_error == "no" and MIGRATE_RET and stop_remote_guest and not migr_vm_back:
         if status_error == "no":
             cmd = "virsh domstate %s" % vm_name
+            logging.debug(f"TEST_RECOVERY: run command {cmd}")
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
 
             if not status and output.strip() in ("running", "idle", "paused", "no state"):
                 cmd = "virsh destroy %s" % vm_name
+                logging.debug(f"TEST_RECOVERY: run command {cmd}")
                 status, output = run_remote_cmd(cmd, server_ip, server_user,
                                                 server_pwd)
                 if status:
@@ -2894,6 +2897,7 @@ def run(test, params, env):
 
             if not status and re.search("--persistent", virsh_options):
                 cmd = "virsh undefine %s" % vm_name
+                logging.debug(f"TEST_RECOVERY: run command {cmd}")
                 match_string = "Domain %s has been undefined" % vm_name
                 status, output = run_remote_cmd(cmd, server_ip, server_user,
                                                 server_pwd)
@@ -2924,9 +2928,9 @@ def run(test, params, env):
                                                 ports=uri_port[1:])
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
                 logging.debug("Destroy remote guest")
-                remote_virsh_session.destroy(target_vm_name)
+                remote_virsh_session.destroy(target_vm_name, ignore_status=True)
                 logging.debug("Recover remote guest xml")
-                remote_virsh_session.define(xml_path)
+                remote_virsh_session.define(xml_path, ignore_status=True)
             except (process.CmdError, remote.SCPError) as detail:
                 test.error(detail)
             finally:
