@@ -30,11 +30,10 @@ def run(test, params, env):
             dominfo = virsh.dominfo(vm_name, ignore_status=True, debug=True, uri=dest_uri)
             libvirt.check_result(dominfo, expected_match=dominfo_check)
 
+        migration_obj.verify_default()
         # check qemu-guest-agent command
         result = virsh.domtime(vm_name, ignore_status=True, debug=True, uri=dest_uri)
         libvirt.check_exit_status(result)
-
-        migration_obj.verify_default()
 
         # Check event output
         migration_base.check_event_output(params, test, virsh_session, remote_virsh_session)
@@ -45,6 +44,7 @@ def run(test, params, env):
     migrate_again = "yes" == params.get("migrate_again", "no")
     tcp_config_list = eval(params.get("tcp_config_list"))
     recover_tcp_config_list = eval(params.get("recover_tcp_config_list"))
+    remove_firewall_rule = False
 
     virsh_session = None
     remote_virsh_session = None
@@ -55,14 +55,19 @@ def run(test, params, env):
 
     try:
         base_steps.setup_network_data_transport(params)
-        libvirt_network.change_tcp_config(tcp_config_list)
+        libvirt_network.change_tcp_config(tcp_config_list, params)
         migration_obj.setup_connection()
         # Monitor event on source/target host
         virsh_session, remote_virsh_session = migration_base.monitor_event(params)
         migration_obj.run_migration()
+        migration_base.do_common_check(params)
+        libvirt_network.cleanup_firewall_rule(params)
+        remove_firewall_rule = True
         if migrate_again:
             migration_obj.run_migration_again()
         verify_test()
     finally:
-        libvirt_network.change_tcp_config(recover_tcp_config_list)
+        if not remove_firewall_rule:
+            libvirt_network.cleanup_firewall_rule(params)
+        libvirt_network.change_tcp_config(recover_tcp_config_list, params)
         migration_obj.cleanup_connection()
