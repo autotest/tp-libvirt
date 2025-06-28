@@ -22,7 +22,7 @@ def run(test, params, env):
         """
         test.log.info("Setup for pause_by_network.")
         tcp_config_list = eval(params.get("tcp_config_list"))
-        libvirt_network.change_tcp_config(tcp_config_list)
+        libvirt_network.change_tcp_config(tcp_config_list, params)
         migration_obj.setup_connection()
 
     def cleanup_pause_by_network():
@@ -32,7 +32,7 @@ def run(test, params, env):
         """
         test.log.info("Cleanup for pause_by_network")
         recover_tcp_config_list = eval(params.get("recover_tcp_config_list"))
-        libvirt_network.change_tcp_config(recover_tcp_config_list)
+        libvirt_network.change_tcp_config(recover_tcp_config_list, params)
         migration_obj.cleanup_connection()
 
     libvirt_version.is_libvirt_feature_supported(params)

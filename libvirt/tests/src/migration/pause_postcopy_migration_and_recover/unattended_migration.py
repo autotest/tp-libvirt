@@ -39,7 +39,7 @@ def run(test, params, env):
         """
         test.log.info("Setup for network_issue_libvirt_layer.")
         tcp_config_list = eval(params.get("tcp_config_list"))
-        libvirt_network.change_tcp_config(tcp_config_list)
+        libvirt_network.change_tcp_config(tcp_config_list, params)
         migration_obj.setup_connection()
 
     def verify_test():
@@ -51,6 +51,9 @@ def run(test, params, env):
         dominfo_check = params.get("dominfo_check")
         migration_options = params.get("migration_options")
 
+        if make_unattended == "network_issue_libvirt_layer":
+            libvirt_network.cleanup_firewall_rule(params)
+            remote_firewall_rule = True
         # check domain persistence
         if dominfo_check:
             dominfo = virsh.dominfo(vm_name, ignore_status=True, debug=True, uri=dest_uri)
@@ -61,7 +64,8 @@ def run(test, params, env):
             func_returns = dict(migration_obj.migration_test.func_ret)
             migration_obj.migration_test.func_ret.clear()
             test.log.debug("Migration returns function results:%s", func_returns)
-            if not libvirt.check_vm_state(vm_name, virsh_migrate_src_state, uri=migration_obj.src_uri):
+            if not libvirt.check_vm_state(vm_name, virsh_migrate_src_state,
+                                          uri=migration_obj.src_uri, debug=True):
                 test.fail("Migrated VMs failed to be in %s state at source" % virsh_migrate_src_state)
             if int(migration_obj.migration_test.ret.exit_status) == 0:
                 migration_obj.migration_test.post_migration_check([vm], params,
@@ -76,13 +80,16 @@ def run(test, params, env):
         """
         test.log.info("Cleanup for network_issue_libvirt_layer")
         recover_tcp_config_list = eval(params.get("recover_tcp_config_list"))
-        libvirt_network.change_tcp_config(recover_tcp_config_list)
+        if not remote_firewall_rule:
+            libvirt_network.cleanup_firewall_rule(params)
+        libvirt_network.change_tcp_config(recover_tcp_config_list, params)
         migration_obj.cleanup_connection()
 
     libvirt_version.is_libvirt_feature_supported(params)
 
     vm_name = params.get("migrate_main_vm")
     make_unattended = params.get("make_unattended")
+    remote_firewall_rule = False
 
     virsh_session = None
     remote_virsh_session = None
