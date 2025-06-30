@@ -36,6 +36,7 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': True}
     metadata_set = "yes" == params.get("metadata_set", "no")
     metadata_get = "yes" == params.get("metadata_get", "yes")
+    metadata_empty = "yes" == params.get("metadata_empty", "no")
     metadata_remove = "yes" == params.get("metadata_remove", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
     status_error = "yes" == params.get("status_error", "no")
@@ -110,6 +111,10 @@ def run(test, params, env):
                                         **virsh_dargs)
                 check_result(result, status_error)
         # Get metadata
+        # from libvirt 11.3.0, instead of return status error, libvirt will return an empty string if there is no metadata to be returned
+        if metadata_empty:
+            status_error = False
+            metadata_value = ""
         for option in metadata_option.split():
             if option == "--config":
                 vm.destroy()
@@ -137,6 +142,6 @@ def run(test, params, env):
             check_result(result, status_error)
             # Get metadata again
             for option in metadata_option.split():
-                check_result(get_metadata(metadata_option=option), True)
+                check_result(get_metadata(metadata_option=option), False, '')
     finally:
         vmxml.sync()
