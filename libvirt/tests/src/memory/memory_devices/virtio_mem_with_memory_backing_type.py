@@ -215,7 +215,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP10: Consume guest memory successfully")
         session = vm.wait_for_login()
         status, output = libvirt_memory.consume_vm_freememory(
-            session, consume_value=consume_value)
+            session, remain_mem=remain_mem)
         if status:
             test.fail("Fail to consume guest memory. Error:%s" % output)
         session.close()
@@ -236,7 +236,7 @@ def run(test, params, env):
 
     allocate_huge_pages = re.findall(r'\d+', params.get("allocate_huge_pages"))[0]
     attach_type = params.get("attach_type")
-    consume_value = int(params.get("consume_value"))
+    remain_mem = int(params.get("remain_mem"))
 
     try:
         memory_base.check_supported_version(params, test, vm)

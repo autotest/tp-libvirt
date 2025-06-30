@@ -120,7 +120,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP11: Check mem")
         session = vm.wait_for_login()
-        libvirt_memory.consume_vm_freememory(session, consume_value)
+        libvirt_memory.consume_vm_freememory(session, remain_mem)
         session.close()
 
         test.log.info("TEST_STEP12: Destroy the guest")
@@ -163,7 +163,7 @@ def run(test, params, env):
     err_2 = params.get("guest_log_error2")
     hugetlbfs_mount = params.get("hugetlbfs_mount")
     default_path = params.get("default_path")
-    consume_value = int(params.get("consume_value"))
+    remain_mem = int(params.get("remain_mem"))
 
     default_page_size = int(params.get('default_page_size'))
     mount_pagesize = params.get("mount_pagesize", '{}')
