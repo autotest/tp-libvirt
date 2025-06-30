@@ -502,8 +502,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                              shell=True, ignore_status=True)
         time_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms --run '%s' > %s/time2.log"
                              % (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
-        if not (int(''.join(filter(str.isdigit, re.search(r'real.*m', time_1.stderr_text).group(0)))) <
-                int(''.join(filter(str.isdigit, re.search(r'real.*m', time_2.stderr_text).group(0))))):
+        match_1 = re.search(r'real\s+(\d+)m([\d.]+)s', time_1.stderr_text)
+        match_2 = re.search(r'real\s+(\d+)m([\d.]+)s', time_2.stderr_text)
+        if not (int(match_1.group(1))*60+float(match_1.group(2))) < (int(match_2.group(1))*60+float(match_2.group(2))):
             test.fail('fail to test cow-on-read=/path option')
 
     def cow_block_size():
