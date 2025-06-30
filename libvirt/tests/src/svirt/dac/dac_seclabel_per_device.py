@@ -50,6 +50,7 @@ def run(test, params, env):
     test_device = params.get("test_device")
     test_scenario = params.get("test_scenario")
     # Get general variables.
+    err_msg = params.get("err_msg")
     added_user = None
     source_path = None
 
@@ -80,6 +81,13 @@ def run(test, params, env):
             except xcepts.LibvirtXMLError as details:
                 if not status_error:
                     test.fail(details)
+                else:
+                    if err_msg:
+                        if err_msg not in str(details):
+                            test.fail(details)
+                        else:
+                            return
+
             test.log.debug("VM XML: %s.", VMXML.new_from_inactive_dumpxml(vm_name))
             res = virsh.start(vm.name)
         else:
