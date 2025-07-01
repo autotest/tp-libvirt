@@ -1,5 +1,6 @@
 import os
 
+from avocado.utils import process
 from virttest import utils_misc
 from virttest import virsh
 
@@ -23,8 +24,38 @@ def run(test, params, env):
         """
         Prepare active guest
         """
-        test.log.info("TEST_SETUP:Setup env")
+        test.log.info("TEST_SETUP: Setup env")
         test_obj.backingchain_common_setup()
+
+    def setup_2_blk_dev():
+        """
+        Setup 2 block devices, one emulated and another via iSCSI server,
+        both with the same size.
+
+        Returns:
+            List[str]: A list containing the names of the two prepared disks.
+        """
+        test.log.debug("TEST_SETUP: Setting up 2 additional block devices...")
+
+        # Get a list of currently connected block devices
+        cmd_lsblk = 'lsblk -d -o NAME -n'
+        current_disk_names = process.run(cmd_lsblk, shell=True).stdout_text.strip().splitlines()
+
+        # Create an iSCSI device and retrieve its name
+        iscsi_device_name = libvirt.setup_or_cleanup_iscsi(True, image_size='3G')
+        test.log.debug(f"iSCSI device name: {iscsi_device_name}")
+
+        # Load the scsi_debug module with the desired size
+        cmd_load_scsi_debug = f"modprobe scsi_debug dev_size_mb=3072"
+        process.run(cmd_load_scsi_debug, shell=True)
+
+        # Get an updated list of connected block devices after creating iSCSI device
+        updated_disk_names = process.run(cmd_lsblk, shell=True).stdout_text.strip().splitlines()
+
+        # Find the newly created disks by comparing lists
+        new_disks = [disk for disk in updated_disk_names if disk not in current_disk_names]
+        test.log.debug(f"Prepared 2 disks: {new_disks}")
+        return new_disks
 
     def run_before_finish():
         """
@@ -69,6 +100,33 @@ def run(test, params, env):
         virsh.blockjob(vm_name, target_disk, options=pivot_option,
                        debug=True, ignore_status=False)
 
+    def run_same_target():
+        """
+        Execute blockcopy operations with target block device being the same as or different from source.
+
+        Steps:
+            1. Prepare two distinct block devices on the host.
+            2. Hotplug one disk to the VM with its source device set as one of the prepared block devices.
+            3. Attempt negative test: perform blockcopy with target device identical to source.
+            4. Perform positive test: execute blockcopy with target device being another prepared block device.
+
+        :return: None
+        """
+        blk_dev1, blk_dev2 = setup_2_blk_dev()
+
+        if not vm.is_alive():
+            virsh.start(vm_name)
+        test.log.info("TEST_STEP1: Hotplug a disk with source device as one of the block devices on host")
+        virsh.attach_disk(vm_name, f'/dev/{blk_dev1}', target_disk, debug=True)
+        output1 = virsh.domblklist(vm_name).stdout_text
+        test.log.info(f"After hotplugging, current VM disk list is: {output1}")
+        test.log.info("TEST_STEP2: Perform blockcopy with identical source and target devices...")
+        ret1 = virsh.blockcopy(vm_name, target_disk, f'/dev/{blk_dev1}', blockcopy_options)
+        libvirt.check_result(ret1, expected_fails=err_msg)
+        test.log.info("TEST_STEP3: Execute blockcopy with different source and target devices...")
+        ret2 = virsh.blockcopy(vm_name, target_disk, f'/dev/{blk_dev2}', blockcopy_options)
+        libvirt.check_result(ret2, expected_match='[100.00 %]')
+
     def teardown_test():
         """
         Clean data.
@@ -77,6 +135,10 @@ def run(test, params, env):
                        debug=True, ignore_status=True)
         test_obj.clean_file(tmp_copy_path)
         bkxml.sync()
+        if test_scenario == 'same_target':
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            cmd = "modprobe -r scsi_debug"
+            process.run(cmd, shell=True)
 
     # Process cartesian parameters
     vm_name = params.get("main_vm")
@@ -86,6 +148,8 @@ def run(test, params, env):
     pivot_option = params.get("pivot_option")
     abort_option = params.get("abort_option")
     test_scenario = params.get("test_scenario")
+    if test_scenario == "same_target":
+        target_disk = "sdc"
 
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
