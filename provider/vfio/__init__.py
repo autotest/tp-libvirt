@@ -50,8 +50,8 @@ def get_nodedev_xml(device_type, parent, uuid, domains=[], name=None):
         "type_id": device_type,
         "uuid": uuid,
     }
+    attrs = []
     if domains:
-        attrs = []
         cards = []
         doms = []
         for domain in domains:
@@ -64,9 +64,10 @@ def get_nodedev_xml(device_type, parent, uuid, domains=[], name=None):
                 doms.append(dom)
                 attrs.append({"name": "assign_control_domain", "value": "0x" + dom})
                 doms.append(dom)
-        attributes["attrs"] = attrs
+    attributes["attrs"] = attrs
     if name:
         device_xml["name"] = name
+
     mdev_xml.setup_attrs(**attributes)
     device_xml.set_cap(mdev_xml)
     LOG.debug("Device XML: %s", device_xml)

@@ -29,9 +29,11 @@ from provider.vfio import ap, get_nodedev_xml
 
 logging = log.getLogger("avocado." + __name__)
 cleanup_actions = []
-device_uuid = "0007d503-f3c6-4bb7-9beb-9a70b6d71745"
+device_uuid = None
+device_uuid_2 = None
 REFRESH_INTERVAL = 5
 info = None
+add_condition = None
 
 
 def get_devices(info, cards, domains):
@@ -92,11 +94,18 @@ def check_host_requirements(info, params):
         raise TestError(f"Failed to check host requirements: {e}")
 
 
-def assign_crypto_devices_to_vfio(selected_devices):
+def update_crypto_device_assignment(selected_devices):
+    assign_crypto_devices_to_vfio(selected_devices, num_calls=2)
+
+
+def assign_crypto_devices_to_vfio(selected_devices, num_calls=1):
     """
     Assign host crypto devices to vfio_ap using chzdev -t ap command.
     """
     try:
+        if num_calls == 2 and "do_not_update_host_matrix" == add_condition:
+            return
+
         for device in selected_devices:
             # Convert hex to decimal for chzdev
             card_dec = int(device.card, 16)
@@ -122,14 +131,15 @@ def attach_hostdev_to_vm(vm_name):
     Define host device XML and attach it to the running VM.
     """
     try:
-        ap.attach_hostdev(vm_name, device_uuid)
+        hostdev_xml = ap.attach_hostdev(vm_name, device_uuid)
         logging.info(f"Successfully attached hostdev to VM {vm_name}")
 
     except Exception as e:
         raise TestError(f"Failed to attach hostdev to VM: {e}")
+    return hostdev_xml
 
 
-def update_nodedev_xml(name, devices):
+def update_nodedev_xml(first_xml, flagstr, devices, test):
     """
     Update the already running device with virsh.nodedev_update.
     """
@@ -138,11 +148,36 @@ def update_nodedev_xml(name, devices):
         "ap_matrix",
         device_uuid,
         [".".join(x.id) for x in devices],
-        name=name,
+        name=first_xml.name,
     )
+
+    if "undefine_device_before_update" == add_condition:
+        virsh.nodedev_undefine(first_xml.name, debug=True, ignore_status=False)
+    if "create_second_device_with_after_values" == add_condition:
+        second_xml = get_nodedev_xml(
+            "vfio_ap-passthrough",
+            "ap_matrix",
+            device_uuid_2,
+            [".".join(x.id) for x in devices],
+        )
+        result = virsh.nodedev_create(second_xml.xml, debug=True, ignore_status=False)
+        name = re.search(r"Node device ([a-z0-9_']+) created", result.stdout_text)[
+            1
+        ].strip("'")
+        cleanup_actions.append(
+            lambda: virsh.nodedev_destroy(name, debug=True, ignore_status=False)
+        )
+
     result = virsh.nodedev_update(
-        name, updated_xml.xml, flagstr="--live", debug=True, ignore_status=True
+        first_xml.name, updated_xml.xml, options=flagstr, debug=True, ignore_status=True
     )
+
+    if result.exit_status and add_condition in [
+        "create_second_device_with_after_values",
+        "do_not_update_host_matrix",
+        "undefine_device_before_update",
+    ]:
+        return True
     if result.exit_status:
         raise TestError(f"Failed to update running device: {result.stderr}")
 
@@ -158,7 +193,9 @@ def define_and_start_nodedev(devices):
     result = virsh.nodedev_define(nodedev_xml.xml, debug=True, ignore_status=True)
     if result.exit_status:
         raise TestError(f"Failed to define device: {result.stderr}")
-    name = re.search(r"Node device.*'(.*)' defined", result.stdout_text)[1]
+    name = re.search(r"Node device ([a-z0-9_']+) defined", result.stdout_text)[1].strip(
+        "'"
+    )
     cleanup_actions.append(
         lambda: virsh.nodedev_undefine(name, debug=True, ignore_status=False)
     )
@@ -169,13 +206,24 @@ def define_and_start_nodedev(devices):
     cleanup_actions.append(
         lambda: virsh.nodedev_destroy(name, debug=True, ignore_status=False)
     )
-    return name
+    nodedev_xml.name = name
+    nodedev_xml.xmltreefile.write()
+    return nodedev_xml
 
 
-def verify_matrix_in_guest(session, devices):
+def verify_matrix_in_guest(session, vm, name, hostdev_xml, devices):
     """
     Confirm that the updated matrix is correct inside the guest.
     """
+    if "restart_all_before_guest_verification" == add_condition:
+        session.close()
+        vm.destroy()
+        virsh.nodedev_destroy(name, debug=True, ignore_status=False)
+        virsh.nodedev_start(name, debug=True, ignore_status=False)
+        vm.start()
+        virsh.attach_device(vm.name, hostdev_xml.xml, debug=True, ignore_status=False)
+        session = vm.wait_for_login()
+
     session.cmd(f"chzcrypt -c {REFRESH_INTERVAL}", print_func=logging.debug)
     time.sleep(REFRESH_INTERVAL)
     guest_info = CryptoDeviceInfoBuilder.get(session)
@@ -187,12 +235,16 @@ def verify_matrix_in_guest(session, devices):
             raise TestFail(f"Failed to find device: {device}")
     if len(devices) != len(guest_info.domains):
         raise TestFail(f"More devices present in guest than expected")
-    output = session.cmd(f"lszcrypt -d", print_func=logging.debug).replace("\\n","")
-    if len(re.findall(r" B ", output)) != len(devices):
-        raise TestFail(f"Not all devices are recognized as both usage "
-                       f"and control domains:\\n"
-                       f"devices: {devices}\\n"
-                       f"output: {output}")
+    output = session.cmd(f"lszcrypt -d", print_func=logging.debug)
+    # count the 'B' entries in the matrix but ignore the legend footer
+    output = re.sub(r"B:.*$", "", output)
+    if len(re.findall(r"B", output)) != len(set([x.domain for x in devices])):
+        raise TestFail(
+            f"Not all devices are recognized as both usage "
+            f"and control domains:\\n"
+            f"devices: {devices}\\n"
+            f"output: {output}"
+        )
 
 
 def run(test, params, env):
@@ -212,17 +264,22 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Get test parameters
-    cards_before = int(params.get("cards_before", 1))
-    cards_after = int(params.get("cards_after", 1))
-    domains_before = int(params.get("domains_before", 1))
-    domains_after = int(params.get("domains_after", 1))
+    cards_before = int(params.get("cards_before", 0))
+    cards_after = int(params.get("cards_after", 0))
+    domains_before = int(params.get("domains_before", 0))
+    domains_after = int(params.get("domains_after", 0))
+
+    flagstr = params.get("flagstr")
 
     vmxml_backup = VMXML.new_from_inactive_dumpxml(vm_name)
     cleanup_actions.append(lambda: vmxml_backup.sync())
 
+    global add_condition
+    add_condition = params.get("add_condition", "")
     global device_uuid
+    global device_uuid_2
     device_uuid = str(uuid4())
+    device_uuid_2 = str(uuid4())
     global info
     info = CryptoDeviceInfoBuilder.get()
     session = None
@@ -239,17 +296,18 @@ def run(test, params, env):
 
         assign_crypto_devices_to_vfio(devices)
 
-        name = define_and_start_nodedev(devices)
+        first_xml = define_and_start_nodedev(devices)
 
-        attach_hostdev_to_vm(vm_name)
+        hostdev_xml = attach_hostdev_to_vm(vm_name)
 
         devices = get_devices(info, cards_after, domains_after)
 
-        assign_crypto_devices_to_vfio(devices)
+        update_crypto_device_assignment(devices)
 
-        update_nodedev_xml(name, devices)
+        if update_nodedev_xml(first_xml, flagstr, devices, test):
+            return
 
-        verify_matrix_in_guest(session, devices)
+        verify_matrix_in_guest(session, vm, first_xml.name, hostdev_xml, devices)
 
     finally:
         vm.destroy()
