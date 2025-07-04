@@ -36,17 +36,15 @@ def run(test, params, env):
         expect_str = params.get("expect_str")
 
         cmd1 = f"mkdir -p {mnt_path_name}"
-        cmd2 = f"/usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name} &"
+        cmd2 = f"nohup /usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name} --log-level off > /dev/null 2>&1 & disown"
         multi_cmd1 = f"{cmd1}; {cmd2}"
         process.run(multi_cmd1, shell=True, ignore_status=False, ignore_bg_processes=True)
-        cmd3 = f"/usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name} > /dev/null 2>&1 &"
-        multi_cmd2 = f"{cmd1}; {cmd3}"
+        remote.run_remote_cmd(multi_cmd1, params, ignore_status=False)
+        cmd3 = f"chcon -t svirt_image_t {socket_path}"
+        cmd4 = f"chown qemu:qemu {socket_path}"
+        multi_cmd2 = f"{cmd3}; {cmd4}"
+        process.run(multi_cmd2, shell=True, ignore_status=False)
         remote.run_remote_cmd(multi_cmd2, params, ignore_status=False)
-        cmd4 = f"chcon -t svirt_image_t {socket_path}"
-        cmd5 = f"chown qemu:qemu {socket_path}"
-        multi_cmd3 = f"{cmd4}; {cmd5}"
-        process.run(multi_cmd3, shell=True, ignore_status=False)
-        remote.run_remote_cmd(multi_cmd3, params, ignore_status=False)
 
         migration_obj.setup_connection()
 
@@ -89,6 +87,19 @@ def run(test, params, env):
         vm.connect_uri = backup_uri
         migration_obj.verify_default()
 
+    def cleanup_test():
+        """
+        Cleanup steps for cases
+
+        """
+        socket_path = params.get("socket_path")
+
+        migration_obj.cleanup_connection()
+        remote.run_remote_cmd('pkill virtiofsd', params, ignore_status=True)
+        remote.run_remote_cmd(f"rm -rf {socket_path}", params, ignore_status=True)
+        process.run("pkill virtiofsd", shell=True, ignore_status=True)
+        process.run(f"rm -rf {socket_path}", shell=True, ignore_status=True)
+
     libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("migrate_main_vm")
 
@@ -100,4 +111,4 @@ def run(test, params, env):
         migration_obj.run_migration()
         verify_test()
     finally:
-        migration_obj.cleanup_connection()
+        cleanup_test()
