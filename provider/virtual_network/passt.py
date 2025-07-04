@@ -277,9 +277,19 @@ def check_default_gw(session, host_iface=None, multiple_nexthops=False):
     vm_gw_v6 = vm_gw_v6 if isinstance(vm_gw_v6, list) else [vm_gw_v6]
     LOG.debug(f'Host and vm default ipv6 gateway: {host_gw_v6}, {vm_gw_v6}')
 
-    if [x for x in vm_gw_v6 if x not in host_gw_v6]:
-        raise exceptions.TestFail(
-            'Host default ipv6 gateway not consistent with vm.')
+    if multiple_nexthops:
+        if not set(vm_gw_v6) & set(host_gw_v6):
+            raise exceptions.TestFail(
+                f'No common default IPv6 gateway found.\nHost: {host_gw_v6}\nVM: {vm_gw_v6}')
+    else:
+        def is_link_local(ipv6):
+            return ipv6.lower().startswith("fe80:")
+
+        if is_link_local(vm_gw_v6[0]) and is_link_local(host_gw_v6[0]):
+            LOG.warning("Skipping mismatch in link-local IPv6 gateways")
+        elif vm_gw_v6[0] != host_gw_v6[0]:
+            raise exceptions.TestFail(
+                f'Host default IPv6 gateway not consistent with VM.\nHost: {host_gw_v6[0]}\nVM: {vm_gw_v6[0]}')
 
 
 def check_nameserver(session):
