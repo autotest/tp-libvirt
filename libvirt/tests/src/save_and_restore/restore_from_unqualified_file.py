@@ -45,6 +45,7 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
     try:
+        process.run('chcon -t qemu_var_run_t "/var/tmp"', ignore_status=True, shell=True)
         if scenario == 'invalid':
             process.run(f'echo > {save_path}', shell=True)
 
