@@ -18,7 +18,8 @@ def run(test, params, env):
     integer etc in libvirtd.conf.
 
     """
-    check_string_in_log = params.get("check_string_in_log")
+    errmsg = params.get("errmsg", "")
+    check_string_in_log = errmsg if errmsg else params.get("check_string_in_log")
     daemon_name = params.get("daemon_name")
     parameter_name = params.get("parameter_name")
     parameter_value = params.get("parameter_value")
