@@ -4,6 +4,8 @@ import logging as log
 import time
 import locale
 
+from avocado.utils import process as host_process
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
@@ -140,6 +142,7 @@ def run(test, params, env):
         if os.path.exists(tmp_pipe):
             os.unlink(tmp_pipe)
         os.mkfifo(tmp_pipe)
+        host_process.run('chcon -t virtqemud_t %s' % tmp_pipe, ignore_status=False, shell=True)
 
         # Target file param is not needed for managedsave operation
         if action == "managedsave ":
