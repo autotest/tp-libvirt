@@ -145,9 +145,9 @@ class NumaTest(object):
             self.params["numa_memory"] = numa_memory
         if numa_memnode:
             if numa_memnode.count('%s'):
-                numa_memnode = eval(numa_memnode % nodeset)
+                numa_memnode = numa_memnode % nodeset
                 self.params["numa_memnode"] = numa_memnode
-            numa_tune_dict.update({'numa_memnode': numa_memnode})
+            numa_tune_dict.update({'numa_memnode': eval(numa_memnode)})
         self.test.log.debug(numa_tune_dict)
         if numa_tune_dict:
             vmxml.setup_attrs(**numa_tune_dict)
