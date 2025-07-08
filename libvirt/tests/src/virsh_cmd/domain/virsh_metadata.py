@@ -3,8 +3,10 @@ import xml.dom.minidom
 
 import aexpect
 
+from virttest import libvirt_version
 from virttest import remote
 from virttest import virsh
+
 from virttest.utils_test import libvirt as utlv
 from virttest.utils_libvirtd import Libvirtd
 from virttest.libvirt_xml import vm_xml
@@ -137,6 +139,7 @@ def run(test, params, env):
             check_result(result, status_error)
             # Get metadata again
             for option in metadata_option.split():
-                check_result(get_metadata(metadata_option=option), True)
+                expect_error = False if libvirt_version.version_compare(11, 3, 0) else True
+                check_result(get_metadata(metadata_option=option), expect_error)
     finally:
         vmxml.sync()
