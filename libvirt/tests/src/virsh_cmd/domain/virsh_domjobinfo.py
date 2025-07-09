@@ -4,6 +4,7 @@ import logging as log
 import time
 import locale
 
+from avocado.utils import distro
 from avocado.utils import process as host_process
 
 from virttest import virsh
@@ -142,7 +143,8 @@ def run(test, params, env):
         if os.path.exists(tmp_pipe):
             os.unlink(tmp_pipe)
         os.mkfifo(tmp_pipe)
-        host_process.run('chcon -t virtqemud_t %s' % tmp_pipe, ignore_status=False, shell=True)
+        if distro.detect().name == 'rhel' and int(distro.detect().version) >= 10:
+            host_process.run('chcon -t virtqemud_t %s' % tmp_pipe, ignore_status=False, shell=True)
 
         # Target file param is not needed for managedsave operation
         if action == "managedsave ":
