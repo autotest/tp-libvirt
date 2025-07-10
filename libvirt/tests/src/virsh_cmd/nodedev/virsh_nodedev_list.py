@@ -227,6 +227,30 @@ def get_devices_by_cap(cap):
     return devices
 
 
+def _substitute_with_match(pattern, strings):
+    """
+    It will substitute each entry in a list of strings with the
+    match of a given pattern. E.g. ["block_dasda_1", "ccw_0_0_0027"]
+    will be substituted with ["block_dasda", "ccw_0_0_0027"] given
+    the pattern "block_dasd[a-z]+".
+
+    This can be necessary because the way libvirt reads a device depends
+    on the available DEVTYPE information from udev.
+
+    :param pattern: regular expression to get the match for
+    :param strings: list of strings to be substitute if matching
+    """
+    matches = strings.copy()
+    for string in strings:
+        matched = re.match(pattern, string)
+        if matched:
+            match = matched[0]
+            idx = matches.index(string)
+            matches[idx] = match
+    logging.debug(f"Substituting strings:\n{strings}\n substituted with\n{matches}")
+    return matches
+
+
 def run(test, params, env):
     """
     Test command: nodedev-list [--tree] [--cap <string>]
@@ -235,7 +259,7 @@ def run(test, params, env):
     2) If `cap_option == one`, results are also compared
        with devices get from sysfs.
     """
-    def _check_result(cap, ref_list, result, mode):
+    def _check_result(cap, ref_list, result, mode, pattern):
         """
         Check test result against a device list retrieved from sysfs.
 
@@ -245,21 +269,15 @@ def run(test, params, env):
         :param result:     Stdout returned from virsh nodedev-list command.
         :param mode:       How to compare sysfs info with command output:
                            "exact" or "similar".
+        :param pattern:    When comparing with sysfs mode "similar" consider devices
+                           the same if their pattern match is the same.
         """
         check_list = result.strip().splitlines()
         are_not_equivalent = True
         if mode == "similar":
-            listed = [x for x in ref_list if x in result]
-            all_sysfs_info_listed = len(ref_list) == len(listed)
-            same_number_of_devices = len(ref_list) == len(check_list)
-            are_not_equivalent = (not all_sysfs_info_listed or
-                                  not same_number_of_devices)
-        elif mode == "exact":
-            are_not_equivalent = set(ref_list) != set(check_list)
-        else:
-            logging.error("Unknown comparison mode in result check: %s",
-                          mode)
-            return False
+            ref_list = _substitute_with_match(pattern, ref_list)
+            check_list = _substitute_with_match(pattern, check_list)
+        are_not_equivalent = set(ref_list) != set(check_list)
 
         uavail_caps = ['system', 'vports', 'fc_host']
 
@@ -271,6 +289,7 @@ def run(test, params, env):
         return True
 
     mode = params.get("comparison_mode", "exact")
+    pattern = params.get("comparison_pattern", "exact")
     remove_scm_device = 'yes' == params.get("remove_scm_device", "no")
     all_caps = ['system', 'pci', 'usb_device', 'usb', 'net', 'scsi_host',
                 'scsi_target', 'scsi', 'storage', 'fc_host', 'vports',
@@ -322,7 +341,7 @@ def run(test, params, env):
                 if scm_devices:
                     devices[cap] = [device for device in devices[cap]
                                     if device not in scm_devices]
-            if not _check_result(cap, devices[cap], result.stdout.strip(), mode):
+            if not _check_result(cap, devices[cap], result.stdout.strip(), mode, pattern):
                 check_failed = True
                 break
     else:
