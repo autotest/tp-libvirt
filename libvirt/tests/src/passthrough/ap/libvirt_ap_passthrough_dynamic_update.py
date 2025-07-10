@@ -23,7 +23,7 @@ from avocado.core.exceptions import TestError, TestFail
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import virsh
 from virttest.utils_misc import cmd_status_output
-from virttest.utils_zcrypt import CryptoDeviceInfoBuilder
+from virttest.utils_zcrypt import CryptoDeviceInfoBuilder, load_vfio_ap, unload_vfio_ap
 
 from provider.vfio import ap, get_nodedev_xml
 
@@ -79,6 +79,9 @@ class Steps:
 
         # Constants
         self.REFRESH_INTERVAL = 5
+
+        load_vfio_ap()
+        self.cleanup_actions.append(lambda: unload_vfio_ap())
 
         # Host crypto device info - initialized once
         self.info = CryptoDeviceInfoBuilder.get()
