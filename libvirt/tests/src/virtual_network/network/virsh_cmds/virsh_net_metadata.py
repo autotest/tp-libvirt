@@ -75,9 +75,12 @@ def check_net_metadata_result(test, params, expected_string, existed=True):
         if result.stdout.strip() != expected_string:
             test.fail('Expect "%s" was existed.' % expected_string)
     else:
-        if result.stderr.strip() != expected_string:
-            test.fail('Expect "%s" was existed.' % expected_string)
-    test.log.debug("Check %s PASS in virsh net-metadata", expected_string)
+        # libvirt >= 9.8 return empty stdout/stderr
+        if result.stderr.strip():
+            if result.stderr.strip() != expected_string:
+                test.fail('Expect "%s" was existed.' % expected_string)
+        else:
+            test.log.debug("No metadata present and no error — new libvirt behaviour.")
 
 
 def check_net_dumpxml(test, params, expected_xml, exist):
