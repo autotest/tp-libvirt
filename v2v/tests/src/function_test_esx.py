@@ -701,6 +701,12 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
+        # Added version_required condition due to different versions of v2v for RHEL9 and RHEL10
+        # RHEL9 V2V version - "[virt-v2v-2.7.1-12,)"
+        # RHEL10 V2V version - "[virt-v2v-2.8.1-1,)"
+        if "print_blkhash" in checkpoint and "el9" in process.run("uname -r", shell=True).stdout_text:
+            version_required = "[virt-v2v-2.7.1-12,)"
+
         if version_required and not utils_v2v.multiple_versions_compare(
                 version_required):
             test.cancel("Testing requires version: %s" % version_required)
