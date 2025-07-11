@@ -1,6 +1,5 @@
 import os
 import time
-import psutil
 import shutil
 import subprocess
 import logging as log
@@ -24,18 +23,6 @@ def check_process_exist(process_cmd, check_cmd):
     p_list = process.run(check_cmd, shell=True, ignore_status=True).stdout_text
     ret = True if process_cmd in p_list else False
     return ret
-
-
-def kill_process(name):
-    """
-    Kill a process by name
-
-    :param name: the process name to kill
-    """
-    for proc in psutil.process_iter():
-        if proc.name() == name:
-            logging.debug('Killing process %s', name)
-            proc.kill()
 
 
 def run(test, params, env):
@@ -99,7 +86,7 @@ def run(test, params, env):
     finally:
         logging.debug('Cleaning env...')
         if check_process_exist(swtpm_socket_cmd, swtpm_check_cmd):
-            kill_process('swtpm')
+            process.run("pkill -9 swtpm", shell=True, ignore_status=True)
         if p2 and p2.poll() is None:
             p2.kill()
         if os.path.exists(tpm_state_dir):
