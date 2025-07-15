@@ -32,8 +32,8 @@ RETRY_TIMES = 10
 # Temporary workaround <Fix in future with a better solution>
 # Deprecated struct, Don't use it.
 FEATURE_SUPPORT = {
-    'genid': 'virt-v2v-1.40.1-1.el7',
-    'libosinfo': 'virt-v2v-1.40.2-2.el7',
+    'genid': 'virt-v2v-1.40.1-1',
+    'libosinfo': 'virt-v2v-1.40.2-2',
     'virtio_rng': '2.6.26',
     'cache_none': 'virt-v2v-1.42.0-4',
     'q35': 'virt-v2v-1.43.3-2',
