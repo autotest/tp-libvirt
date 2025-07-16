@@ -149,6 +149,11 @@ def run_leapp_cmd(test, params, session, step):
     if step == "upgrade":
         leapp_cmd = params.get("leapp_upgrade_cmd")
 
+    # May need to test versions that are not yet officially supported by leapp
+    # despite it being technically capable of the upgrade
+    leapp_skip_check_os = params.get("leapp_skip_check_os")
+    leapp_cmd = "%s %s" % (leapp_skip_check_os, leapp_cmd)
+
     status = session.cmd_status(leapp_cmd, timeout=900)
     if status == 0:
         test.log.info("Leapp %s executed successfully" % step)

@@ -138,6 +138,20 @@ def run(test, params, env):
             test.fail("VM log file: %s expect to get owner:root, got %s ."
                       % (guest_log_file, owner))
 
+    def confirm_info_not_in_vm_log_file(vm_name, guest_log_file, info_msg):
+        """
+        Confirm unexpected message is not written into log file.
+
+        :params vm_name: guest name
+        :params guest_log_file: the path of VM log file
+        :params cmd: execute command string
+        :params info_msg: the unexpected message to check
+        """
+        cmd = ("grep -nr '%s' %s" % (info_msg, guest_log_file))
+        if not process.run(cmd, ignore_status=True, shell=True).exit_status:
+            test.fail("Found unexpected msg %s from VM log file: %s."
+                      % (info_msg, guest_log_file))
+
     def check_info_in_vm_log_file(vm_name, guest_log_file, cmd=None, matchedMsg=None):
         """
         Check if log information is written into log file correctly.
@@ -156,8 +170,8 @@ def run(test, params, env):
         else:
             cmd = (cmd + " %s |grep '%s'" % (guest_log_file, matchedMsg))
         if process.run(cmd, ignore_status=True, shell=True).exit_status:
-            test.fail("Failed to get VM started log from VM log file: %s."
-                      % guest_log_file)
+            test.fail("Failed to get info '%s' from VM log file: %s."
+                      % (matchedMsg, guest_log_file))
 
     def check_pipe_closed(pipe_node):
         """
@@ -1074,8 +1088,14 @@ def run(test, params, env):
                                 "from pipe list used by %s." % (emulator, pipe_node))
                 configure(cmd, errorMsg=errorMessage)
 
+            if expected_result == 'no_qemu_only_shutdown_logged':
+                if not service.Factory.create_service("virtlogd").restart():
+                    test.fail("failed to restart virtlogd.")
+
             # Shutdown VM.
-            if not vm.shutdown():
+            if expected_result == "destroy_vm_remove_logs":
+                virsh.destroy(vm_name, "--remove-logs", ignore_status=False, debug=True)
+            elif not vm.shutdown():
                 vm.destroy(gracefully=True)
 
             # Check qemu log works well
@@ -1087,8 +1107,16 @@ def run(test, params, env):
             if with_console_log:
                 check_info_in_vm_log_file(vm_name, guest_log_file,
                                           matchedMsg=matched_msg)
+            elif expected_result == "destroy_vm_remove_logs":
+                if stdio_handler == "logd" and os.path.exists(guest_log_file):
+                    test.fail('Guest qemu log should not exist after destroy with --remove-logs.')
+                elif stdio_handler == "file" and not os.path.exists(guest_log_file):
+                    test.fail('Guest qemu log is removed although --remove-logs is \
+                            only supported for logd stdio_handler.')
             else:
                 check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="shutting down")
+                if expected_result == 'no_qemu_only_shutdown_logged':
+                    confirm_info_not_in_vm_log_file(vm_name, guest_log_file, "qemu-kvm: terminating")
 
             if stdio_handler != "file":
                 # Check pipe is closed gracefully after VM shutdown.

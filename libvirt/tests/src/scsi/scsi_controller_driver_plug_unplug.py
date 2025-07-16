@@ -11,6 +11,7 @@
 import time
 
 from virttest import virsh
+from virttest import libvirt_version
 
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml import vm_xml
@@ -61,9 +62,9 @@ def check_dumpxml(vm_name, options, controllers_dicts, expect_exist, test):
         for one_ctl in controllers:
             if (one_ctl.type == one_ctl_dict['type'] and
                one_ctl.model == one_ctl_dict['model'] and
-               one_ctl.index == one_ctl_dict['index']):
+               one_ctl.index == one_ctl_dict['index'] and
+               (not with_driver or one_ctl.driver == one_ctl_dict['driver'])):
                 found = True
-                break
         if found != expect_exist:
             test.fail("Expect controller (%s) %s exist "
                       "in vm xml" % (one_ctl_dict,
@@ -80,18 +81,21 @@ def _create_controllers(params):
     :return: tuple, (list of controller objects,
                      list of controller parameters)
     """
+    global with_driver
     contr_indexes = eval(params.get('contr_index'))
     iothread_id = params.get('iothread_id')
     same_address = eval(params.get('same_address', '{}'))
+    driver_dict = eval(params.get("driver_dict", "{}"))
+    with_driver = "yes" == params.get("with_driver", "no")
     controller_dicts = []
     controllers = []
     for an_index in contr_indexes:
         controller_dict = params.get('controller_dict')
         controller_dict = eval(controller_dict % an_index)
-        if iothread_id:
-            controller_dict['driver'] = {'iothread': '%s' % iothread_id}
         if same_address:
             controller_dict['address'] = {'attrs': same_address}
+        if with_driver:
+            controller_dict = controller_dict | driver_dict
         ctrl = Controller(type_name=controller_dict['type'])
         ctrl.setup_attrs(**controller_dict)
         controller_dicts.append(controller_dict)
@@ -177,6 +181,7 @@ def run(test, params, env):
     2.Do plug unplug scsi controller
     3.Check the test result.
     """
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)

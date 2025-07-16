@@ -24,6 +24,7 @@ def get_device_xml(schid):
     mdev_xml['type_id'] = 'vfio_ccw-io'
     mdev_xml['uuid'] = '8d312cf6-f92a-485c-8db8-ba9299848f46'
     device_xml.set_cap(mdev_xml)
+    LOG.debug(f"NodedevXML {device_xml}")
     return device_xml.xml
 
 
@@ -71,9 +72,10 @@ def run(test, params, env):
     """
 
     schid = None
+    devid = params.get("devid")
 
     try:
-        schid, _ = ccw.get_device_info()
+        schid, _ = ccw.get_device_info(devid)
         ccw.set_override(schid)
         nodedev_file_path = get_device_xml(schid)
         virsh.nodedev_define(nodedev_file_path, ignore_status=False, debug=True)
