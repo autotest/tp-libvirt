@@ -32,7 +32,7 @@ def update_numa_memnode(numatest, node0, node1):
     elif mem_mode == "restrictive":
         numa_memnode = numa_memnode % (node0, node1)
 
-    numatest.params["numa_memnode"] = eval(numa_memnode)
+    numatest.params["numa_memnode"] = numa_memnode
 
 
 def setup_test(numatest_src, numatest_dst, migration_obj):
@@ -101,7 +101,7 @@ def verify_test(numatest, migration_obj):
     actual_numa_memnodes = vmxml_remote.numa_memnode
     actual_numa_memory = vmxml_remote.numa_memory
     conf_numa_memory = numatest.params.get("numa_memory")
-    conf_numa_memnode = numatest.params.get("numa_memnode")
+    conf_numa_memnode = eval(numatest.params.get("numa_memnode"))
     if actual_numa_memnodes != conf_numa_memnode:
         numatest.test.fail("Expect numa memnode to be '%s' on remote vm, "
                            "but found '%s'" % (conf_numa_memnode, actual_numa_memnodes))
