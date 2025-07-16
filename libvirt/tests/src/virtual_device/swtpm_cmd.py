@@ -93,4 +93,4 @@ def run(test, params, env):
             shutil.rmtree(tpm_state_dir)
         for folder in glob("/tmp/vtpm*"):
             shutil.rmtree(folder)
-        process.run("rm -rf /var/lib/swtpm-localca/*", shell=True, ignore_status=True)
+        process.run("rm -rf /var/lib/swtpm-localca/{,.}*", shell=True, ignore_status=True)

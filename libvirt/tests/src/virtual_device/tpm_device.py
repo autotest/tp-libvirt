@@ -866,6 +866,10 @@ def run(test, params, env):
                     logging.debug("Expected failure: %s", detail)
                     return
                 else:
+                    pattern = "Check error log .*%s-swtpm.log. for details" % vm_name
+                    if re.search(pattern, str(detail)):
+                        logging.debug("Printing swtpm.log:")
+                        process.run('cat /var/log/swtpm/libvirt/qemu/%s-swtpm.log' % vm_name)
                     test.fail(detail)
             if undefine_flag:
                 time.sleep(5)
@@ -1043,7 +1047,7 @@ def run(test, params, env):
                 shutil.rmtree(statedir)
             if p2 and p2.poll() is None:
                 p2.kill()
-            process.run("rm -rf /var/lib/swtpm-localca/*", shell=True, ignore_status=True)
+            process.run("rm -rf /var/lib/swtpm-localca/{,.}*", shell=True, ignore_status=True)
         # Remove swtpm log file in case of impact on later runs
         if os.path.exists("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name):
             os.remove("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name)
