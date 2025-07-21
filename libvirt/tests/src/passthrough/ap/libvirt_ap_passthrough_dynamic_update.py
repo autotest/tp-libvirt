@@ -41,6 +41,8 @@ class Steps:
     Class to handle the steps of the libvirt AP passthrough dynamic update test.
     """
 
+    REFRESH_INTERVAL = 5
+
     def __init__(self, env, test, params):
         """
         Initialize the Steps class with test parameters.
@@ -77,12 +79,6 @@ class Steps:
         self.first_xml = None
         self.hostdev_xml = None
 
-        # Constants
-        self.REFRESH_INTERVAL = 5
-
-        load_vfio_ap()
-        self.cleanup_actions.append(lambda: unload_vfio_ap())
-
         # Host crypto device info - initialized once
         self.info = CryptoDeviceInfoBuilder.get()
 
@@ -93,6 +89,14 @@ class Steps:
             f"additional condition: {self.add_condition}"
         )
         logging.info(f"Host crypto devices: {self.info}")
+
+        self.check_host_requirements()
+
+        load_vfio_ap()
+        self.cleanup_actions.append(lambda: unload_vfio_ap())
+
+        self.session = self.vm.wait_for_login()
+        self.cleanup_actions.append(lambda: self.session.close())
 
     def update_device_info(self, cards, domains):
         """
@@ -212,9 +216,8 @@ class Steps:
             result = virsh.nodedev_create(
                 second_xml.xml, debug=True, ignore_status=False
             )
-            name = re.search(r"Node device ([a-z0-9_']+) created", result.stdout_text)[
-                1
-            ].strip("'")
+            pattern = r"Node device ([a-z0-9_']+) created"
+            name = re.search(pattern, result.stdout_text)[1].strip("'")
             self.cleanup_actions.append(
                 lambda: virsh.nodedev_destroy(name, debug=True, ignore_status=False)
             )
@@ -227,14 +230,21 @@ class Steps:
             ignore_status=True,
         )
 
-        if result.exit_status and self.add_condition in [
+        if self.add_condition in [
             "create_second_device_with_after_values",
             "do_not_update_host_matrix",
             "undefine_device_before_update",
         ]:
-            raise EarlyTerminationException(
-                "Test execution terminated early due to specific condition"
-            )
+            if result.exit_status:
+                raise EarlyTerminationException(
+                    "Test execution terminated early due to specific condition"
+                )
+            else:
+                raise TestFail(
+                    f"For error condition '{self.add_condition}'"
+                    " the node device update should fail"
+                    " but it didn't."
+                )
         if result.exit_status:
             raise TestError(f"Failed to update running device: {result.stderr}")
 
@@ -251,9 +261,8 @@ class Steps:
         result = virsh.nodedev_define(nodedev_xml.xml, debug=True, ignore_status=True)
         if result.exit_status:
             raise TestError(f"Failed to define device: {result.stderr}")
-        name = re.search(r"Node device ([a-z0-9_']+) defined", result.stdout_text)[
-            1
-        ].strip("'")
+        pattern = r"Node device ([a-z0-9_']+) defined"
+        name = re.search(pattern, result.stdout_text)[1].strip("'")
         self.cleanup_actions.append(
             lambda: virsh.nodedev_undefine(name, debug=True, ignore_status=False)
         )
@@ -274,7 +283,7 @@ class Steps:
         """
         if "restart_all_before_guest_verification" == self.add_condition:
             self.session.close()
-            self.vm.destroy()
+            virsh.destroy(self.vm_name, debug=True, ignore_status=False)
             virsh.nodedev_destroy(self.first_xml.name, debug=True, ignore_status=False)
             virsh.nodedev_start(self.first_xml.name, debug=True, ignore_status=False)
             self.vm.start()
@@ -284,9 +293,9 @@ class Steps:
             self.session = self.vm.wait_for_login()
 
         self.session.cmd(
-            f"chzcrypt -c {self.REFRESH_INTERVAL}", print_func=logging.debug
+            f"chzcrypt -c {Steps.REFRESH_INTERVAL}", print_func=logging.debug
         )
-        time.sleep(self.REFRESH_INTERVAL)
+        time.sleep(Steps.REFRESH_INTERVAL)
         guest_info = CryptoDeviceInfoBuilder.get(self.session)
         logging.info(f"Guest crypto devices: {guest_info}")
 
@@ -321,7 +330,7 @@ class Steps:
         Setup cleanup actions for restoring host crypto device configuration.
         Adds command to reset all crypto device masks to default state.
         """
-        cmd = f"chzdev -t ap apmask=0-255 aqmask=0-255"
+        cmd = "chzdev -t ap apmask=0-255 aqmask=0-255"
         self.cleanup_actions.append(lambda: cmd_status_output(cmd, shell=True))
 
     def cleanup(self):
@@ -361,11 +370,6 @@ def run(test, params, env):
     steps.setup_cleanup()
 
     try:
-        steps.session = steps.vm.wait_for_login()
-        steps.cleanup_actions.append(lambda: steps.session.close())
-
-        steps.check_host_requirements()
-
         # Get initial devices and set up
         steps.update_device_info(steps.cards_before, steps.domains_before)
         steps.assign_crypto_devices_to_vfio()
