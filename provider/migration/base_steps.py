@@ -369,6 +369,8 @@ class MigrationBase(object):
         migration_base.cleanup_conn_obj(self.conn_list, self.test)
         if migrate_desturi_port:
             self.remote_add_or_remove_port(migrate_desturi_port, add=False)
+            # Reload firewall on source host in case any changes were made
+            utils_iptables.Firewall_cmd().reload()
 
     def set_remote_log(self):
         """
