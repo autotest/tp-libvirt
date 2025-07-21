@@ -1,5 +1,7 @@
 import logging as log
 
+from time import sleep
+
 from avocado.core.exceptions import TestError
 from virttest import utils_package, virsh
 from virttest.utils_misc import cmd_status_output
@@ -234,6 +236,7 @@ def set_override(schid):
     :raises TestError: if override can't be set
     """
 
+    cmd_status_output("lscss -t 3390")
     cmd = "driverctl -b css set-override %s vfio_ccw" % schid
     err, out = cmd_status_output(cmd, shell=True)
     if err:
@@ -252,6 +255,8 @@ def unset_override(schid):
     err, out = cmd_status_output(cmd, shell=True)
     if err:
         raise TestError("Can't unset driver override. %s" % out)
+    sleep(1)
+    cmd_status_output("lscss -t 3390")
 
 
 def start_device(uuid, schid):
