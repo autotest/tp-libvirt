@@ -144,10 +144,14 @@ def run(test, params, env):
                 mac_addr: ips,
                 mac_addr_2: {'outside_ip': vm_default_gw}
             }
+            LOG.debug('Disabling Reverse Path Filtering by default')
+            session.cmd('sysctl -w net.ipv4.conf.all.rp_filter=0')
             for mac in (mac_addr, mac_addr_2):
                 iface_vm_info = utils_net.get_linux_iface_info(
                     mac=mac, session=session)
                 iface_vm = iface_vm_info['ifname']
+                LOG.debug(f'Disabling Reverse Path Filtering for {iface_vm}')
+                session.cmd(f'sysctl -w net.ipv4.conf.{iface_vm}.rp_filter=0')
                 LOG.debug(f'Check connetivity of iface {iface_vm}({mac})')
                 ping_args = {
                     'vm_ping_outside': {'interface': iface_vm},
