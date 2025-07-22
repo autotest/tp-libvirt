@@ -138,6 +138,21 @@ def run(test, params, env):
         if len(set(md5s)) != fs_num:
             test.fail("The md5sum value are not the same in guests and host")
 
+    def selinux_policy_version_compare(selinux_change_from):
+        """
+        Compare the selinux version. from the version of selinux_change_from,
+        we do not need to start virtiofsd process using systemd-run. From this
+        version, we can launch externally launched virtiofsd in image mode.
+
+        param selinux_change_from: we do not need to use systemd-run to start
+        virtiofsd from this version
+        """
+        cmd = "rpm -q selinux-policy | awk -F'-' '{print $3}'"
+        current_version = process.run(cmd, ignore_status=False, shell=True).stdout_text
+        v0 = tuple(int(part) for part in selinux_change_from.split('.'))
+        v1 = tuple(int(part) for part in current_version.split('.'))
+        return (v1 > v0)
+
     def launch_externally_virtiofs(source_dir, source_socket):
         """
         Launch externally virtiofs
@@ -145,7 +160,11 @@ def run(test, params, env):
         :param source_dir:  the dir shared on host
         :param source_socket: the socket file listened on
         """
-        cmd = "%s --socket-path=%s -o source=%s &" % (path, source_socket, source_dir)
+        if not selinux_policy_version_compare(selinux_change_from):
+            process.run('chcon -t virtd_exec_t %s' % path, ignore_status=False, shell=True)
+            cmd = "systemd-run %s --socket-path=%s -o source=%s" % (path, source_socket, source_dir)
+        else:
+            cmd = "%s --socket-path=%s -o source=%s &" % (path, source_socket, source_dir)
         try:
             process.run(cmd, ignore_status=False, shell=True, ignore_bg_processes=True)
             # Make sure the socket is created
@@ -296,6 +315,7 @@ def run(test, params, env):
     setup_mem = params.get("setup_mem", False)
     omit_dir_at_first = "yes" == params.get("omit_dir_at_first", "no")
     check_debug_log = "yes" == params.get("check_debug_log", "no")
+    selinux_change_from = params.get("selinux_change_from")
 
     qemu_config = None
     fs_devs = []
