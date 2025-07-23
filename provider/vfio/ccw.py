@@ -257,6 +257,7 @@ def unset_override(schid):
         raise TestError("Can't unset driver override. %s" % out)
     sleep(1)
     cmd_status_output("lscss -t 3390")
+    cmd_status_output("echo 1 > /sys/devices/css0/rescan")
 
 
 def start_device(uuid, schid):
