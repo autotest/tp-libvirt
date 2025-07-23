@@ -101,8 +101,7 @@ def launch_external_swtpm(params, test, skip_setup=False, on_remote=False):
                 remote.run_remote_cmd(cmd1, params)
             else:
                 process.run(cmd1, ignore_status=False, shell=True)
-        cmd2 = ("nohup swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate"
-                "dir=%s,mode=0600 --tpm2 --terminate > /dev/null 2>&1 & disown") % (source_socket, statedir)
+        cmd2 = ("nohup swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate > /dev/null 2>&1 & disown") % (source_socket, statedir)
         if on_remote:
             remote.run_remote_cmd(cmd2, params)
             remote.run_remote_cmd('chcon -t svirt_image_t %s' % source_socket, params)
