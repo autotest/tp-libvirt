@@ -17,6 +17,7 @@ from virttest import utils_misc
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
 
+from virttest.libvirt_xml import domcapability_xml
 from virttest.libvirt_xml.devices.tpm import Tpm
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_test import libvirt
@@ -32,6 +33,40 @@ from avocado.utils import path as utils_path
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+
+
+def get_supported_values(params):
+    """
+    Get supported vtpm attr values from qemu or swtpm.
+    :return: expected vtpm attr values
+    """
+    qemu_bin = utils_misc.get_qemu_binary(params)
+    out_m = process.run('%s -device help' % qemu_bin).stdout_text.strip()
+    tpm_mdls = re.findall('tpm-[a-z]+', out_m)
+    out_b = process.run("%s -tpmdev help" % qemu_bin, ignore_status=True).stderr_text.strip().split('\n')
+    del out_b[0]
+    tpm_bkds = []
+    for b in out_b:
+        b_list = b.split(' ')
+        tpm_bkds.append([bkd for bkd in b_list if bkd][0])
+    out_v = process.run('swtpm_setup --print-capabilities').stdout_text.strip()
+    tpm_v = re.findall('tpm-[1-9].[0-9]', out_v)
+    tpm_vsns = [v.removeprefix('tpm-') for v in tpm_v]
+    return tpm_mdls + tpm_bkds + tpm_vsns
+
+
+def check_domcaps(test, expect_values):
+    """
+    Check if vtpm attributes in domcapablities meet requirements.
+    :params test: test object
+    :params expect_values: expected vtpm attr values to check in domcapabilities.
+    """
+    domcapa_xml = domcapability_xml.DomCapabilityXML()
+    values = domcapa_xml.xmltreefile.findall("./devices/tpm/enum/value")
+    get_values = [v.text for v in values]
+    logging.debug('Got values: %s', get_values)
+    if set(get_values) != set(expect_values):
+        test.fail('Got vtpm values in domcapablities does not match expected')
 
 
 def run(test, params, env):
@@ -51,6 +86,7 @@ def run(test, params, env):
         test.cancel("Tpm device is not supported "
                     "on current qemu version.")
 
+    domcaps_check = ("yes" == params.get("domcaps_check", "no"))
     tpm_model = params.get("tpm_model")
     backend_type = params.get("backend_type")
     backend_version = params.get("backend_version")
@@ -211,6 +247,14 @@ def run(test, params, env):
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     host_arch = platform.machine()
+
+    if domcaps_check:
+        expect_values = get_supported_values(params)
+        if libvirt_version.version_compare(9, 0, 0):
+            expect_values.append('external')
+        logging.debug('Expected vtpm values: %s', expect_values)
+        check_domcaps(test, expect_values)
+        return
 
     # Only check_pcrbanks for new version
     if not libvirt_version.version_compare(7, 10, 0) or not compare_swtpm_version(0, 7):
