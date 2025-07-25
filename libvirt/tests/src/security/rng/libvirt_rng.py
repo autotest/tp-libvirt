@@ -301,6 +301,16 @@ def run(test, params, env):
                     " on host, command output: %s" % ret.stdout_text
                 )
 
+    def prepare_backend_source(backend_dev, source_file_size):
+        """
+        Prepare a backend dev for arbitrary file test
+        :param backend_dev: the backend source file to create
+        :param source_file_size: the size for the file
+        """
+        cmd = 'qemu-img create %s %s' % (backend_dev, source_file_size)
+        process.run(cmd, ignore_status=False, shell=True)
+        os.chmod(backend_dev, 0o666)
+
     def check_snapshot():
         """
         Do snapshot operation and check the results
@@ -718,6 +728,9 @@ def run(test, params, env):
     urandom = "yes" == params.get("urandom", "no")
     dd_throughput = params.get("dd_throughput")
     backend_source_list = params.get("backend_source", "").split()
+    source_file_size = params.get("source_file_size")
+    if source_file_size:
+        backend_dev = params.get("backend_dev")
 
     if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(
         6, 2, 0
@@ -759,6 +772,9 @@ def run(test, params, env):
             vm.start()
             virsh.dumpxml(vm_name, "--xpath //rng", debug=True)
             time.sleep(3)  # Wait guest to enter boot stage
+
+            if source_file_size:
+                prepare_backend_source(backend_dev, source_file_size)
 
             if "pass_test_on_error" == handle_hotplug():
                 return
@@ -851,5 +867,7 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
         vmxml_backup.sync()
+        if source_file_size and os.path.exists(backend_dev):
+            os.remove(backend_dev)
         for job in background_jobs:
             job.kill_func()
