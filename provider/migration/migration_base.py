@@ -546,6 +546,50 @@ def clear_pmsocat(params):
     migration_obj.conn_list[0].clear_pmsocat()
 
 
+def resume_migration(params, resume_again=False):
+    """
+    Resume migration
+
+    :param params: dict, get migration object and transport type
+    :param resume_again: if true, will set parameters for resume migration again
+    """
+    migration_obj = params.get("migration_obj")
+    extra = params.get("virsh_migrate_extra")
+    postcopy_options = params.get("postcopy_options")
+    postcopy_resume = params.get("postcopy_resume")
+    action_during_mig_resume = params.get("action_during_mig_resume")
+    extra_args = migration_obj.migration_test.update_virsh_migrate_extra_args(params)
+
+    # Wait 2s to ensure the previous migration process has fully terminated
+    time.sleep(2)
+    extra_args.update({"migrate_start_state": "running"})
+    if resume_again:
+        extra_args.update({'status_error': params.get("status_error_resume_again", "no")})
+        extra_args.update({'err_msg': params.get("err_msg_resume_again")})
+    else:
+        extra_args.update({'status_error': params.get("status_error_resume", "no")})
+        extra_args.update({'err_msg': params.get("err_msg_resume")})
+    if postcopy_resume:
+        extra = "%s %s %s" % (extra, postcopy_options, postcopy_resume)
+    else:
+        extra = "%s %s" % (extra, postcopy_options)
+    if action_during_mig_resume and not resume_again:
+        action_during_mig_resume = parse_funcs(action_during_mig_resume, migration_obj.test, params)
+        do_mig_param = {"vm": migration_obj.vm, "mig_test": migration_obj.migration_test, "src_uri": None,
+                        "dest_uri": params.get("virsh_migrate_desturi"),
+                        "options": params.get("virsh_migrate_options", "--live --verbose"),
+                        "virsh_options": params.get("virsh_options", ""),
+                        "extra": extra, "action_during_mig": action_during_mig_resume, "extra_args": extra_args}
+    else:
+        do_mig_param = {"vm": migration_obj.vm, "mig_test": migration_obj.migration_test, "src_uri": None,
+                        "dest_uri": params.get("virsh_migrate_desturi"),
+                        "options": params.get("virsh_migrate_options", "--live --verbose"),
+                        "virsh_options": params.get("virsh_options", ""),
+                        "extra": extra, "action_during_mig": None, "extra_args": extra_args}
+    migration_obj.test.log.debug("resume migration: do_mig_param: %s", do_mig_param)
+    do_migration(**do_mig_param)
+
+
 def resume_migration_again(params):
     """
     Resume migration again
@@ -756,3 +800,20 @@ def check_resume(params):
     libvirt.check_result(ret, expected_fails=resume_err_msg_src, check_both_on_error=True)
     ret = virsh.resume(vm_name, debug=True, uri=desturi)
     libvirt.check_result(ret, expected_fails=resume_err_msg_target, check_both_on_error=True)
+
+
+def update_port_for_firewall_rule(params):
+    """
+    Update port for firewall rule
+
+    :param params: dictionary with the test parameter.
+    """
+    server_ip = params.get("server_ip")
+    firewall_rule_on_dest = params.get("firewall_rule_on_dest")
+    firewall_rule_on_src = params.get("firewall_rule_on_src")
+
+    cmd = "netstat -tunap|grep 'ESTABLISHED' | grep '%s:491'" % server_ip
+    ret = process.run(cmd, shell=True, verbose=True)
+    migration_port = ret.stdout_text.strip().split("\n")[0].split("    ")[4].split(':')[-1]
+    params.update({"firewall_rule_on_dest": firewall_rule_on_dest % migration_port})
+    params.update({"firewall_rule_on_src": firewall_rule_on_src % migration_port})

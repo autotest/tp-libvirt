@@ -1,8 +1,8 @@
 from virttest import libvirt_version
-
 from virttest.utils_libvirt import libvirt_network
 
 from provider.migration import base_steps
+from provider.migration import migration_base
 
 
 def run(test, params, env):
@@ -14,24 +14,36 @@ def run(test, params, env):
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment.
     """
-    def setup_network_issue():
+    def setup_test():
         """
-        Setup for network issue
+        Setup steps for cases
 
         """
-        test.log.info("Setup for network issue")
-        tcp_config_list = eval(params.get("tcp_config_list"))
-        libvirt_network.change_tcp_config(tcp_config_list, params)
+        test.log.info("Setup for cases")
+        if recover_failed_reason == "network_issue":
+            tcp_config_list = eval(params.get("tcp_config_list"))
+            libvirt_network.change_tcp_config(tcp_config_list, params)
         migration_obj.setup_connection()
 
-    def cleanup_network_issue():
+    def recover_for_resume():
+        test.log.info("Recover for resume")
+        if recover_failed_reason == "network_issue":
+            libvirt_network.cleanup_firewall_rule(params)
+        elif recover_failed_reason == "proxy_issue":
+            base_steps.recreate_conn_objs(params)
+
+    def cleanup_test():
         """
-        Cleanup for network issue
+        Cleanup steps for cases
 
         """
-        test.log.info("Cleanup for network issue")
-        recover_tcp_config_list = eval(params.get("recover_tcp_config_list"))
-        libvirt_network.change_tcp_config(recover_tcp_config_list, params)
+        desturi = params.get("virsh_migrate_desturi")
+
+        test.log.info("Cleanup for cases")
+        if recover_failed_reason == "network_issue":
+            recover_tcp_config_list = eval(params.get("recover_tcp_config_list"))
+            libvirt_network.cleanup_firewall_rule(params)
+            libvirt_network.change_tcp_config(recover_tcp_config_list, params)
         migration_obj.cleanup_connection()
 
     libvirt_version.is_libvirt_feature_supported(params)
@@ -43,15 +55,12 @@ def run(test, params, env):
     migration_obj = base_steps.MigrationBase(test, vm, params)
     params.update({"migration_obj": migration_obj})
 
-    setup_test = eval("setup_%s" % recover_failed_reason) if "setup_%s" % recover_failed_reason in \
-        locals() else migration_obj.setup_connection
-    cleanup_test = eval("cleanup_%s" % recover_failed_reason) if "cleanup_%s" % recover_failed_reason in \
-        locals() else migration_obj.cleanup_connection
-
     try:
         setup_test()
-        migration_obj.setup_connection()
         migration_obj.run_migration()
+        migration_base.resume_migration(params)
+        recover_for_resume()
+        migration_base.resume_migration(params, resume_again=True)
         migration_obj.verify_default()
     finally:
         cleanup_test()
