@@ -521,7 +521,7 @@ class VMChecker(object):
         virtio_name_id_mapping = {
             'Virtio network device': ['1000', '1041'],
             'Virtio block device': ['1001', '1042'],
-            'Virtio memory balloon': ['1002', '1045'],
+            'Virtio (memory|1.0) balloon': ['1002', '1045'],
             'Virtio console': ['1003', '1043'],
             'Virtio SCSI': ['1004', '1048'],
             'Virtio RNG': ['1005', '1044'],
@@ -687,7 +687,7 @@ class VMChecker(object):
         pci_devs = self.checker.get_vm_pci_list()
         virtio_devs = ["Virtio network device",
                        "Virtio block device",
-                       "Virtio memory balloon"]
+                       "Virtio (memory|1.0) balloon"]
         # Virtio RNG supports from kernel-2.6.26
         # https://wiki.qemu.org/Features/VirtIORNG
         if compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
