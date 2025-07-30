@@ -56,7 +56,7 @@ def prepare_env(vm, params, test):
     """
     check_sve = params.get("check_sve", "")
     host_without_sve = "yes" == params.get("host_without_sve", "no")
-    check_sve_config = params.get("check_sve_config", "")
+    check_sve_config = eval(params.get("check_sve_config", "[]"))
     session = None
     try:
         # Cancel test if the Host doesn't support or supports SVE based on configuration
@@ -75,7 +75,14 @@ def prepare_env(vm, params, test):
         current_boot = session.cmd("uname -r").strip()
         # To enable SVE: Hardware support && enable kconfig
         # CONFIG_ARM64_SVE
-        if session.cmd_status(check_sve_config % current_boot):
+        enabled = False
+        for check_config in check_sve_config:
+            cmd = check_config % current_boot
+            if not session.cmd_status(cmd):
+                enabled = True
+                test.log.debug("Guest kernel enables CONFIG_ARM64_SVE")
+                break
+        if not enabled:
             test.cancel("Guest kernel doesn't enable CONFIG_ARM64_SVE")
 
         # Install lscpu tool that check whether CPU has SVE
