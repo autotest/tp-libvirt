@@ -1,3 +1,4 @@
+from avocado.utils import memory
 from avocado.utils import process
 
 from virttest import remote
@@ -23,7 +24,8 @@ def run(test, params, env):
         Setup steps
 
         """
-        memory_backing = eval(params.get("memory_backing", "{}"))
+        memory_backing = params.get("memory_backing", "{}")
+        memory_backing = eval(memory_backing % memory.get_huge_page_size())
         hugepage_file = params.get("kernel_hp_file", "/proc/sys/vm/nr_hugepages")
         nr_hugepages_src = params.get("nr_hugepages_src")
         nr_hugepages_dest = params.get("nr_hugepages_dest")
