@@ -683,7 +683,7 @@ def run(test, params, env):
             # Actually, fstrim has no relationship with v2v, it may be related
             # to kernel, this warning really doesn't matter and has no harm to
             # the conversion.
-            V2V_FSTRIM_SUCESS_VER = "[virt-v2v-1.45.1-1.el9,)"
+            V2V_FSTRIM_SUCESS_VER = "[virt-v2v-1.45.1-1,)"
             if utils_v2v.multiple_versions_compare(V2V_FSTRIM_SUCESS_VER):
                 params.update({'expect_msg': None})
         if 'large_disk' in checkpoint:
@@ -701,12 +701,6 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
-        # Added version_required condition due to different versions of v2v for RHEL9 and RHEL10
-        # RHEL9 V2V version - "[virt-v2v-2.7.1-12,)"
-        # RHEL10 V2V version - "[virt-v2v-2.8.1-1,)"
-        if "print_blkhash" in checkpoint and "el9" in process.run("uname -r", shell=True).stdout_text:
-            version_required = "[virt-v2v-2.7.1-12,)"
-
         if version_required and not utils_v2v.multiple_versions_compare(
                 version_required):
             test.cancel("Testing requires version: %s" % version_required)
