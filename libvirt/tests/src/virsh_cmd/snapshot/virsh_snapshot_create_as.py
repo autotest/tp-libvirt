@@ -375,6 +375,8 @@ def run(test, params, env):
     check_json_no_savevm = "yes" == params.get("check_json_no_savevm", "no")
     disk_snapshot_attr = params.get('disk_snapshot_attr', 'external')
     set_snapshot_attr = "yes" == params.get("set_snapshot_attr", "no")
+    snapshot_file = params.get("snapshot_file", "")
+    invalid_compress_format = "yes" == params.get("invalid_compress_format", "no")
 
     # gluster related params
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
@@ -496,7 +498,13 @@ def run(test, params, env):
             qemu_conf = utils_config.LibvirtQemuConfig()
             qemu_conf.snapshot_image_format = snapshot_image_format
             logging.debug("the qemu config file content is:\n %s" % qemu_conf)
-            libvirtd.restart()
+            service_status = libvirtd.restart()
+            if invalid_compress_format and libvirt_version.version_compare(11, 3, 0):
+                if not service_status:
+                    logging.debug("The service restart with invalid values failed as expected.")
+                    return
+            else:
+                logging.debug("The service restart successfully!")
 
         if check_json_no_savevm:
             libvirtd_conf_dict["log_level"] = '1'
@@ -681,6 +689,10 @@ def run(test, params, env):
                                              params.get(external_disk))
                     if os.path.exists(disk_path):
                         os.unlink(disk_path)
+        snap_path = os.path.join(tmp_dir, snapshot_file)
+        if config_format and not invalid_compress_format:
+            if os.path.exists(snap_path):
+                os.remove(snap_path)
 
         # restore config
         if config_format and qemu_conf:
