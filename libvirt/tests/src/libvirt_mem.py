@@ -203,6 +203,7 @@ def run(test, params, env):
         # Global variable to store max/current memory
         global new_max_mem
         global new_cur_mem
+        arch = platform.machine()
         if attach_option.count("config"):
             dom_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         else:
@@ -212,6 +213,11 @@ def run(test, params, env):
             xml_max_mem = int(dom_xml.max_mem)
             xml_cur_mem = int(dom_xml.current_mem)
             assert int(max_mem_rt) == xml_max_mem_rt
+            cpuxml = dom_xml.cpu
+            numa_cells = cpuxml.numa_cell
+
+            if 'ppc64' in arch:
+                cur_mem = max_mem = sum(int(cell["memory"]) for cell in numa_cells)
 
             # Check attached/detached memory
             logging.info("at_mem=%s,dt_mem=%s", at_mem, dt_mem)
@@ -361,13 +367,19 @@ def run(test, params, env):
 
         if numa_cells:
             cells = [ast.literal_eval(x) for x in numa_cells]
+            arch = platform.machine()
+            min_memory_value = 1048576  # 1 GiB in KiB
             # Rounding the numa memory values
             if align_mem_values:
                 for cell in range(cells.__len__()):
-                    memory_value = str(utils_numeric.align_value(
-                        cells[cell]["memory"],
+                    memory_value = int(cells[cell]["memory"])
+                    if arch == "ppc64le":
+                        memory_value = max(memory_value, min_memory_value)
+                    else:
+                        memory_value = memory_value
+                    cells[cell]["memory"] = str(utils_numeric.align_value(
+                        memory_value,
                         align_to_value))
-                    cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
             cpu_mode = params.get("cpu_mode", "host-model")
             cpu_xml.xml = "<cpu mode='%s'><numa/></cpu>" % cpu_mode
