@@ -204,7 +204,8 @@ def set_vm_timezone(test, vm, timezone="America/New_York", windows=False):
             session.close()
             test.error("Not correct timezone:%s" % timezone_file)
         else:
-            session.cmd("unlink /etc/localtime")
+            if not session.cmd_status("ls /etc/localtime"):
+                session.cmd("unlink /etc/localtime")
             cmd_s, cmd_o = session.cmd_status_output("ln -s %s /etc/localtime"
                                                      % timezone_file)
             session.close()
