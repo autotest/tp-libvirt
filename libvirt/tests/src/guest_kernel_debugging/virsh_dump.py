@@ -65,6 +65,7 @@ def run(test, params, env):
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
     document_string = eval(params.get("document_string", "[]"))
+    valid_format = ["lzop", "gzip", "bzip2", "xz", 'elf', 'data']
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -179,7 +180,6 @@ def run(test, params, env):
         specify format by --format option, the result could be 'elf' or 'data'.
         """
 
-        valid_format = ["lzop", "gzip", "bzip2", "xz", 'elf', 'data']
         if len(dump_image_format) == 0 or dump_image_format not in valid_format:
             logging.debug("No need check the dumped file format")
             return True
@@ -324,9 +324,22 @@ def run(test, params, env):
             logging.error("An error occurred while running the crash command: %s", e)
             return 1
 
+    def check_logfile(image_format):
+        """
+        Checks if libvirt daemon log contains dump_image_format with substring.
+
+        :param image_format: expected image format in error message
+        """
+        log_file = params.get("libvirtd_debug_file", "")
+        if not log_file:
+            log_file = utils_misc.get_path(test.debugdir, "libvirtd.log")
+        error = "Invalid dump_image_format.*" + image_format
+        return libvirt.check_logfile(error, log_file, ignore_status=True)
+
     # Configure dump_image_format in /etc/libvirt/qemu.conf.
     qemu_config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+    libvirtd_socket = utils_libvirtd.Libvirtd("libvirtd.socket")
 
     # Install lsof pkg if not installed
     if not utils_package.package_install("lsof"):
@@ -334,6 +347,12 @@ def run(test, params, env):
 
     if len(dump_image_format):
         qemu_config.dump_image_format = dump_image_format
+        if dump_image_format not in valid_format:
+            libvirtd.restart(wait_for_start=False)
+            if check_logfile(dump_image_format):
+                qemu_config.restore()
+                libvirtd_socket.restart()
+                return
         libvirtd.restart()
 
     # Deal with memory-only dump format
