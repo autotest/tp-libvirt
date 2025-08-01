@@ -6,31 +6,36 @@ from virttest import virsh
 from virttest.libvirt_xml.devices import hostdev
 from virttest.utils_misc import cmd_status_output
 
-LOG = log.getLogger('avocado.' + __name__)
+LOG = log.getLogger("avocado." + __name__)
 
 
 def attach_hostdev(vm_name, uuid):
     """
     Prepare device XML and attach it to the VM
-    in its current state
+    in its current state.
+
+    Finally, return the XML instance.
 
     :param vm_name: The name of the VM
     :param uuid: The UUID of the mediated device
+    :return hostdev_xml: the XML instance
     """
 
     hostdev_xml = hostdev.Hostdev()
     hostdev_dict = {
-                    'type_name': 'mdev',
-                    'model': 'vfio-ap',
-                    'mode': 'subsystem',
-                    'type': 'mdev',
-                    'source': {
-                                'untyped_address': {'uuid': uuid}}}
+        "type_name": "mdev",
+        "model": "vfio-ap",
+        "mode": "subsystem",
+        "type": "mdev",
+        "source": {"untyped_address": {"uuid": uuid}},
+    }
     hostdev_xml.setup_attrs(**hostdev_dict)
     hostdev_xml.xmltreefile.write()
     LOG.debug("Attaching %s", hostdev_xml.xmltreefile)
-    virsh.attach_device(vm_name, hostdev_xml.xml, flagstr="--current",
-                        ignore_status=False)
+    virsh.attach_device(
+        vm_name, hostdev_xml.xml, flagstr="--current", ignore_status=False
+    )
+    return hostdev_xml
 
 
 def create_autostart_mediated_device(domain_info, session=None):
@@ -69,13 +74,19 @@ def create_mediated_device(domain_info, session=None, start="-m"):
 
     uuid = str(uuid4())
     card_domain_16 = ["0x%s" % x for x in card_domain]
-    cmds = ["mdevctl define -p matrix -t vfio_ap-passthrough -u %s" % uuid,
-            "mdevctl modify -u %s %s" % (uuid, start),
-            ("mdevctl modify -u %s"
-             " --addattr assign_adapter --value %s" % (uuid, card_domain_16[0])),
-            ("mdevctl modify -u %s"
-             " --addattr assign_domain --value %s" % (uuid, card_domain_16[1])),
-            "mdevctl start -u %s" % uuid]
+    cmds = [
+        "mdevctl define -p matrix -t vfio_ap-passthrough -u %s" % uuid,
+        "mdevctl modify -u %s %s" % (uuid, start),
+        (
+            "mdevctl modify -u %s"
+            " --addattr assign_adapter --value %s" % (uuid, card_domain_16[0])
+        ),
+        (
+            "mdevctl modify -u %s"
+            " --addattr assign_domain --value %s" % (uuid, card_domain_16[1])
+        ),
+        "mdevctl start -u %s" % uuid,
+    ]
     for cmd in cmds:
         err, out = cmd_status_output(cmd, shell=True, session=session)
         if err:
