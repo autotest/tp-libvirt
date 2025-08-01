@@ -140,7 +140,7 @@ def run(test, params, env):
         # Check Core(s) per socket
         cores_per_socket_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'Core(s) per socket', 4)
-        cmd = "lscpu | grep 'Core(s) per socket' | head -n1 | awk '{print $4}'"
+        cmd = "lscpu | grep 'Core(s) per [socket|cluster]' | head -n1 | awk '{print $4}'"
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
         cores_per_socket_os = cmd_result.stdout_text.strip()
         spec_numa = False
