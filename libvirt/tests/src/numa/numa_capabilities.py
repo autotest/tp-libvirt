@@ -54,6 +54,9 @@ def run(test, params, env):
                 # would be used in virsh capabilities
                 if missing_cpu_topology_key and cpu_dict[missing_cpu_topology_key] is None:
                     cpu_dict[missing_cpu_topology_key] = '0'
+                # libvirt will convert negative value to 0
+                if cpu_dict['cluster_id'] == "-1":
+                    cpu_dict['cluster_id'] = "0"
                 cpu_topo_list.append(cpu_dict)
             logging.debug("cpu topology list from capabilities xml is %s",
                           cpu_list_from_xml)
