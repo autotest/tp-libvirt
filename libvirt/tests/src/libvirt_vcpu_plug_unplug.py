@@ -321,8 +321,8 @@ def run(test, params, env):
             vm.prepare_guest_agent(prepare_xml=False, start=start_qemuga)
             vm.setenforce(0)
         else:
-            # Remove qemu-guest-agent for negative test
-            vm.remove_package('qemu-guest-agent')
+            # Stop qemu-guest-agent service for negative test
+            vm.set_state_guest_agent(False)
 
         # Run test
         for _ in range(iterations):
