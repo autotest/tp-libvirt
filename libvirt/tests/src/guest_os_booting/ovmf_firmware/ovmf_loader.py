@@ -11,6 +11,7 @@
 import os
 
 from virttest import libvirt_version
+from virttest import utils_sys
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
@@ -40,6 +41,10 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
+        # Check if image mode
+        if loader_dict.get("loader_readonly") == "no" and utils_sys.is_image_mode():
+            test.cancel("The image mode filesystem is read only so {'loader_readonly': 'no'} is not supported")
+
         if smm_state:
             guest_os.prepare_smm_xml(vm_name, smm_state, "")
         vmxml = guest_os.prepare_os_xml(vm_name, loader_dict, firmware_type)
