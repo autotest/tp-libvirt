@@ -43,7 +43,7 @@ def run(test, params, env):
         process.run(multi_cmd, shell=True, ignore_status=False)
         change_virtiofs_root_passwd()
         # Copy vmlinuz from host to use in guest.
-        cmd5 = f"cp $(ls /boot/vmlinuz* | tail -n 1) {vmlinuz_file}"
+        cmd5 = f"cp $(find /boot -name 'vmlinuz*' | tail -n 1) {vmlinuz_file}"
         process.run(cmd5, shell=True)
 
     def change_virtiofs_root_passwd():
