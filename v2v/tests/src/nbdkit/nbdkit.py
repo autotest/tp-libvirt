@@ -566,12 +566,13 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
 
     def cve_starttls():
         tmp_path = data_dir.get_tmp_dir()
+        rpm_path = process.run('rpm --eval "%{_topdir}"', shell=True).stdout_text.strip()
         process.run("yum install libtool rpm-build 'dnf-command(download)' -y", shell=True, ignore_status=True)
         process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
                     ignore_status=True)
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
-        check_file = process.run('ls /rpmbuild/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c',
+        check_file = process.run('ls %s/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c' % rpm_path,
                                  shell=True).stdout_text.strip('\n')
         count = 0
         with open(check_file, "r") as ff:
