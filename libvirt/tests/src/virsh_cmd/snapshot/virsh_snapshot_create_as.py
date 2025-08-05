@@ -267,7 +267,8 @@ def check_snapslist(test, vm_name, options, option_dict, output,
             if option_disk.find('driver=') >= 0:
                 dtypes = []
                 for each in range(len(disks)):
-                    dtypes.append(disks[each].find('driver').get('type'))
+                    if disks[each].find('driver') is not None:
+                        dtypes.append(disks[each].find('driver').get('type'))
                 logging.debug("All drivers are %s", dtypes)
                 if disk_dict['driver'] in dtypes:
                     logging.info("Found driver %s in diskspec",
@@ -279,7 +280,8 @@ def check_snapslist(test, vm_name, options, option_dict, output,
             if option_disk.find('file=') >= 0:
                 sfiles = []
                 for each in range(len(disks)):
-                    sfiles.append(disks[each].find('source').get('file'))
+                    if disks[each].find('source') is not None:
+                        sfiles.append(disks[each].find('source').get('file'))
                 logging.debug("All sources are %s", sfiles)
                 if disk_dict['file'] in sfiles:
                     logging.info("Found source %s in diskspec",
@@ -367,6 +369,7 @@ def run(test, params, env):
     domain_state = params.get("domain_state")
     memspec_opts = params.get("memspec_opts")
     config_format = "yes" == params.get("config_format", "no")
+    default_format = "yes" == params.get("default_format", "no")
     snapshot_image_format = params.get("snapshot_image_format")
     diskspec_opts = params.get("diskspec_opts")
     create_autodestroy = 'yes' == params.get("create_autodestroy", "no")
@@ -690,7 +693,7 @@ def run(test, params, env):
                     if os.path.exists(disk_path):
                         os.unlink(disk_path)
         snap_path = os.path.join(tmp_dir, snapshot_file)
-        if config_format and not invalid_compress_format:
+        if (config_format and not invalid_compress_format) or default_format:
             if os.path.exists(snap_path):
                 os.remove(snap_path)
 
