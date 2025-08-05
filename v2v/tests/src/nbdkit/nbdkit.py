@@ -96,7 +96,7 @@ EOF
             vddk_thumbprint = '11'
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
-  --filter=cacheextents --filter=retry vddk server=%s user=%s password=+%s vm=%s \
+  --filter=retry vddk server=%s user=%s password=+%s vm=%s \
   file='%s' libdir=/home/vddk_libdir --run 'nbdinfo $uri' thumbprint=%s
 """ % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_thumbprint)
             # get thumbprint by a trick
