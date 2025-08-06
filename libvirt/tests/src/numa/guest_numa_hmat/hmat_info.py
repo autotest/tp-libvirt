@@ -17,6 +17,7 @@ from virttest import ssh_key
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_version import VersionInterval
 
 from provider.numa import numa_base
 from provider.virtual_network import network_base
@@ -51,19 +52,26 @@ def verify_guest_dmesg(test_obj, vm_session):
     :param test_obj: NumaTest object
     :param vm_session: vm session
     """
-    dmesg_pattern = test_obj.params.get("dmesg_pattern")
-    search_list = dmesg_pattern.split(",")
-    cmd_dmesg = 'dmesg | grep hmat'
-    status, output = vm_session.cmd_status_output(cmd_dmesg)
-    if status:
-        test_obj.test.error("Can not find any message with command '%s'" % cmd_dmesg)
+    vm_kernel_version = vm_session.cmd_output('uname -r').strip().split('-')[0]
+    guest_req_kernel_list = []
+    for k, v in test_obj.params.items():
+        if k.startswith("guest_required_kernel_"):
+            guest_req_kernel_list.append(v)
+    vm_kernel_version = vm_session.cmd_output('uname -r').strip().split('-')[0]
+    if any(vm_kernel_version in VersionInterval(req) for req in guest_req_kernel_list):
+        dmesg_pattern = test_obj.params.get("dmesg_pattern")
+        search_list = dmesg_pattern.split(",")
+        cmd_dmesg = 'dmesg | grep hmat'
+        status, output = vm_session.cmd_status_output(cmd_dmesg)
+        if status:
+            test_obj.test.error("Can not find any message with command '%s'" % cmd_dmesg)
 
-    for search_item in search_list:
-        if not output.count(search_item):
-            test_obj.test.fail("Expect '%s' in guest dmesg, but not found" % search_item)
-        else:
-            test_obj.test.log.debug("Verify '%s' in guest dmesg - PASS", search_item)
-    test_obj.test.log.debug("Verify guest dmesg - PASS")
+        for search_item in search_list:
+            if not output.count(search_item):
+                test_obj.test.fail("Expect '%s' in guest dmesg, but not found" % search_item)
+            else:
+                test_obj.test.log.debug("Verify '%s' in guest dmesg - PASS", search_item)
+        test_obj.test.log.debug("Verify guest dmesg - PASS")
 
 
 def verify_qemu_command_line(test_obj):
