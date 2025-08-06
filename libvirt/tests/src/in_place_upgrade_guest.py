@@ -202,7 +202,7 @@ def verify_upgrade_succeeded(test, params, vm, session, target_release, target_p
         test.log.info("Guest page size before upgrade (%s) does not match page size after upgrade (%s)" %
                       (target_page_size, post_page_size))
         test.log.info("Attempting temporary workaround to update the guest default kernel")
-        kernel_pattern = ".*el%s.*%sk" % (target_release.replace(".", "_"), int(target_page_size) // 1024)
+        kernel_pattern = ".*el%s*.*%sk" % (target_major_release, int(target_page_size) // 1024)
         kernel_version = utils_test.get_available_kernel_paths(session, kernel_pattern)[0]
         utils_test.update_vm_default_kernel(vm, kernel_version, reboot=True, guest_arch_name=vm_arch_name, timeout=900)
 
