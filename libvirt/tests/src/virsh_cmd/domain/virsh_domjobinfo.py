@@ -1,8 +1,10 @@
-import os
-import subprocess
-import logging as log
-import time
+import fcntl
 import locale
+import logging as log
+import os
+import select
+import subprocess
+import time
 
 from avocado.utils import process as host_process
 
@@ -137,6 +139,43 @@ def run(test, params, env):
     # Get the subprocess of VM.
     # The command's effect is to get domjobinfo of running domain job.
     # So before do "domjobinfo", we must create a job on the domain.
+    def _clean_up_fifo(fifo_file):
+        """
+        Clean up fifo file.
+
+        params: fifo_file: the fifo file path.
+        """
+        if os.path.exists(fifo_file):
+            try:
+                os.unlink(fifo_file)
+            except OSError as detail:
+                logging.info("Can't remove %s: %s", fifo_file, detail)
+
+    def _get_jobprocess_final_info(jobprocess):
+        """
+        Get the job process final information.
+
+        params: jobprocess: the job process object.
+        """
+        info = {
+            'timeout': False,
+            'returncode': None,
+            'output': None,
+            'error': None
+        }
+        if jobprocess.poll() is None:
+            try:
+                jobprocess.kill()
+                info.update({'timeout': True})
+            except OSError:
+                pass
+        output, error = jobprocess.communicate()
+        returncode = jobprocess.returncode
+        info.update({'output': output, 'error': error,
+                    'returncode': returncode})
+        logging.info("Job suprocess result is %s", info)
+        return info
+
     process = None
     if start_vm == "yes" and status_error == "no":
         if os.path.exists(tmp_pipe):
@@ -150,8 +189,20 @@ def run(test, params, env):
         else:
             process = get_subprocess(action, vm_name, tmp_pipe, None)
 
-        f = open(tmp_pipe, 'rb')
-        dummy = f.read(1024 * 1024).decode(locale.getpreferredencoding(), 'ignore')
+        f = os.open(tmp_pipe, os.O_RDONLY | os.O_NONBLOCK)
+        ready = select.select([f], [], [], 60)
+        if not ready[0]:
+            os.close(f)
+            _clean_up_fifo(tmp_pipe)
+            job_process_info = _get_jobprocess_final_info(process)
+            test.fail(
+                "Job subprocess did not write fifo file in 60 seconds, "
+                "result is: %s" % job_process_info)
+        current_flags = fcntl.fcntl(f, fcntl.F_GETFL)
+        new_flags = current_flags & ~os.O_NONBLOCK
+        fcntl.fcntl(f, fcntl.F_SETFL, new_flags)
+        fd = os.fdopen(f, 'rb')
+        dummy = fd.read(1024 * 1024).decode(locale.getpreferredencoding(), 'ignore')
 
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
@@ -176,21 +227,13 @@ def run(test, params, env):
     status = ret.exit_status
 
     # Clear process env
-    if process and f:
-        dummy = f.read()
-        f.close()
-
-        try:
-            os.unlink(tmp_pipe)
-        except OSError as detail:
-            logging.info("Can't remove %s: %s", tmp_pipe, detail)
+    if process and fd:
+        fd.read()
+        fd.close()
 
     if process:
-        if process.poll():
-            try:
-                process.kill()
-            except OSError:
-                pass
+        _get_jobprocess_final_info(process)
+    _clean_up_fifo(tmp_pipe)
 
     # Get completed domjobinfo with --keep-completed option, next completed domjobinfo gathering will still get statistics.
     if keep_complete:
