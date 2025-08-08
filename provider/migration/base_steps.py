@@ -4,6 +4,8 @@ import time
 
 from six import itervalues
 
+from avocado.utils import process
+
 from virttest import data_dir
 from virttest import migration
 from virttest import libvirt_remote
@@ -318,10 +320,50 @@ class MigrationBase(object):
             self.check_vm_cont_ping(check_on_dest=True)
         self.check_local_and_remote_log()
 
+    def get_remote_runner(self):
+        """
+        Get a remote runner object for remote host.
+
+        :return: RemoteRunner object
+        """
+        server_ip = self.params.get("server_ip")
+        server_user = self.params.get("server_user", "root")
+        server_pwd = self.params.get("server_pwd")
+        runner = remote.RemoteRunner(host=server_ip,
+                                     username=server_user,
+                                     password=server_pwd)
+        if not runner:
+            self.test.error("Failed to get a RemoteRunner for remote host:%s" % server_ip)
+        return runner
+
+    def force_cleanup_files(self):
+        """
+        Forcely cleanup files uncleaned by daemons
+        """
+        def _check_res(cmd, cmd_result, location="remote"):
+            if cmd_result.exit_status:
+                self.test.error("Failed to run '%s' on %s: %s"
+                                % (cmd, location, cmd_result))
+            else:
+                self.test.log.debug("Successfully run '%s' on %s", cmd, location)
+
+        risky_files = ["/var/lib/libvirt/qemu/nvram/%s_VARS.qcow2" % self.vm.name,
+                       "/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % self.vm.name,
+                       "/var/lib/libvirt/qemu/domain-*-%s/master-key.aes" % self.vm.name]
+        clean_files_str = " ".join(risky_files)
+        cmd = "rm -f %s" % clean_files_str
+
+        if self.migration_test.ret and int(self.migration_test.ret.exit_status) != 0:
+            self.test.log.debug("Forcely cleanup risky files since the last migration fails")
+            remote_runner = self.get_remote_runner()
+            cmd_result = remote.run_remote_cmd(cmd, self.params, remote_runner)
+            _check_res(cmd, cmd_result)
+            cmd_result = process.run(cmd, verbose=True, ignore_status=True)
+            _check_res(cmd, cmd_result, location="local")
+
     def cleanup_default(self):
         """
         Cleanup steps by default
-
         """
         self.vm.connect_uri = self.src_uri
 
@@ -334,6 +376,7 @@ class MigrationBase(object):
         # Clean VM on destination and source
         self.migration_test.cleanup_vm(self.vm, dest_uri)
         self.orig_config_xml.sync()
+        self.force_cleanup_files()
 
     def setup_connection(self):
         """
