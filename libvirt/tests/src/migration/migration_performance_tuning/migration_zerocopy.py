@@ -1,5 +1,3 @@
-from avocado.utils import distro
-
 from virttest import libvirt_version
 from virttest import utils_misc
 from virttest import virsh
@@ -20,15 +18,12 @@ def run(test, params, env):
     """
     def setup_params():
         """
-        According to bug 2169733, multifd and postcopy migration will fail
-        on RHEL 8. So update some parameters for postcopy cases.
-        Disable postcopy + multifd migration in qemu-kvm-8.1.0.
+        From qemu-kvm-10.0.0-8, postcopy + multifd is supported.
 
         """
         postcopy_options = params.get("postcopy_options")
 
-        if (utils_misc.compare_qemu_version(8, 1, 0, is_rhev=False) or
-                (distro.detect().name == 'rhel' and int(distro.detect().version) == 8)):
+        if not utils_misc.compare_qemu_version(10, 0, 0, is_rhev=False):
             if postcopy_options:
                 params.update({'action_during_mig': ''})
                 params.update({'status_error': 'yes'})
