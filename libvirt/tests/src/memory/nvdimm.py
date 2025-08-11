@@ -14,6 +14,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_libvirt import libvirt_bios
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -27,21 +28,13 @@ def check_boot_config(session, test):
 
     :param session: vm session
     :param test: test object
-    :raises: test.fail if checking fails
     """
     check_list = [
         'CONFIG_LIBNVDIMM=m',
         'CONFIG_BLK_DEV_PMEM=m',
         'CONFIG_ACPI_NFIT=m'
     ]
-    current_boot = session.cmd('uname -r').strip()
-    content = session.cmd('cat /boot/config-%s' % current_boot).strip()
-    for item in check_list:
-        if item in content:
-            logging.info(item)
-        else:
-            logging.error(item)
-            test.fail('/boot/config content not correct')
+    libvirt_bios.check_boot_config(session, test, check_list)
 
 
 def check_file_in_vm(session, path, test, expect=True):
