@@ -102,7 +102,7 @@ def run(test, params, env):
     pre_path_options = params.get('pre_path_options', '')
     after_state = params.get('after_state', 'running')
     rand_id = utils_misc.generate_random_string(3)
-    save_path = f'/var/tmp/{vm_name}_{rand_id}.save'
+    save_path = f'/var/lib/libvirt/qemu/save/{vm_name}_{rand_id}.save'
     save_args = pre_path_options + ' ' + save_path
     check_cmd = params.get('check_cmd', '')
     check_cmd = check_cmd.format(
