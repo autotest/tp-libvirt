@@ -120,6 +120,7 @@ def run(test, params, env):
         if os.path.exists(tmp_pipe):
             os.unlink(tmp_pipe)
         os.mkfifo(tmp_pipe)
+        process.run("chcon -t virtqemud_t %s" % tmp_pipe)
 
         process = get_subprocess(action, vm_name, tmp_pipe, remote_uri)
 
