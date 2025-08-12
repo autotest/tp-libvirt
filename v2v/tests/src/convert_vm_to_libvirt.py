@@ -37,6 +37,8 @@ def run(test, params, env):
     vpx_pwd_file = params.get("vpx_passwd_file")
     vpx_dc = params.get("vpx_dc")
     esx_ip = params.get("esx_hostname")
+    esxi_password = params.get('esxi_password')
+    src_uri_type = params.get('src_uri_type')
     hypervisor = params.get("hypervisor")
     input_mode = params.get("input_mode")
     target = params.get("target")
@@ -58,10 +60,10 @@ def run(test, params, env):
 
     if hypervisor == "esx":
         source_ip = vpx_ip
-        source_pwd = vpx_pwd
+        source_pwd = vpx_pwd if src_uri_type != 'esx' else esxi_password
         # Create password file to access ESX hypervisor
         with open(vpx_pwd_file, 'w') as f:
-            f.write(vpx_pwd)
+            f.write(source_pwd)
     elif hypervisor == "xen":
         source_ip = xen_ip
         source_pwd = xen_pwd
@@ -80,6 +82,8 @@ def run(test, params, env):
 
     # Create libvirt URI for the source node
     v2v_uri = utils_v2v.Uri(hypervisor)
+    if src_uri_type == 'esx':
+        vpx_dc = None
     remote_uri = v2v_uri.get_uri(source_ip, vpx_dc, esx_ip)
     LOG.debug("Remote host uri for converting: %s", remote_uri)
 
@@ -124,6 +128,8 @@ def run(test, params, env):
                   'vddk_thumbprint': vddk_thumbprint,
                   'vddk_libdir': vddk_libdir,
                   'vddk_libdir_src': vddk_libdir_src,
+                  'esxi_password': esxi_password,
+                  'src_uri_type': src_uri_type,
                   'params': params
                   }
     if vpx_dc:
