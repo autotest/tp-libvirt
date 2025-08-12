@@ -26,7 +26,7 @@ def run(test, params, env):
     log_file = params.get('libvirtd_debug_file')
     save_format = params.get('save_format')
     rand_id = '_' + utils_misc.generate_random_string(3)
-    save_path = f'/var/tmp/{vm_name}_{rand_id}.save'
+    save_path = f'/var/lib/libvirt/qemu/save/{vm_name}_{rand_id}.save'
     check_cmd = params.get('check_cmd', '')
     check_cmd = check_cmd.format(save_path) if check_cmd else check_cmd
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
