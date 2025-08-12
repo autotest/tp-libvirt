@@ -10,6 +10,8 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
+from avocado.utils import process
+
 from provider.save import save_base
 from provider.security import security_base
 
@@ -100,7 +102,7 @@ def run(test, params, env):
             os.chown(path, int(label_list[0]), int(label_list[1]))
         security_base.restore_tpm_perms(vmxml, params)
         bkxml.sync()
-        utils_disk.umount(nfs['export_dir'], nfs_mount_dir)
+        process.run("umount %s" % nfs_mount_dir, ignore_status=False, shell=True)
         os.rmdir(nfs_mount_dir)
         if os.path.exists(save_path):
             os.remove(save_path)
