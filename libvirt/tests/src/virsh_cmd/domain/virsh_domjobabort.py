@@ -4,6 +4,8 @@ import logging as log
 import time
 import locale
 
+from avocado.utils import process as U_process
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import migration
@@ -120,7 +122,7 @@ def run(test, params, env):
         if os.path.exists(tmp_pipe):
             os.unlink(tmp_pipe)
         os.mkfifo(tmp_pipe)
-        process.run("chcon -t virtqemud_t %s" % tmp_pipe)
+        U_process.run("chcon -t virtqemud_t %s" % tmp_pipe, shell=True, ignore_status=True)
 
         process = get_subprocess(action, vm_name, tmp_pipe, remote_uri)
 
