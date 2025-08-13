@@ -60,6 +60,10 @@ def prepare_disks_local(params, vm_name):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if src_driver_type_1 == "rbd":
         ceph_pool_name = params.get("ceph_pool_name")
+        ret = process.run(f"rbd ls {ceph_pool_name} | grep '{src_disk1_name}'", shell=True,
+                          verbose=True, ignore_status=True)
+        if not ret.exit_status:
+            process.run(f"rbd rm {ceph_pool_name}/{src_disk1_name}", shell=True, verbose=True)
         cmd1 = f"rbd create {ceph_pool_name}/{src_disk1_name} --size={disk_size}"
         process.run(cmd1, shell=True, verbose=True)
         cmd2 = f"rbd device map --pool {ceph_pool_name} {src_disk1_name}"
@@ -98,6 +102,9 @@ def prepare_disks_remote(params):
                                          r'[$#%]')
     if dest_driver_type_1 == "rbd":
         ceph_pool_name = params.get("ceph_pool_name")
+        ret = remote.run_remote_cmd(f"rbd ls {ceph_pool_name} | grep '{dest_disk1_name}'", params, ignore_status=True)
+        if not ret.exit_status:
+            remote.run_remote_cmd(f"rbd rm {ceph_pool_name}/{dest_disk1_name}", params)
         cmd1 = f"rbd create {ceph_pool_name}/{dest_disk1_name} --size={disk_size}"
         remote.run_remote_cmd(cmd1, params)
         cmd2 = f"rbd device map --pool {ceph_pool_name} {dest_disk1_name}"
