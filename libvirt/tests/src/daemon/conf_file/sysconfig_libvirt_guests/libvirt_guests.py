@@ -220,9 +220,9 @@ def run(test, params, env):
 
     def setup_nfs_backend_guest(vmxml_backup):
         # nfs_server setup
-        nfs_server = libvirt.setup_or_cleanup_nfs(True)
-        nfs_export_dir = nfs_server['export_dir']
-        logging.debug("nfs dir is %s", nfs_export_dir)
+        nfs_server = libvirt.setup_or_cleanup_nfs(True, is_mount=True)
+        nfs_mount_dir = nfs_server['mount_dir']
+        logging.debug("nfs dir is %s", nfs_mount_dir)
 
         # change the original xml and image path
         for dom in vms:
@@ -231,8 +231,8 @@ def run(test, params, env):
             disk_xml = vmxml.get_devices(device_type="disk")[0]
             orig_image_path_name = disk_xml.source.attrs['file']
 
-            libvirt.update_vm_disk_source(dom.name, nfs_export_dir)
-            shutil.copy(orig_image_path_name, nfs_export_dir)
+            libvirt.update_vm_disk_source(dom.name, nfs_mount_dir)
+            shutil.copy(orig_image_path_name, nfs_mount_dir)
 
         # set the selinux bool
         if virt_use_nfs:
@@ -268,6 +268,9 @@ def run(test, params, env):
 
     main_vm_name = params.get("main_vm")
     main_vm = env.get_vm(main_vm_name)
+    # Back up domain XML before the test
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(main_vm_name)
+    vmxml_bakup = vmxml.copy()
 
     on_boot = params.get("on_boot")
     on_shutdown = params.get("on_shutdown")
@@ -392,11 +395,11 @@ def run(test, params, env):
         if libvirt_guests_file_create:
             os.remove(libvirt_guests_file)
 
-        if nfs_vol:
-            cleanup_nfs_backend_guest(vmxml_backup)
-
         if libvirt_guests_service.status():
             libvirt_guests_service.stop()
 
         source_path = os.path.dirname(libvirt_disk.get_first_disk_source(vms[0]))
         process.run("cd %s; rm -rf *-clone*" % source_path, shell=True)
+        if nfs_vol:
+            cleanup_nfs_backend_guest(vmxml_backup)
+        vmxml_bakup.sync(options="--managed-save")
