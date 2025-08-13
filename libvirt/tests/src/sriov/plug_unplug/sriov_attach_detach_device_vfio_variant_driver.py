@@ -27,7 +27,7 @@ def run(test, params, env):
             if vf_pci_addr.get('type'):
                 del vf_pci_addr['type']
             iface_dict = eval(params.get('hostdev_dict', '{}'))
-        driver_dict = eval(params.get("pf_pci", "{}"))
+        driver_dict = eval(params.get("driver_dict", "{}"))
         if driver_dict:
             iface_dict.update(driver_dict)
         managed = params.get("managed")
