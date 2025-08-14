@@ -1,5 +1,6 @@
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -25,6 +26,7 @@ def run(test, params, env):
     status_error = ("yes" == params.get("status_error", "no"))
     options = params.get("domfsthaw_options", "")
     vm_ref = params.get("vm_ref", "")
+    fail_patts = params.get("fail_patts", [])
 
     # Do backup for origin xml
     xml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -66,6 +68,8 @@ def run(test, params, env):
                 test.fail("Fail to do virsh domfsthaw, error %s" %
                           cmd_result.stderr)
         else:
+            if fail_patts:
+                libvirt.check_result(cmd_result, fail_patts)
             if cmd_result.exit_status == 0:
                 test.fail("Command 'virsh domfsthaw' failed ")
 
