@@ -1,3 +1,6 @@
+import os
+import stat
+
 from avocado.utils import process
 
 from virttest import virsh
@@ -66,6 +69,8 @@ def run(test, params, env):
     key_type = params.get("key_type", "rsa")
     key_file = ("yes" == params.get("key_file", "yes"))
     status_error = ("yes" == params.get("status_error", "no"))
+    unprivileged_user = params.get('unprivileged_user')
+    uri = params.get("virsh_uri")
 
     if not libvirt_version.version_compare(6, 10, 0):
         test.cancel("get/set-user-sshkeys command are not supported "
@@ -87,6 +92,7 @@ def run(test, params, env):
         process.run('useradd %s' % host_test_user, shell=True)
         pub_key = ssh_key.get_public_key(client_user=host_test_user)
         pub_key_path = "/home/%s/.ssh/id_rsa.pub" % host_test_user
+        os.chmod(pub_key_path, stat.S_IROTH)
         if not key_file:
             pub_key_path = None
 
@@ -101,41 +107,44 @@ def run(test, params, env):
             options = pub_key_path
 
         result = virsh.set_user_sshkeys(vm_name, guest_user, options,
-                                        ignore_status=True, debug=True)
+                                        ignore_status=True,
+                                        unprivileged_user=unprivileged_user,
+                                        uri=uri, debug=True)
         libvirt.check_result(result, expected_fails=[],
                              any_error=status_error)
 
-        key_authorized, user_sshkeys = check_user_sshkeys(guest_user, pub_key)
-        if not option:
-            if not key_authorized:
-                test.fail("The key should be added, please check the user's "
-                          "authorized keys %s" % user_sshkeys)
-            if not check_ssh_conn(host_test_user, guest_user, vm_ip):
-                test.fail("ssh connection to guest should be successful")
-        if "--remove" in option:
-            pre_added_key_authorized, _ = check_user_sshkeys(guest_user,
-                                                             pre_added_key)
-            if key_authorized or not pre_added_key_authorized:
-                test.fail("The key should be removed, please check the user's "
-                          "authorized keys %s" % user_sshkeys)
-            if check_ssh_conn(host_test_user, guest_user, vm_ip):
-                test.fail("ssh connection to guest should fail")
-        if "--reset" in option:
-            if key_file:
-                pre_added_key_authorized, _ = check_user_sshkeys(guest_user,
-                                                                 pre_added_key)
-                if not key_authorized or pre_added_key_authorized:
-                    test.fail("The key in key_file should be added, and other keys "
-                              "should be deleted. please check the user's"
+        if not status_error:
+            key_authorized, user_sshkeys = check_user_sshkeys(guest_user, pub_key)
+            if not option:
+                if not key_authorized:
+                    test.fail("The key should be added, please check the user's "
                               "authorized keys %s" % user_sshkeys)
                 if not check_ssh_conn(host_test_user, guest_user, vm_ip):
                     test.fail("ssh connection to guest should be successful")
-            else:
-                if user_sshkeys:
-                    test.fail("All keys should be removed, please check the user's "
+            if "--remove" in option:
+                pre_added_key_authorized, _ = check_user_sshkeys(guest_user,
+                                                                 pre_added_key)
+                if key_authorized or not pre_added_key_authorized:
+                    test.fail("The key should be removed, please check the user's "
                               "authorized keys %s" % user_sshkeys)
                 if check_ssh_conn(host_test_user, guest_user, vm_ip):
                     test.fail("ssh connection to guest should fail")
+            if "--reset" in option:
+                if key_file:
+                    pre_added_key_authorized, _ = check_user_sshkeys(guest_user,
+                                                                     pre_added_key)
+                    if not key_authorized or pre_added_key_authorized:
+                        test.fail("The key in key_file should be added, and other keys "
+                                  "should be deleted. please check the user's"
+                                  "authorized keys %s" % user_sshkeys)
+                    if not check_ssh_conn(host_test_user, guest_user, vm_ip):
+                        test.fail("ssh connection to guest should be successful")
+                else:
+                    if user_sshkeys:
+                        test.fail("All keys should be removed, please check the user's "
+                                  "authorized keys %s" % user_sshkeys)
+                    if check_ssh_conn(host_test_user, guest_user, vm_ip):
+                        test.fail("ssh connection to guest should fail")
     finally:
         session = vm.wait_for_login()
         session.cmd_output('userdel -r %s' % guest_user)
