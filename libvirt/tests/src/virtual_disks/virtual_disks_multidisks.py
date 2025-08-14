@@ -586,8 +586,8 @@ def run(test, params, env):
             session = vm.wait_for_login()
             target_name, _ = libvirt_disk.get_non_root_disk_name(session)
             cmd = ("fdisk -l  /dev/{0} && mkfs.ext4 -F /dev/{0} && "
-                   "mkdir -p /test && mount /dev/{0} /test && "
-                   "dd if=/dev/zero of=/test/transient.txt bs=1M count=300 && sync"
+                   "mount /dev/{0} /mnt && "
+                   "dd if=/dev/zero of=/mnt/transient.txt bs=1M count=300 && sync"
                    .format(target_name))
             status, output = session.cmd_status_output(cmd)
             if status != 0:
@@ -600,10 +600,10 @@ def run(test, params, env):
             vm.start()
             session = vm.wait_for_login()
 
-            cmd = ("mkdir -p /test && mount /dev/{0} /test &&  ls -l /test/ && ls -l /test/transient.txt"
+            cmd = ("mount /dev/{0} /mnt &&  ls -l /mnt/ && ls -l /mnt/transient.txt"
                    .format(target_name))
             status, output = session.cmd_status_output(cmd)
-            logging.info("check /test/transient.txt file output in VM: %s", output.strip())
+            logging.info("check /mnt/transient.txt file output in VM: %s", output.strip())
             if status == 0:
                 session.close()
                 test.fail("Still find file in transient disk after VM restart due to: %s" % output.strip())
