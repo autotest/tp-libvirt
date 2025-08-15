@@ -5,11 +5,13 @@ Test module for timer management.
 import os
 import logging as log
 import time
+import aexpect
 
 from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import utils_test
+from virttest import utils_misc
 from virttest import virsh
 from virttest import data_dir
 from virttest import virt_vm
@@ -243,21 +245,25 @@ def numeric_timezone(tz_name="Europe/London"):
     return numeric_tz
 
 
-def manipulate_vm(vm, operation, params=None):
+def manipulate_vm(vm, stress_type, params=None):
     """
     Manipulate the VM.
 
     :param vm: VM instance
-    :param operation: stress_in_vms, inject_nmi, dump, suspend_resume
-                      or save_restore
+    :param stress_type: stress_in_vms, stress_on_host, inject_nmi,
+                      dump, suspend_resume, or save_restore
     :param params: Test parameters
     """
     err_msg = ''
-    # Special operations for test
-    if operation == "stress":
-        logging.debug("Load stress in VM")
-        err_msg = utils_test.load_stress(operation, params=params, vms=[vm])[0]
-    elif operation == "inject_nmi":
+    # Special stress types for test
+    if stress_type == "stress_in_vms":
+        # Already loaded stress in vm
+        # Passing to indicate this is a supported stress_type
+        pass
+    elif stress_type == "stress_on_host":
+        logging.debug("Load stress on host")
+        err_msg = utils_test.load_stress(stress_type, params=params)
+    elif stress_type == "inject_nmi":
         inject_times = int(params.get("inject_times", 10))
         logging.info("Trying to inject nmi %s times", inject_times)
         while inject_times > 0:
@@ -266,7 +272,7 @@ def manipulate_vm(vm, operation, params=None):
                 virsh.inject_nmi(vm.name, debug=True, ignore_status=False)
             except process.CmdError as detail:
                 err_msg = "Inject nmi failed: %s" % detail
-    elif operation == "dump":
+    elif stress_type == "dump":
         dump_times = int(params.get("dump_times", 10))
         logging.info("Trying to dump vm %s times", dump_times)
         while dump_times > 0:
@@ -280,7 +286,7 @@ def manipulate_vm(vm, operation, params=None):
                 os.remove(dump_path)
             except OSError:
                 pass
-    elif operation == "suspend_resume":
+    elif stress_type == "suspend_resume":
         paused_times = int(params.get("paused_times", 10))
         logging.info("Trying to suspend/resume vm %s times", paused_times)
         while paused_times > 0:
@@ -290,7 +296,7 @@ def manipulate_vm(vm, operation, params=None):
                 virsh.resume(vm.name, debug=True, ignore_status=False)
             except process.CmdError as detail:
                 err_msg = "Suspend-Resume %s failed: %s" % (vm.name, detail)
-    elif operation == "save_restore":
+    elif stress_type == "save_restore":
         save_times = int(params.get("save_times", 10))
         logging.info("Trying to save/restore vm %s times", save_times)
         while save_times > 0:
@@ -309,7 +315,7 @@ def manipulate_vm(vm, operation, params=None):
         vm.cleanup_serial_console()
         vm.create_serial_console()
     else:
-        err_msg = "Unsupported operation in this function: %s" % operation
+        err_msg = "Unsupported stress_type in this function: %s" % stress_type
     return err_msg
 
 
@@ -331,6 +337,14 @@ def translate_timer_name(timer_name):
         logging.warn('Unrecognized timer name %s', timer_name)
     return clock_name
 
+
+def app_running(vstress, session):
+    """
+    check whether app really run in background
+    """
+    return (
+        session.cmd_status(vstress.check_cmd, timeout=vstress.stress_shell_timeout) == 0
+    )
 
 def test_timers_in_vm(test, vm, params):
     """
@@ -354,6 +368,23 @@ def test_timers_in_vm(test, vm, params):
     set_host_timezone(test, host_tz)
     syncup_host_time(test)
 
+    stress_type = params.get("stress_type")
+    if stress_type == "stress_in_vms":
+        # Must set up stress in the vm before set_clock_xml() removes the vm's network interfaces
+        logging.debug("Load stress in VM")
+        vm.start()
+        fail_info = []
+        # fail_info = utils_test.load_stress(stress_type, params=params, vms=[vm])
+        vstress = utils_test.VMStress(
+            vm,
+            stress_type.split("_")[0],
+            params,
+            download_type="file",
+        )
+        vstress.install()
+        if fail_info:
+            test.fail("Load stress in VM failed: %s" % fail_info)
+
     # Confirm vm is down for editing
     if vm.is_alive():
         vm.destroy()
@@ -363,15 +394,44 @@ def test_timers_in_vm(test, vm, params):
 
     # Logging vm to set time
     vm.start()
-    vm.wait_for_serial_login()
+    session = vm.wait_for_serial_login()
     set_vm_timezone(test, vm, vm_tz, windows_test)
 
+    session.cmd_status(
+        "cd %s" % os.path.join(vstress.dst_path, vstress.base_name, vstress.work_path)
+    )
+    launch_cmds = "nohup %s %s > /dev/null &" % (vstress.stress_cmds, vstress.stress_args)
+    logging.info("Launch stress with command: %s", launch_cmds)
+    try:
+        session.cmd_status(launch_cmds)
+        # The background process sometimes does not return to
+        # terminate, if timeout, send a blank line afterward
+    except aexpect.ShellTimeoutError:
+        session.cmd_status("")
+    # wait for stress to start and then check, if not raise TestError
+    
+    logging.debug("before utils_misc.wait_for")
+    if not utils_misc.wait_for(
+        lambda : app_running(vstress, session),
+        vstress.stress_wait_for_timeout,
+        first=2.0,
+        text="wait for stress app to start",
+        step=1.0,
+    ):
+        raise exceptions.TestError("Stress app does not " "running as expected")
+
+    logging.debug("app_running")
+    logging.debug(app_running(vstress, session))
+    test.cancel("ending test early")
+
     # manipulate vm if necessary, linux guest only
-    operation = params.get("stress_type")
-    if operation is not None:
-        err_msg = manipulate_vm(vm, operation, params)
+    if stress_type is not None:
+        err_msg = manipulate_vm(vm, stress_type, params)
         if err_msg:
-            logging.error(err_msg)
+            test.fail(err_msg)
+            # needs to be fixed
+
+    test.cancel("ending test early")
 
     # Get expected utc distance between host and vm
     # with different offset(seconds)
@@ -554,8 +614,14 @@ def run(test, params, env):
         # run the test
         testcase(test, vm, params)
     finally:
+        logging.debug("in finally")
         vm.destroy()
         vmxml_backup.sync()
         os.rename("/etc/localtime.bk", '/etc/localtime')
-        if params.get("operation") == "stress_on_host":
-            utils_test.HostStress(params, "stress").unload_stress()
+        # if params.get("stress_type") == "stress_in_vms": 
+        #     logging.debug("in unloading stress") 
+        #     vm.start()
+        #     utils_test.unload_stress("stress_in_vms", params=params, vms=[vm])
+        #     vm.destroy()
+        if params.get("stress_type") == "stress_on_host":
+            utils_test.unload_stress("stress_on_host", params=params)
