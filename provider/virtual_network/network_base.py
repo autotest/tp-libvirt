@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import re
 import shutil
 
@@ -11,8 +12,10 @@ from virttest import utils_misc
 from virttest import utils_net
 from virttest import utils_package
 from virttest import virsh
+from virttest.utils_libvirt import libvirt_vmxml
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
+from provider.bootc_image_builder import bootc_image_build_utils
 
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 
@@ -457,3 +460,69 @@ def exec_netperf_test(params, env):
         s_func("systemctl start firewalld")
         # TODO: Start firewalld on guest
         process.run("systemctl start firewalld", ignore_status=True)
+
+
+def prepare_single_vm(params, vm_name, disk_path='', iface_list=[]):
+    """
+    Prepare single vm with specified disk image and interface.
+
+    :params vm_name: name of the vm.
+    :params disk_path: path of the disk image.
+    :params iface_list: list of interface for vm.
+    """
+    if vm_name not in virsh.dom_list().stdout_text:
+        params.update(
+            {"vm_name_bootc": vm_name,
+             "vm_disk_image_path": disk_path,
+             "iso_install_path": os.path.join(os.path.dirname(disk_path) + f"/{vm_name}.iso"),
+             "firmware": "efi"
+             })
+        if "win" in vm_name:
+            params.update({"disk_image_type": "anaconda-iso"})
+        else:
+            params.update({"disk_image_type": "qcow2"})
+        bootc_image_build_utils.virt_install_vm(params)
+
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml.del_device('interface', by_tag=True)
+    if iface_list:
+        if not isinstance(iface_list, list):
+            iface_list = [iface_list]
+        for index, iface_attrs in enumerate(iface_list):
+            libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs, index=index)
+    LOG.debug(f'Test with vm xml:\n{vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)}')
+
+
+def prepare_vms_with_iface(params, vm_image_path=[], iface_list=[]):
+    """
+    Prepare several vms with specified disk image path and interface.
+
+    :params vm_image_path: list of disk image path.
+    :params iface_list: list of interface.
+    """
+    vm_list = []
+    for image_path in vm_image_path:
+        guest_version = os.path.basename(image_path)
+        vm_name = "".join([re.findall("Win|RHEL", guest_version, re.IGNORECASE)[0], "_vm"])
+        LOG.debug("TEST_LOOP: Test '%s' with guest version '%s'.", vm_name, guest_version)
+
+        prepare_single_vm(params, vm_name, image_path, iface_list)
+        vm_list.append(vm_name)
+    return vm_list
+
+
+def set_guest_iface_mtu(test, vm_session, iface_name='', mtu=1500):
+    """
+    Set guest interface MTU.
+
+    :params vm_session: libvirt domain object session.
+    :params iface_name: name of the interface.
+    :params mtu: MTU value
+    """
+    if not iface_name:
+        iface_name = utils_net.get_linux_ifname(session=vm_session)[0]
+
+    cmd = 'sudo ifconfig {0} mtu {1} up'.format(iface_name, mtu)
+    status, output = vm_session.cmd_status_output(cmd)
+    if status:
+        test.fail("Fail to set mtu on guest interface: %s." % output)
