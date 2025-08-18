@@ -167,15 +167,43 @@ def run(test, params, env):
         """
         Check meminfo on guest.
         """
+        def _mem_hotplug_online(session):
+            """
+            Check if the memory is online when plugged by udevadm
+
+            params session: session object.
+            return: True if hotplugged memory is online, otherwise False.
+            """
+            check_ret = False
+            mem_block = session.cmd_output(
+                "ls -d /sys/devices/system/memory/memory[0-9]* | head -n 1").strip()
+            if mem_block:
+                pattern_str = r'DEVPATH=%s.*?ACTION=add.*?\.?state=online' % mem_block.replace(
+                    "/sys", "", 1)
+                pattern = re.compile(pattern_str, re.DOTALL)
+                test_output = session.cmd_output(
+                    'udevadm test --action="add" %s' % mem_block)
+                check_ret = bool(pattern.search(test_output))
+            return check_ret
+
+        def _create_mem_online_udev_rule(session):
+            """
+            Create a udev rule to make the hotplugged memory online
+
+            params session: session object.
+            """
+            udev_file = "/lib/udev/rules.d/80-hotplug-cpu-mem.rules"
+            udev_rules = ('SUBSYSTEM=="memory", ACTION=="add", TEST=="state",'
+                          ' ATTR{state}=="offline", ATTR{state}="online"')
+            cmd = ("grep memory %s || echo '%s' >> %s"
+                   % (udev_file, udev_rules, udev_file))
+            session.cmd(cmd)
+
         assert old_mem is not None
         session = vm.wait_for_login()
         # Hot-plugged memory should be online by udev rules
-        udev_file = "/lib/udev/rules.d/80-hotplug-cpu-mem.rules"
-        udev_rules = ('SUBSYSTEM=="memory", ACTION=="add", TEST=="state",'
-                      ' ATTR{state}=="offline", ATTR{state}="online"')
-        cmd = ("grep memory %s || echo '%s' >> %s"
-               % (udev_file, udev_rules, udev_file))
-        session.cmd(cmd)
+        if not _mem_hotplug_online(session):
+            _create_mem_online_udev_rule(session)
         # Wait a while for new memory to be detected.
         utils_misc.wait_for(
             lambda: vm.get_totalmem_sys(online) != int(old_mem), 30,
