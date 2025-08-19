@@ -62,7 +62,7 @@ class MigrationBase(object):
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         self.orig_config_xml = new_xml.copy()
 
-    def setup_default(self):
+    def setup_default(self, use_console=False):
         """
         Setup steps by default
 
@@ -92,7 +92,12 @@ class MigrationBase(object):
 
         if start_vm == "yes" and not self.vm.is_alive():
             self.vm.start()
-            self.vm.wait_for_login().close()
+            if use_console:
+                self.vm.cleanup_serial_console()
+                self.vm.create_serial_console()
+                self.vm.wait_for_serial_login().close()
+            else:
+                self.vm.wait_for_login().close()
         if self.check_cont_ping:
             self.test.log.debug("Starting ping command to check network during migration...")
             vm_session = self.vm.wait_for_login()
@@ -335,7 +340,7 @@ class MigrationBase(object):
         self.migration_test.cleanup_vm(self.vm, dest_uri)
         self.orig_config_xml.sync()
 
-    def setup_connection(self):
+    def setup_connection(self, use_console=False):
         """
         Setup connection
 
@@ -356,7 +361,7 @@ class MigrationBase(object):
 
         if migrate_desturi_port:
             self.remote_add_or_remove_port(migrate_desturi_port)
-        self.setup_default()
+        self.setup_default(use_console=use_console)
 
     def cleanup_connection(self):
         """
