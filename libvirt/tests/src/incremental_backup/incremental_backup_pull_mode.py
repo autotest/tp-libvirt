@@ -51,6 +51,7 @@ def run(test, params, env):
     local_user_password = params.get("local_user_password", "redhat")
     tmp_dir = data_dir.get_tmp_dir()
     with_data_file = "yes" == params.get("with_data_file", "no")
+    with_readonly = "yes" == params.get("with_readonly", "no")
     libvirt_version.is_libvirt_feature_supported(params)
     # Backup config
     scratch_type = params.get("scratch_type", "file")
@@ -336,6 +337,9 @@ def run(test, params, env):
             logging.debug("ROUND_%s Checkpoint Xml: %s",
                           backup_index, checkpoint_xml)
 
+            if backup_index == 0:
+                virsh.checkpoint_create(vm_name, checkpoint_xml.xml, debug=True)
+
             # Create some data in vdb
             dd_count = "1"
             dd_seek = str(backup_index * 10 + 10)
@@ -346,12 +350,32 @@ def run(test, params, env):
             session.close()
             # Start backup
             backup_options = backup_xml.xml + " " + checkpoint_xml.xml
+            if with_readonly:
+                backup_options = backup_xml.xml
+                if backup_index == 0:
+                    virsh.detach_device(vm_name, disk_xml,
+                                        flagstr="--config", debug=True)
+                    virsh.destroy(vm_name)
+                    disk_params.update({"readonly": "yes"})
+                    disk_xml_readonly = libvirt.create_disk_xml(disk_params)
+                    virsh.attach_device(vm.name, disk_xml_readonly,
+                                        flagstr="--config", debug=True)
+                    virsh.start(vm_name, debug=True)
+                    vm.wait_for_login().close()
+                    test.log.debug("The current disk xml is: %s",
+                                   virsh.dumpxml(vm_name, "--xpath //disk").stdout_text)
             if reuse_scratch_file:
                 backup_options += " --reuse-external"
             backup_result = virsh.backup_begin(vm_name, backup_options,
                                                ignore_status=True, debug=True)
             if backup_result.exit_status:
                 raise utils_backup.BackupBeginError(backup_result.stderr.strip())
+
+            if with_readonly:
+                res = virsh.domjobinfo(vm_name, debug=True).stdout_text
+                if "Backup" not in res:
+                    test.fail("domjobinfo doesn't have correct job in progress.")
+
             # If required, do some error operations during backup job
             error_operation = params.get("error_operation")
             if error_operation:
@@ -403,8 +427,9 @@ def run(test, params, env):
                     test.fail("scratch file/dev is not encrypted by LUKS")
             virsh.domjobabort(vm_name, debug=True)
 
-        for checkpoint_name in checkpoint_list:
-            virsh.checkpoint_delete(vm_name, checkpoint_name, debug=True)
+        if not with_readonly:
+            for checkpoint_name in checkpoint_list:
+                virsh.checkpoint_delete(vm_name, checkpoint_name, debug=True)
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
