@@ -220,7 +220,7 @@ def run(test, params, env):
         # Prepare domain
         set_agent_channel = "--guest" in options
         install_guest_agent = set_agent_channel
-        start_guest_agent = set_agent_channel
+        start_guest_agent = ("no" == params.get("no_start_qemu_ga", "no"))
         reset_domain(vm, pre_vm_state, maxvcpu, curvcpu,
                      sockets, cores, threads,
                      set_agent_channel, install_guest_agent, start_guest_agent)
