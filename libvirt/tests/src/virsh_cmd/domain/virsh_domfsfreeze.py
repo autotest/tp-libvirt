@@ -51,6 +51,7 @@ def run(test, params, env):
     has_channel = ("no" == params.get("no_qemu_ga", "no"))
     start_qemu_ga = ("no" == params.get("no_start_qemu_ga", "no"))
     status_error = ("yes" == params.get("status_error", "no"))
+    check_zero_freeze = ("yes" == params.get("check_zero_freeze", "no"))
 
     # Do backup for origin xml
     xml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -92,7 +93,12 @@ def run(test, params, env):
                                    uri=uri, debug=True)
         libvirt.check_exit_status(result, status_error)
         if not result.exit_status:
-            check_freeze(session)
+            if check_zero_freeze:
+                # If 0 filesystem is frozen, then executing another guest agent
+                # command should succeed
+                virsh.domtime(vm_ref, ignore_status=False)
+            else:
+                check_freeze(session)
 
     finally:
         # Do domain recovery
