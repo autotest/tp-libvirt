@@ -33,7 +33,7 @@ def get_hostdev_xml(address, model=""):
     return hostdev_xml
 
 
-def get_nodedev_xml(device_type, parent, uuid, domains=[]):
+def get_nodedev_xml(device_type, parent, uuid, domains=[], name=None):
     """
     Create and return the node device XML for Mediated Devices.
 
@@ -50,8 +50,8 @@ def get_nodedev_xml(device_type, parent, uuid, domains=[]):
         "type_id": device_type,
         "uuid": uuid,
     }
+    attrs = []
     if domains:
-        attrs = []
         cards = []
         doms = []
         for domain in domains:
@@ -62,7 +62,12 @@ def get_nodedev_xml(device_type, parent, uuid, domains=[]):
             if dom not in doms:
                 attrs.append({"name": "assign_domain", "value": "0x" + dom})
                 doms.append(dom)
-        attributes["attrs"] = attrs
+                attrs.append({"name": "assign_control_domain", "value": "0x" + dom})
+                doms.append(dom)
+    attributes["attrs"] = attrs
+    if name:
+        device_xml["name"] = name
+
     mdev_xml.setup_attrs(**attributes)
     device_xml.set_cap(mdev_xml)
     LOG.debug("Device XML: %s", device_xml)
