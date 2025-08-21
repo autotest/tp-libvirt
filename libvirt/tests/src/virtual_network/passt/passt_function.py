@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+from avocado.utils import process
 
 import aexpect
 from virttest import libvirt_version
@@ -13,6 +14,8 @@ from virttest.staging import service
 from virttest.staging import utils_memory
 from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_config import VirtQemudConfig
+from virttest import utils_libvirtd
 
 from provider.virtual_network import network_base
 from provider.virtual_network import passt
@@ -68,6 +71,8 @@ def run(test, params, env):
     iface_attrs['backend']['logFile'] = log_file
     vhostuser = 'yes' == params.get('vhostuser', 'no')
     multiple_nexthops = 'yes' == params.get('multiple_nexthops', 'no')
+    libvirtd_debug_file = params.get('libvirtd_debug_file')
+    warning_check = params.get('warning_check')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
@@ -91,6 +96,10 @@ def run(test, params, env):
             # update vm xml with shared memory and vhostuser interface
             vm_xml.VMXML.set_memoryBacking_tag(vm_name, access_mode="shared", hpgs=False, memfd=True, vmxml=vmxml)
             iface_attrs['type_name'] = 'vhostuser'
+            # update for virtqemud log
+            virtqemud_config = VirtQemudConfig()
+            virtqemud_config.log_outputs = "1:file:{0}".format(libvirtd_debug_file)
+            utils_libvirtd.Libvirtd('virtqemud').restart()
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
@@ -127,6 +136,15 @@ def run(test, params, env):
         if 'portForwards' in iface_attrs:
             passt.check_portforward(vm, host_ip, params, host_iface)
 
+        if vhostuser and warning_check:
+            # Exclude the warning like: 'warning : qemuDomainObjTaintMsg:5529 : Domain ... is tainted: custom-monitor'
+            check_warning = process.run('grep -v "qemuDomainObjTaintMsg.*custom-monitor {0}"|grep "warning :"'.format(libvirtd_debug_file),
+                                        shell=True,
+                                        ignore_status=True,
+                                        logger=LOG)
+            if check_warning.exit_status == 0:
+                test.fail('Get warnings in virtqemud log: {0}'.format(check_warning.stdout_text))
+
         vm_sess = vm.wait_for_serial_login(timeout=60)
         vm_sess.cmd('systemctl start firewalld')
         vm.destroy()
@@ -138,4 +156,7 @@ def run(test, params, env):
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)
+        if vhostuser:
+            virtqemud_config.restore()
+            process.run("rm {0}".format(libvirtd_debug_file), shell=True, ignore_status=True)
         utils_selinux.set_status(selinux_status)
