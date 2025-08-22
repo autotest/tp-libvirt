@@ -5,12 +5,10 @@ Test module for timer management.
 import os
 import logging as log
 import time
-import aexpect
 
 from avocado.utils import process
 
 from virttest import utils_test
-from virttest import utils_misc
 from virttest import virsh
 from virttest import data_dir
 from virttest import virt_vm
@@ -72,7 +70,6 @@ def set_clock_xml(test, vm, params):
         newtimers.append(newtimer)
     vmclockxml.timers = newtimers
     vmxml.clock = vmclockxml
-    vmxml.remove_all_device_by_type('interface')
     logging.debug("New vm XML:\n%s", vmxml)
     vmxml.sync()
     # Return timer elements for test verify
@@ -244,55 +241,25 @@ def numeric_timezone(test, tz_name="Europe/London"):
     return numeric_tz
 
 
-def is_stress_running(vstress, session):
-    """
-    check whether stress is running in the background of the vm
-
-    :param vstress: Instance of utils_test.VMStress
-    :param session: VM session
-    """
-    return (
-        session.cmd_status(vstress.check_cmd, timeout=vstress.stress_shell_timeout) == 0
-    )
-
-
-def manipulate_vm(test, vm, session, stress_type, params, vstress=None):
+def manipulate_vm(test, vm, stress_type, params):
     """
     Manipulate the VM.
 
     :param test: Test object
     :param vm: VM instance
-    :param session: VM session
     :param stress_type: stress_in_vms, stress_on_host, inject_nmi,
-                      dump, suspend_resume, or save_restore
+                        dump, suspend_resume, or save_restore
     :param params: Test parameters
-    :param vstress: Instance of utils_test.VMStress, only needed for stress_in_vms
     """
     # Special stress types for test
-    if stress_type == "stress_in_vms":
-        session.cmd_status("cd %s" % os.path.join(vstress.dst_path, vstress.base_name, vstress.work_path))
-        launch_cmds = "nohup %s %s > /dev/null &" % (vstress.stress_cmds, vstress.stress_args)
-        logging.info("Launch stress with command: %s", launch_cmds)
-        try:
-            session.cmd_status(launch_cmds)
-            # The background process sometimes does not return to
-            # terminate, if timeout, send a blank line afterward
-        except aexpect.ShellTimeoutError:
-            session.cmd_status("")
-        # wait for stress to start and then check if started
-        if not utils_misc.wait_for(
-            lambda: is_stress_running(vstress, session),
-            vstress.stress_wait_for_timeout,
-            first=2.0,
-            text="wait for stress app to start",
-            step=1.0,
-        ):
-            test.fail("Failed to load stress in the vm")
-    elif stress_type == "stress_on_host":
-        logging.debug("Load stress on host")
-        fail_info = utils_test.load_stress(stress_type, params=params)
+    if "stress" in stress_type:
+        if stress_type == "stress_in_vms":
+            vms = [vm]
+        else:
+            vms = None
+        fail_info = utils_test.load_stress(stress_type, params=params, vms=vms)
         if fail_info:
-            test.fail("Failed to load stress on host: %s", fail_info)
+            test.fail("Failed to load stress: %s", fail_info)
     elif stress_type == "inject_nmi":
         inject_times = int(params.get("inject_times", 10))
         logging.info("Trying to inject nmi %s times", inject_times)
@@ -391,31 +358,26 @@ def test_timers_in_vm(test, vm, params):
     set_host_timezone(test, host_tz)
     syncup_host_time(test)
 
-    # Must set up stress in the vm before set_clock_xml() removes the vm's network interfaces
-    stress_type = params.get("stress_type")
-    if stress_type == "stress_in_vms":
-        logging.debug("Load stress in VM")
-        vm.start()
-        vstress = utils_test.VMStress(vm, stress_type.split("_")[0], params, download_type="file")
-        vstress.install()
-
     # Confirm vm is down for editing
     if vm.is_alive():
         vm.destroy()
+
+    # stop and mask chronyd so that the vm timer will not automatically sync with NTP server
+    process.run("systemctl stop chronyd", shell=True)
+    process.run("systemctl mask chronyd", shell=True)
 
     # Config clock in VMXML
     set_clock_xml(test, vm, params)
 
     # Logging vm to set time
     vm.start()
-    session = vm.wait_for_serial_login()
+    vm.wait_for_serial_login()
     set_vm_timezone(test, vm, vm_tz, windows_test)
 
     # manipulate vm if necessary, linux guest only
-    if stress_type == "stress_in_vms":
-        manipulate_vm(test, vm, session, stress_type, params, vstress)
-    elif stress_type is not None:
-        manipulate_vm(test, vm, session, stress_type, params)
+    stress_type = params.get("stress_type")
+    if stress_type is not None:
+        manipulate_vm(test, vm, stress_type, params)
 
     # Get expected utc distance between host and vm
     # with different offset(seconds)
