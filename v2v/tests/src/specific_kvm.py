@@ -586,6 +586,44 @@ def run(test, params, env):
                 test.fail('check local output failed')
             if output_mode in ['null', 'json', 'local']:
                 return
+            if checkpoint == 'check_pnp_service':
+                #log_path = data_dir.get_tmp_dir()
+                log_path = '/home'
+                process.run("virsh start %s" % vm_name, shell=True)
+                LOG.info("Waiting 25 minutes to wait for guest finishing reboot")
+                time.sleep(25 * 60)
+
+                # Now check for the log file in the next 10 minutes
+                LOG.info("Checking for log file in 10 minutes")
+                found = False
+                end_time = time.time() + 5 * 60
+                while time.time() < end_time:
+                    count = 0
+                    process.run("virsh destroy %s" % vm_name, shell=True)
+                    process.run("virt-copy-out -d %s '/Program Files/Guestfs/Firstboot' %s" % (vm_name, log_path),
+                                shell=True)
+                    log_file = '%s/Firstboot/log.txt' % log_path
+                    if os.path.exists(log_file):
+                        if re.search(r'uninstalling firstboot service.*', process.run('cat %s/Firstboot/log.txt' % log_path,
+                                                                                      shell=True).stdout_text):
+                            found = True
+                            with open(log_file, "r", encoding="utf-8") as f:
+                                for line in f:
+                                    if re.search(r'The Plug and Play service is not available.*', line):
+                                        count += 1
+                                if count >= 2:
+                                    log_fail('Found drivers are not installed due to pnp services are not available')
+                                else:
+                                    break
+                        else:
+                            process.run("virsh start %s" % vm_name, shell=True)
+                            time.sleep(60)  # check every 1 minute
+                    else:
+                        process.run("virsh start %s" % vm_name, shell=True)
+                        time.sleep(60)  # check every 1 minute
+
+                if not found:
+                    log_fail("firstboot log is not generated")
 
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
