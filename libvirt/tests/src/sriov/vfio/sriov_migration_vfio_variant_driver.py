@@ -40,7 +40,7 @@ def run(test, params, env):
 
         test.log.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
 
-        migration_obj.setup_connection()
+        migration_obj.setup_connection(use_console=True)
         test.log.info("TEST_STEP: Migrate the VM to the target host.")
         migration_obj.run_migration()
         migration_obj.verify_default()
@@ -49,8 +49,12 @@ def run(test, params, env):
         if migrate_vm_back:
             test.log.info("TEST_STEP: Migrate back the VM to the source host.")
             migration_obj.run_migration_back()
-            migration_obj.migration_test.ping_vm(vm, params)
-            migration_obj.check_vm_cont_ping(False)
+            test_pf = params.get("test_pf")
+            if test_pf and sriov_vfio.is_linked(pf_name=test_pf):
+                migration_obj.migration_test.ping_vm(vm, params)
+                migration_obj.check_vm_cont_ping(False)
+            else:
+                test.log.debug(f"Skip ping vm due to no link to PF ")
 
     finally:
         orig_vm_xml.sync()
