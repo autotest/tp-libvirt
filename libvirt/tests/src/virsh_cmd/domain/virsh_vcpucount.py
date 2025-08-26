@@ -42,17 +42,18 @@ def reset_domain(vm, vm_state, maxvcpu, curvcpu, sockets,
         vm.start()
         if install_agent:
             vm.prepare_guest_agent(prepare_xml=False,
-                                   channel=False, start=False)
-        if start_agent:
-            vm.set_state_guest_agent(start=True)
+                                   channel=False, start=start_agent)
+        else:
+            vm.set_state_guest_agent(start=start_agent)
 
 
-def del_topology(vm, vm_state):
+def del_topology(vm, vm_state, start_agent):
     """
     Delete the topology definition from xml if present
 
     :param vm: vm object
     :param vm_state: the given vm state string "shut off" or "running"
+    :param start_agent: whether to start qemu-guest-agent service in vm
     """
     vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     topology = vm_xml.get_cpu_topology()
@@ -63,6 +64,7 @@ def del_topology(vm, vm_state):
         vm.destroy()
         vm.start()
         vm.wait_for_login()
+        vm.set_state_guest_agent(start=start_agent)
 
 
 def chk_output_running(output, expect_out, options, test):
@@ -197,7 +199,7 @@ def run(test, params, env):
     threads = int(params.get("threads", "1"))
     expect_msg = params.get("vcpucount_err_msg")
     livevcpu = curvcpu + threads
-    set_option = ["--config", "--config --maximum", "--live", "--guest"]
+    set_option = eval(params.get("set_option", '["--config"]'))
 
     # Early death
     # 1.1 More than two options not supported
@@ -220,7 +222,7 @@ def run(test, params, env):
         # Prepare domain
         set_agent_channel = "--guest" in options
         install_guest_agent = set_agent_channel
-        start_guest_agent = set_agent_channel
+        start_guest_agent = ("no" == params.get("no_start_qemu_ga", "no"))
         reset_domain(vm, pre_vm_state, maxvcpu, curvcpu,
                      sockets, cores, threads,
                      set_agent_channel, install_guest_agent, start_guest_agent)
@@ -231,7 +233,7 @@ def run(test, params, env):
             # Remove topology for maximum config
             # https://bugzilla.redhat.com/show_bug.cgi?id=1426220
             if idx == 1:
-                del_topology(vm, pre_vm_state)
+                del_topology(vm, pre_vm_state, start_guest_agent)
             # Hotplug domain vcpu
             result = virsh.setvcpus(vm_name, livevcpu, set_option[idx],
                                     ignore_status=True, debug=True)
