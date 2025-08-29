@@ -63,7 +63,7 @@ def run(test, params, env):
         if openfiles:
             expected_results.append(" --rlimit-nofile(\s|=)%s" % open_files_max)
         if sandbox_mode and sandbox_mode == "namespace":
-            expected_results.append(" --sandbox(\s|=)%s" % sandbox_mode)
+            expected_results.append("\s*(--)?sandbox(\s|=)%s" % sandbox_mode)
         logging.debug(f"Expected qemu cmdline pattern {expected_results}")
         return expected_results
 
@@ -345,6 +345,8 @@ def run(test, params, env):
             return
 
         if openfiles:
+            if not libvirt_version.version_compare(10, 6, 0):
+                test.cancel("openfiles is not supported before 10.6.0")
             with open('/proc/sys/fs/nr_open', 'r') as file:
                 open_files_max = file.read().strip()
         else:
