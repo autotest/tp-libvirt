@@ -109,9 +109,9 @@ def run(test, params, env):
         virsh.secret_set_value(secret_uuid, secret_passphrase, encode=True, debug=True)
         return secret_uuid
 
-    def write_datas():
+    def write_data():
         """
-        Write datas to the disk in guest.
+        Write data to the disk in guest.
         """
         dd_seek = params.get("dd_seek")
         dd_count = params.get("dd_count")
