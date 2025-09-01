@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 from avocado.utils import process
 from avocado.utils import service
@@ -143,6 +144,7 @@ def run(test, params, env):
             check_msg_in_libvirtd_log("virDomainAudit")
         elif test_scenario == "default_audit_log":
             vm.wait_for_login().close()
+            time.sleep(10)
             ausearch_audit_log()
         elif test_scenario == "concurrent_filters":
             check_concurrent_filters()
