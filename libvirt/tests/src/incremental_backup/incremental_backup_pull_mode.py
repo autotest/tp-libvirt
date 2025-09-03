@@ -337,7 +337,7 @@ def run(test, params, env):
             logging.debug("ROUND_%s Checkpoint Xml: %s",
                           backup_index, checkpoint_xml)
 
-            if backup_index == 0:
+            if backup_index == 0 and with_readonly:
                 virsh.checkpoint_create(vm_name, checkpoint_xml.xml, debug=True)
 
             # Create some data in vdb
