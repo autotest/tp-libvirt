@@ -30,6 +30,7 @@ logging = log.getLogger('avocado.' + __name__)
 # Prepare a generator for assigning ports
 global port_number_sequence
 port_number_sequence = itertools.count(1)
+tail = None
 
 
 class TestParams(object):
@@ -455,6 +456,18 @@ class SerialFile(AttachDeviceBase):
         return not self.test_params.status_error
 
 
+def _read_from_out_pipe(outpipe_path):
+    """
+    Starts reading from named out pipe.
+    Pipes have connection state and can become blocking for
+    qemu e.g. during boot process if not read from.
+
+    :param outpipe_path: the absolute path to the out pipe
+    """
+    global tail
+    tail = aexpect.Tail(command=f"tail -f {outpipe_path}")
+
+
 class SerialPipe(SerialFile):
 
     """
@@ -474,6 +487,8 @@ class SerialPipe(SerialFile):
             except OSError:
                 pass
             os.mkfifo(pipe_path)
+            if suffix == ".out":
+                _read_from_out_pipe(filepath + ".out")
 
     def init_device(self, index):
         return super(SerialPipe, self).init_device(index)  # stub for now
@@ -1057,6 +1072,8 @@ def run(test, params, env):
                         preboot_results=preboot_results,
                         pstboot_results=pstboot_results)
     finally:
+        if tail:
+            tail.kill()
         logging.info("Restoring VM from backup, then checking results")
         test_params.main_vm.destroy(gracefully=False,
                                     free_mac_addresses=False)
