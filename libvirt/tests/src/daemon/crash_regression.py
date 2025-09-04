@@ -283,6 +283,8 @@ def run(test, params, env):
         try:
             path.find_command('virtlogd')
             process.run('pkill virtlogd', ignore_status=True)
+            process.run("rm -rf /var/run/%s.pid" % serv_tmp,
+                        shell=True, ignore_status=True)
             process.run('systemctl restart virtlogd.socket', ignore_status=True)
             Libvirtd("libvirtd.socket").restart()
         except path.CmdNotFoundError:
