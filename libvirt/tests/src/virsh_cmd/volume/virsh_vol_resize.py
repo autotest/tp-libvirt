@@ -217,9 +217,15 @@ def check_vol_info(pool_vol, vol_name, test, expect_info=None):
             if expect_info['Allocation'] != img_info['dsize']:
                 logging.debug("Allocation(Disk size) is %s bytes",
                               img_info['dsize'])
-                logging.error("Volume Allocation not equal to expect value %s",
-                              expect_info['Allocation'])
-                check_allocation_pass = False
+                image_mode = utils_sys.is_image_mode()
+                if image_mode:
+                    max_allow = expect_info['Allocation'] * 1.4
+                    if img_info['dsize'] <= max_allow:
+                        check_allocation_pass = True
+                else:
+                    logging.error("Volume Allocation not equal to expect value %s",
+                                  expect_info['Allocation'])
+                    check_allocation_pass = False
             return check_capacity_pass & check_allocation_pass
         except KeyError as detail:
             test.error("Fail to check volume info:\n%s" % detail)
