@@ -38,6 +38,7 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': True}
     metadata_set = "yes" == params.get("metadata_set", "no")
     metadata_get = "yes" == params.get("metadata_get", "yes")
+    metadata_empty = "yes" == params.get("metadata_empty", "no")
     metadata_remove = "yes" == params.get("metadata_remove", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
     status_error = "yes" == params.get("status_error", "no")
@@ -112,6 +113,9 @@ def run(test, params, env):
                                         **virsh_dargs)
                 check_result(result, status_error)
         # Get metadata
+        if metadata_empty and libvirt_version.version_compare(11, 3, 0):
+            status_error = False
+            metadata_value = ""
         for option in metadata_option.split():
             if option == "--config":
                 vm.destroy()
