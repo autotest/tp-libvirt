@@ -586,6 +586,32 @@ def run(test, params, env):
                 test.fail('check local output failed')
             if output_mode in ['null', 'json', 'local']:
                 return
+            if checkpoint == 'check_pnp_service':
+                log_path = data_dir.get_tmp_dir()
+                process.run("virsh start %s" % vm_name, shell=True, ignore_status=True)
+                LOG.info("Waiting 25 minutes to wait for guest finishing reboot")
+                time.sleep(25 * 60)
+
+                # Now check for the log file in the next 5 minutes
+                LOG.info("Checking for log file in 5 minutes")
+                end_time = time.time() + 5 * 60
+                log_file = ''
+                while time.time() < end_time:
+                    process.run("virsh start %s" % vm_name, shell=True, ignore_status=True)
+                    time.sleep(60)  # check every 1 minute
+                    process.run("virsh destroy %s" % vm_name, shell=True, ignore_status=True)
+                    process.run("virt-copy-out -d %s '/Program Files/Guestfs/Firstboot' %s" % (vm_name, log_path),
+                                shell=True)
+                    log_file = process.run('cat %s/Firstboot/log.txt' % log_path, shell=True).stdout_text
+                    if not os.path.exists(os.path.join('%s/Firstboot/log.txt' % log_path)):
+                        continue
+                    # guest will finish all reboots if info uninstalling firstboot service shows in the log
+                    if re.search(r'uninstalling firstboot service.*', log_file):
+                        break
+                if not log_file:
+                    log_fail("firstboot log is not generated")
+                if len(re.findall(r'The Plug and Play service is not available.*', log_file)) >= 2:
+                    log_fail('Found drivers are not installed due to pnp services are not available')
 
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
