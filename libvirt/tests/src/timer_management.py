@@ -6,7 +6,6 @@ import os
 import logging as log
 import time
 
-from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import utils_test
@@ -71,17 +70,17 @@ def set_clock_xml(test, vm, params):
         newtimers.append(newtimer)
     vmclockxml.timers = newtimers
     vmxml.clock = vmclockxml
-    vmxml.remove_all_device_by_type('interface')
     logging.debug("New vm XML:\n%s", vmxml)
     vmxml.sync()
     # Return timer elements for test verify
     return timer_elems
 
 
-def vm_clock_source(vm, target, value=''):
+def vm_clock_source(test, vm, target, value=''):
     """
     Get/Set available/current clocksource in vm
 
+    :param test: Test object
     :param vm: VM instance
     :param target: Available or current clocksource
     :param value: target clocksource value
@@ -92,7 +91,7 @@ def vm_clock_source(vm, target, value=''):
     elif target == 'current':
         clock_file = 'current_clocksource'
     else:
-        exceptions.TestError("Clock source target must be 'available' or 'current'")
+        test.error("Clock source target must be 'available' or 'current'")
     session = vm.wait_for_serial_login()
     session.cmd("cd %s" % CLOCK_SOURCE_PATH)
     set_clock = False
@@ -103,9 +102,8 @@ def vm_clock_source(vm, target, value=''):
         cmd = "cat %s" % clock_file
     cmd_s, cmd_o = session.cmd_status_output(cmd)
     session.close()
-    result = ''
     if cmd_s:
-        logging.error("Run command %s in VM fail: %s", cmd, cmd_o)
+        test.error("Run command %s in VM fail: %s" % (cmd, cmd_o))
     else:
         result = cmd_o.strip()
     if set_clock:
@@ -113,10 +111,11 @@ def vm_clock_source(vm, target, value=''):
     return result
 
 
-def get_time(vm=None, time_type=None, windows=False):
+def get_time(test, vm=None, time_type=None, windows=False):
     """
     Return epoch time. Windows will return timezone only.
 
+    :param test: Test object
     :param time_type: UTC or timezone time
     :param windows: If the vm is a windows guest
     :return: Epoch time or timezone
@@ -125,34 +124,33 @@ def get_time(vm=None, time_type=None, windows=False):
         session = vm.wait_for_serial_login()
         if time_type == "utc":
             cmd = "date -u +%Y/%m/%d/%H/%M/%S"
-            ts, timestr = session.cmd_status_output(cmd)
+            status, timestr = session.cmd_status_output(cmd)
             logging.debug("VM UTC time is %s", timestr)
         elif windows is True:
             # Date in this format: Sun 09/14/2014 or 2014/09/14 Sun
             # So deal with it after getting date
             date_cmd = (r"echo %date%")
             time_cmd = (r"echo %time:~0,2%/%time:~3,2%/%time:~6,2%")
-            ts1, output1 = session.cmd_status_output(date_cmd)
-            ts2, output2 = session.cmd_status_output(time_cmd)
-            ts = ts1 or ts2
-            if output1.split()[0].split('/') == 3:
-                datestr = output1.split()[0]
+            status_date_cmd, output_date_cmd = session.cmd_status_output(date_cmd)
+            status_time_cmd, output_time_cmd = session.cmd_status_output(time_cmd)
+            status = status_date_cmd or status_time_cmd
+            if output_date_cmd.split()[0].split('/') == 3:
+                datestr = output_date_cmd.split()[0]
             else:
-                datestr = output1.split()[1]
+                datestr = output_date_cmd.split()[1]
             date_elems = datestr.split('/')
             if int(date_elems[-1]) > 30:   # This is mm/dd/yyyy
                 timestr = "%s/%s/%s" % (date_elems[-1], date_elems[0],
                                         date_elems[1])
             else:
                 timestr = datestr
-            timestr += "/%s" % output2
+            timestr += "/%s" % output_time_cmd
         else:
             cmd = "date +%Y/%m/%d/%H/%M/%S"
-            ts, timestr = session.cmd_status_output(cmd)
+            status, timestr = session.cmd_status_output(cmd)
         session.close()
-        if ts:
-            logging.error("Get time in vm failed: %s", timestr)
-            return -1
+        if status:
+            test.fail("Get time in vm failed: %s" % timestr)
         # To avoid some unexpected space, strip it manually
         timestr = timestr.replace(" ", "").strip()
         struct_time = time.strptime(timestr, "%Y/%m/%d/%H/%M/%S")
@@ -164,8 +162,7 @@ def get_time(vm=None, time_type=None, windows=False):
     try:
         return int(time.mktime(struct_time))
     except TypeError as e:
-        logging.error("Translate time to seconds error: %s", e)
-        return -1
+        test.error("Translate time to seconds error: %s" % e)
 
 
 def set_host_timezone(test, timezone="America/New_York"):
@@ -226,10 +223,11 @@ def set_vm_timezone(test, vm, timezone="America/New_York", windows=False):
         logging.debug("Set vm timezone to %s", timezone)
 
 
-def numeric_timezone(tz_name="Europe/London"):
+def numeric_timezone(test, tz_name="Europe/London"):
     """
     Return numeric(in hour) timezone
 
+    :param test: Test object
     :param tz_name: Timezone name
     """
     numeric_tz = None
@@ -239,25 +237,30 @@ def numeric_timezone(tz_name="Europe/London"):
         z = process.run(cmd, shell=True).stdout_text.strip()
         numeric_tz = float(z[0:-2]) + float(z[0] + z[-2:]) / 60
     except Exception as e:
-        logging.error("Convert timezone error: %s", e)
+        test.error("Convert timezone error: %s" % e)
     return numeric_tz
 
 
-def manipulate_vm(vm, operation, params=None):
+def manipulate_vm(test, vm, stress_type, params):
     """
     Manipulate the VM.
 
+    :param test: Test object
     :param vm: VM instance
-    :param operation: stress_in_vms, inject_nmi, dump, suspend_resume
-                      or save_restore
+    :param stress_type: stress_in_vms, stress_on_host, inject_nmi,
+                        dump, suspend_resume, or save_restore
     :param params: Test parameters
     """
-    err_msg = ''
-    # Special operations for test
-    if operation == "stress":
-        logging.debug("Load stress in VM")
-        err_msg = utils_test.load_stress(operation, params=params, vms=[vm])[0]
-    elif operation == "inject_nmi":
+    # Special stress types for test
+    if "stress" in stress_type:
+        if stress_type == "stress_in_vms":
+            vms = [vm]
+        else:
+            vms = None
+        fail_info = utils_test.load_stress(stress_type, params=params, vms=vms)
+        if fail_info:
+            test.fail("Failed to load stress: %s" % fail_info)
+    elif stress_type == "inject_nmi":
         inject_times = int(params.get("inject_times", 10))
         logging.info("Trying to inject nmi %s times", inject_times)
         while inject_times > 0:
@@ -265,8 +268,8 @@ def manipulate_vm(vm, operation, params=None):
                 inject_times -= 1
                 virsh.inject_nmi(vm.name, debug=True, ignore_status=False)
             except process.CmdError as detail:
-                err_msg = "Inject nmi failed: %s" % detail
-    elif operation == "dump":
+                test.fail("Inject nmi failed: %s" % detail)
+    elif stress_type == "dump":
         dump_times = int(params.get("dump_times", 10))
         logging.info("Trying to dump vm %s times", dump_times)
         while dump_times > 0:
@@ -275,12 +278,12 @@ def manipulate_vm(vm, operation, params=None):
             try:
                 virsh.dump(vm.name, dump_path, debug=True, ignore_status=False)
             except (process.CmdError, OSError) as detail:
-                err_msg = "Dump %s failed: %s" % (vm.name, detail)
+                test.fail("Dump %s failed: %s" % (vm.name, detail))
             try:
                 os.remove(dump_path)
             except OSError:
                 pass
-    elif operation == "suspend_resume":
+    elif stress_type == "suspend_resume":
         paused_times = int(params.get("paused_times", 10))
         logging.info("Trying to suspend/resume vm %s times", paused_times)
         while paused_times > 0:
@@ -289,8 +292,8 @@ def manipulate_vm(vm, operation, params=None):
                 virsh.suspend(vm.name, debug=True, ignore_status=False)
                 virsh.resume(vm.name, debug=True, ignore_status=False)
             except process.CmdError as detail:
-                err_msg = "Suspend-Resume %s failed: %s" % (vm.name, detail)
-    elif operation == "save_restore":
+                test.fail("Suspend-Resume %s failed: %s" % (vm.name, detail))
+    elif stress_type == "save_restore":
         save_times = int(params.get("save_times", 10))
         logging.info("Trying to save/restore vm %s times", save_times)
         while save_times > 0:
@@ -301,7 +304,7 @@ def manipulate_vm(vm, operation, params=None):
                            ignore_status=False)
                 virsh.restore(save_path, debug=True, ignore_status=False)
             except process.CmdError as detail:
-                err_msg = "Save-Restore %s failed: %s" % (vm.name, detail)
+                test.fail("Save-Restore %s failed: %s" % (vm.name, detail))
             try:
                 os.remove(save_path)
             except OSError:
@@ -309,14 +312,14 @@ def manipulate_vm(vm, operation, params=None):
         vm.cleanup_serial_console()
         vm.create_serial_console()
     else:
-        err_msg = "Unsupported operation in this function: %s" % operation
-    return err_msg
+        test.error("Unsupported stress_type in this function: %s" % stress_type)
 
 
-def translate_timer_name(timer_name):
+def translate_timer_name(test, timer_name):
     """
     Translate timer name in XML to clock source name in VM.
 
+    :param test: Test object
     :param timer_name: Timer name in VM XML
     :return: Clock source name in VM
     """
@@ -328,7 +331,7 @@ def translate_timer_name(timer_name):
     elif timer_name == "platform":
         clock_name = "acpi_pm"
     else:
-        logging.warn('Unrecognized timer name %s', timer_name)
+        test.fail('Unrecognized timer name %s' % timer_name)
     return clock_name
 
 
@@ -336,18 +339,19 @@ def test_timers_in_vm(test, vm, params):
     """
     Test all available timers in VM.
 
+    :param test: Test object
     :param vm: VM instance
     :param params: Test parameters
     """
     host_tz = params.get("host_timezone", "Asia/Tokyo")
     vm_tz = params.get("vm_timezone", "America/New_York")
     clock_tz = params.get("clock_timezone", "Asia/Shanghai")
-    host_tz_vector = numeric_timezone(host_tz)
-    vm_tz_vector = numeric_timezone(vm_tz)
-    set_tz_vector = numeric_timezone(clock_tz)
+    host_tz_vector = numeric_timezone(test, host_tz)
+    vm_tz_vector = numeric_timezone(test, vm_tz)
+    set_tz_vector = numeric_timezone(test, clock_tz)
     if not any([host_tz_vector, vm_tz_vector, set_tz_vector]):
         test.error("Not supported timezone to convert.")
-    delta = int(params.get("allowd_delta", "300"))
+    delta = int(params.get("allowed_delta", "300"))
     windows_test = "yes" == params.get("windows_test", "no")
 
     # Set host timezone
@@ -361,17 +365,20 @@ def test_timers_in_vm(test, vm, params):
     # Config clock in VMXML
     set_clock_xml(test, vm, params)
 
-    # Logging vm to set time
+    # Logging into the vm to set the time
     vm.start()
-    vm.wait_for_serial_login()
+    session = vm.wait_for_serial_login()
+    if not windows_test:
+        # First, stop and mask chronyd on the guest so that the vm timer will not automatically sync with NTP server
+        session.cmd("systemctl stop chronyd")
+        session.cmd("systemctl mask chronyd")
+    # Then, set the time
     set_vm_timezone(test, vm, vm_tz, windows_test)
 
     # manipulate vm if necessary, linux guest only
-    operation = params.get("stress_type")
-    if operation is not None:
-        err_msg = manipulate_vm(vm, operation, params)
-        if err_msg:
-            logging.error(err_msg)
+    stress_type = params.get("stress_type")
+    if stress_type is not None:
+        manipulate_vm(test, vm, stress_type, params)
 
     # Get expected utc distance between host and vm
     # with different offset(seconds)
@@ -392,11 +399,11 @@ def test_timers_in_vm(test, vm, params):
     expect_tz_gap = abs(vm_tz_span)
     logging.debug("Expected vm timezone time gap: %s", expect_tz_gap)
 
-    host_utc_time = get_time(time_type='utc')
+    host_utc_time = get_time(test, time_type='utc')
     logging.debug("UTC time on host: %s", host_utc_time)
     if windows_test:
         # Get windows vm's time(timezone)
-        vm_tz_time = get_time(vm, "tz", windows=True)
+        vm_tz_time = get_time(test, vm, "tz", windows=True)
         logging.debug("TimeZone time in vm: %s", vm_tz_time)
         # Gap between vm timezone time and host utc time
         actual_tz_gap = abs(vm_tz_time - host_utc_time)
@@ -405,27 +412,27 @@ def test_timers_in_vm(test, vm, params):
             test.fail("Timezone time of %s is not expected" % vm.name)
     else:
         # Get available clocksources
-        avail_clock = vm_clock_source(vm, 'available').split()
+        avail_clock = vm_clock_source(test, vm, 'available').split()
         if not avail_clock:
             test.error("Get available clock sources of %s failed"
                        % vm.name)
         logging.debug("Available clock sources of %s: %s", vm.name, avail_clock)
         for clock in avail_clock:
             logging.debug("Trying to set vm clock source to %s", clock)
-            if not vm_clock_source(vm, 'current', clock):
+            if not vm_clock_source(test, vm, 'current', clock):
                 test.fail("Set clock source to %s in %s failed."
                           % (clock, vm.name))
             # Wait 2s to let new clocksource stable
             time.sleep(2)
 
-            new_clock = vm_clock_source(vm, 'current')
+            new_clock = vm_clock_source(test, vm, 'current')
             logging.debug("New clock source in VM: %s", new_clock)
             if new_clock.strip() != clock.strip():
                 test.fail("New clock source is not expected")
 
-            vm_utc_time = get_time(vm, "utc")
+            vm_utc_time = get_time(test, vm, "utc")
             logging.debug("UTC time in vm: %s", vm_utc_time)
-            vm_tz_time = get_time(vm, "tz")
+            vm_tz_time = get_time(test, vm, "tz")
             logging.debug("TimeZone time in vm: %s", vm_tz_time)
 
             # Gap between vm utc time and host utc time
@@ -448,6 +455,7 @@ def test_specific_timer(test, vm, params):
     """
     Test specific timer and optional attributes of it.
 
+    :param test: Test object
     :param vm: VM instance
     :param params: Test parameters
     """
@@ -462,8 +470,8 @@ def test_specific_timer(test, vm, params):
     # Not config VM clock if the timer is unsupported in VM
     config_clock_in_vm = True
     for timer in timers:
-        timer = translate_timer_name(timer)
-        if timer not in vm_clock_source(vm, 'available').split():
+        timer = translate_timer_name(test, timer)
+        if timer not in vm_clock_source(test, vm, 'available').split():
             config_clock_in_vm = False
     vm.destroy()
 
@@ -497,13 +505,13 @@ def test_specific_timer(test, vm, params):
         return
 
     # Get available clocksources
-    avail_clock = vm_clock_source(vm, 'available').split()
+    avail_clock = vm_clock_source(test, vm, 'available').split()
     if not avail_clock:
         test.fail("Get available clock sources of %s failed"
                   % vm.name)
     logging.debug("Available clock sources of %s: %s", vm.name, avail_clock)
     for timer_dict in timer_dict_list:
-        t_name = translate_timer_name(timer_dict['name'])
+        t_name = translate_timer_name(test, timer_dict['name'])
         t_present = timer_dict['present']
         # Check available clock sources
         if t_present == 'no':
@@ -515,15 +523,15 @@ def test_specific_timer(test, vm, params):
                 test.fail("Timer %s(present=yes) is not available"
                           " in vm" % t_name)
         # Try to set specific timer
-        if not vm_clock_source(vm, 'current', t_name):
-            test.error("Set clock source to % in vm failed" % t_name)
+        if not vm_clock_source(test, vm, 'current', t_name):
+            test.error("Set clock source to %s in vm failed" % t_name)
         time.sleep(2)
         if t_present == 'no':
-            if vm_clock_source(vm, 'current') == t_name:
+            if vm_clock_source(test, vm, 'current') == t_name:
                 test.fail("Set clock source to %s in vm successfully"
                           " while present is no" % t_name)
         else:
-            if vm_clock_source(vm, 'current') != t_name:
+            if vm_clock_source(test, vm, 'current') != t_name:
                 test.fail("Set clock source to %s in vm successfully"
                           " while present is yes" % t_name)
 
@@ -531,12 +539,15 @@ def test_specific_timer(test, vm, params):
 def syncup_host_time(test):
     """
     Sync up host time to ntp server before testing.
+
+    :param test: Test object
     """
     try:
+        process.run("systemctl stop chronyd", shell=True)
         process.run("chronyd -q 'server clock.redhat.com iburst'", shell=True)
         process.run("hwclock --systohc", shell=True)
     except Exception as e:
-        logging.error("sync up host time to ntp server error: %s", e)
+        test.error("sync up host time to ntp server error: %s" % e)
 
 
 def run(test, params, env):
@@ -550,12 +561,16 @@ def run(test, params, env):
     process.run("ln --backup /etc/localtime /etc/localtime.bk", shell=True)
     timer_test_type = params.get("timer_test_type")
     testcase = globals()[timer_test_type]
+    windows_test = "yes" == params.get("windows_test", "no")
     try:
         # run the test
         testcase(test, vm, params)
     finally:
+        if timer_test_type == "test_timers_in_vm" and not windows_test:
+            session = vm.wait_for_serial_login()
+            session.cmd("systemctl unmask chronyd")
         vm.destroy()
         vmxml_backup.sync()
         os.rename("/etc/localtime.bk", '/etc/localtime')
-        if params.get("operation") == "stress_on_host":
-            utils_test.HostStress(params, "stress").unload_stress()
+        if params.get("stress_type") == "stress_on_host":
+            utils_test.unload_stress("stress_on_host", params=params)
