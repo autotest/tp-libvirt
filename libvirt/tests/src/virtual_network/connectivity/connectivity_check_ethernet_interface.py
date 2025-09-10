@@ -12,7 +12,6 @@ from virttest.utils_libvirt import libvirt_unprivileged
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
-from provider.interface import interface_base
 from provider.virtual_network import network_base
 
 LOG = logging.getLogger('avocado.' + __name__)
@@ -175,9 +174,10 @@ def run(test, params, env):
                 LOG.info('MTU check of vmxml PASS')
 
             # Check mtu inside vm
-            vm_iface = interface_base.get_vm_iface(session)
-            vm_iface_info = utils_net.get_linux_iface_info(iface=vm_iface,
+            iface_mac = iface['mac_address']
+            vm_iface_info = utils_net.get_linux_iface_info(mac=iface_mac,
                                                            session=session)
+            vm_iface = vm_iface_info['ifname']
             vm_mtu = vm_iface_info['mtu']
             if int(vm_mtu) != int(iface_mtu):
                 test.fail(f'MTU of interface inside vm should be '
