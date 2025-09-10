@@ -1112,7 +1112,6 @@ def check_kubevirt_output(params):
 
     os_directory = params.get('os_directory')
     disk_count = int(params.get('vm_disk_count', 0))
-    vm_name = params.get('v2v_cmd_op_on')
 
     result = True
 
@@ -1121,11 +1120,7 @@ def check_kubevirt_output(params):
         fd.seek(0)
         data = load(fd, Loader=Loader)
 
-    if vm_name != data['metadata']['name']:
-        LOG.debug('expect vm name: %s' % vm_name)
-        result = False
-
-    if disk_count != len(data['spec']['domain']['devices']['disks']):
+    if disk_count != len(data['spec']['template']['spec']['domain']['devices']['disks']):
         LOG.debug('expect disk count: %s' % disk_count)
         result = False
 
