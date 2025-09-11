@@ -36,31 +36,39 @@ def prepare_device_attrs(test, params, vm_name, bootable_device):
     cdrom_order = eval(params.get("cdrom_order", "{}"))
     network_order = eval(params.get("network_order", "{}"))
     set_up_tftp = "yes" == params.get("set_up_tftp", "no")
+    tftp_entries = params.get("tftp_entries", "linux").split(",")
     memory = params.get("vm_memory", "")
-    disk_image = os.path.join(data_dir.get_data_dir(), 'images', 'test.img')
+    disk_image = os.path.join(data_dir.get_data_dir(), "images", "test.img")
     vmxml = guest_os.prepare_os_xml(vm_name, os_dict)
     vmxml.remove_all_boots()
     if bootable_device != "hd_bootable":
-        libvirt.create_local_disk("file", path=disk_image, size="500M", disk_format="qcow2")
-        disk_dict = {'source': {'attrs': {'file': disk_image}}}
-        libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_dict)
+        libvirt.create_local_disk(
+            "file", path=disk_image, size="500M", disk_format="qcow2"
+        )
+        disk_dict = {"source": {"attrs": {"file": disk_image}}}
+        libvirt_vmxml.modify_vm_device(vmxml, "disk", disk_dict)
         file_list.append(disk_image)
     if bootable_device == "cdrom_bootable":
-        cdrom_path = os.path.join(data_dir.get_data_dir(), 'images', 'boot.iso')
+        cdrom_path = os.path.join(data_dir.get_data_dir(), "images", "boot.iso")
         cmd = "dnf repolist -v enabled |awk '/Repo-baseurl.*composes.*BaseOS.*os/ {res=$NF} END{print res}'"
         repo_url = process.run(cmd, shell=True).stdout_text.strip()
-        boot_img_url = os.path.join(repo_url, 'images', 'boot.iso')
-        if not utils_misc.wait_for(lambda: guest_os.test_file_download(boot_img_url, cdrom_path), 60):
-            test.fail('Unable to download boot image')
+        boot_img_url = os.path.join(repo_url, "images", "boot.iso")
+        if not utils_misc.wait_for(
+            lambda: guest_os.test_file_download(boot_img_url, cdrom_path), 60
+        ):
+            test.fail("Unable to download boot image")
     else:
-        cdrom_path = os.path.join(data_dir.get_data_dir(), 'images', 'test.iso')
-        libvirt.create_local_disk("file", path=cdrom_path, size="500M", disk_format="raw")
+        cdrom_path = os.path.join(data_dir.get_data_dir(), "images", "test.iso")
+        libvirt.create_local_disk(
+            "file", path=cdrom_path, size="500M", disk_format="raw"
+        )
     if bootable_device == "network_bootable" and set_up_tftp:
         install_tree_url = params.get("install_tree_url")
-        tftpboot.create_tftp_content(install_tree_url,
-                                     None,
-                                     arch=platform.machine())
+        tftpboot.create_tftp_content(
+            install_tree_url, None, platform.machine(), tftp_entries
+        )
         tftpboot.create_tftp_network()
+
     file_list.append(cdrom_path)
     cdrom_dict = eval(params.get("cdrom_dict") % cdrom_path)
     cdrom_dict.update(cdrom_order)
@@ -72,9 +80,9 @@ def prepare_device_attrs(test, params, vm_name, bootable_device):
     vmxml.sync()
     # Update boot order attributes
     if "hd" in (first_dev, second_dev):
-        libvirt_vmxml.modify_vm_device(vmxml, 'disk', disk_order)
+        libvirt_vmxml.modify_vm_device(vmxml, "disk", disk_order)
     if "network" in (first_dev, second_dev):
-        libvirt_vmxml.modify_vm_device(vmxml, 'interface', network_order)
+        libvirt_vmxml.modify_vm_device(vmxml, "interface", network_order)
 
 
 def run(test, params, env):
@@ -114,8 +122,9 @@ def run(test, params, env):
                 test.log.debug("Succeed to set %s", expected_output)
             session.close()
         else:
-            vm.serial_console.read_until_output_matches(check_prompt, timeout=600,
-                                                        internal_timeout=0.5)
+            vm.serial_console.read_until_output_matches(
+                check_prompt, timeout=600, internal_timeout=0.5
+            )
     finally:
         if session:
             session.close()
