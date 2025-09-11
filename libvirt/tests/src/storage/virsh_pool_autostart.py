@@ -162,6 +162,7 @@ def run(test, params, env):
                 virsh.pool_start(pool_name, debug=True, ignore_status=False)
                 # Avoid running vol_list too quickly
                 time.sleep(3)
+                virsh.pool_refresh(pool_name, debug=True, ignore_status=False)
                 res = virsh.vol_list(pool_name, debug=True,
                                      ignore_status=False).stdout_text
                 vol = re.findall(r"(\S+)\ +(\S+)", str(res.strip()))[1]
