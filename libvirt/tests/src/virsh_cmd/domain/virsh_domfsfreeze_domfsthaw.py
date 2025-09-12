@@ -136,8 +136,9 @@ def run(test, params, env):
         """
         test.log.info("TEST_STEP: Run qemu guest agent command when frozen.")
         fail_patts = [
-            r"error: guest agent command failed: unable to execute QEMU agent command '\S+': Command guest-get-time has been disabled: the command is not allowed",
-            r"error: internal error: unable to execute QEMU agent command '\S+': Command guest-get-time has been disabled: the command is not allowed",
+            r"error: guest agent command failed: unable to execute QEMU agent command '\S+': Command \S+ has been disabled: the command is not allowed",
+            r"error: internal error: unable to execute QEMU agent command '\S+': Command \S+ has been disabled: the command is not allowed",
+            r"error: internal error: unable to execute QEMU agent command '\S+': Command \S+ has been disabled: the agent is in frozen state",
         ]
 
         virsh_command = eval("virsh.%s" % command_name)
@@ -240,6 +241,7 @@ def run(test, params, env):
                 check_thaw(session, freezed_mountpoints, test_file)
                 run_agent_command_when_thawed(vm_name)
         finally:
+            virsh.domfsthaw(vm_name, ignore_status=True)
             cleanup(session, freezed_mountpoints, test_file)
             session.close()
     finally:
