@@ -359,6 +359,43 @@ def check_iface_attrs(iface, key, expect_val):
                                   f'{expect_val}, NOT {actual_val}')
 
 
+def preparation_for_iface(iface_type, params):
+    """
+    Prepare the interface environment based on interface type
+
+    :param iface_type: type of interface (network, bridge, ethernet, direct)
+    :param params: additional parameters from test configuration
+    """
+    if iface_type == "bridge":
+        bridge_name = params.get('bridge_name', 'br0')
+        host_iface = params.get('host_iface')
+        utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
+
+    elif iface_type == "ethernet":
+        tap_name = params.get('tap_name', 'mytap0')
+        user = params.get("user", "root")
+        bridge_name = params.get('bridge_name', 'virbr0')
+
+        create_tap(tap_name, bridge_name, user)
+
+
+def cleanup_for_iface(iface_type, params):
+    """
+    Clean up the interface environment based on interface type
+
+    :param iface_type: type of interface (network, bridge, ethernet, direct)
+    :param params: additional parameters from test configuration
+    """
+    if iface_type == "bridge":
+        bridge_name = params.get('bridge_name', 'br0')
+        host_iface = params.get('host_iface')
+        utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
+
+    elif iface_type == "ethernet":
+        tap_name = params.get('tap_name', 'mytap0')
+        delete_tap(tap_name)
+
+
 def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type):
     """
     Check actual thoughput of network using netperf
