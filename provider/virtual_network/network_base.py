@@ -13,6 +13,7 @@ from virttest import utils_package
 from virttest import virsh
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_network
 
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 
@@ -357,6 +358,53 @@ def check_iface_attrs(iface, key, expect_val):
     if actual_val != expect_val:
         raise exceptions.TestFail(f'Updated {key} of iface should be '
                                   f'{expect_val}, NOT {actual_val}')
+
+
+def preparation_for_iface(iface_type, params):
+    """
+    Prepare the interface environment based on interface type
+
+    :param iface_type: type of interface (network, bridge, ethernet, direct)
+    :param params: additional parameters from test configuration
+    """
+    if iface_type == "bridge":
+        bridge_name = params.get('bridge_name', 'br0')
+        host_iface = params.get('host_iface')
+        utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
+
+    elif iface_type == "ethernet":
+        tap_name = params.get('tap_name', 'mytap0')
+        user = params.get("user", "root")
+        bridge_name = params.get('bridge_name', 'virbr0')
+        queues_flag = params.get("queues_flag")
+        create_tap(tap_name, bridge_name, user, flag=queues_flag)
+
+    elif iface_type == "network":
+        network_dict = eval(params.get("network_dict", "[]"))
+        if network_dict:
+            libvirt_network.create_or_del_network(network_dict)
+
+
+def cleanup_for_iface(iface_type, params):
+    """
+    Clean up the interface environment based on interface type
+
+    :param iface_type: type of interface (network, bridge, ethernet, direct)
+    :param params: additional parameters from test configuration
+    """
+    if iface_type == "bridge":
+        bridge_name = params.get('bridge_name', 'br0')
+        host_iface = params.get('host_iface')
+        utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
+
+    elif iface_type == "ethernet":
+        tap_name = params.get('tap_name', 'mytap0')
+        delete_tap(tap_name)
+
+    elif iface_type == "network":
+        network_dict = eval(params.get("network_dict", "[]"))
+        if network_dict:
+            libvirt_network.create_or_del_network(network_dict, is_del=True)
 
 
 def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type):
