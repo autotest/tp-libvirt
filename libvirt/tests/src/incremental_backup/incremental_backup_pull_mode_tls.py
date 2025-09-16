@@ -170,7 +170,7 @@ def run(test, params, env):
         test.log.info("SETUP_TEST: prepare the guest.")
         prepare_guest()
         if with_secret_uuid:
-            write_datas()
+            write_data()
         test.log.info("TEST_STEP: start the backup.")
         backup_options = prepare_backup_xml()
         backup_begin(backup_options)
