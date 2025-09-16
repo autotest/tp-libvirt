@@ -6,6 +6,7 @@ from avocado.utils import process
 from virttest import remote
 from virttest import utils_package
 from virttest import utils_misc
+from virttest import utils_sys
 from virttest import virsh
 from virttest import libvirt_version
 
@@ -83,6 +84,7 @@ def launch_external_swtpm(params, test, skip_setup=False, on_remote=False):
     tpm_dict = eval(params.get('tpm_dict', '{}'))
     source_socket = tpm_dict['backend']['source']['path']
     statedir = params.get("statedir")
+    image_mode = utils_sys.is_image_mode()
 
     test.log.info("Launch external swtpm process: (on_remote: %s)",  on_remote)
     if not skip_setup:
@@ -94,14 +96,29 @@ def launch_external_swtpm(params, test, skip_setup=False, on_remote=False):
                 shutil.rmtree(statedir)
             os.mkdir(statedir)
             process.run("ls -lZd %s" % statedir)
-        cmd1 = "swtpm_setup --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % statedir
+        if image_mode:
+            cmd1 = "swtpm_setup --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % statedir
+        else:
+            cmd01 = "chcon -t virtd_exec_t /usr/bin/swtpm_setup"
+            cmd02 = "chcon -t virtd_exec_t /usr/bin/swtpm"
+            cmd1 = "systemd-run swtpm_setup --tpm2 --tpmstate %s --create-ek-cert --create-platform-cert --overwrite" % statedir
+
     try:
         if not skip_setup:
             if on_remote:
+                if not image_mode:
+                    remote.run_remote_cmd(cmd01, params)
+                    remote.run_remote_cmd(cmd02, params)
                 remote.run_remote_cmd(cmd1, params)
             else:
+                if not image_mode:
+                    process.run(cmd01, ignore_status=False, shell=True)
+                    process.run(cmd02, ignore_status=False, shell=True)
                 process.run(cmd1, ignore_status=False, shell=True)
-        cmd2 = ("nohup swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate > /dev/null 2>&1 & disown") % (source_socket, statedir)
+        if image_mode:
+            cmd2 = ("nohup swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate > /dev/null 2>&1 & disown") % (source_socket, statedir)
+        else:
+            cmd2 = "systemd-run swtpm socket --ctrl type=unixio,path=%s,mode=0600 --tpmstate dir=%s,mode=0600 --tpm2 --terminate" % (source_socket, statedir)
         if on_remote:
             remote.run_remote_cmd(cmd2, params)
             remote.run_remote_cmd('chcon -t svirt_image_t %s' % source_socket, params)
@@ -205,14 +222,23 @@ def run(test, params, env):
 
         """
         statedir = params.get("statedir")
+        source_socket = eval(params.get('tpm_dict', '{}'))['backend']['source']['path']
 
         remote.run_remote_cmd('pkill swtpm', params, ignore_status=True)
-        remote.run_remote_cmd("rm -rf /var/lib/swtpm-localca/*", params, ignore_status=True)
+        remote.run_remote_cmd("rm -rf /var/lib/swtpm-localca/{,.}*", params, ignore_status=True)
         process.run("pkill swtpm", shell=True, ignore_status=True)
-        process.run("rm -rf /var/lib/swtpm-localca/*", shell=True, ignore_status=True)
+        process.run("rm -rf /var/lib/swtpm-localca/{,.}*", shell=True, ignore_status=True)
         if os.path.exists(statedir):
             shutil.rmtree(statedir)
         remote.run_remote_cmd("rm -rf %s" % statedir, params)
+        if os.path.exists(source_socket):
+            os.remove(source_socket)
+        remote.run_remote_cmd("rm -f %s" % source_socket, params)
+        if image_mode:
+            remote.run_remote_cmd("restorecon /usr/bin/swtpm_setup", params, ignore_status=False)
+            remote.run_remote_cmd("restorecon /usr/bin/swtpm", params, ignore_status=False)
+            process.run("restorecon /usr/bin/swtpm_setup", ignore_status=False, shell=True)
+            process.run("restorecon /usr/bin/swtpm", ignore_status=False, shell=True)
         migration_obj.cleanup_connection()
 
     vm_name = params.get("migrate_main_vm")
@@ -221,6 +247,7 @@ def run(test, params, env):
     libvirt_version.is_libvirt_feature_supported(params)
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
+    image_mode = utils_sys.is_image_mode()
 
     try:
         if not base_steps.check_cpu_for_mig(params):
