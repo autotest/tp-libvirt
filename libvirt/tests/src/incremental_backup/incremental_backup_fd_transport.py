@@ -29,6 +29,7 @@ def run(test, params, env):
         :return: the tuple includes the session and the file list.
         """
         fdtest_socket_script = params.get("fdtest_socket_script")
+        fdtest_socket_script = os.path.join(os.path.dirname(__file__), fdtest_socket_script)
         python_cmd = "python %s %s %s %s" % (fdtest_socket_script, socket_path,
                                              vm_name, fdgroup)
         session = aexpect.ShellSession(python_cmd)
