@@ -580,6 +580,11 @@ def run(test, params, env):
                 test.fail('check json output failed')
             if output_mode == 'kubevirt' and not check_kubevirt_output(params):
                 test.fail('check kubevirt output failed')
+            if 'define_disk_path' in checkpoint:
+                from glob import glob
+                disk_num = len(glob(os.path.join(os_directory, 'disk*.img')))
+                if disk_num != vm_disk_count:
+                    test.fail('disk num is incorrect')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
             if output_mode == 'qemu' and not check_qemu_output(params):
@@ -739,15 +744,16 @@ def run(test, params, env):
 
         utils_v2v.set_libguestfs_backend(params)
         v2v_uri = utils_v2v.Uri('esx')
+        if src_uri_type == 'esx':
+            vpx_dc = None
         remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
+        LOG.debug("Remote host uri for converting: %s", remote_uri)
 
         # Create password file for access to ESX hypervisor
         vpx_passwd_file = params.get("vpx_passwd_file")
-        with open(vpx_passwd_file, 'w') as pwd_f:
-            if src_uri_type == 'esx':
-                pwd_f.write(esxi_password)
-            else:
-                pwd_f.write(vpx_passwd)
+        source_pwd = vpx_passwd if src_uri_type != 'esx' else esxi_password
+        with open(vpx_passwd_file, 'w') as f:
+            f.write(source_pwd)
         v2v_params['v2v_opts'] += " -ip %s" % vpx_passwd_file
 
         if params.get('output_format'):
@@ -922,8 +928,15 @@ def run(test, params, env):
             luks_keys = params_get(params, 'luks_keys', '').split(':')[-1]
             v2v_params['v2v_opts'] += ' ' + "$(seq -f '--key /dev/sda%%g:key:%s' 200)" % luks_keys
 
+        if 'define_disk_path' in checkpoint:
+            os_directory = data_dir.get_tmp_dir()
+            vm_disk_count = int(params_get(params, 'vm_disk_count'))
+            v2v_params['v2v_opts'] += ' -oo create=true'
+            for i in range(1, vm_disk_count + 1):
+                v2v_params['v2v_opts'] += ' -oo disk=%s/disk%s.img' % (os_directory, i)
+
         virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
-                       'remote_user': 'root', 'remote_pwd': vpx_passwd,
+                       'remote_user': 'root', 'remote_pwd': source_pwd,
                        'auto_close': True,
                        'debug': True}
         remote_virsh = virsh.VirshPersistent(**virsh_dargs)
