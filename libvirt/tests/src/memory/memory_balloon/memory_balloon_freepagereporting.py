@@ -72,7 +72,7 @@ def run(test, params, env):
 
         test.log.info(
             "TEST_STEP4: Login the guest and consume the guest memory")
-        rss_mem_thread = utils_misc.InterruptedThread(get_rss_mem_list)
+        rss_mem_thread = utils_misc.InterruptedThread(get_rss_mem_list, kwargs={"timeout": 120})
         rss_mem_thread.start()
         free_mem = utils_memory.freememtotal(session)
         session.cmd_status("swapoff -a")
