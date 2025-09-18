@@ -8,6 +8,7 @@
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+from virttest import libvirt_version
 from virttest import virsh
 
 from provider.migration import base_steps
@@ -41,6 +42,7 @@ def run(test, params, env):
         migration_obj.cleanup_connection()
         base_steps.cleanup_disks_remote(params, vm)
 
+    libvirt_version.is_libvirt_feature_supported(params)
     set_bandwidth = params.get('set_bandwidth', '')
     vm_name = params.get("migrate_main_vm")
 
