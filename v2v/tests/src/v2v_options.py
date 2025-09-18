@@ -593,7 +593,9 @@ def run(test, params, env):
                 virt_v2v_version = get_virt_v2v_version.group(1) + '-' + get_virt_v2v_version.group(2)
                 if (rpm_version != virt_v2v_version):
                     test.fail('v2v version is incorrect in v2v version option')
-
+            if checkpoint == 'in_place':
+                if not os.path.exists(xml_path):
+                    test.fail('Not found guest xml file')
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             test.fail(log_check)
@@ -726,7 +728,7 @@ def run(test, params, env):
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
-        elif checkpoint not in ['length_of_error', 'empty_nic_source_network', 'line_no_wrap', 'empty_nic_source_bridge', 'machine_readable']:
+        elif checkpoint not in ['length_of_error', 'empty_nic_source_network', 'line_no_wrap', 'empty_nic_source_bridge', 'machine_readable', 'in_place']:
             v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
@@ -846,7 +848,10 @@ def run(test, params, env):
 
         if checkpoint == 'length_of_error' and utils_v2v.v2v_supported_option('--wrap'):
             v2v_options += ' --wrap'
-
+        if checkpoint == 'in_place':
+            disk_path = params.get('disk_path')
+            xml_path = os.path.join(data_dir.get_tmp_dir(), 'output.xml')
+            v2v_options += '-i disk %s -O %s' % (disk_path, xml_path)
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -875,7 +880,8 @@ def run(test, params, env):
                 output_func=utils_misc.log_line,
                 output_params=(params['tail_log'],)
             )
-
+        if checkpoint == 'in_place':
+            cmd = re.sub(r".*/bin/virt-v2v", '/usr/libexec/virt-v2v-in-place', cmd)
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
         if new_vm_name:
