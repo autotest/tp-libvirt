@@ -942,6 +942,7 @@ def run(test, params, env):
                 auto_clean = False
             if checkpoint[0] in [
                 'verify_certificate',
+                'verify_custom_path_cert',
                 'mismatched_uuid',
                 'no_uuid',
                 'invalid_source',
@@ -992,9 +993,15 @@ def run(test, params, env):
             vcenter_fdqn = params.get('vcenter_fdqn')
             verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vpx_hostname)
             new_cmd = v2v_result.replace('/?no_verify=1', '').replace(vpx_hostname, vcenter_fdqn)
-
+        if 'verify_custom_path_cert' in checkpoint:
+            certs_src_dir = params.get('certs_src_dir')
+            certs_dest_dir = os.path.join(data_dir.get_tmp_dir(), 'vmwarecert')
+            vcenter_fdqn = params.get('vcenter_fdqn')
+            verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vpx_hostname)
+            new_cmd = v2v_result.replace('/?no_verify=1', '/?cacert=%s/faea32cd.0' % certs_dest_dir).replace(vpx_hostname, vcenter_fdqn)
         if checkpoint[0] in [
             'verify_certificate',
+            'verify_custom_path_cert',
             'mismatched_uuid',
             'no_uuid',
             'invalid_source',

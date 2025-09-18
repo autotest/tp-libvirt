@@ -586,6 +586,33 @@ def run(test, params, env):
                 test.fail('check local output failed')
             if output_mode in ['null', 'json', 'local']:
                 return
+            if checkpoint == 'check_pnp_service':
+                log_dir = data_dir.get_tmp_dir()
+                dest_log = os.path.join(log_dir, 'Firstboot', 'log.txt')
+                process.run("virsh start %s" % vm_name, shell=True, ignore_status=True)
+                LOG.info("Waiting 25 minutes to wait for guest finishing reboot")
+                time.sleep(25 * 60)
+
+                # Now check for the log file in the next 5 minutes
+                LOG.info("Checking for log file in 5 minutes")
+                end_time = time.time() + 5 * 60
+                log_content = ''
+                while time.time() < end_time:
+                    process.run("virsh start %s" % vm_name, shell=True, ignore_status=True)
+                    time.sleep(60)  # check every 1 minute
+                    process.run("virsh destroy %s" % vm_name, shell=True, ignore_status=True)
+                    process.run("virt-copy-out -d %s '/Program Files/Guestfs/Firstboot' %s" % (vm_name, log_dir),
+                                shell=True)
+                    log_content = process.run('cat %s' % dest_log, shell=True, ignore_status=True).stdout_text
+                    if not os.path.exists(dest_log):
+                        continue
+                    # guest will finish all reboots if info uninstalling firstboot service shows in the log
+                    if re.search(r'uninstalling firstboot service.*', log_content):
+                        break
+                if not os.path.exists(dest_log):
+                    log_fail("firstboot log is not generated")
+                if len(re.findall(r'The Plug and Play service is not available.*', log_content)) >= 2:
+                    log_fail('Found drivers are not installed due to pnp services are not available')
 
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
