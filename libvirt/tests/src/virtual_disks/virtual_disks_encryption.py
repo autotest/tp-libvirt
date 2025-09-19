@@ -13,6 +13,7 @@ from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
+from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import secret_xml
@@ -113,8 +114,8 @@ def run(test, params, env):
                 test.fail("Failed to query/install parted, make sure"
                           " that you have usable repo in guest")
 
-            new_parts = utils_disk.get_parts_list(session)
-            added_parts = list(set(new_parts).difference(set(old_parts)))
+            added_disks = libvirt_disk.get_non_root_disk_names(session)
+            added_parts = [x[0] for x in added_disks]
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
                 logging.error("The number of new partitions is invalid in VM")
