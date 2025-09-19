@@ -150,6 +150,14 @@ def run(test, params, env):
         else:
             process = get_subprocess(action, vm_name, tmp_pipe, None)
 
+        try:
+            _, stderr = process.communicate(timeout=6)
+            if process.returncode:
+                os.unlink(tmp_pipe)
+                test.error('Background cmd met unexpected failure of %s, abort the test.' % stderr)
+        except subprocess.TimeoutExpired:
+            logging.debug("Background cmd is still running.")
+
         f = open(tmp_pipe, 'rb')
         dummy = f.read(1024 * 1024).decode(locale.getpreferredencoding(), 'ignore')
 
