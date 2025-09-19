@@ -73,7 +73,7 @@ def run(test, params, env):
             timeout=int(params.get('login_timeout')))
         session.sendline(params.get("shutdown_command"))
         if not vm.wait_for_shutdown():
-            test.fail("VM %s failed to shut down", vm.name)
+            test.fail("VM %s failed to shut down" % vm.name)
 
         vm.cleanup_serial_console()
         vm.start()
