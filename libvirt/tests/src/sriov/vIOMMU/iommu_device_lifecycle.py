@@ -87,6 +87,22 @@ def run(test, params, env):
                 s, o = utils_net.ping(ping_dest, count=5, timeout=10, session=session)
                 if s:
                     test.fail("Failed to ping %s! status: %s, output: %s." % (ping_dest, s, o))
+
+        elif test_scenario == "shutdown":
+            test.log.info("TEST_STEP: Shutdown the VM.")
+            virsh.shutdown(vm.name, **VIRSH_ARGS)
+            if not utils_misc.wait_for(lambda: vm.is_dead(), 60):
+                test.fail("VM failed to shutdown")
+            test.log.info("VM successfully shutdown")
+
+            # Optional: Start VM again based on parameter
+            start_after_shutdown = "yes" == params.get("start_after_shutdown", "no")
+            if start_after_shutdown:
+                test.log.info("TEST_STEP: Starting VM after shutdown")
+                vm.start()
+                vm.wait_for_login(timeout=int(params.get('login_timeout', 240)))
+                test.log.info("VM successfully started after shutdown")
+
         else:
             pid_ping, upsince = save_base.pre_save_setup(vm, serial=True)
             if test_scenario == "save_restore":
