@@ -91,7 +91,8 @@ def run(test, params, env):
         elif test_scenario == "shutdown":
             test.log.info("TEST_STEP: Shutdown the VM.")
             virsh.shutdown(vm.name, **VIRSH_ARGS)
-            if not utils_misc.wait_for(lambda: vm.is_dead(), 60):
+            shutdown_timeout = int(params.get("shutdown_timeout", "60"))
+            if not utils_misc.wait_for(lambda: vm.is_dead(), shutdown_timeout):
                 test.fail("VM failed to shutdown")
             test.log.info("VM successfully shutdown")
 
@@ -100,8 +101,12 @@ def run(test, params, env):
             if start_after_shutdown:
                 test.log.info("TEST_STEP: Starting VM after shutdown")
                 vm.start()
-                vm.wait_for_login(timeout=int(params.get('login_timeout', 240)))
+                vm.cleanup_serial_console()
+                vm.create_serial_console()
+                session = vm.wait_for_serial_login(
+                    timeout=int(params.get('login_timeout', 240)))
                 test.log.info("VM successfully started after shutdown")
+                session.close()
 
         else:
             pid_ping, upsince = save_base.pre_save_setup(vm, serial=True)
