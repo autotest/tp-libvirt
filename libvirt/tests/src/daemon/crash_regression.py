@@ -40,8 +40,18 @@ def run_shutdown_console(params, libvirtd, vm):
     """
     Start a vm with console connected and then shut it down.
     """
-    vm.start(autoconsole=True)
-    vm.shutdown()
+    vm_xml = VMXML.new_from_inactive_dumpxml(vm.name)
+    vm_xml_backup = vm_xml.copy()
+    try:
+        iface = vm_xml.get_devices(device_type="interface")[0]
+        driver_dict = dict(iface.driver.driver_attr)
+        driver_dict['queues'] = '1'
+        iface.driver = iface.new_driver(driver_attr=driver_dict)
+        virsh.update_device(vm.name, iface.xml, debug=True)
+        vm.start(autoconsole=True)
+        vm.shutdown()
+    finally:
+        vm_xml_backup.sync()
 
 
 def run_restart_console(params, libvirtd, vm):
