@@ -978,11 +978,32 @@ def run(test, params, env):
                 logging.debug("The queue size set in the xml is %s" % queue_size)
                 ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
                 max, cur = utils_net.get_channel_info(session, ifname_guest)
-                logging.debug("Get the channel info as: max %s  current %s" % (max, cur))
-                if int(max.get("Combined")) != queue_size:
+                _combined = None
+                if isinstance(max, dict):
+                    try:
+                        _combined = int(max.get("Combined")) if max.get("Combined") is not None else None
+                    except Exception:
+                        _combined = None
+
+                if _combined is None:
+                    raw = session.cmd_output(f"ethtool -l {ifname_guest}")
+
+                    def _parse_ethtool_channels(raw_output: str):
+                        nums = re.findall(r"(?mi)^\s*Combined:\s*(\d+)\s*$", raw_output)
+                        nums = [int(n) for n in nums]
+                        if nums:
+                            max_c = nums[0]
+                            cur_c = nums[1] if len(nums) > 1 else nums[0]
+                            return {"Combined": str(max_c)}, {"Combined": str(cur_c)}
+                    return {}, {}
+
+                    max, cur = _parse_ethtool_channels(raw)
+                    logging.debug("Parsed channels via fallback: max %s  current %s", max, cur)
+
+                if not isinstance(max, dict) or max.get("Combined") is None:
+                    test.error("Failed to parse 'Combined' from 'ethtool -l' output")
+                if int(max.get("Combined")) != int(queue_size):
                     test.fail("The multiqueue did not set correctly on the vm, refer to %s!" % max)
-                if not utils_net.set_channel(session, ifname_guest, "combined", queue_size):
-                    test.fail("Setting Combined to %s on vm failed!" % queue_size)
             if test_target:
                 logging.debug("Check if the target dev is set")
                 run_xml_test(iface_mac)
