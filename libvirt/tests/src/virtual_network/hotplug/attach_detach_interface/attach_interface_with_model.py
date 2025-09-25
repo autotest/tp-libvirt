@@ -1,9 +1,12 @@
+import os
 import uuid
+import re
 
 from virttest import libvirt_version
 from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from avocado.utils import process
 
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.libvirt_xml.devices import interface
@@ -13,6 +16,57 @@ from provider.virtual_network import network_base
 from provider.interface import interface_base
 
 VIRSH_ARGS = {"ignore_status": False, "debug": True}
+
+
+def clear_audit_log(test):
+    """
+    Clear the audit log on host
+
+    :param test: Test instance
+    """
+    try:
+        # Clear audit.log.
+        audit_dir = "/var/log/audit/"
+        for file in os.listdir(audit_dir):
+            if file.startswith("audit.log"):
+                file_path = os.path.join(audit_dir, file)
+                process.run(f"> {file_path}", shell=True, ignore_status=True)
+        test.log.debug("Audit log files cleared successfully")
+
+    except Exception as e:
+        test.fail(f"Failed to clear audit log: {e}")
+
+
+def check_audit_log_for_interface_operation(vm_name, mac_addr, operation, test):
+    """
+    Check the audit log after interface attach/detach operation
+
+    :param vm_name: VM name
+    :param mac_addr: MAC address of the interface
+    :param operation: "attach" or "detach"
+    :param test: Test instance
+    :return: True if expected audit log found, False otherwise
+    """
+    try:
+        cmd = f"ausearch --start recent -m VIRT_RESOURCE -i | grep {operation}"
+        result = process.run(cmd, shell=True, ignore_status=True)
+        output = result.stdout_text if result.stdout_text else ""
+        test.log.debug(f"Audit log search result for {operation}: {output}")
+
+        if operation == "attach":
+            expected_pattern = f"attach vm={vm_name}.*new-net={mac_addr}"
+        else:  # operation == "detach"
+            expected_pattern = f"detach vm={vm_name}.*old-net={mac_addr}"
+
+        if re.search(expected_pattern, output):
+            test.log.debug(f"Found expected {operation} audit log entry")
+            return True
+        else:
+            test.log.warning(f"Expected pattern '{expected_pattern}' not found in audit log")
+            return False
+    except Exception as e:
+        test.log.warning(f"Failed to check audit log: {e}")
+        return False
 
 
 def check_model_controller(vm_name, pci_model, test):
@@ -53,6 +107,7 @@ def run(test, params, env):
     model_type = params.get("model_type")
     check_pci_model = params.get("check_pci_model", "yes") == "yes"
     bridge_controller_needed = params.get("bridge_controller_needed", "yes") == "yes"
+    check_audit_log = params.get_boolean("check_audit_log")
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -73,6 +128,9 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_serial_login()
 
+        if check_audit_log:
+            clear_audit_log(test)
+
         mac = utils_net.generate_mac_address_simple()
         alias_name = "ua-" + str(uuid.uuid1())
         options = "network default --model {} --alias {} --mac {}".format(
@@ -89,6 +147,10 @@ def run(test, params, env):
         if exp_iface != iface_attrs:
             test.fail("Failed to print xml! Expected: %s, Got: %s." % (exp_iface, iface_attrs))
         virsh.attach_interface(vm_name, options, **VIRSH_ARGS)
+
+        if check_audit_log:
+            if not check_audit_log_for_interface_operation(vm_name, mac, "attach", test):
+                test.fail(f"Expected audit log entry for attach not found for VM {vm_name} with MAC {mac}")
         iflist = libvirt.get_interface_details(vm_name)
         test.log.debug(f"iflist of vm: {iflist}")
         iface_info = iflist[0]
@@ -113,6 +175,11 @@ def run(test, params, env):
                                   wait_for_event=True,
                                   event_timeout=20,
                                   **VIRSH_ARGS)
+
+        if check_audit_log:
+            if not check_audit_log_for_interface_operation(vm_name, mac, "detach", test):
+                test.fail(f"Expected audit log entry for detach not found for VM {vm_name} with MAC {mac}")
+
         iflist = libvirt.get_interface_details(vm_name)
         test.log.debug(f"iflist of vm: {iflist}")
         if iflist:
