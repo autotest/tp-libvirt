@@ -334,7 +334,7 @@ def run(test, params, env):
         if not log_file:
             log_file = utils_misc.get_path(test.debugdir, "libvirtd.log")
         error = "Invalid dump_image_format.*" + image_format
-        return libvirt.check_logfile(error, log_file, ignore_status=True)
+        return utils_misc.wait_for(lambda: libvirt.check_logfile(error, log_file, ignore_status=True), timeout=30)
 
     # Configure dump_image_format in /etc/libvirt/qemu.conf.
     qemu_config = utils_config.LibvirtQemuConfig()
