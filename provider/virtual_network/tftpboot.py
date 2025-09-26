@@ -52,7 +52,7 @@ def _pxeconfig_content(entries, install_tree_url, kickstart_url):
     return "\n".join(contents)
 
 
-def create_tftp_content(install_tree_url, kickstart_url, arch, entries):
+def create_tftp_content(install_tree_url, kickstart_url, arch, entries=["linux"]):
     """
     Creates the folder for the tftp server,
     downloads images assuming they are below /images,
