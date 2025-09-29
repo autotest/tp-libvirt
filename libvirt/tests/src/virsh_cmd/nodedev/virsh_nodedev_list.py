@@ -121,7 +121,7 @@ def get_net_devices():
                 with open(address_file, "r") as f_addr:
                     mac = f_addr.read().strip()
             except IOError:
-                print("Cannot get address for device %s" % device)
+                logging.debug("Cannot get address for device %s" % device)
             if mac:
                 dev_name = re.sub(r"\W", "_", "net_%s_%s" % (device, mac))
             else:
