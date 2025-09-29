@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -28,6 +29,7 @@ def pre_save_setup(vm, serial=False):
     ping_cmd = 'ping 127.0.0.1 >/tmp/ping_out 2>&1'
     # This session shouldn't be closed or it will kill ping
     session.sendline(ping_cmd + '&')
+    time.sleep(1)
     ping_output = session.cmd_output('pidof ping')
     LOG.debug(f'ping cmd output: {ping_output}')
     pid_ping = ping_output.strip().split()[-1]
