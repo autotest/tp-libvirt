@@ -11,7 +11,6 @@ from provider.save import save_base
 from provider.sriov import sriov_base
 from provider.viommu import viommu_base
 from provider.sriov import check_points as sriov_check_points
-from provider.vm_lifecycle import lifecycle_base
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
@@ -26,6 +25,85 @@ def check_network_access(test, vm, session, need_sriov, ping_dest):
         s, o = utils_net.ping(ping_dest, count=5, timeout=10, session=session)
         if s:
             test.fail(f"Failed to ping {ping_dest}! status: {s}, output: {o}")
+
+
+def test_shutdown(test, vm, params):
+    """
+    Test shutdown scenario
+
+    :param test: Test object
+    :param vm: VM object
+    :param params: Dictionary with the test parameters
+    :raises: TestFail if VM fails to shutdown
+    """
+    test.log.info("TEST_STEP: Shutdown the VM.")
+    virsh.shutdown(vm.name, **VIRSH_ARGS)
+    shutdown_timeout = int(params.get("shutdown_timeout", "60"))
+    if not utils_misc.wait_for(lambda: vm.is_dead(), shutdown_timeout):
+        test.fail("VM failed to shutdown")
+    test.log.info("VM successfully shutdown")
+
+
+def test_reset(test, vm, login_timeout):
+    """
+    Test reset scenario
+
+    :param test: Test object
+    :param vm: VM object
+    :param login_timeout: Login timeout
+    """
+    test.log.info("TEST_STEP: Reset the VM.")
+    session = vm.wait_for_serial_login(timeout=login_timeout)
+    virsh.reset(vm.name, **VIRSH_ARGS)
+    _match, _text = session.read_until_last_line_matches(
+            [r"[Ll]ogin:\s*"], timeout=login_timeout, internal_timeout=0.5)
+    session.close()
+
+
+def test_reboot(test, vm, params, login_timeout):
+    """
+    Test single reboot operation
+
+    :param test: Test object
+    :param vm: VM object
+    :param params: Dictionary with the test parameters
+    """
+    test.log.info("TEST_STEP: Reboot the VM.")
+    session = vm.wait_for_serial_login(timeout=login_timeout)
+    session.sendline(params.get("reboot_command"))
+    _match, _text = session.read_until_last_line_matches(
+        [r"[Ll]ogin:\s*"], timeout=login_timeout, internal_timeout=0.5)
+    session.close()
+
+
+def test_reboot_reset_shutdown(test, vm, params, need_sriov, ping_dest, test_scenario):
+    """
+    Test reboot or reset scenario
+    """
+    # Common parameters
+    login_timeout = int(params.get('login_timeout', 240))
+
+    # Setup serial console
+    vm.cleanup_serial_console()
+    vm.create_serial_console()
+
+    if test_scenario == "shutdown":
+        test_shutdown(test, vm, params)
+        if params.get("start_after_shutdown", "no") == "yes":
+            test.log.info("TEST_STEP: Starting VM after shutdown")
+            vm.start()
+        else:
+            return
+    elif test_scenario == "reset":
+        test_reset(test, vm, login_timeout)
+    else:  # reboot_many_times
+        for _ in range(int(params.get('loop_time', '5'))):
+            test_reset(test, vm, login_timeout)
+
+    # Final login to check network access
+    session = vm.wait_for_serial_login(timeout=login_timeout)
+    check_network_access(test, vm, session, need_sriov, ping_dest)
+    session.close()
 
 
 def test_save_suspend(test, vm, params, save_path, test_scenario):
@@ -44,36 +122,6 @@ def test_save_suspend(test, vm, params, save_path, test_scenario):
         virsh.resume(vm.name, **VIRSH_ARGS)
 
     save_base.post_save_check(vm, pid_ping, upsince, serial=True)
-
-
-def test_reboot_reset_shutdown(test, vm, params, need_sriov, ping_dest, test_scenario):
-    """
-    Test reboot or reset scenario
-    """
-    # Common parameters
-    login_timeout = int(params.get('login_timeout', 240))
-
-    # Setup serial console
-    vm.cleanup_serial_console()
-    vm.create_serial_console()
-
-    if test_scenario == "shutdown":
-        lifecycle_base.test_shutdown(test, vm, params)
-        if params.get("start_after_shutdown", "no") == "yes":
-            test.log.info("TEST_STEP: Starting VM after shutdown")
-            vm.start()
-        else:
-            return
-    elif test_scenario == "reset":
-        lifecycle_base.test_reset(test, vm, login_timeout)
-    else:  # reboot_many_times
-        for _ in range(int(params.get('loop_time', '5'))):
-            lifecycle_base.test_reset(test, vm, login_timeout)
-
-    # Final login to check network access
-    session = vm.wait_for_serial_login(timeout=login_timeout)
-    check_network_access(test, vm, session, need_sriov, ping_dest)
-    session.close()
 
 
 def setup_vm_xml(test, vm, test_obj, need_sriov=False, cleanup_ifaces=True):
@@ -144,4 +192,4 @@ def run(test, params, env):
     finally:
         test_obj.teardown_iommu_test()
         if os.path.exists(save_path):
-            os.remove(save_path)
+            os.remove(save_path) 
