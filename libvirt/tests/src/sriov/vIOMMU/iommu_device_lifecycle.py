@@ -1,13 +1,8 @@
-import os
-
-from virttest import utils_misc
 from virttest import utils_net
-from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 
-from provider.save import save_base
 from provider.sriov import sriov_base
 from provider.sriov import check_points as sriov_check_points
 from provider.viommu import viommu_base

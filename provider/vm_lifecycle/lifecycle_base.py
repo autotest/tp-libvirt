@@ -113,12 +113,12 @@ def test_lifecycle_operation(test, vm, params, test_scenario=None, network_check
     login_timeout = int(params.get('login_timeout', 240))
     rand_id = utils_misc.generate_random_string(3)
     save_path = f'/var/tmp/{vm.name}_{rand_id}.save'
-    
+
     try:
         # Setup serial console
         vm.cleanup_serial_console()
         vm.create_serial_console()
-        
+
         # Execute the appropriate test scenario
         if test_scenario == "shutdown":
             test_shutdown(test, vm, params)
@@ -151,8 +151,8 @@ def test_lifecycle_operation(test, vm, params, test_scenario=None, network_check
             session = vm.wait_for_serial_login(timeout=login_timeout)
             network_check_callback(session)
             session.close()
-    
+
     finally:
         # Cleanup save file if it exists
         if os.path.exists(save_path):
-            os.remove(save_path) 
+            os.remove(save_path)
