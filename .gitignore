@@ -62,3 +62,4 @@ tools/github/*cache
 tmp
 .*.swp
 RELEASE-VERSION
+libvirt/tests/src/sriov/vIOMMU/iommu_device_lifecycle_fixed.py
