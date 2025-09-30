@@ -27,7 +27,32 @@ net_name = "tftpnet"
 cleanup_actions = []
 
 
-def create_tftp_content(install_tree_url, kickstart_url, arch):
+def _pxeconfig_content(entries, install_tree_url, kickstart_url):
+    """
+    Returns the configuration file contents for given entry names.
+    It will set the first entry as default and only use a single set
+    of installation data for simplicity because we want to test the
+    installation starts from the right folder, not the installation
+    itself.
+
+    :param entries: list of names for the configuration entries
+    """
+    kernel_cmdline = "append ip=dhcp inst.repo=%s inst.noverifyssl" % install_tree_url
+    if kickstart_url:
+        kernel_cmdline += " inst.ks=%s" % kickstart_url
+    else:
+        logging.debug("Create pxelinux.cfg without kickstart.")
+
+    contents = ["# pxelinux", f"default {entries[0]}"]
+    for entry in entries:
+        contents.append(f"label {entry}")
+        contents.append(f"kernel {entry}/kernel.img")
+        contents.append(f"initrd {entry}/initrd.img")
+        contents.append(kernel_cmdline)
+    return "\n".join(contents)
+
+
+def create_tftp_content(install_tree_url, kickstart_url, arch, entries=["linux"]):
     """
     Creates the folder for the tftp server,
     downloads images assuming they are below /images,
@@ -36,38 +61,37 @@ def create_tftp_content(install_tree_url, kickstart_url, arch):
     :param install_tree_url: url of the installation tree
     :param kickstart_url: url of the kickstart file
     :param arch: the architecture
+    :params entries: list of entry names for the pxe configuration
     """
 
     if arch != "s390x":
         raise NotImplementedError(f"No implementation available for '{arch}'.")
-
-    process.run("mkdir " + tftp_dir, ignore_status=False, shell=True, verbose=True)
-    cleanup_actions.insert(0, lambda: process.run("rm -rf " + tftp_dir, ignore_status=False, shell=True, verbose=True))
-
-    pxeconfig_content = """# pxelinux
-default linux
-label linux
-kernel kernel.img
-initrd initrd.img
-"""
-    kernel_cmdline = ("append ip=dhcp inst.repo=%s inst.noverifyssl"
-                      % install_tree_url)
-    if kickstart_url:
-        kernel_cmdline += " inst.ks=%s" % kickstart_url
-    else:
-        logging.debug("Create pxelinux.cfg without kickstart.")
-    pxeconfig_content += kernel_cmdline
-
-    with open(os.path.join(tftp_dir, boot_file), "w") as f:
-        f.write(pxeconfig_content)
+    if not entries or len([x for x in entries if len(x) == 0]) > 0:
+        raise ValueError(f"Expecting list of non-empty strings, got {entries}")
 
     cmds = []
 
     initrd_img_url = install_tree_url + "/images/initrd.img"
     kernel_img_url = install_tree_url + "/images/kernel.img"
 
-    cmds.append("curl %s -o %s/initrd.img" % (initrd_img_url, tftp_dir))
-    cmds.append("curl %s -o %s/kernel.img" % (kernel_img_url, tftp_dir))
+    process.run("mkdir " + tftp_dir, ignore_status=False, shell=True, verbose=True)
+    cleanup_actions.insert(
+        0,
+        lambda: process.run(
+            "rm -rf " + tftp_dir, ignore_status=False, shell=True, verbose=True
+        ),
+    )
+
+    for entry in entries:
+        entry_dir = os.path.join(tftp_dir, entry)
+        process.run("mkdir " + entry_dir, ignore_status=False, shell=True, verbose=True)
+        cmds.append("curl %s -o %s/initrd.img" % (initrd_img_url, entry_dir))
+        cmds.append("curl %s -o %s/kernel.img" % (kernel_img_url, entry_dir))
+
+    pxeconfig_content = _pxeconfig_content(entries, install_tree_url, kickstart_url)
+
+    with open(os.path.join(tftp_dir, boot_file), "w") as f:
+        f.write(pxeconfig_content)
 
     cmds.append("chmod -R a+r " + tftp_dir)
     cmds.append("chown -R nobody: " + tftp_dir)
@@ -85,13 +109,13 @@ def create_tftp_network():
     """
 
     net_params = {
-            "net_forward": "{'mode':'nat'}",
-            "net_ip_address": "192.168.150.1",
-            "dhcp_start_ipv4": "192.168.150.2",
-            "dhcp_end_ipv4": "192.168.150.254",
-            "tftp_root": tftp_dir,
-            "bootp_file": boot_file
-            }
+        "net_forward": "{'mode':'nat'}",
+        "net_ip_address": "192.168.150.1",
+        "dhcp_start_ipv4": "192.168.150.2",
+        "dhcp_end_ipv4": "192.168.150.254",
+        "tftp_root": tftp_dir,
+        "bootp_file": boot_file,
+    }
 
     net_xml = libvirt.create_net_xml(net_name, net_params)
     virsh.net_create(net_xml.xml, debug=True, ignore_status=False)
