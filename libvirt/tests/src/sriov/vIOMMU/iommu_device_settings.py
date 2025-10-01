@@ -52,9 +52,10 @@ def run(test, params, env):
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(vm.name), dev, dev_dict)
         if need_sriov:
-            iface_dicts = sroiv_test_obj.parse_iface_dict()
-            test.log.debug(iface_dicts)
-            test_obj.params["iface_dict"] = str(iface_dicts)
+            sriov_iface_dicts = sroiv_test_obj.parse_iface_dict()
+            test.log.debug(sriov_iface_dicts)
+            test_obj.params["iface_dict"] = str(sriov_iface_dicts)
+
         iface_dicts = test_obj.parse_iface_dict()
 
         if cleanup_ifaces:

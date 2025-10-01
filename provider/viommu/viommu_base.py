@@ -115,22 +115,22 @@ class VIOMMUTest(object):
 
         :return: The updated iface_dict or list of iface_dicts based on type of input
         """
-        iface_dict = self.params.get("iface_dict", "{}")
+        iface_dict = eval(self.params.get("iface_dict", "{}"))
 
         if isinstance(iface_dict, list):
             result = []
             for single_iface_dict in iface_dict:
-                processed_dict = self._process_single_iface_dict(single_iface_dict)
+                processed_dict = self._process_single_iface_dict(str(single_iface_dict))
                 result.append(processed_dict)
             return result
         else:
-            return self._process_single_iface_dict(iface_dict)
+            return self._process_single_iface_dict(str(iface_dict))
 
     def _process_single_iface_dict(self, single_iface_dict):
         """
         Process a single interface dictionary
 
-        :param single_iface_dict: Single interface dictionary to process
+        :param single_iface_dict: String representation of interface dictionary to process
         :return: The processed interface dictionary
         """
         # generate mac address, if it is needed in iface_dict
