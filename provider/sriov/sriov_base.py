@@ -172,9 +172,31 @@ class SRIOVTest(object):
 
     def parse_iface_dict(self):
         """
-        Parse iface_dict from params
+        Parse iface_dict from params, supporting both single dict and list of dicts
 
-        :return: The updated iface_dict
+        :return: The updated iface_dict or list of iface_dicts
+        """
+        iface_dict = self.params.get("iface_dict", "{}")
+
+        # Check if it's a list of dictionaries
+        if isinstance(iface_dict, list):
+            # Handle multiple interface dictionaries
+            result = []
+            for single_iface_dict in iface_dict:
+                # Process each interface dictionary
+                processed_dict = self._process_single_iface_dict(single_iface_dict)
+                result.append(processed_dict)
+            return result
+        else:
+            # Handle single interface dictionary (existing behavior)
+            return self._process_single_iface_dict(iface_dict)
+
+    def _process_single_iface_dict(self, single_iface_dict):
+        """
+        Process a single interface dictionary
+
+        :param iface_dict: Single interface dictionary to process
+        :return: The processed interface dictionary
         """
         mac_addr = utils_net.generate_mac_address_simple()
         pf_pci_addr = self.pf_pci_addr
@@ -183,7 +205,7 @@ class SRIOVTest(object):
         pf_name = self.pf_name
         vf_name = self.vf_name
         if self.params.get('iface_dict'):
-            iface_dict = eval(self.params.get('iface_dict', '{}'))
+            iface_dict = eval(single_iface_dict)
         else:
             if pf_pci_addr.get('type'):
                 del pf_pci_addr['type']
