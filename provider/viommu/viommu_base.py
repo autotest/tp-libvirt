@@ -130,7 +130,7 @@ class VIOMMUTest(object):
         """
         Process a single interface dictionary
 
-        :param iface_dict: Single interface dictionary to process
+        :param single_iface_dict: Single interface dictionary to process
         :return: The processed interface dictionary
         """
         # generate mac address, if it is needed in iface_dict

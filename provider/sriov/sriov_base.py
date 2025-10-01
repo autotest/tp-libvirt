@@ -195,7 +195,7 @@ class SRIOVTest(object):
         """
         Process a single interface dictionary
 
-        :param iface_dict: Single interface dictionary to process
+        :param single_iface_dict: Single interface dictionary to process
         :return: The processed interface dictionary
         """
         mac_addr = utils_net.generate_mac_address_simple()

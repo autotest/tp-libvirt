@@ -55,7 +55,7 @@ def run(test, params, env):
             iface_dicts = sroiv_test_obj.parse_iface_dict()
             test.log.debug(iface_dicts)
             test_obj.params["iface_dict"] = str(iface_dicts)
-        iface_dict = test_obj.parse_iface_dict()
+        iface_dicts = test_obj.parse_iface_dict()
 
         if cleanup_ifaces:
             # Handle both single dict and list of dicts
