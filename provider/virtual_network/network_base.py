@@ -61,6 +61,25 @@ def get_vm_ip(session, mac, ip_ver="ipv4", timeout=5, ignore_error=False):
     return vm_ip
 
 
+def get_host_iface(test):
+    """
+    Get the default gateway interface name on the host
+
+    :param test: test instance for error handling
+    :return: host interface name
+    """
+    if not utils_misc.wait_for(
+            lambda: utils_net.get_default_gateway(
+                iface_name=True, force_dhcp=True, json=True) is not None,
+            timeout=15):
+        test.fail("Cannot get default gateway in 15s")
+
+    host_iface = utils_net.get_default_gateway(
+        iface_name=True, force_dhcp=True, json=True)
+
+    return host_iface
+
+
 def get_test_ips(session, mac, ep_session, ep_mac, net_name=None,
                  ip_ver='ipv4', host_iface=None):
     """
