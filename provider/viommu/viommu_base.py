@@ -108,6 +108,7 @@ class VIOMMUTest(object):
         libvirt_version.is_libvirt_feature_supported(self.params)
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.orig_config_xml = new_xml.copy()
+        self.test.log.debug("Original VM configuration backed up for restore")
 
     def parse_iface_dict(self):
         """
@@ -115,7 +116,7 @@ class VIOMMUTest(object):
 
         :return: The updated iface_dict or list of iface_dicts based on type of input
         """
-        # generate mac address, if it is needed in iface_dict
+        # generate mac address, it can be needed in iface_dict
         mac_addr = utils_net.generate_mac_address_simple()
         iface_dict = eval(self.params.get("iface_dict", "{}"))
 
@@ -135,6 +136,10 @@ class VIOMMUTest(object):
 
         :param iface_dict: Interface dictionary to update with controller info
         """
+        if self._update_device_with_controller_address(iface_dict):
+            self.test.log.debug("alias address replaced. result: iface_dict: %s.", iface_dict)
+            return
+
         if self.controller_dicts and iface_dict and iface_dict.get('type_name') != 'hostdev':
             iface_bus = "%0#4x" % int(self.controller_dicts[-1].get("index"))
             iface_attrs = {"bus": iface_bus}
@@ -145,7 +150,97 @@ class VIOMMUTest(object):
                 iface_attrs.update({"slot": iface_slot})
 
             iface_dict.update({"address": {"attrs": iface_attrs}})
+
         self.test.log.debug("iface_dict: %s.", iface_dict)
+
+    def _get_controller_by_alias(self, alias_name, type=None):
+        """
+        Find controller with matching alias name and optionally filter by type
+
+        :param alias_name: The alias name to search for
+        :param type: Optional controller type to filter by (e.g., 'pci', 'scsi', 'usb')
+        :return: The matching controller or None if not found
+        """
+        for controller in self.controller_dicts:
+            controller_alias = controller.get("alias", {})
+            if controller_alias and controller_alias.get("name") == alias_name:
+                if type is not None and controller.get("type") != type:
+                    continue
+                return controller
+
+        type_msg = f" of type '{type}'" if type else ""
+        self.test.log.warning(f"No controller found with alias '{alias_name}'{type_msg} for device")
+        return None
+
+    def _update_device_with_controller_address(self, device_dict):
+        """
+        Update any device dictionary with controller-based address
+        Looks for alias in device_dict that references a controller and updates with controller's addressing
+
+        :param device_dict: Device dictionary to update with controller address (interface, disk, etc.)
+        """
+        address_dict = device_dict.get("address", {})
+        target_alias_name = address_dict.get("alias", {}).get("name")
+
+        if not target_alias_name or not self.controller_dicts:
+            return False
+
+        if "alias" in address_dict:
+            address_dict.pop("alias")
+
+        matching_controller = self._get_controller_by_alias(target_alias_name, type="pci")
+        if not matching_controller:
+            self.test.log.warning(f"Controller with alias '{target_alias_name}' not found, skipping device address update")
+            return False
+
+        controller_index = matching_controller.get("index")
+
+        if not controller_index:
+            self.test.fail(f"Controller with alias '{target_alias_name}' has no index information. "
+                           f"This indicates a bug in controller preparation. Controller: {matching_controller}")
+
+        updated_address_attrs = {
+            "type": "pci",
+            "domain": "0x0000",
+            "bus": "%0#4x" % int(controller_index),
+            "slot": "0x00",
+            "function": "0x0"
+        }
+
+        device_dict["address"] = {"attrs": updated_address_attrs}
+        self.test.log.debug(f"Updated device with controller '{target_alias_name}' address: {updated_address_attrs}")
+        return True
+
+    def _prepare_controller_address(self, contr_dict, parent_bus):
+        """
+        Prepare controller address attributes including slot and function assignment
+
+        :param contr_dict: Controller dictionary
+        :param parent_bus: Parent controller bus address
+        :return: Address attributes dictionary
+        """
+        contr_attrs = {"bus": parent_bus}
+        contr_model = contr_dict.get("model")
+        if contr_model in ["pcie-to-pci-bridge", "pcie-switch-upstream-port", "pcie-switch-downstream-port'"]:
+            contr_slot = "0"
+        else:
+            contr_slot = libvirt_pcicontr.get_free_pci_slot(
+                vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                controller_bus=parent_bus)
+
+        contr_attrs.update({"slot": contr_slot})
+        if contr_model == "pcie-switch-upstream-port":
+            pci_devices = list(vm_xml.VMXML.new_from_dumpxml(self.vm.name).xmltreefile.find("devices"))
+            used_function = []
+            for dev in pci_devices:
+                address = dev.find("address")
+                if address is not None and address.get("bus") == parent_bus:
+                    used_function.append(address.get("function"))
+            available_function = sorted(list(filter(lambda x: x not in used_function, ["%0#x" % d for d in range(8)])))
+            contr_function = available_function[0]
+            contr_attrs.update({"function": contr_function})
+
+        return contr_attrs
 
     def prepare_controller(self):
         """
@@ -159,50 +254,27 @@ class VIOMMUTest(object):
             contr_dict = self.controller_dicts[i]
             pre_controller = contr_dict.get("pre_controller")
             if pre_controller:
-                pre_contrs = list(
-                    filter(None, [c.get("index") for c in self.controller_dicts
-                                  if c["type"] == contr_dict["type"] and
-                                  c["model"] == pre_controller]))
-                if pre_contrs:
-                    pre_idx = pre_contrs[0]
-                else:
-                    pre_idx = libvirt_pcicontr.get_max_contr_indexes(
-                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                        contr_dict["type"], pre_controller)[-1]
+                pre_idx = self._find_pre_controller_index(pre_controller, contr_dict)
                 pre_contr_bus = "%0#4x" % int(pre_idx)
-                contr_attrs = {"bus": pre_contr_bus}
-                contr_slot = libvirt_pcicontr.get_free_pci_slot(
-                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                        controller_bus=pre_contr_bus)
-                if contr_dict.get("model") in ["pcie-to-pci-bridge", "pcie-switch-upstream-port", "pcie-switch-downstream-port'"]:
-                    contr_slot = "0"
-                contr_attrs.update({"slot": contr_slot})
-                self.test.log.debug(contr_slot)
-                if contr_dict.get("model") in ["pcie-switch-upstream-port"]:
-                    pci_devices = list(vm_xml.VMXML.new_from_dumpxml(self.vm.name).xmltreefile.find("devices"))
-                    used_function = []
-                    for dev in pci_devices:
-                        address = dev.find("address")
-                        if address is not None and address.get("bus") == pre_contr_bus:
-                            used_function.append(address.get("function"))
-                    self.test.log.debug(contr_dict)
-                    self.test.log.debug(f"Used function: {used_function}")
-                    available_function = sorted(list(filter(lambda x: x not in used_function,  ["%0#x" % d for d in range(8)])))
-                    self.test.log.debug(f"available_function: {available_function}")
-                    contr_function = available_function[0]
-                    contr_attrs.update({"function": contr_function})
-
+                contr_attrs = self._prepare_controller_address(contr_dict, pre_contr_bus)
                 contr_dict.update({"address": {"attrs": contr_attrs}})
                 contr_dict.pop("pre_controller")
+
+            self.test.log.debug(f"Final controller config: {contr_dict}")
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name), "controller",
                 contr_dict, 100)
-            contr_dict["index"] = libvirt_pcicontr.get_max_contr_indexes(
-                vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                contr_dict["type"], contr_dict["model"])[-1]
+
+            # Only assign index if it wasn't already assigned
+            if "index" not in contr_dict:
+                contr_dict["index"] = libvirt_pcicontr.get_max_contr_indexes(
+                    vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                    contr_dict["type"], contr_dict["model"])[-1]
+                self.test.log.debug(f"Assigned index {contr_dict['index']} to controller {i}: {contr_dict['model']}")
+            else:
+                self.test.log.debug(f"Index already assigned {contr_dict['index']} for controller {i}: {contr_dict['model']}")
             self.controller_dicts[i] = contr_dict
 
-        self.test.log.debug(f"Prepared controllers according to {self.controller_dicts}")
         return self.controller_dicts
 
     def update_disk_addr(self, disk_dict):
@@ -212,6 +284,8 @@ class VIOMMUTest(object):
         :param disk_dict: The original disk attrs
         :return: The updated disk attrs
         """
+        if self._update_device_with_controller_address(disk_dict):
+            return disk_dict
         if self.controller_dicts:
             dev_bus = self.controller_dicts[-1].get("index")
             dev_attrs = {"bus": "0"}
@@ -259,3 +333,24 @@ class VIOMMUTest(object):
         if self.vm.is_alive():
             self.vm.destroy(gracefully=False)
         self.orig_config_xml.sync()
+        self.test.log.debug("VM configuration restored to original state")
+
+    def _find_pre_controller_index(self, pre_controller, contr_dict):
+        """
+        Find the index of the pre_controller by model name.
+
+        :param pre_controller: The pre_controller model name to look up
+        :param contr_dict: The current controller dictionary
+        :return: The index of the pre_controller
+        """
+        pre_contrs = list(
+            filter(None, [c.get("index") for c in self.controller_dicts
+                          if c["type"] == contr_dict["type"] and
+                          c["model"] == pre_controller]))
+        if pre_contrs:
+            return pre_contrs[0]
+
+        # Fallback to existing VM controllers
+        return libvirt_pcicontr.get_max_contr_indexes(
+            vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+            contr_dict["type"], pre_controller)[-1]

@@ -1,8 +1,10 @@
+import time
 from virttest import utils_disk
 from virttest import utils_net
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_test import libvirt
 
 from provider.sriov import sriov_base
 from provider.viommu import viommu_base
@@ -46,6 +48,7 @@ def run(test, params, env):
             dev_dict = eval(params.get('%s_dict' % dev, '{}'))
             if dev == "disk" and dev_dict:
                 dev_dict = test_obj.update_disk_addr(dev_dict)
+                test.log.debug(f"disk_addr_updated:{dev_dict}")
                 if dev_dict["target"].get("bus") != "virtio":
                     libvirt_vmxml.modify_vm_device(
                             vm_xml.VMXML.new_from_dumpxml(vm.name), dev, {'driver': None})
@@ -61,10 +64,13 @@ def run(test, params, env):
         if cleanup_ifaces:
             # Handle both single dict and list of dicts
             if isinstance(iface_dict, list):
+                libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
                 for single_iface_dict in iface_dict:
-                    libvirt_vmxml.modify_vm_device(
+                    dev_obj = libvirt_vmxml.create_vm_device_by_type("interface", single_iface_dict)
+                    test.log.debug(f"XML of interface device is:\n{dev_obj}")
+                    libvirt.add_vm_device(
                             vm_xml.VMXML.new_from_dumpxml(vm.name),
-                            "interface", single_iface_dict)
+                            dev_obj)
             else:
                 libvirt_vmxml.modify_vm_device(
                         vm_xml.VMXML.new_from_dumpxml(vm.name),
@@ -72,6 +78,8 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Start the VM.")
         vm.start()
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
             timeout=int(params.get('login_timeout')))
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
@@ -98,4 +106,7 @@ def run(test, params, env):
         if 'vm_session' in locals():
             test.log.debug("Closing vm_session")
             vm_session.close()
+        vm.cleanup_serial_console()
+        test.log.debug("------------------------------------------------------------")
+        time.sleep(60)
         test_obj.teardown_iommu_test()
