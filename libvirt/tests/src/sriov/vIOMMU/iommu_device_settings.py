@@ -61,8 +61,9 @@ def run(test, params, env):
         if cleanup_ifaces:
             # Handle both single dict and list of dicts
             if isinstance(iface_dict, list):
+                libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
                 for single_iface_dict in iface_dict:
-                    libvirt_vmxml.modify_vm_device(
+                    libvirt_vmxml.add_vm_device(
                             vm_xml.VMXML.new_from_dumpxml(vm.name),
                             "interface", single_iface_dict)
             else:
@@ -72,6 +73,8 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Start the VM.")
         vm.start()
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
             timeout=int(params.get('login_timeout')))
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
@@ -98,4 +101,5 @@ def run(test, params, env):
         if 'vm_session' in locals():
             test.log.debug("Closing vm_session")
             vm_session.close()
+        vm.cleanup_serial_console()
         test_obj.teardown_iommu_test()
