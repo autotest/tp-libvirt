@@ -39,6 +39,7 @@ def run(test, params, env):
         vm_session = vm.wait_for_serial_login(
             timeout=int(params.get('login_timeout')))
         pre_devices = viommu_base.get_devices_pci(vm_session, test_devices)
+        vm_session.close()
         vm.destroy()
 
         for dev in ["disk", "video"]:
@@ -94,4 +95,7 @@ def run(test, params, env):
             if s:
                 test.fail("Failed to ping %s! status: %s, output: %s." % (ping_dest, s, o))
     finally:
+        if 'vm_session' in locals():
+            test.log.debug("Closing vm_session")
+            vm_session.close()
         test_obj.teardown_iommu_test()

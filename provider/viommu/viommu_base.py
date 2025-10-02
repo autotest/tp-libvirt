@@ -135,7 +135,7 @@ class VIOMMUTest(object):
 
         :param iface_dict: Interface dictionary to update with controller info
         """
-        if self.controller_dicts and iface_dict:
+        if self.controller_dicts and iface_dict and iface_dict.get('type_name') != 'hostdev':
             iface_bus = "%0#4x" % int(self.controller_dicts[-1].get("index"))
             iface_attrs = {"bus": iface_bus}
             if self.controller_dicts[-1].get("model") == "pcie-to-pci-bridge":
