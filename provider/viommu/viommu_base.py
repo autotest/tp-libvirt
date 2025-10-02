@@ -108,6 +108,7 @@ class VIOMMUTest(object):
         libvirt_version.is_libvirt_feature_supported(self.params)
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.orig_config_xml = new_xml.copy()
+        self.test.log.debug("Original VM configuration backed up for restore")
 
     def parse_iface_dict(self):
         """
@@ -259,3 +260,4 @@ class VIOMMUTest(object):
         if self.vm.is_alive():
             self.vm.destroy(gracefully=False)
         self.orig_config_xml.sync()
+        self.test.log.debug("VM configuration restored to original state")
