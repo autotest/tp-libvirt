@@ -111,13 +111,30 @@ class VIOMMUTest(object):
 
     def parse_iface_dict(self):
         """
-        Parse iface_dict from params
+        Parse iface_dict from params, supporting both single dict and list of dicts
 
-        :return: The updated iface_dict
+        :return: The updated iface_dict or list of iface_dicts based on type of input
         """
+        # generate mac address, if it is needed in iface_dict
         mac_addr = utils_net.generate_mac_address_simple()
         iface_dict = eval(self.params.get("iface_dict", "{}"))
 
+        if isinstance(iface_dict, list):
+            result = []
+            for single_iface_dict in iface_dict:
+                self._update_iface_dict_with_controller_info(single_iface_dict)
+                result.append(single_iface_dict)
+            return result
+        else:
+            self._update_iface_dict_with_controller_info(iface_dict)
+            return iface_dict
+
+    def _update_iface_dict_with_controller_info(self, iface_dict):
+        """
+        Update interface dictionary with controller addressing information
+
+        :param iface_dict: Interface dictionary to update with controller info
+        """
         if self.controller_dicts and iface_dict:
             iface_bus = "%0#4x" % int(self.controller_dicts[-1].get("index"))
             iface_attrs = {"bus": iface_bus}
@@ -129,7 +146,6 @@ class VIOMMUTest(object):
 
             iface_dict.update({"address": {"attrs": iface_attrs}})
         self.test.log.debug("iface_dict: %s.", iface_dict)
-        return iface_dict
 
     def prepare_controller(self):
         """

@@ -58,9 +58,16 @@ def run(test, params, env):
         iface_dict = test_obj.parse_iface_dict()
 
         if cleanup_ifaces:
-            libvirt_vmxml.modify_vm_device(
-                    vm_xml.VMXML.new_from_dumpxml(vm.name),
-                    "interface", iface_dict)
+            # Handle both single dict and list of dicts
+            if isinstance(iface_dict, list):
+                for single_iface_dict in iface_dict:
+                    libvirt_vmxml.modify_vm_device(
+                            vm_xml.VMXML.new_from_dumpxml(vm.name),
+                            "interface", single_iface_dict)
+            else:
+                libvirt_vmxml.modify_vm_device(
+                        vm_xml.VMXML.new_from_dumpxml(vm.name),
+                        "interface", iface_dict)
 
         test.log.info("TEST_STEP: Start the VM.")
         vm.start()
