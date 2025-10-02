@@ -126,7 +126,7 @@ def test_rename_vol_group(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_name = prepare_attached_device(gf, device_in_gf)
+    part_name = prepare_attached_device(test, gf, device_in_gf)
 
     groupname = params.get("gf_volume_group_name", "VolGroupTest")
     vgcreate_result = gf.vgcreate(groupname, part_name)
@@ -204,7 +204,7 @@ def test_remove_vol_group(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_name = prepare_attached_device(gf, device_in_gf)
+    part_name = prepare_attached_device(test, gf, device_in_gf)
 
     groupname = params.get("gf_volume_group_name", "VolGroupTest")
     vgcreate_result = gf.vgcreate(groupname, part_name)
@@ -265,7 +265,7 @@ def test_create_volume(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_name = prepare_attached_device(gf, device_in_gf)
+    part_name = prepare_attached_device(test, gf, device_in_gf)
 
     groupname = params.get("gf_volume_group_name", "VolGroupTest")
     vgcreate_result = gf.vgcreate(groupname, part_name)
@@ -369,7 +369,7 @@ def test_delete_volume(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_name = prepare_attached_device(gf, device_in_gf)
+    part_name = prepare_attached_device(test, gf, device_in_gf)
 
     groupname = params.get("gf_volume_group_name", "VolGroupTest")
     vgcreate_result = gf.vgcreate(groupname, part_name)
@@ -453,7 +453,7 @@ def test_shrink_volume(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_name = prepare_attached_device(gf, device_in_gf)
+    part_name = prepare_attached_device(test, gf, device_in_gf)
 
     groupname = params.get("gf_volume_group_name", "VolGroupTest")
     vgcreate_result = gf.vgcreate(groupname, part_name)
@@ -530,7 +530,7 @@ def test_shrink_volume(test, vm, params):
             if not re.search(mountpoint, str(output)):
                 raise utils_test.libguestfs.VTMountError("df", output)
         output = session.cmd_output("dd if=/dev/zero of=%s bs=1M "
-                                    "count=%s" % (file_path, dd_size1),
+                                    "count=%s" % (file_path, int(dd_size1)),
                                     timeout=5)
         logging.debug(output)
         md51 = session.cmd_output("md5sum %s" % file_path)
@@ -606,7 +606,7 @@ def test_expand_volume(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_name = prepare_attached_device(gf, device_in_gf)
+    part_name = prepare_attached_device(test, gf, device_in_gf)
 
     groupname = params.get("gf_volume_group_name", "VolGroupTest")
     vgcreate_result = gf.vgcreate(groupname, part_name)
@@ -682,7 +682,7 @@ def test_expand_volume(test, vm, params):
             if not re.search(mountpoint, str(output)):
                 raise utils_test.libguestfs.VTMountError("df", output)
         output = session.cmd_output("dd if=/dev/zero of=%s bs=1M "
-                                    "count=%s" % (file_path, dd_size1),
+                                    "count=%s" % (file_path, int(dd_size1)),
                                     timeout=5)
         logging.debug(output)
         md51 = session.cmd_output("md5sum %s" % file_path)
