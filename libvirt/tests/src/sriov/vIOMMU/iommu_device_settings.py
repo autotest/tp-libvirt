@@ -3,6 +3,7 @@ from virttest import utils_net
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_test import libvirt
 
 from provider.sriov import sriov_base
 from provider.viommu import viommu_base
@@ -39,6 +40,7 @@ def run(test, params, env):
         vm_session = vm.wait_for_serial_login(
             timeout=int(params.get('login_timeout')))
         pre_devices = viommu_base.get_devices_pci(vm_session, test_devices)
+        vm_session.close()
         vm.destroy()
 
         for dev in ["disk", "video"]:
@@ -58,12 +60,24 @@ def run(test, params, env):
         iface_dict = test_obj.parse_iface_dict()
 
         if cleanup_ifaces:
-            libvirt_vmxml.modify_vm_device(
-                    vm_xml.VMXML.new_from_dumpxml(vm.name),
-                    "interface", iface_dict)
+            # Handle both single dict and list of dicts
+            if isinstance(iface_dict, list):
+                libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
+                for single_iface_dict in iface_dict:
+                    dev_obj = libvirt_vmxml.create_vm_device_by_type("interface", single_iface_dict)
+                    test.log.debug(f"XML of interface device is:\n{dev_obj}")
+                    libvirt.add_vm_device(
+                            vm_xml.VMXML.new_from_dumpxml(vm.name),
+                            dev_obj)
+            else:
+                libvirt_vmxml.modify_vm_device(
+                        vm_xml.VMXML.new_from_dumpxml(vm.name),
+                        "interface", iface_dict)
 
         test.log.info("TEST_STEP: Start the VM.")
         vm.start()
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
             timeout=int(params.get('login_timeout')))
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
@@ -87,4 +101,8 @@ def run(test, params, env):
             if s:
                 test.fail("Failed to ping %s! status: %s, output: %s." % (ping_dest, s, o))
     finally:
+        if 'vm_session' in locals():
+            test.log.debug("Closing vm_session")
+            vm_session.close()
+        vm.cleanup_serial_console()
         test_obj.teardown_iommu_test()

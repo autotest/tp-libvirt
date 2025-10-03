@@ -108,17 +108,35 @@ class VIOMMUTest(object):
         libvirt_version.is_libvirt_feature_supported(self.params)
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
         self.orig_config_xml = new_xml.copy()
+        self.test.log.debug("Original VM configuration backed up for restore")
 
     def parse_iface_dict(self):
         """
-        Parse iface_dict from params
+        Parse iface_dict from params, supporting both single dict and list of dicts
 
-        :return: The updated iface_dict
+        :return: The updated iface_dict or list of iface_dicts based on type of input
         """
+        # generate mac address, if it is needed in iface_dict
         mac_addr = utils_net.generate_mac_address_simple()
         iface_dict = eval(self.params.get("iface_dict", "{}"))
 
-        if self.controller_dicts and iface_dict:
+        if isinstance(iface_dict, list):
+            result = []
+            for single_iface_dict in iface_dict:
+                self._update_iface_dict_with_controller_info(single_iface_dict)
+                result.append(single_iface_dict)
+            return result
+        else:
+            self._update_iface_dict_with_controller_info(iface_dict)
+            return iface_dict
+
+    def _update_iface_dict_with_controller_info(self, iface_dict):
+        """
+        Update interface dictionary with controller addressing information
+
+        :param iface_dict: Interface dictionary to update with controller info
+        """
+        if self.controller_dicts and iface_dict and iface_dict.get('type_name') != 'hostdev':
             iface_bus = "%0#4x" % int(self.controller_dicts[-1].get("index"))
             iface_attrs = {"bus": iface_bus}
             if self.controller_dicts[-1].get("model") == "pcie-to-pci-bridge":
@@ -129,7 +147,6 @@ class VIOMMUTest(object):
 
             iface_dict.update({"address": {"attrs": iface_attrs}})
         self.test.log.debug("iface_dict: %s.", iface_dict)
-        return iface_dict
 
     def prepare_controller(self):
         """
@@ -143,17 +160,30 @@ class VIOMMUTest(object):
             contr_dict = self.controller_dicts[i]
             pre_controller = contr_dict.get("pre_controller")
             if pre_controller:
-                pre_contrs = list(
-                    filter(None, [c.get("index") for c in self.controller_dicts
-                                  if c["type"] == contr_dict["type"] and
-                                  c["model"] == pre_controller]))
-                if pre_contrs:
-                    pre_idx = pre_contrs[0]
+                self.test.log.debug(f"Processing controller {i}: {contr_dict}")
+                self.test.log.debug(f"Looking for pre_controller: {pre_controller}")
+                # Get parent controller index and busNr
+                parent_contrs = [(c.get("index"), c.get("target", {}).get("busNr")) 
+                               for c in self.controller_dicts
+                               if c["type"] == contr_dict["type"] and c["model"] == pre_controller]
+                
+                if parent_contrs:
+                    parent_idx, parent_busnr = parent_contrs[0]
+                    # Use target busNr if it exists, otherwise use assigned index
+                    if parent_busnr:
+                        pre_idx = int(parent_busnr)
+                        self.test.log.debug(f"Using parent target busNr {pre_idx} for {pre_controller}")
+                    else:
+                        pre_idx = parent_idx
+                        self.test.log.debug(f"Using parent index {pre_idx} for {pre_controller}")
                 else:
+                    # Fall back to existing logic if parent not found
                     pre_idx = libvirt_pcicontr.get_max_contr_indexes(
                         vm_xml.VMXML.new_from_dumpxml(self.vm.name),
                         contr_dict["type"], pre_controller)[-1]
+                    self.test.log.debug(f"Using fallback index {pre_idx} for {pre_controller}")
                 pre_contr_bus = "%0#4x" % int(pre_idx)
+                self.test.log.debug(f"Parent controller index: {pre_idx}, bus: {pre_contr_bus}")
                 contr_attrs = {"bus": pre_contr_bus}
                 contr_slot = libvirt_pcicontr.get_free_pci_slot(
                         vm_xml.VMXML.new_from_dumpxml(self.vm.name),
@@ -178,12 +208,24 @@ class VIOMMUTest(object):
 
                 contr_dict.update({"address": {"attrs": contr_attrs}})
                 contr_dict.pop("pre_controller")
+            self.test.log.debug(f"Final controller config: {contr_dict}")
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name), "controller",
                 contr_dict, 100)
-            contr_dict["index"] = libvirt_pcicontr.get_max_contr_indexes(
-                vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                contr_dict["type"], contr_dict["model"])[-1]
+            # Only assign index if it wasn't already assigned
+            if "index" not in contr_dict:
+                # Check if target busNr is specified and use it as index
+                if contr_dict.get("target", {}).get("busNr"):
+                    target_bus = int(contr_dict["target"]["busNr"])
+                    contr_dict["index"] = target_bus
+                    self.test.log.debug(f"Using target busNr {target_bus} as index for controller {i}: {contr_dict['model']}")
+                else:
+                    contr_dict["index"] = libvirt_pcicontr.get_max_contr_indexes(
+                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                        contr_dict["type"], contr_dict["model"])[-1]
+                    self.test.log.debug(f"Assigned index {contr_dict['index']} to controller {i}: {contr_dict['model']}")
+            else:
+                self.test.log.debug(f"Index already assigned {contr_dict['index']} for controller {i}: {contr_dict['model']}")
             self.controller_dicts[i] = contr_dict
 
         self.test.log.debug(f"Prepared controllers according to {self.controller_dicts}")
@@ -243,3 +285,4 @@ class VIOMMUTest(object):
         if self.vm.is_alive():
             self.vm.destroy(gracefully=False)
         self.orig_config_xml.sync()
+        self.test.log.debug("VM configuration restored to original state")
