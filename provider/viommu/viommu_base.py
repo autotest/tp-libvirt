@@ -162,18 +162,28 @@ class VIOMMUTest(object):
             if pre_controller:
                 self.test.log.debug(f"Processing controller {i}: {contr_dict}")
                 self.test.log.debug(f"Looking for pre_controller: {pre_controller}")
-                pre_contrs = list(
-                    filter(None, [c.get("index") for c in self.controller_dicts
-                                  if c["type"] == contr_dict["type"] and
-                                  c["model"] == pre_controller]))
-                self.test.log.debug(f"Found pre_contrs: {pre_contrs}")
-                if pre_contrs:
-                    pre_idx = pre_contrs[0]
+                # Get parent controller index and busNr
+                parent_contrs = [(c.get("index"), c.get("target", {}).get("busNr")) 
+                               for c in self.controller_dicts
+                               if c["type"] == contr_dict["type"] and c["model"] == pre_controller]
+                
+                if parent_contrs:
+                    parent_idx, parent_busnr = parent_contrs[0]
+                    # Use target busNr if it exists, otherwise use assigned index
+                    if parent_busnr:
+                        pre_idx = int(parent_busnr)
+                        self.test.log.debug(f"Using parent target busNr {pre_idx} for {pre_controller}")
+                    else:
+                        pre_idx = parent_idx
+                        self.test.log.debug(f"Using parent index {pre_idx} for {pre_controller}")
                 else:
+                    # Fall back to existing logic if parent not found
                     pre_idx = libvirt_pcicontr.get_max_contr_indexes(
                         vm_xml.VMXML.new_from_dumpxml(self.vm.name),
                         contr_dict["type"], pre_controller)[-1]
+                    self.test.log.debug(f"Using fallback index {pre_idx} for {pre_controller}")
                 pre_contr_bus = "%0#4x" % int(pre_idx)
+                self.test.log.debug(f"Parent controller index: {pre_idx}, bus: {pre_contr_bus}")
                 contr_attrs = {"bus": pre_contr_bus}
                 contr_slot = libvirt_pcicontr.get_free_pci_slot(
                         vm_xml.VMXML.new_from_dumpxml(self.vm.name),
@@ -198,6 +208,7 @@ class VIOMMUTest(object):
 
                 contr_dict.update({"address": {"attrs": contr_attrs}})
                 contr_dict.pop("pre_controller")
+            self.test.log.debug(f"Final controller config: {contr_dict}")
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name), "controller",
                 contr_dict, 100)
