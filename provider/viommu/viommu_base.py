@@ -212,9 +212,20 @@ class VIOMMUTest(object):
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(self.vm.name), "controller",
                 contr_dict, 100)
-            contr_dict["index"] = libvirt_pcicontr.get_max_contr_indexes(
-                vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                contr_dict["type"], contr_dict["model"])[-1]
+            # Only assign index if it wasn't already assigned
+            if "index" not in contr_dict:
+                # Check if target busNr is specified and use it as index
+                if contr_dict.get("target", {}).get("busNr"):
+                    target_bus = int(contr_dict["target"]["busNr"])
+                    contr_dict["index"] = target_bus
+                    self.test.log.debug(f"Using target busNr {target_bus} as index for controller {i}: {contr_dict['model']}")
+                else:
+                    contr_dict["index"] = libvirt_pcicontr.get_max_contr_indexes(
+                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                        contr_dict["type"], contr_dict["model"])[-1]
+                    self.test.log.debug(f"Assigned index {contr_dict['index']} to controller {i}: {contr_dict['model']}")
+            else:
+                self.test.log.debug(f"Index already assigned {contr_dict['index']} for controller {i}: {contr_dict['model']}")
             self.controller_dicts[i] = contr_dict
 
         self.test.log.debug(f"Prepared controllers according to {self.controller_dicts}")
