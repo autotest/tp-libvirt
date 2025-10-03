@@ -160,10 +160,13 @@ class VIOMMUTest(object):
             contr_dict = self.controller_dicts[i]
             pre_controller = contr_dict.get("pre_controller")
             if pre_controller:
+                self.test.log.debug(f"Processing controller {i}: {contr_dict}")
+                self.test.log.debug(f"Looking for pre_controller: {pre_controller}")
                 pre_contrs = list(
                     filter(None, [c.get("index") for c in self.controller_dicts
                                   if c["type"] == contr_dict["type"] and
                                   c["model"] == pre_controller]))
+                self.test.log.debug(f"Found pre_contrs: {pre_contrs}")
                 if pre_contrs:
                     pre_idx = pre_contrs[0]
                 else:
