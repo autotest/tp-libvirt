@@ -162,26 +162,7 @@ class VIOMMUTest(object):
             if pre_controller:
                 self.test.log.debug(f"Processing controller {i}: {contr_dict}")
                 self.test.log.debug(f"Looking for pre_controller: {pre_controller}")
-                # Get parent controller index and busNr
-                parent_contrs = [(c.get("index"), c.get("target", {}).get("busNr")) 
-                               for c in self.controller_dicts
-                               if c["type"] == contr_dict["type"] and c["model"] == pre_controller]
-                
-                if parent_contrs:
-                    parent_idx, parent_busnr = parent_contrs[0]
-                    # Use target busNr if it exists, otherwise use assigned index
-                    if parent_busnr:
-                        pre_idx = int(parent_busnr)
-                        self.test.log.debug(f"Using parent target busNr {pre_idx} for {pre_controller}")
-                    else:
-                        pre_idx = parent_idx
-                        self.test.log.debug(f"Using parent index {pre_idx} for {pre_controller}")
-                else:
-                    # Fall back to existing logic if parent not found
-                    pre_idx = libvirt_pcicontr.get_max_contr_indexes(
-                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                        contr_dict["type"], pre_controller)[-1]
-                    self.test.log.debug(f"Using fallback index {pre_idx} for {pre_controller}")
+                pre_idx = self._find_pre_controller_index(pre_controller, contr_dict)
                 pre_contr_bus = "%0#4x" % int(pre_idx)
                 self.test.log.debug(f"Parent controller index: {pre_idx}, bus: {pre_contr_bus}")
                 contr_attrs = {"bus": pre_contr_bus}
@@ -286,3 +267,96 @@ class VIOMMUTest(object):
             self.vm.destroy(gracefully=False)
         self.orig_config_xml.sync()
         self.test.log.debug("VM configuration restored to original state")
+
+    def _find_pre_controller_index(self, pre_controller, contr_dict):
+        """
+        Find the index of the pre_controller using flexible lookup methods.
+
+        :param pre_controller: The pre_controller value to look up
+        :param contr_dict: The current controller dictionary
+        :return: The index of the pre_controller
+        """
+        self.test.log.debug(f"Finding pre_controller: {pre_controller}")
+
+        result = None
+        # Try various dictionary format first (most explicit)
+        if isinstance(pre_controller, dict):
+            result = self._find_by_dict_format(pre_controller)
+
+        # Try direct index (numeric string)
+        if result is None and isinstance(pre_controller, str) and pre_controller.isdigit():
+            result = self._find_by_direct_index(pre_controller)
+
+        # Try model name (backward compatibility)
+        if result is None and isinstance(pre_controller, str):
+            result = self._find_by_model_name(pre_controller, contr_dict)
+
+        # Fallback to existing VM controllers
+        if result is None:
+            self.test.log.debug(f"Fallback: Looking for existing controller with model {pre_controller}")
+            result = libvirt_pcicontr.get_max_contr_indexes(
+                vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                contr_dict["type"], pre_controller)[-1]
+            self.test.log.debug(f"Using fallback index: {result}")
+
+        return result
+
+    def _controller_exists_by_index(self, index):
+        """Check if a controller with the given index exists in controller_dicts"""
+        for c in self.controller_dicts:
+            if c.get("index") == index:
+                return True
+        return False
+
+    def _find_by_dict_format(self, pre_controller):
+        """
+            Find controller by dictionary format: {'alias': 'name'} or {'index': N}
+            example: {'type': 'pci', 'model': 'pcie-root-port', 'pre_controller': {'index': 100,'alias': 'pci.100'}}
+        """
+        if 'index' in pre_controller:
+            pre_idx = int(pre_controller['index'])
+            # Validate that controller exists in our controller_dicts
+            if self._controller_exists_by_index(pre_idx):
+                self.test.log.debug(f"Using explicit index from dict: {pre_idx}")
+                return pre_idx
+        elif 'alias' in pre_controller:
+            alias_name = pre_controller['alias']
+            return self._find_by_alias_name(alias_name)
+        self.test.log.warning(f"Invalid pre_controller dict format: {pre_controller}, or controller not found in controller_dicts. Use {{'index': N}} or {{'alias': 'name'}}, will fall back to other methods")
+        return None
+
+    def _find_by_direct_index(self, pre_controller):
+        """
+            Find controller by direct index (numeric string) direct index passed in configuration
+            example: {'type': 'pci', 'model': 'pcie-root-port', 'pre_controller': '100'}
+        """
+        pre_idx = int(pre_controller)
+        # Validate that controller exists in our controller_dicts
+        if self._controller_exists_by_index(pre_idx):
+            self.test.log.debug(f"Using direct index: {pre_idx}")
+            return pre_idx
+        else:
+            self.test.log.warning(f"Controller with index {pre_idx} not found in controller_dicts, will fall back to other methods")
+        return None
+
+    def _find_by_alias_name(self, alias_name):
+        """Find controller by alias name passed in configuration """
+        for c in self.controller_dicts:
+            if c.get("alias", {}).get("name") == alias_name:
+                pre_idx = int(c.get("index"))
+                self.test.log.debug(f"Found controller by alias {alias_name}: index {pre_idx}")
+                return pre_idx
+        self.test.log.warning(f"Controller with alias '{alias_name}' not found in controller_dicts, will fall back to other methods")
+        return None
+
+    def _find_by_model_name(self, pre_controller, contr_dict):
+        """Find controller by model name (backward compatibility)"""
+        pre_contrs = list(
+            filter(None, [c.get("index") for c in self.controller_dicts
+                          if c["type"] == contr_dict["type"] and
+                          c["model"] == pre_controller]))
+        if pre_contrs:
+            pre_idx = pre_contrs[0]
+            self.test.log.debug(f"Found controller by model {pre_controller}: index {pre_idx}")
+            return pre_idx
+        return None
