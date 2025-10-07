@@ -33,7 +33,7 @@ def run(test, params, env):
     """
     Test various options of virt-v2v.
     """
-    V2V_UNSUPPORT_GLANCE_VER = "[virt-v2v-1.45.2-1.el9,)"
+    V2V_UNSUPPORT_GLANCE_VER = "[virt-v2v-1.45.2-1,)"
 
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
