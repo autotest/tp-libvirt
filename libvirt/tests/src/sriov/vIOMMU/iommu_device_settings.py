@@ -1,3 +1,4 @@
+import time
 from virttest import utils_disk
 from virttest import utils_net
 
@@ -34,6 +35,9 @@ def run(test, params, env):
     try:
         test_obj.setup_iommu_test(iommu_dict=iommu_dict, cleanup_ifaces=cleanup_ifaces)
         test_obj.prepare_controller()
+        test_obj.log_controller_dicts()
+        #jtest.log.debug("------------------------------------------------------------")
+        #jtime.sleep(60)
         vm.start()
         vm.cleanup_serial_console()
         vm.create_serial_console()
@@ -47,17 +51,21 @@ def run(test, params, env):
             dev_dict = eval(params.get('%s_dict' % dev, '{}'))
             if dev == "disk" and dev_dict:
                 dev_dict = test_obj.update_disk_addr(dev_dict)
+                test.log.debug(f"disk_addr_updated:{dev_dict}")
                 if dev_dict["target"].get("bus") != "virtio":
                     libvirt_vmxml.modify_vm_device(
                             vm_xml.VMXML.new_from_dumpxml(vm.name), dev, {'driver': None})
 
             libvirt_vmxml.modify_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(vm.name), dev, dev_dict)
+        test_obj.log_controller_dicts()
         if need_sriov:
             iface_dicts = sroiv_test_obj.parse_iface_dict()
             test.log.debug(iface_dicts)
             test_obj.params["iface_dict"] = str(sroiv_test_obj.parse_iface_dict())
+        test_obj.log_controller_dicts()
         iface_dict = test_obj.parse_iface_dict()
+        test_obj.log_controller_dicts()
 
         if cleanup_ifaces:
             # Handle both single dict and list of dicts
@@ -105,4 +113,6 @@ def run(test, params, env):
             test.log.debug("Closing vm_session")
             vm_session.close()
         vm.cleanup_serial_console()
+        test.log.debug("------------------------------------------------------------")
+        time.sleep(60)
         test_obj.teardown_iommu_test()
