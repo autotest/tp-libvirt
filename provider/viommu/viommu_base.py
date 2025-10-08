@@ -146,7 +146,78 @@ class VIOMMUTest(object):
                 iface_attrs.update({"slot": iface_slot})
 
             iface_dict.update({"address": {"attrs": iface_attrs}})
+        elif self.controller_dicts and iface_dict and iface_dict.get('type_name') == 'hostdev' and 'address' in iface_dict:
+            self._update_device_with_controller_address(iface_dict)
+
         self.test.log.debug("iface_dict: %s.", iface_dict)
+
+    def _get_controller_by_alias(self, alias_name, type=None):
+        """
+        Find controller with matching alias name and optionally filter by type
+
+        :param alias_name: The alias name to search for
+        :param type: Optional controller type to filter by (e.g., 'pci', 'scsi', 'usb')
+        :return: The matching controller or None if not found
+        """
+        for controller in self.controller_dicts:
+            controller_alias = controller.get("alias", {})
+            if controller_alias and controller_alias.get("name") == alias_name:
+                # If type filter is specified, check controller type
+                if type is not None and controller.get("type") != type:
+                    continue
+                return controller
+        
+        type_msg = f" of type '{type}'" if type else ""
+        self.test.log.warning(f"No controller found with alias '{alias_name}'{type_msg} for device")
+        return None
+
+    def _update_device_with_controller_address(self, device_dict):
+        """
+        Update any device dictionary with controller-based address
+        Looks for alias in device_dict that references a controller and updates with controller's addressing
+
+        :param device_dict: Device dictionary to update with controller address (interface, disk, etc.)
+        """
+
+        # Get and remove the alias from the device dictionary
+        address_dict = device_dict.get("address", {})
+        target_alias_name = address_dict.get("alias", {}).get("name")
+        if not target_alias_name:
+            return
+        
+        # Remove the alias element (we don't need it anymore)
+        if "alias" in address_dict:
+            address_dict.pop("alias")
+        
+        if not self.controller_dicts:
+            return
+
+        # Find PCI controller with matching alias
+        matching_controller = self._get_controller_by_alias(target_alias_name, type="pci")
+        if not matching_controller:
+            self.test.log.warning(f"Controller with alias '{target_alias_name}' not found, skipping device address update")
+            return
+
+        # Get controller's index (same as chassis value)
+        controller_index = matching_controller.get("index")
+        
+        if not controller_index:
+            self.test.fail(f"Controller with alias '{target_alias_name}' has no index information. "
+                          f"This indicates a bug in controller preparation. Controller: {matching_controller}")
+
+        # Create the new address structure using controller's index as bus
+        updated_address_attrs = {
+            "type": "pci",
+            "domain": "0x0000",  # Default domain
+            "bus": "%0#4x" % int(controller_index),  # Use index as bus
+            "slot": "0x00",  # Always use slot 0 for devices on root ports
+            "function": "0x0"  # Default function
+        }
+
+        # Replace the entire address structure (removing alias, adding actual values)
+        device_dict["address"] = {"attrs": updated_address_attrs}
+        self.test.log.debug(f"Updated device with controller '{target_alias_name}' address: {updated_address_attrs}")
+
 
     def prepare_controller(self):
         """
@@ -213,24 +284,29 @@ class VIOMMUTest(object):
         :param disk_dict: The original disk attrs
         :return: The updated disk attrs
         """
-        if self.controller_dicts:
-            dev_bus = self.controller_dicts[-1].get("index")
-            dev_attrs = {"bus": "0"}
-            if disk_dict["target"]["bus"] != "scsi":
-                dev_attrs = {"bus": dev_bus}
-                dev_attrs.update({"type": self.controller_dicts[-1].get("type")})
-                if self.controller_dicts[-1].get("model") == "pcie-to-pci-bridge":
-                    dev_slot = libvirt_pcicontr.get_free_pci_slot(
-                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                        controller_bus=dev_bus)
-                    dev_attrs.update({"slot": dev_slot})
+        # First try to use controller-based addressing if disk has alias
+        self._update_device_with_controller_address(disk_dict)
+        
+        # If no alias was found or processed, fall back to original logic
+        if not disk_dict.get("address", {}).get("attrs"):
+            if self.controller_dicts:
+                dev_bus = self.controller_dicts[-1].get("index")
+                dev_attrs = {"bus": "0"}
+                if disk_dict["target"]["bus"] != "scsi":
+                    dev_attrs = {"bus": dev_bus}
+                    dev_attrs.update({"type": self.controller_dicts[-1].get("type")})
+                    if self.controller_dicts[-1].get("model") == "pcie-to-pci-bridge":
+                        dev_slot = libvirt_pcicontr.get_free_pci_slot(
+                            vm_xml.VMXML.new_from_dumpxml(self.vm.name),
+                            controller_bus=dev_bus)
+                        dev_attrs.update({"slot": dev_slot})
 
-            disk_dict.update({"address": {"attrs": dev_attrs}})
-            if disk_dict["target"]["bus"] == "scsi":
-                disk_dict["address"]["attrs"].update({"type": "drive", "controller": dev_bus})
+                disk_dict.update({"address": {"attrs": dev_attrs}})
+                if disk_dict["target"]["bus"] == "scsi":
+                    disk_dict["address"]["attrs"].update({"type": "drive", "controller": dev_bus})
 
-            if self.controller_dicts[-1]["model"] in ["pcie-root-port", "pcie-switch-downstream-port"]:
-                self.controller_dicts.pop()
+                if self.controller_dicts[-1]["model"] in ["pcie-root-port", "pcie-switch-downstream-port"]:
+                    self.controller_dicts.pop()
         return disk_dict
 
     def setup_iommu_test(self, **dargs):
