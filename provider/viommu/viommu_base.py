@@ -183,56 +183,42 @@ class VIOMMUTest(object):
 
     def _update_device_with_controller_address(self, device_dict):
         """
-        Update any device dictionary with controller-based address
+        Update any device dictionary with controller-based address defined by alias
         Looks for alias in device_dict that references a controller and updates with controller's addressing
+        remove the alias from the device dictionary if exists.
 
         :param device_dict: Device dictionary to update with controller address (interface, disk, etc.)
         """
 
-        self.test.log.debug("Going to update device with controller address")
-        # Get and remove the alias from the device dictionary
         address_dict = device_dict.get("address", {})
         target_alias_name = address_dict.get("alias", {}).get("name")
 
         if not target_alias_name or not self.controller_dicts:
             return False
 
-        # Remove the alias element (we don't need it anymore)
-        if "alias" in address_dict:
-            address_dict.pop("alias")
+        address_dict.pop("alias")
 
-        # Find PCI controller with matching alias
         matching_controller = self._get_controller_by_alias(target_alias_name, type="pci")
         if not matching_controller:
             self.test.log.warning(f"Controller with alias '{target_alias_name}' not found, skipping device address update")
             return False
 
-        # Get controller's index (same as chassis value)
         controller_index = matching_controller.get("index")
 
         if not controller_index:
             self.test.fail(f"Controller with alias '{target_alias_name}' has no index information. "
                           f"This indicates a bug in controller preparation. Controller: {matching_controller}")
 
-        # Create the new address structure using controller's index as bus
         updated_address_attrs = {
             "type": "pci",
-            "domain": "0x0000",  # Default domain
-            "bus": "%0#4x" % int(controller_index),  # Use index as bus
-            "slot": "0x00",  # Always use slot 0 for devices on root ports
-            "function": "0x0"  # Default function
+            "domain": "0x0000",
+            "bus": "%0#4x" % int(controller_index),
+            "slot": "0x00",
+            "function": "0x0"
         }
-
-        # Replace the entire address structure (removing alias, adding actual values)
         device_dict["address"] = {"attrs": updated_address_attrs}
-        self.test.log.debug(f"Updated device with controller '{target_alias_name}' address: {updated_address_attrs}")
+        self.test.log.debug(f"Updated device with controller '{target_alias_name}' and index '{controller_index}': {updated_address_attrs}")
         return True
-
-    def log_controller_dicts(self):
-        """
-        Log controller dicts
-        """
-        self.test.log.debug(f"Controller dicts: {self.controller_dicts}")
 
     def prepare_controller(self):
         """
@@ -246,31 +232,23 @@ class VIOMMUTest(object):
             contr_dict = self.controller_dicts[i]
             pre_controller = contr_dict.get("pre_controller")
             if pre_controller:
-                self.test.log.debug(f"Processing controller {i}: {contr_dict}")
-                self.test.log.debug(f"Looking for pre_controller: {pre_controller}")
                 pre_idx = self._find_pre_controller_index(pre_controller, contr_dict)
                 pre_contr_bus = "%0#4x" % int(pre_idx)
                 self.test.log.debug(f"Parent controller index: {pre_idx}, bus: {pre_contr_bus}")
+                
+                # Get current VM XML for slot and function allocation
+                # Note: We get fresh XML for each controller to see changes from previous controllers
+                vm_xml_obj = vm_xml.VMXML.new_from_dumpxml(self.vm.name)
+                
+                # Set up basic controller attributes
                 contr_attrs = {"bus": pre_contr_bus}
-                contr_slot = libvirt_pcicontr.get_free_pci_slot(
-                        vm_xml.VMXML.new_from_dumpxml(self.vm.name),
-                        controller_bus=pre_contr_bus)
-                if contr_dict.get("model") in ["pcie-to-pci-bridge", "pcie-switch-upstream-port", "pcie-switch-downstream-port'"]:
-                    contr_slot = "0"
+                contr_slot = self._get_controller_slot(vm_xml_obj, contr_dict, pre_contr_bus)
                 contr_attrs.update({"slot": contr_slot})
-                self.test.log.debug(contr_slot)
-                if contr_dict.get("model") in ["pcie-switch-upstream-port"]:
-                    pci_devices = list(vm_xml.VMXML.new_from_dumpxml(self.vm.name).xmltreefile.find("devices"))
-                    used_function = []
-                    for dev in pci_devices:
-                        address = dev.find("address")
-                        if address is not None and address.get("bus") == pre_contr_bus:
-                            used_function.append(address.get("function"))
-                    self.test.log.debug(contr_dict)
-                    self.test.log.debug(f"Used function: {used_function}")
-                    available_function = sorted(list(filter(lambda x: x not in used_function,  ["%0#x" % d for d in range(8)])))
-                    self.test.log.debug(f"available_function: {available_function}")
-                    contr_function = available_function[0]
+                self.test.log.debug(f"Controller slot: {contr_slot}")
+                
+                # Handle special case for pcie-switch-upstream-port
+                if contr_dict.get("model") == "pcie-switch-upstream-port":
+                    contr_function = self._get_available_pci_function(vm_xml_obj, pre_contr_bus)
                     contr_attrs.update({"function": contr_function})
 
                 contr_dict.update({"address": {"attrs": contr_attrs}})
@@ -444,3 +422,57 @@ class VIOMMUTest(object):
             self.test.log.debug(f"Found controller by model {pre_controller}: index {pre_idx}")
             return pre_idx
         return None
+
+    def _get_controller_slot(self, vm_xml_obj, contr_dict, pre_contr_bus):
+        """
+        Get the appropriate slot for a controller based on its model.
+        
+        :param vm_xml_obj: VM XML object
+        :param contr_dict: Controller dictionary
+        :param pre_contr_bus: Parent controller bus
+        :return: Controller slot
+        """
+        model = contr_dict.get("model")
+        
+        # Special models that use slot "0"
+        special_models = ["pcie-to-pci-bridge", "pcie-switch-upstream-port", "pcie-switch-downstream-port"]
+        if model in special_models:
+            return "0"
+        
+        # For other models, get a free PCI slot
+        return libvirt_pcicontr.get_free_pci_slot(vm_xml_obj, controller_bus=pre_contr_bus)
+
+    def _get_available_pci_function(self, vm_xml_obj, pre_contr_bus):
+        """
+        Find an available PCI function number for pcie-switch-upstream-port controllers.
+        
+        :param vm_xml_obj: VM XML object
+        :param pre_contr_bus: Parent controller bus
+        :return: Available function number
+        """
+        # Get all PCI devices from VM XML
+        pci_devices = list(vm_xml_obj.xmltreefile.find("devices"))
+        
+        # Find used function numbers on the same bus
+        used_functions = []
+        for dev in pci_devices:
+            address = dev.find("address")
+            if address is not None and address.get("bus") == pre_contr_bus:
+                function = address.get("function")
+                if function is not None:
+                    used_functions.append(function)
+        
+        self.test.log.debug(f"Used functions on bus {pre_contr_bus}: {used_functions}")
+        
+        # Generate all possible function numbers (0-7) in hex format
+        all_functions = ["%0#x" % d for d in range(8)]
+        
+        # Find available functions
+        available_functions = sorted([f for f in all_functions if f not in used_functions])
+        
+        self.test.log.debug(f"Available functions: {available_functions}")
+        
+        if not available_functions:
+            raise exceptions.TestError(f"No available PCI functions on bus {pre_contr_bus}")
+        
+        return available_functions[0]
