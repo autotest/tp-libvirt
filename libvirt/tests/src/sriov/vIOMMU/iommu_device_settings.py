@@ -35,9 +35,6 @@ def run(test, params, env):
     try:
         test_obj.setup_iommu_test(iommu_dict=iommu_dict, cleanup_ifaces=cleanup_ifaces)
         test_obj.prepare_controller()
-        test_obj.log_controller_dicts()
-        #jtest.log.debug("------------------------------------------------------------")
-        #jtime.sleep(60)
         vm.start()
         vm.cleanup_serial_console()
         vm.create_serial_console()
