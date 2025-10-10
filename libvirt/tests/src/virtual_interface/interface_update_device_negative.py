@@ -24,9 +24,7 @@ def run(test, params, env):
             libvirt_vmxml.modify_vm_device(vmxml, 'interface', pre_iface_dict)
         if start_vm and not vm.is_alive():
             vm.start()
-            vm.cleanup_serial_console()
-            vm.create_serial_console()
-            session = vm.wait_for_serial_login(timeout=int(params.get("login_timeout", 600)))
+            session = vm.wait_for_serial_login(timeout=int(params.get("login_timeout", 600)), recreate_serial_console=True)
             session.close()
         test.log.info("TEST_STEP: Update interface device.")
         interface_base.update_iface_device(vm, params)
