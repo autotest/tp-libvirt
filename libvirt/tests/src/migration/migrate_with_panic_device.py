@@ -57,9 +57,7 @@ def run(test, params, env):
         migration_obj.verify_default()
 
         backup_uri, vm.connect_uri = vm.connect_uri, dest_uri
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        remote_vm_session = vm.wait_for_serial_login(timeout=360)
+        remote_vm_session = vm.wait_for_serial_login(timeout=360, recreate_serial_console=True)
         try:
             remote_vm_session.cmd("systemctl stop kdump", ignore_all_errors=True)
             remote_vm_session.cmd("echo 1 > /proc/sys/kernel/sysrq")
