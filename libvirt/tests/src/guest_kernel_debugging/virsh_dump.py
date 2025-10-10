@@ -66,6 +66,7 @@ def run(test, params, env):
             unprivileged_user = 'testacl'
     document_string = eval(params.get("document_string", "[]"))
     valid_format = ["lzop", "gzip", "bzip2", "xz", 'elf', 'data']
+    backup_xml = None
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -334,7 +335,7 @@ def run(test, params, env):
         if not log_file:
             log_file = utils_misc.get_path(test.debugdir, "libvirtd.log")
         error = "Invalid dump_image_format.*" + image_format
-        return libvirt.check_logfile(error, log_file, ignore_status=True)
+        return utils_misc.wait_for(lambda: libvirt.check_logfile(error, log_file, ignore_status=True), timeout=30)
 
     # Configure dump_image_format in /etc/libvirt/qemu.conf.
     qemu_config = utils_config.LibvirtQemuConfig()
@@ -349,9 +350,12 @@ def run(test, params, env):
         qemu_config.dump_image_format = dump_image_format
         if dump_image_format not in valid_format:
             libvirtd.restart(wait_for_start=False)
-            if check_logfile(dump_image_format):
-                qemu_config.restore()
-                libvirtd_socket.restart()
+            err_msg_found = check_logfile(dump_image_format)
+            qemu_config.restore()
+            libvirtd_socket.restart()
+            if not err_msg_found:
+                test.fail("Cannot find the expected error message in log that indicates invalid image mode")
+            else:
                 return
         libvirtd.restart()
 
@@ -482,7 +486,8 @@ def run(test, params, env):
                 logging.info("Able to analyse guest vmcore using crash")
 
     finally:
-        backup_xml.sync()
+        if backup_xml:
+            backup_xml.sync()
         qemu_config.restore()
         libvirtd.restart()
         if os.path.isfile(small_img):
