@@ -76,9 +76,7 @@ def run(test, params, env):
         if start_vm:
             if not vm.is_alive():
                 vm.start()
-            vm.cleanup_serial_console()
-            vm.create_serial_console()
-            vm_session = vm.wait_for_serial_login(timeout=240)
+            vm_session = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
 
         libvirt_vfio.check_vfio_pci(sriov_test_obj.vf_pci, True)
 

@@ -32,9 +32,7 @@ def run(test, params, env):
         test.log.debug("The current guest xml ls: %s",
                        virsh.dumpxml(vm_name).stdout_text)
         test.log.info("TEST STEP3: Check the message for iommu group and DMA.")
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login(timeout=1000)
+        vm_session = vm.wait_for_serial_login(timeout=1000, recreate_serial_console=True)
         dma_status, dma_o = vm_session.cmd_status_output("dmesg | grep -i 'Not attempting DMA translation'")
         iommu_status, iommu_o = vm_session.cmd_status_output("dmesg | grep -i 'Adding to iommu group'")
         if dma_translation == "on" and (not dma_status or iommu_status):
