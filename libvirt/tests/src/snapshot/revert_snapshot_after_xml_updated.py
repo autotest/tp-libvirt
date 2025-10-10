@@ -68,9 +68,7 @@ def check_file_exist(test, vm, params, revert_snap):
 
     if not vm.is_alive():
         virsh.start(vm_name)
-    vm.cleanup_serial_console()
-    vm.create_serial_console()
-    session = vm.wait_for_serial_login()
+    session = vm.wait_for_serial_login(recreate_serial_console=True)
 
     if revert_snap == "1":
         file_list = eval(params.get("file_list"))[0:1]
