@@ -20,9 +20,7 @@ def run(test, params, env):
         :return: The session of VM
         """
         vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        return vm.wait_for_serial_login(timeout=240)
+        return vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
 
     def run_test():
         """

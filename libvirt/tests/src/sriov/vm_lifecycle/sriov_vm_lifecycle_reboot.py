@@ -52,9 +52,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP2: Start the VM")
         vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login(timeout=240)
+        vm_session = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
         if params.get("check_ping_time") == "yes":
             avg_ping_time = get_avg_ping_time(vm_session, params)
 

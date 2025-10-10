@@ -25,9 +25,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP2: Start the VM")
         vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm.wait_for_serial_login(timeout=240).close()
+        vm.wait_for_serial_login(timeout=240, recreate_serial_console=True).close()
 
         test.log.info("TEST_STEP3: Managedsave the vm")
         result = virsh.managedsave(vm.name, debug=True)

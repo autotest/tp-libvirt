@@ -29,9 +29,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP2: Start the VM")
         vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login(timeout=240)
+        vm_session = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
 
         test.log.info("TEST_STEP3: Check network accessibility")
         check_points.check_vm_network_accessed(vm_session,
@@ -67,9 +65,7 @@ def run(test, params, env):
         virsh.restore(save_file, debug=True, ignore_status=False)
         if not libvirt.check_vm_state(vm_name, "running"):
             test.fail("The guest should be running after executing 'virsh restore'.")
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login()
+        vm_session = vm.wait_for_serial_login(recreate_serial_console=True)
 
         test.log.info("TEST_STEP7: Check network accessibility")
         check_points.check_vm_network_accessed(vm_session,
@@ -80,9 +76,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP8: Managedsave the VM.")
         virsh.managedsave(vm_name, debug=True, ignore_status=False, timeout=10)
         vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login()
+        vm_session = vm.wait_for_serial_login(recreate_serial_console=True)
 
         test.log.info("TEST_STEP9: Check network accessibility")
         check_points.check_vm_network_accessed(vm_session,
