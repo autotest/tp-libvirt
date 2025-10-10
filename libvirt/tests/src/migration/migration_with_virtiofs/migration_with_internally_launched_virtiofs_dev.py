@@ -64,9 +64,7 @@ def run(test, params, env):
         mnt_path_name = params.get("mnt_path_name")
 
         backup_uri, vm.connect_uri = vm.connect_uri, desturi
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login(timeout=120)
+        vm_session = vm.wait_for_serial_login(timeout=120, recreate_serial_console=True)
         output = vm_session.cmd_output("df -h")
         test.log.debug("output: %s", output)
         if not re.search(expect_str, output):

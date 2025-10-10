@@ -76,9 +76,7 @@ def run(test, params, env):
         expect_str = params.get("expect_str")
 
         backup_uri, vm.connect_uri = vm.connect_uri, desturi
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login(timeout=120)
+        vm_session = vm.wait_for_serial_login(timeout=120, recreate_serial_console=True)
         output = vm_session.cmd_output("df -h")
         vm_session.close()
         test.log.debug("output: %s", output)
