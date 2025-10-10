@@ -126,9 +126,7 @@ def run(test, params, env):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
         # Re-create console since vm has been restored/resumed
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        session = vm.wait_for_serial_login(timeout=60)
+        session = vm.wait_for_serial_login(timeout=60, recreate_serial_console=True)
 
         vm_iface = utils_net.get_linux_ifname(session, mac)
         passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
