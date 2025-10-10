@@ -21,9 +21,7 @@ def check_network_accessibility(vm, **kwargs):
     """
     if kwargs.get("recreate_vm_session", "yes") == "yes":
         logging.debug("Recreating vm session...")
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login()
+        vm_session = vm.wait_for_serial_login(recreate_serial_console=True)
     else:
         vm_session = vm.session
 
