@@ -111,9 +111,7 @@ def run(test, params, env):
         time.sleep(5)
 
         test.log.info("TEST_STEP: Unload and load the driver.")
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_serial = vm.wait_for_serial_login(timeout=120)
+        vm_serial = vm.wait_for_serial_login(timeout=120, recreate_serial_console=True)
         while not all_threads_done(threads):
             vm_serial.cmd("modprobe -r %s" % nic_driver, timeout=120)
             time.sleep(2)

@@ -72,9 +72,7 @@ def run(test, params, env):
         """
         Verify network function
         """
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login(timeout=240)
+        vm_session = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
         check_points.check_vm_iface_num(vm_session, expr_iface_no,
                                         timeout=40, first=15)
 
