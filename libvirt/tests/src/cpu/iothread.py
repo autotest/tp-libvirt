@@ -275,6 +275,7 @@ def run(test, params, env):
                 iothread1.update({re.sub('-', '_', item.split()[0]): item.split()[1]})
             iothread1.update({'poll': tmp_poll})
         iothread_config['iothread'].append(iothread1)
+
         logging.debug("Configured iothreads:%s", iothread_config['iothread'])
         return iothread_config
 
@@ -396,6 +397,8 @@ def run(test, params, env):
             verify_poll()
         if test_thread_pool and need_verify:
             verify_thread_pool()
+        if live_set:
+            verify_iothread_by_vm_xml()
 
     def exec_attach_disk(vm_name, source, target, thread_id,
                          ignore_status=False):
@@ -464,18 +467,24 @@ def run(test, params, env):
 
         :param org_pool: original pool
         :param act_pool: actual pool
-        :param is_equal: True to assume they are some values
-                         False to check if they are different
+        :param is_equal: True to check if org_pool is a subset of act_pool
+                         False to check if they are not exactly equal
         :raise: test.fail if result does not show as expected
         """
-        if (org_pool == act_pool) != is_equal:
-            err_info = ("The iothread pool values haven't been updated!"
-                        "Expected: {}, Actual: {}".format(org_pool, act_pool))
-            if is_equal:
+        if is_equal:
+            for key, expected_value in org_pool.items():
+                if key not in act_pool or act_pool[key] != expected_value:
+                    err_info = ("The iothread pool values were not updated as expected. "
+                                "Mismatch found for key '%s'.\n"
+                                "Expected subset: %s\n"
+                                "Actual full set: %s" % (key, org_pool, act_pool))
+                    test.fail(err_info)
+        else:
+            if org_pool == act_pool:
                 err_info = ("The iothread pool values have been updated "
                             "unexpectedly! Expected: {}, Actual: {}"
                             .format(org_pool, act_pool))
-            test.fail(err_info)
+                test.fail(err_info)
 
     def check_schedinfo():
         """
@@ -545,6 +554,7 @@ def run(test, params, env):
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
     restart_vm = "yes" == params.get("restart_vm", "no")
     need_start_vm = "yes" == params.get("need_start_vm", "no")
+    live_set = "yes" == params.get("live_set", "no")
     test_operations = params.get("test_operations")
     cmd_options = params.get("cmd_options", '')
 
