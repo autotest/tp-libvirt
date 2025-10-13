@@ -270,18 +270,14 @@ def run(test, params, env):
                             internal_timeout=0.5)
                 else:
                     time.sleep(3)
-                    vm.cleanup_serial_console()
-                    vm.create_serial_console()
-                    vm.wait_for_serial_login(timeout=15)
+                    vm.wait_for_serial_login(timeout=15, recreate_serial_console=True)
             except Exception as e:
                 test.fail(f"Test fail: {str(e)}")
             else:
                 test.log.debug("Succeed to boot %s", vm_name)
         else:
             try:
-                vm.cleanup_serial_console()
-                vm.create_serial_console()
-                vm.wait_for_serial_login(timeout=15)
+                vm.wait_for_serial_login(timeout=15, recreate_serial_console=True)
             except LoginTimeoutError as expected_e:
                 test.log.debug("Got expected error message: %s", str(expected_e))
             except Exception as exc:
