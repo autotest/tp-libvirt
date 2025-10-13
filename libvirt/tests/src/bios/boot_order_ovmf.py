@@ -23,18 +23,14 @@ def check_boot(vm, test, params):
     time.sleep(3)
     if not status_error:
         try:
-            vm.cleanup_serial_console()
-            vm.create_serial_console()
-            vm.wait_for_serial_login()
+            vm.wait_for_serial_login(recreate_serial_console=True)
         except Exception as error:
             test.fail(f"Test fail: {error}")
         else:
             test.log.debug("Succeed to boot %s", vm.name)
     else:
         try:
-            vm.cleanup_serial_console()
-            vm.create_serial_console()
-            vm.wait_for_serial_login()
+            vm.wait_for_serial_login(recreate_serial_console=True)
         except LoginTimeoutError as expected_e:
             test.log.debug(f"Got expected error message: {expected_e}")
         except Exception as e:
