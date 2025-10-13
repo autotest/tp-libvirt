@@ -99,9 +99,7 @@ def run(test, params, env):
             test.log.info("TEST_STEP1: hotplug %s device", device_type)
             start_guest()
             virsh.attach_device(vm_name, device_xml.xml, ignore_status=False, debug=True)
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login()
+        vm_session = vm.wait_for_serial_login(recreate_serial_console=True)
 
         test.log.info("TEST_STEP2: check the attribute in %s xml", device_type)
         check_attribute()

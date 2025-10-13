@@ -279,11 +279,7 @@ def verify_test_back_mem_nvdimm(vm, params, test):
     :param test: test object
     """
     vm.connect_uri = params.get("virsh_migrate_connect_uri")
-    if vm.serial_console is not None:
-        test.log.debug("clean up old serial console")
-        vm.cleanup_serial_console()
-    vm.create_serial_console()
-    vm_session = vm.wait_for_serial_login(timeout=240)
+    vm_session = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
     cmd = 'mount -o dax /dev/pmem0 /mnt'
     vm_session.cmd(cmd)
     expected_content = params.get('test_file_content') + '.back'

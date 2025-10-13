@@ -147,10 +147,8 @@ def check_disk(params, vm):
     disk_target1 = params.get("disk_target1")
     disk_target2 = params.get("disk_target2")
 
-    vm.cleanup_serial_console()
     backup_uri, vm.connect_uri = vm.connect_uri, dest_uri
-    vm.create_serial_console()
-    remote_vm_session = vm.wait_for_serial_login(timeout=120)
+    remote_vm_session = vm.wait_for_serial_login(timeout=120, recreate_serial_console=True)
     utils_disk.linux_disk_check(remote_vm_session, disk_target1)
     utils_disk.linux_disk_check(remote_vm_session, disk_target2)
 
