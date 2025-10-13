@@ -281,9 +281,7 @@ def run(test, params, env):
             # restart libvirtd service then check the interface still works fine
             libvirtd = utils_libvirtd.Libvirtd()
             libvirtd.restart()
-            vm1.cleanup_serial_console()
-            vm1.create_serial_console()
-            session1 = vm1.wait_for_serial_login()
+            session1 = vm1.wait_for_serial_login(recreate_serial_console=True)
             ping(vm1_ip, remote_url, ping_count, ping_timeout, session=session1)
             logging.info("after reboot and restart libvirtd, the network works fine")
             if iface_driver:
