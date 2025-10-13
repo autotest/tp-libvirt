@@ -54,12 +54,8 @@ def check_vtpm_func(params, vm, test, on_remote=False):
     src_uri = params.get("virsh_migrate_connect_uri")
     test.log.debug("Check vtpm func: (on_remote: %s).", on_remote)
     if on_remote:
-        if vm.serial_console is not None:
-            vm.cleanup_serial_console()
         vm.connect_uri = dest_uri
-    if vm.serial_console is None:
-        vm.create_serial_console()
-    vm_session = vm.wait_for_serial_login(timeout=240)
+    vm_session = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
     if not utils_package.package_install("tpm2-tools", vm_session):
         test.error("Failed to install tpm2-tools in vm")
     cmd_result = vm_session.cmd_status(tpm_cmd)
