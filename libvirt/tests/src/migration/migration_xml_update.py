@@ -55,6 +55,11 @@ def create_migration_xml(test, vm_name, params):
         old_address = dev.find("address")
         dev.remove(old_address)
         dev.append(new_address)
+    elif modify == "mtu":
+        # Update MTU size for interface element
+        mtu_element = dev.find("mtu")
+        mtu_element.attrib['size'] = params.get("updated_mtu")
+
     ElementTree.ElementTree(vmxml).write(tmp_file)
 
 
