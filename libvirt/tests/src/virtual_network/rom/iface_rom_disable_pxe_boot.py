@@ -60,7 +60,7 @@ def run(test, params, env):
         Clean up test environment
         """
         test.log.debug("TEST_TEARDOWN: Recover the env.")
-        utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
+        utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
         bkxml.sync()
 
     vm_name = guest_os.get_vm(params)
