@@ -1,6 +1,5 @@
 import time
 
-from virttest import utils_net
 from virttest import utils_sriov
 from virttest import utils_test
 from virttest import virsh
@@ -16,29 +15,6 @@ def run(test, params, env):
     """
     Attach/detach device of hostdev type with vfio variant driver to/from guest
     """
-    def parse_iface_dict(pf_pci):
-        """
-        Parse interface dictionary from parameters
-        """
-        mac_addr = utils_net.generate_mac_address_simple()
-
-        vf_pci_addr = utils_sriov.pci_to_addr(vf_pci)
-        if params.get('iface_dict'):
-            iface_dict = eval(params.get('iface_dict', '{}'))
-        else:
-            if vf_pci_addr.get('type'):
-                del vf_pci_addr['type']
-            iface_dict = eval(params.get('hostdev_dict', '{}'))
-        driver_dict = eval(params.get("driver_dict", "{}"))
-        if driver_dict:
-            iface_dict.update(driver_dict)
-        managed = params.get("managed")
-        if managed:
-            iface_dict.update({"manged": managed})
-        test.log.debug(f"Iface dict: {iface_dict}")
-
-        return iface_dict
-
     dev_type = params.get("dev_type", "hostdev_interface")
     device_type = "hostdev" if dev_type == "hostdev_device" else "interface"
     expr_driver = params.get("expr_driver", "mlx5_vfio_pci")
@@ -66,7 +42,7 @@ def run(test, params, env):
         for idx in range(iface_number):
             test.log.info("TEST_STEP: Attach a hostdev interface/device to VM")
             vf_pci = utils_sriov.get_vf_pci_id(pf_pci, idx)
-            iface_dict = parse_iface_dict(vf_pci)
+            iface_dict = sriov_vfio.parse_iface_dict(vf_pci, params)
             iface_dev = libvirt_vmxml.create_vm_device_by_type(device_type, iface_dict)
             virsh.attach_device(vm.name, iface_dev.xml, ignore_status=False,
                                 debug=True)
