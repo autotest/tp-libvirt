@@ -6,6 +6,7 @@ import threading
 
 from glob import glob
 
+from aexpect import ShellTimeoutError
 from avocado.utils import process
 from avocado.utils import path as utils_path
 

@@ -8,6 +8,7 @@ from avocado.utils import process
 from avocado.core import exceptions
 
 from virttest import libvirt_storage
+from virttest import utils_sys
 from virttest import utils_misc
 from virttest import utils_split_daemons
 from virttest import virsh

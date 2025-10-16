@@ -258,7 +258,7 @@ def run(test, params, env):
         if pool_type is not None:
             options = " --pool %s" % pool_name
         if offset is not None:
-            options += " --offset %s" % offset
+            options += " --offset %s" % offset  # pylint: disable=E0602
             offset = int(offset)
         else:
             offset = 0
