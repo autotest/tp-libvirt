@@ -8,6 +8,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vfio
 from virttest.utils_libvirt import libvirt_vmxml
 
+from provider.sriov import sriov_base
 from provider.sriov import sriov_vfio
 
 
@@ -18,13 +19,27 @@ def run(test, params, env):
     dev_type = params.get("dev_type", "hostdev_interface")
     device_type = "hostdev" if dev_type == "hostdev_device" else "interface"
     expr_driver = params.get("expr_driver", "mlx5_vfio_pci")
-    test_pf = params.get("test_pf")
-    pf_pci = utils_sriov.get_pf_pci(test_pf=test_pf)
     iface_number = int(params.get("iface_number", "1"))
     ping_dest = params.get("ping_dest")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
+
+    # Setup SR-IOV if needed
+    need_sriov = "yes" == params.get("need_sriov", "no")
+    sriov_test_obj = None
+    if need_sriov:
+        sriov_test_obj = sriov_base.SRIOVTest(vm, test, params)
+        pf_pci = sriov_test_obj.pf_pci
+        pf_name = sriov_test_obj.pf_name
+    else:
+        # Fallback for backward compatibility if need_sriov is not set
+        test_pf = params.get("test_pf")
+        pf_pci = utils_sriov.get_pf_pci(test_pf=test_pf)
+        if not pf_pci:
+            test.cancel("No SR-IOV capable interface found")
+        pf_name = test_pf
+
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     orig_vm_xml = new_xml.copy()
     try:
@@ -55,7 +70,7 @@ def run(test, params, env):
             libvirt_vfio.check_vfio_pci(vf_pci, exp_driver=expr_driver)
 
         test.log.info("TEST_STEP: ping test from VM to outside")
-        if sriov_vfio.is_linked(pf_name=test_pf) and ping_dest:
+        if pf_name and sriov_vfio.is_linked(pf_name=pf_name) and ping_dest:
             if utils_test.ping(ping_dest, count=3, timeout=5, session=vm_session):
                 test.fail("Failed to ping %s." % ping_dest)
         else:
