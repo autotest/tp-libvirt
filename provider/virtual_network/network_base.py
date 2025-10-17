@@ -551,7 +551,8 @@ def prepare_vms_with_iface(params, vm_image_path=[], iface_list=[]):
     vm_list = []
     for image_path in vm_image_path:
         guest_version = os.path.basename(image_path)
-        vm_name = "".join([re.findall("Win|RHEL", guest_version, re.IGNORECASE)[0], "_vm"])
+        rand_id = utils_misc.generate_random_string(3)
+        vm_name = "".join([re.findall("Win|RHEL", guest_version, re.IGNORECASE)[0], "_vm"]) + rand_id
         LOG.debug("TEST_LOOP: Test '%s' with guest version '%s'.", vm_name, guest_version)
 
         prepare_single_vm(params, vm_name, image_path, iface_list)
