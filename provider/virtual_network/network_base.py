@@ -386,6 +386,7 @@ def preparation_for_iface(iface_type, params):
         network_dict = eval(params.get("network_dict", "[]"))
         if network_dict:
             libvirt_network.create_or_del_network(network_dict)
+            virsh.net_list("--all", debug=True)
 
 
 def cleanup_for_iface(iface_type, params):
