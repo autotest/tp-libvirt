@@ -100,7 +100,7 @@ def run(test, params, env):
                       "device!" % vm_hostdevs)
         else:
             test.log.debug("Verify: The hostdev interface/device in VM xml is removed successfully - PASS")
-        libvirt_vfio.check_vfio_pci(vf_pci, exp_driver="mlx5_core")
+        libvirt_vfio.check_vfio_pci(vf_pci, exp_driver=original_driver)
         test.log.debug("Verify: Check VF driver successfully after detaching hostdev interface/device - PASS")
         virsh.reboot(vm.name, ignore_status=False, debug=True)
         test.log.debug("Verify: VM reboot is successful after detaching hostdev interface/device - PASS")
