@@ -6,6 +6,7 @@ from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_config
 from virttest import utils_disk
+from virttest import utils_iptables
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -33,34 +34,49 @@ def setup_for_shared_filesystems(params, test):
     nvram_path = params.get("nvram_path")
     swtpm_path = params.get("swtpm_path")
     nfs_mount_options = params.get("nfs_mount_options")
+    mount_options = params.get("mount_options")
     server_ip = params.get("server_ip")
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
     mount_images_path = params.get("mount_images_path")
     mount_nvram_path = params.get("mount_nvram_path")
     mount_swtpm_path = params.get("mount_swtpm_path")
+    tpm_model = params.get("tpm_model")
 
     if not os.path.exists(export_dir):
         os.mkdir(export_dir)
 
     mount_opt = "rw,no_root_squash,sync"
+    process.run("exportfs -r", shell=True)
     res = libvirt.setup_or_cleanup_nfs(is_setup=True,
                                        is_mount=False,
                                        export_options=mount_opt,
                                        export_dir=export_dir)
 
+    firewall_cmd = utils_iptables.Firewall_cmd()
+    firewall_cmd.add_service('rpc-bind', permanent=True)
+    firewall_cmd.add_service('mountd', permanent=True)
     for path in [nfs_images_path, nfs_nvram_path, nfs_swtpm_path]:
         if not utils_misc.check_exists(path):
             process.run(f"mkdir -p {path}", shell=True, verbose=True)
 
-    utils_disk.mount(nfs_images_path, images_path, options=nfs_mount_options)
-    utils_disk.mount(nfs_nvram_path, nvram_path, options=nfs_mount_options)
-    utils_disk.mount(nfs_swtpm_path, swtpm_path, options=nfs_mount_options)
+    if tpm_model:
+        process.run(f"semanage fcontext -a -e /mnt {export_dir}", shell=True, verbose=True)
+        process.run(f"restorecon -Rv {export_dir}", shell=True, verbose=True)
+        process.run(f"chcon -R -t mnt_t {export_dir}/libvirt/", shell=True, verbose=True)
+        utils_disk.mount(nfs_images_path, images_path, options=params.get("mount_options_images"))
+        utils_disk.mount(nfs_nvram_path, nvram_path, options=params.get("mount_options_nvram"))
+        utils_disk.mount(nfs_swtpm_path, swtpm_path, options=params.get("mount_options_swtpm"))
+    else:
+        utils_disk.mount(nfs_images_path, images_path, options=mount_options, verbose=True)
+        utils_disk.mount(nfs_nvram_path, nvram_path, options=mount_options, verbose=True)
+        utils_disk.mount(nfs_swtpm_path, swtpm_path, options=mount_options, verbose=True)
 
     remote_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
-    utils_disk.mount(mount_images_path, images_path, session=remote_session)
-    utils_disk.mount(mount_nvram_path, nvram_path, session=remote_session)
-    utils_disk.mount(mount_swtpm_path, swtpm_path, session=remote_session)
+
+    utils_disk.mount(mount_images_path, images_path, session=remote_session, options=nfs_mount_options, verbose=True)
+    utils_disk.mount(mount_nvram_path, nvram_path, session=remote_session, options=nfs_mount_options, verbose=True)
+    utils_disk.mount(mount_swtpm_path, swtpm_path, session=remote_session, options=nfs_mount_options, verbose=True)
     remote_session.close()
 
     remote_obj = None
@@ -144,7 +160,7 @@ def run(test, params, env):
             os_dict = eval(params.get("os_dict"))
             vmxml.del_os()
             vmxml.setup_attrs(os=os_dict)
-        elif boot_type == "statless_uefi":
+        elif boot_type == "stateless_uefi":
             vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
             vmxml.setup_attrs(os=loader_dict)
         else:
@@ -153,7 +169,9 @@ def run(test, params, env):
         virsh.dumpxml(vm_name, debug=True)
         migration_obj.setup_connection()
         vm.start()
-        vm.wait_for_login().close()
+        # stateless='yes' only use for AMD test
+        if boot_type != "stateless_uefi":
+            vm.wait_for_login().close()
 
     def verify_test_again():
         """
@@ -161,8 +179,8 @@ def run(test, params, env):
 
         """
         test.log.info("Verify test again.")
-        dargs = {"check_disk_on_dest": "no"}
-        migration_obj.migration_test.post_migration_check([vm], dargs)
+        params.update({"check_disk_on_dest": "no"})
+        migration_obj.migration_test.post_migration_check([vm], params)
 
     def cleanup_test():
         """
