@@ -42,6 +42,7 @@ def run(test, params, env):
     dev_type = params.get("dev_type", "hostdev_interface")
     device_type = "hostdev" if dev_type == "hostdev_device" else "interface"
     expr_driver = params.get("expr_driver", "mlx5_vfio_pci")
+    original_driver = params.get("original_driver", "mlx5_core")
     test_pf = params.get("test_pf")
     pf_pci = utils_sriov.get_pf_pci(test_pf=test_pf)
     iface_number = int(params.get("iface_number", "1"))
