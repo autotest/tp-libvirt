@@ -149,20 +149,29 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
         raise exceptions.TestFail('.'.join(failures))
 
 
-def create_tap(tap_name, bridge_name, user, flag=''):
+def create_tap(tap_name, bridge_name, user, flag='', session=None, tap_mtu=''):
     """
     Create tap device
 
     :param tap_name: name of tap device
     :param bridge_name: bridge to connect to
     :param user: user with access
+    :param flag: additional flags for tap creation
+    :param session: session object for remote execution, None for local
+    :param tap_mtu: tap mtu setting value
     """
     # Create tap device with ip command
     tap_cmd = f'ip tuntap add mode tap user {user} group {user} name ' \
               f'{tap_name} {flag};ip link set {tap_name} up;' \
               f'ip link set {tap_name} master {bridge_name}'
     # Execute command as root
-    process.run(tap_cmd, shell=True, verbose=True)
+    if session:
+        session.cmd(tap_cmd, timeout=60)
+    else:
+        process.run(tap_cmd, shell=True, verbose=True)
+
+    if tap_mtu:
+        set_tap_mtu(tap_name, tap_mtu, session)
 
 
 def create_macvtap(macvtap_name, iface, user):
@@ -193,23 +202,33 @@ def create_macvtap(macvtap_name, iface, user):
     return mac_addr
 
 
-def set_tap_mtu(tap, mtu_size):
+def set_tap_mtu(tap, mtu_size, session=None):
     """
     Set mtu for tap/macvtap device
 
     :param tap: tap/macvtap device name
     :param mtu_size: mtu size to set
+    :param session: session object for remote execution, None for local
     """
-    process.run(f'ip link set dev {tap} mtu {mtu_size}')
+    mtu_cmd = f'ip link set dev {tap} mtu {mtu_size}'
+    if session:
+        session.cmd(mtu_cmd, timeout=30)
+    else:
+        process.run(mtu_cmd)
 
 
-def delete_tap(tap_name):
+def delete_tap(tap_name, session=None):
     """
     Delete tap/macvtap device with given name
 
     :param tap_name: name of tap/macvtap device
+    :param session: session object for remote execution, None for local
     """
-    process.run(f'ip l del {tap_name}', shell=True, ignore_status=True)
+    del_cmd = f'ip l del {tap_name}'
+    if session:
+        session.cmd(del_cmd)
+    else:
+        process.run(del_cmd, shell=True, ignore_status=True)
 
 
 def prepare_vmxml_for_unprivileged_user(up_user, root_vmxml):
