@@ -59,6 +59,60 @@ def check_interface_exists(vm, iface_mac):
     return (0, "Interface successfully found in VM", interface_name)
 
 
+def get_interface_pci_address(vm_name, iface_mac, check_active=True):
+    """
+    Get PCI address of interface with given MAC from VM XML.
+
+    :param vm_name: VM name
+    :param iface_mac: interface MAC address
+    :param check_active: check active or inactive XML
+    :return: PCI address string or None if not found
+    """
+    if check_active:
+        dumped_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    else:
+        dumped_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    ifaces = dumped_vmxml.devices.by_device_tag('interface')
+    for iface in ifaces:
+        if iface.mac_address == iface_mac:
+            # Get PCI address from the interface
+            address_elem = iface.xmltreefile.find('address')
+            if address_elem is not None and address_elem.get('type') == 'pci':
+                domain = address_elem.get('domain', '0x0000')
+                bus = address_elem.get('bus', '0x00')
+                slot = address_elem.get('slot', '0x00')
+                function = address_elem.get('function', '0x0')
+                pci_addr = f"{domain}:{bus}:{slot}.{function}"
+                logging.debug("Interface %s PCI address in %s XML: %s",
+                              iface_mac, "active" if check_active else "inactive", pci_addr)
+                return pci_addr
+    return None
+
+
+def check_pci_address_difference(vm_name, iface_mac):
+    """
+    Check if the PCI addresses of the interface are different between active and inactive XML
+
+    :param vm_name: name of vm
+    :param iface_mac: MAC address of the interface
+    :return: Tuple of (active_pci, inactive_pci)
+    :raises: TestFail exception if PCI addresses are the same or not found
+    """
+    active_pci = get_interface_pci_address(vm_name, iface_mac, check_active=True)
+    inactive_pci = get_interface_pci_address(vm_name, iface_mac, check_active=False)
+    if not active_pci or not inactive_pci:
+        raise exceptions.TestFail("Failed to get PCI address - Active: %s, Inactive: %s" %
+                                  (active_pci, inactive_pci))
+    elif active_pci == inactive_pci:
+        raise exceptions.TestFail(
+            "PCI addresses are the same in active and inactive XML: %s" % active_pci)
+    else:
+        logging.info("PCI address differs - Active: %s, Inactive: %s",
+                     active_pci, inactive_pci)
+    return active_pci, inactive_pci
+
+
 def comprehensive_verification(vm_name, vm, iface_type, iface_source, iface_mac,
                                flags, vm_state, params):
     """
@@ -154,6 +208,9 @@ def run(test, params, env):
     test_flags = params.get("test_flags", "")
     status_error = "yes" == params.get("status_error", "no")
     expected_error = params.get("expected_error", "")
+    test_scenario = params.get("test_scenario", "")
+    login_timeout = params.get_numeric("login_timeout", 360)
+    initial_interface_count = params.get_numeric("initial_interface_count", 3)
 
     # Interface specific attributes
     iface_type = params.get("iface_type", "network")
@@ -175,25 +232,46 @@ def run(test, params, env):
         # prepare VM state
         if vm_state == "running":
             vm.start()
-            vm.wait_for_login().close()
+            vm.wait_for_login(timeout=login_timeout).close()
+
+        if test_scenario == "pci_diff_detach":
+            for _ in range(initial_interface_count):
+                attach_options = ("%s %s --model %s" % (iface_type, iface_source, iface_model))
+                attach_result = virsh.attach_interface(vm_name, attach_options, **virsh_dargs)
+                libvirt.check_exit_status(attach_result)
 
         # Prepare attach options
         attach_options = ("%s %s --model %s --mac %s %s" % (iface_type, iface_source,
                                                             iface_model, iface_mac, test_flags))
         # Execute attach-interface command
-        attach_result = virsh.attach_interface(
-            vm_name, attach_options, **virsh_dargs)
-
+        attach_result = virsh.attach_interface(vm_name, attach_options, **virsh_dargs)
         # Check command execution result
         libvirt.check_exit_status(attach_result, status_error)
+
         if expected_error:
             libvirt.check_result(attach_result, expected_error)
             return
 
-        # Comprehensive verification
-        comprehensive_verification(vm_name, vm, iface_type, iface_source, iface_mac,
-                                   test_flags, vm_state, params)
+        if test_scenario == "pci_diff_detach":
+            logging.info("Starting PCI address difference and detach test")
+            check_pci_address_difference(vm_name, iface_mac)
 
+            logging.info("Detaching interface with MAC %s using --persistent", iface_mac)
+            detach_options = "%s --mac %s --persistent" % (iface_type, iface_mac)
+            detach_result = virsh.detach_interface(vm_name, detach_options, **virsh_dargs)
+            libvirt.check_exit_status(detach_result)
+
+            logging.info("Verifying interface removal from both active and inactive XML")
+            if check_interface_xml(vm_name, iface_type, iface_source,
+                                   iface_mac, params, check_active=True):
+                test.fail("Interface still exists in active XML after detach")
+            if check_interface_xml(vm_name, iface_type, iface_source,
+                                   iface_mac, params, check_active=False):
+                test.fail("Interface still exists in inactive XML after detach")
+
+        if test_scenario != "pci_diff_detach":
+            comprehensive_verification(vm_name, vm, iface_type, iface_source, iface_mac,
+                                       test_flags, vm_state, params)
     finally:
         # Clean up: restore original VM configuration
         if vm.is_alive():
