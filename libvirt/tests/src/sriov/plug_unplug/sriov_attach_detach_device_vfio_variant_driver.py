@@ -41,7 +41,7 @@ def run(test, params, env):
 
     dev_type = params.get("dev_type", "hostdev_interface")
     device_type = "hostdev" if dev_type == "hostdev_device" else "interface"
-    expr_driver = params.get("expr_driver", "mlx5_vfio_pci")
+    expr_driver = params.get("expr_driver")
     test_pf = params.get("test_pf")
     pf_pci = utils_sriov.get_pf_pci(test_pf=test_pf)
     iface_number = int(params.get("iface_number", "1"))
@@ -81,7 +81,10 @@ def run(test, params, env):
             test.log.debug(f"Actual XML: {actual_vm_hostdev}")
             if act_hostdev_dict.get("driver")["driver_attr"].get("name") != "vfio":
                 test.fail("The hostdev driver is not set to VFIO.")
-            libvirt_vfio.check_vfio_pci(vf_pci, exp_driver=expr_driver)
+            if expr_driver:
+                libvirt_vfio.check_vfio_pci(vf_pci, exp_driver=expr_driver)
+            else:
+                libvirt_vfio.check_vfio_pci(vf_pci)
 
         test.log.info("TEST_STEP: ping test from VM to outside")
         if sriov_vfio.is_linked(pf_name=test_pf) and ping_dest:
