@@ -34,10 +34,9 @@ def run(test, params, env):
         test_obj.setup_iommu_test(iommu_dict=iommu_dict, cleanup_ifaces=cleanup_ifaces)
         test_obj.prepare_controller()
         vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
-            timeout=int(params.get('login_timeout')))
+            timeout=int(params.get('login_timeout')),
+            recreate_serial_console=True)
         pre_devices = viommu_base.get_devices_pci(vm_session, test_devices)
         vm.destroy()
 
