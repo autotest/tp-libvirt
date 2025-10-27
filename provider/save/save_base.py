@@ -18,9 +18,7 @@ def pre_save_setup(vm, serial=False):
     :return: a tuple of pid of ping and uptime since when
     """
     if serial:
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        session = vm.wait_for_serial_login()
+        session = vm.wait_for_serial_login(recreate_serial_console=True)
     else:
         session = vm.wait_for_login()
     upsince = session.cmd_output('uptime --since').strip()
@@ -48,9 +46,7 @@ def post_save_check(vm, pid_ping, upsince, serial=False):
     :param serial: Whether to use a serial connection
     """
     if serial:
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        session = vm.wait_for_serial_login()
+        session = vm.wait_for_serial_login(recreate_serial_console=True)
     else:
         session = vm.wait_for_login()
     upsince_restore = session.cmd_output('uptime --since').strip()
