@@ -55,9 +55,7 @@ def run(test, params, env):
 
         test.log.info("Verify steps.")
         backup_uri, vm.connect_uri = vm.connect_uri, dest_uri
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        remote_vm_session = vm.wait_for_serial_login(timeout=360)
+        remote_vm_session = vm.wait_for_serial_login(timeout=360, recreate_serial_console=True)
         remote_vm_dmesg = remote_vm_session.cmd_output("dmesg")
         if "I/O error" in remote_vm_dmesg:
             test.fail(f"Found I/O error in guest dmesg: {remote_vm_dmesg}")
