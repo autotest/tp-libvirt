@@ -33,9 +33,7 @@ def run(test, params, env):
         dev_names = sriov_vfio.attach_dev(vm, params)
         if not vm.is_alive():
             vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm.wait_for_serial_login().close()
+        vm.wait_for_serial_login(recreate_serial_console=True).close()
         time.sleep(30)
 
         test.log.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
