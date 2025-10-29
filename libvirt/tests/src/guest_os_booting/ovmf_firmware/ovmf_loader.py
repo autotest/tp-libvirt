@@ -56,6 +56,10 @@ def run(test, params, env):
     bkxml = vmxml.copy()
 
     try:
+        # Check if image mode
+        if loader_dict.get("loader_readonly") == "no" and os.path.isdir("/ostree"):
+            test.cancel("The image mode filesystem is read only so {'loader_readonly': 'no'} is not supported")
+
         if smm_state:
             guest_os.prepare_smm_xml(vm_name, smm_state, "")
         if "nvram" in loader_dict:
