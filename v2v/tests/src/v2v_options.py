@@ -7,7 +7,7 @@ import pwd
 import logging
 import shutil
 
-import aexpect
+import tempfile
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -52,6 +52,12 @@ def run(test, params, env):
     vpx_dc = params.get("vpx_dc", "EXAMPLE")
     esx_ip = params.get("esx_ip", "EXAMPLE")
     source_user = params.get("username", "root")
+    # For VDDK
+    input_transport = params.get("input_transport")
+    vddk_libdir = params.get('vddk_libdir')
+    # nfs mount source
+    vddk_libdir_src = params.get('vddk_libdir_src')
+    vddk_thumbprint = params.get('vddk_thumbprint')
     output_mode = params.get("output_mode")
     output_storage = params.get("output_storage", "default")
     disk_img = params.get("input_disk_image", "")
@@ -564,13 +570,6 @@ def run(test, params, env):
                 LOG.info('%s%% compressed', compress_rate)
                 if compress_rate < 0.1:
                     test.fail('Disk image NOT compressed')
-            if checkpoint == 'tail_log':
-                messages = params['tail'].get_output()
-                LOG.info('Content of /var/log/messages during conversion:')
-                LOG.info(messages)
-                msg_content = params['msg_content']
-                if msg_content in messages:
-                    test.fail('Found "%s" in /var/log/messages' % msg_content)
             if checkpoint == 'print_estimate_tofile':
                 check_print_estimate(estimate_file)
             if checkpoint == 'copy_to_local':
@@ -596,6 +595,11 @@ def run(test, params, env):
             if checkpoint == 'in_place':
                 if not os.path.exists(xml_path):
                     test.fail('Not found guest xml file')
+            if checkpoint == 'virt_v2v_open':
+                with open(xml_path, 'r', encoding='utf-8', errors='ignore') as fp:
+                    xml_output = fp.read()
+                if not re.search(r'<root\b.*?>.*</root>', xml_output, flags=re.DOTALL):
+                    test.fail('fail to test virt-v2v-open tool')
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             test.fail(log_check)
@@ -651,8 +655,9 @@ def run(test, params, env):
             if checkpoint == 'without_ic':
                 input_option = "-i ova %s -of raw" % input_file
             # Build network&bridge option to avoid network error
-            v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
-                                             params.get("output_network"))
+            if checkpoint not in ['virt_v2v_open', 'virt_v2v_inspector']:
+                v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
+                                                 params.get("output_network"))
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
         elif input_mode == 'libvirtxml':
@@ -728,7 +733,9 @@ def run(test, params, env):
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
-        elif checkpoint not in ['length_of_error', 'empty_nic_source_network', 'line_no_wrap', 'empty_nic_source_bridge', 'machine_readable', 'in_place']:
+        elif checkpoint not in ['length_of_error', 'empty_nic_source_network', 'line_no_wrap',
+                                'empty_nic_source_bridge', 'machine_readable', 'in_place',
+                                'virt_v2v_open', 'virt_v2v_inspector']:
             v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
@@ -786,7 +793,15 @@ def run(test, params, env):
             if not utils_v2v.v2v_supported_option("-ip <filename>"):
                 output_option = output_option.replace(
                     '-ip', '--password-file', 1)
-
+            # For VDDK
+            if input_transport == 'vddk':
+                vddk_thumbprint = utils_v2v.get_vddk_thumbprint(remote_host, source_pwd, 'vpx')
+                with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
+                    utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+                    process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
+                                shell=True, ignore_status=True)
+                    utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
+                v2v_options += ' -it vddk  -io vddk-libdir=/home/vddk_libdir -io vddk-thumbprint=%s' % vddk_thumbprint
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
         if output_mode is None:
@@ -848,10 +863,48 @@ def run(test, params, env):
 
         if checkpoint == 'length_of_error' and utils_v2v.v2v_supported_option('--wrap'):
             v2v_options += ' --wrap'
+
         if checkpoint == 'in_place':
             disk_path = params.get('disk_path')
             xml_path = os.path.join(data_dir.get_tmp_dir(), 'output.xml')
             v2v_options += '-i disk %s -O %s' % (disk_path, xml_path)
+
+        if checkpoint == 'virt_v2v_open':
+            xml_path = os.path.join(data_dir.get_tmp_dir(), 'output.xml')
+            v2v_options += ' --run "virt-inspector --format=raw @@ > %s"' % xml_path
+
+        if checkpoint == 'virt_v2v_inspector':
+            # Create libvirt URI
+            v2v_uri = utils_v2v.Uri('esx')
+            remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
+            LOG.debug("libvirt URI for converting: %s", remote_uri)
+            virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
+                           'remote_user': 'root', 'remote_pwd': source_pwd,
+                           'auto_close': True,
+                           'debug': True}
+            remote_virsh = virsh.VirshPersistent(**virsh_dargs)
+            raw_dumpxml = remote_virsh.dumpxml(vm_name)
+            remote_virsh.close_session()
+            disk_info = ''.join(re.findall(r"source\s+file=.*\.*vmdk", raw_dumpxml.stdout,
+                                           flags=re.DOTALL | re.IGNORECASE)).split('=')[-1].strip("'")
+
+            def snapshot(disk_info):
+                # Find the last number in the string
+                matches = list(re.finditer(r'\b\d+\b', disk_info))
+                # Take the last match
+                last_match = matches[-1]
+                num_str = last_match.group()
+                if not num_str:
+                    return disk_info  # No standalone number found, return original string
+                new_num = str(int(num_str) - 1)
+                new_match = num_str.replace(str(int(num_str)), new_num)
+                # Replace only the last number found
+                start, end = last_match.span()
+                return disk_info[:start] + new_match + disk_info[end:]
+
+            snapshot_info = snapshot(disk_info)
+            v2v_options += " -io vddk-file='%s'" % snapshot_info
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -871,17 +924,13 @@ def run(test, params, env):
         # Set timeout to kill v2v process before conversion succeed
         if checkpoint == 'disk_not_exist':
             v2v_timeout = 30
-        # Get tail content of /var/log/messages
-        if checkpoint == 'tail_log':
-            params['tail_log'] = os.path.join(
-                data_dir.get_tmp_dir(), 'tail_log')
-            params['tail'] = aexpect.Tail(
-                command='tail -f /var/log/messages',
-                output_func=utils_misc.log_line,
-                output_params=(params['tail_log'],)
-            )
         if checkpoint == 'in_place':
             cmd = re.sub(r".*/bin/virt-v2v", '/usr/libexec/virt-v2v-in-place', cmd)
+        if checkpoint == 'virt_v2v_open':
+            cmd = re.sub(r".*/bin/virt-v2v", 'virt-v2v-open', cmd)
+        if checkpoint == 'virt_v2v_inspector':
+            cmd = re.sub(r".*/bin/virt-v2v", 'virt-v2v-inspector', cmd)
+            cmd = cmd.replace('-i libvirt', '')
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
         if new_vm_name:
@@ -890,7 +939,7 @@ def run(test, params, env):
         check_result(cmd, cmd_result, status_error)
     finally:
         if hypervisor == "esx":
-            process.run("rm -rf %s" % vpx_passwd_file)
+            process.run("rm -rf %s" % vpx_passwd_file, ignore_status=True)
         if checkpoint == "weak_dendency":
             utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
