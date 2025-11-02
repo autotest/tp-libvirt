@@ -13,6 +13,7 @@ from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
+from virttest.utils_libvirt import libvirt_misc
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -224,6 +225,79 @@ def check_coalesce(vm_name, mac, coalesce):
     return 0, ''
 
 
+def check_target_option_behavior(test, vm_name, iface_mac, expected_target_name):
+    """
+    Check target option behavior according to test matrix
+
+    :param test: Test object for test.fail() calls
+    :param vm_name: Name of the virtual machine
+    :param iface_mac: MAC address of the interface to check
+    :param expected_target_name: Expected exact target name for "keep" behavior
+    """
+
+    # Get actual target from XML using fetch_attrs
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    interfaces = vmxml.devices.by_device_tag('interface')
+    actual_target = None
+    for iface in interfaces:
+        if iface.mac_address == iface_mac:
+            actual_target = iface.fetch_attrs().get('target', {}).get('dev')
+            break
+    if not re.findall(expected_target_name, actual_target):
+        test.fail("Expected target '%s', got '%s'" % (expected_target_name, actual_target))
+    test.log.debug("PASS: Expected target '%s' in vm xml for MAC %s", expected_target_name, iface_mac)
+
+
+def check_domiflist_target(test, vm_name, iface_mac, expected_target_name, existed=True):
+    """
+    Check target device name from virsh domiflist.
+
+    :param test: Test object for test.fail() calls
+    :param vm_name: Name of the virtual machine
+    :param iface_mac: MAC address of the interface to find
+    :param expected_target_name: Expected target device name pattern
+    :param existed: Whether the target should exist (True) or not exist (False)
+    :raises: test.fail() if domiflist command fails or MAC not found
+    """
+    result = virsh.domiflist(vm_name, ignore_status=True, debug=True)
+    for line in result.stdout.strip().split('\n'):
+        if iface_mac.lower() in line.lower():
+            iflist_info = libvirt_misc.convert_to_dict(line, pattern=r'(\S+) +(.*)')
+            target_names = list(iflist_info.keys())[0]
+            if existed:
+                if not re.findall(expected_target_name, target_names):
+                    test.fail("Expected '%s' is existed, but got '%s' in domiflist" % (expected_target_name, target_names))
+            else:
+                if re.findall(expected_target_name, target_names):
+                    test.fail("Expected '%s' is not existed, but got '%s' in domiflist" % (expected_target_name, target_names))
+    test.log.debug("Checking PASS: Interface target '%s' with domiflist for MAC %s", expected_target_name, iface_mac)
+
+
+def check_guest_interface_exists(test, vm, iface_mac, expected_existed=True):
+    """
+    Check if interface exists in guest OS.
+
+    :param test: Test object for test.fail() calls
+    :param vm: Virtual machine object.
+    :param iface_mac: MAC address of the interface to verify in guest.
+    :param expected_existed: Expected iface_mac is existed or not.
+    """
+    try:
+        session = vm.wait_for_login()
+        status, output = session.cmd_status_output("ip -4 -o link list")
+        session.close()
+        if expected_existed:
+            if not re.search(iface_mac.lower(), output.lower()):
+                test.fail("Interface with MAC %s was not found in guest: %s" % (iface_mac, output))
+        else:
+            if re.search(iface_mac.lower(), output.lower()):
+                test.fail("Interface with MAC %s was found in guest: %s" % (iface_mac, output))
+        logging.info("PASS checking for the Interface with MAC %s in guest", iface_mac)
+
+    except Exception as e:
+        test.fail("Failed to check guest interface: %s" % str(e))
+
+
 def run(test, params, env):
     """
     Test virsh {at|de}tach-interface command.
@@ -280,6 +354,14 @@ def run(test, params, env):
     validate_xml_result = "yes" == params.get("check_xml_result", "no")
     paused_after_vm_start = "yes" == params.get("paused_after_vm_start", "no")
     machine_type = params.get("machine_type")
+
+    # Target option test specific parameters
+    test_target_option = params.get_boolean("test_target_option")
+    check_domiflist_result = params.get_boolean("check_domiflist_result")
+    check_guest_interface = params.get_boolean("check_guest_interface")
+    expected_target_name = params.get("expected_target_name", "")
+    if params.get_boolean("none_target"):
+        iface_target = None
 
     # Get iface name if iface_type is direct
     if iface_type == "direct":
@@ -472,9 +554,17 @@ def run(test, params, env):
         # Check coalesce info if needed
         fail_flag = _check_coalesce(fail_flag)
 
+        # Check attach-interface with --target option part.
+        if test_target_option and not fail_flag:
+            check_target_option_behavior(
+                test, vm_name, iface_mac, expected_target_name)
+            if check_domiflist_result:
+                check_domiflist_target(test, vm_name, iface_mac, expected_target_name)
+            iface_target = params.get("expected_target_name")
+
         # Check on host for direct type
         if iface_type == 'direct':
-            cmd_result = process.run("ip -d link show test").stdout_text.strip()
+            cmd_result = process.run("ip -d link show %s" % iface_target).stdout_text.strip()
             logging.info("cmd output is %s", cmd_result)
             check_patten = ("%s@%s.*\n.*%s.*\n.*macvtap.*mode.*%s"
                             % (iface_target, iface_source, iface_mac, iface_mode))
@@ -521,6 +611,10 @@ def run(test, params, env):
             # If command with --config parameter, ignore below checking.
             if options_suffix.count("config"):
                 return
+            if test_target_option:
+                check_guest_interface_exists(test, vm, iface_mac, expected_existed=False)
+                check_domiflist_target(test, vm_name, iface_mac, expected_target_name, existed=False)
+                fail_flag = 0
             # Check the xml after detach and clean up if needed.
             time.sleep(5)
             status, _ = check_dumpxml_iface(vm_name, iface_format)
