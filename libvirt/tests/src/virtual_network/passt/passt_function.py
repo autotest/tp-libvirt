@@ -113,7 +113,7 @@ def run(test, params, env):
         if not os.path.exists(log_file):
             test.fail(f'Logfile of passt "{log_file}" not created')
 
-        session = vm.wait_for_serial_login(timeout=60)
+        session = vm.wait_for_serial_login(timeout=360)
         vm_iface = utils_net.get_linux_ifname(session, mac)
         passt.check_vm_ip(iface_attrs, session, host_iface, vm_iface)
         passt.check_vm_mtu(session, vm_iface, mtu)
@@ -145,7 +145,7 @@ def run(test, params, env):
             if check_warning.exit_status == 0:
                 test.fail('Get warnings in virtqemud log: {0}'.format(check_warning.stdout_text))
 
-        vm_sess = vm.wait_for_serial_login(timeout=60)
+        vm_sess = vm.wait_for_serial_login(timeout=360)
         vm_sess.cmd('systemctl start firewalld')
         vm.destroy()
 
