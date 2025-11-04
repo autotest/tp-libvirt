@@ -54,7 +54,7 @@ def adjust_parameters(params, test):
     :ret: dict, the updated test parameters
     """
     def sub_update():
-        set_pagesize = default_pgsize_set_mapping[default_pagesize]
+        set_pagesize = memory.get_huge_page_size()
         params['set_pagesize'] = set_pagesize
         params['mount_size'] = set_pagesize
         params['set_pagenum'] = int(math.floor(total_hugepage_mem/set_pagesize))
@@ -67,11 +67,10 @@ def adjust_parameters(params, test):
     total_hugepage_mem = int(params.get('total_hugepage_mem'))
     if scenario == 'default_page_size':
         vm_attrs['mb']['hugepages']['pages'][0]['size'] = default_pagesize
+    elif scenario in ['0', 'default_hugepage_size']:
+        sub_update()
 
     if current_arch == 'aarch64':
-        # kernel page size vs. huge page size to be set for kernel mm file
-        # like if kernel page size 64K, then huge page size to be set is 2048K
-        default_pgsize_set_mapping = {64: 2048, 4: 1048576}
         default_hugepage_size = memory.get_huge_page_size()
         params['vm_nr_hugepages'] = int(math.floor(total_hugepage_mem/default_hugepage_size))
 
@@ -79,14 +78,10 @@ def adjust_parameters(params, test):
             sub_update()
             params['HugePages_Free'] = params['vm_nr_hugepages']
             params['free_hugepages'] = params['set_pagenum']
-        elif scenario in ['default_hugepage_size', 'scarce_mem']:
+        elif scenario == 'scarce_mem':
             sub_update()
             params['free_hugepages'] = params['set_pagenum']
-        elif scenario == '1G':
-            params['HugePages_Free'] = params['vm_nr_hugepages']
-        elif scenario == '0':
-            sub_update()
-        elif scenario in ['2M', '16G', '64K', '32M']:
+        elif scenario in ['2M', '1G', '16G', '64K', '32M']:
             params['HugePages_Free'] = params['vm_nr_hugepages']
         test.log.debug("params['HugePages_Free']=%s", params.get('HugePages_Free'))
         test.log.debug("params['free_hugepages']=%s", params.get('free_hugepages'))
@@ -213,12 +208,14 @@ def teardown_test(vmxml, params, test):
     :param test: test object
     """
     save_file = params.get("save_file", "/tmp/guest.save")
+    set_pagesize = params.get("set_pagesize")
 
     test.log.info("TEST_TEARDOWN: Clean up env.")
     vmxml.sync()
     if os.path.exists(save_file):
         os.remove(save_file)
     hp_cfg = test_setup.HugePageConfig(params)
+    hp_cfg.set_kernel_hugepages(set_pagesize, 0, False)
     hp_cfg.cleanup()
 
 
