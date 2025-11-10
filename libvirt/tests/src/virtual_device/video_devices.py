@@ -179,6 +179,7 @@ def run(test, params, env):
         cmdline = open('/proc/%s/cmdline' % vm.get_pid()).read().replace("\x00", " ")
         logging.debug("the cmdline is: %s" % cmdline)
 
+        pattern = ""
         if mem_type == "ram" or mem_type == "vram":
             cmd_mem_size = str(int(mem_size)*1024)
             pattern = r"-device.*qxl-vga.*%s_size\W{1,2}%s" % (mem_type, cmd_mem_size)
@@ -203,6 +204,24 @@ def run(test, params, env):
         power = ceil(log(int(num), 2))
         return pow(2, power)
 
+    def check_graphics_test_cmd_line(with_graphics):
+        """
+        Check whether the video device status in the qemu cmd line after
+        configuring graphics or not.
+
+        :param with_graphics: configure graphics or not in guest xml
+
+        """
+        cmdline = open('/proc/%s/cmdline' % vm.get_pid()).read().replace("\x00", " ")
+        logging.debug("the cmdline is: %s" % cmdline)
+        pattern = r"-device.*id.*video"
+        if with_graphics:
+            if not re.search(pattern, cmdline):
+                test.fail("Default video device should be added if there is graphics")
+        else:
+            if re.search(pattern, cmdline):
+                test.fail("Video device should not be added by default if there is no graphics")
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     status_error = params.get("status_error", "no") == "yes"
@@ -226,6 +245,9 @@ def run(test, params, env):
     resolution_test = params.get("resolution_test", "no") == "yes"
     resolution_x = params.get("resolution_x")
     resolution_y = params.get("resolution_y")
+    graphics_test = params.get("graphics_test", "no") == "yes"
+    with_graphics = params.get("with_graphics", "yes") == "yes"
+    video_device = params.get("video_device", "yes") == "yes"
 
     vm_xml = VMXML.new_from_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
@@ -238,30 +260,36 @@ def run(test, params, env):
 
     try:
         vm_xml.remove_all_device_by_type('video')
-        kwargs = {}
-        model_type = primary_video_model
-        is_primary = None
-        if secondary_video_model:
-            is_primary = True
-        if heads_test and not default_primary_heads:
-            kwargs["model_heads"] = primary_heads
-        if mem_test and not default_mem_size:
-            kwargs["model_" + mem_type] = mem_size
-        if model_type == "virtio" and with_packed:
-            kwargs["driver"] = {"packed": driver_packed}
-        if resolution_test:
-            kwargs["resolution"] = {"x": resolution_x, "y": resolution_y}
-        add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
+        if graphics_test and not with_graphics:
+            vm_xml.remove_all_device_by_type('graphics')
 
-        if secondary_video_model:
+        if video_device:
             kwargs = {}
-            model_type = secondary_video_model
-            is_primary = False
-            if heads_test and not default_secondary_heads:
-                kwargs["model_heads"] = secondary_heads
+            model_type = primary_video_model
+            is_primary = None
+            if secondary_video_model:
+                is_primary = True
+            if heads_test and not default_primary_heads:
+                kwargs["model_heads"] = primary_heads
+            if mem_test and not default_mem_size:
+                kwargs["model_" + mem_type] = mem_size
             if model_type == "virtio" and with_packed:
                 kwargs["driver"] = {"packed": driver_packed}
+            if resolution_test:
+                kwargs["resolution"] = {"x": resolution_x, "y": resolution_y}
             add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
+
+            if secondary_video_model:
+                kwargs = {}
+                model_type = secondary_video_model
+                is_primary = False
+                if heads_test and not default_secondary_heads:
+                    kwargs["model_heads"] = secondary_heads
+                if model_type == "virtio" and with_packed:
+                    kwargs["driver"] = {"packed": driver_packed}
+                add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
+
+        vm_xml.sync()
 
         if not status_error:
             res = virsh.start(vm_name)
@@ -270,6 +298,9 @@ def run(test, params, env):
                 test.fail("failed to start vm after adding the video "
                           "device xml. details: %s " % res)
             logging.debug("vm started successfully in positive cases.")
+
+            if graphics_test:
+                check_graphics_test_cmd_line(with_graphics)
 
             if resolution_test:
                 libvirt.check_qemu_cmd_line(params.get("qemu_line"))
