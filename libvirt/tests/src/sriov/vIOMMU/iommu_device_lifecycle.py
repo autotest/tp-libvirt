@@ -64,18 +64,21 @@ def run(test, params, env):
                 test.log.info("TEST_STEP: Reset the VM.")
                 session = vm.wait_for_serial_login(
                     timeout=int(params.get('login_timeout')))
-                virsh.reset(vm.name, **VIRSH_ARGS)
-                _match, _text = session.read_until_last_line_matches(
-                    [r"[Ll]ogin:\s*"], timeout=240, internal_timeout=0.5)
+                session.close()
+                vm.cleanup_serial_console()
+                vm.create_serial_console()
+                session = vm.wait_for_serial_login(
+                    timeout=int(params.get('login_timeout')))
                 session.close()
             else:
                 for _ in range(int(params.get('loop_time', '5'))):
                     test.log.info("TEST_STEP: Reboot the VM.")
                     session = vm.wait_for_serial_login(
                         timeout=int(params.get('login_timeout')))
-                    session.sendline(params.get("reboot_command"))
-                    _match, _text = session.read_until_last_line_matches(
-                        [r"[Ll]ogin:\s*"], timeout=240, internal_timeout=0.5)
+                    session.close()
+                    vm.cleanup_serial_console()
+                    vm.create_serial_console()
+                    session = vm.wait_for_serial_login(timeout=int(params.get('login_timeout')))
                     session.close()
 
             session = vm.wait_for_serial_login(
