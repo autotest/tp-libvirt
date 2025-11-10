@@ -93,9 +93,7 @@ class MigrationBase(object):
         if start_vm == "yes" and not self.vm.is_alive():
             self.vm.start()
             if use_console:
-                self.vm.cleanup_serial_console()
-                self.vm.create_serial_console()
-                self.vm.wait_for_serial_login().close()
+                self.vm.wait_for_serial_login(recreate_serial_console=True).close()
             else:
                 self.vm.wait_for_login().close()
         if self.check_cont_ping:
@@ -295,9 +293,7 @@ class MigrationBase(object):
             self.test.log.debug("Checking the output of %s", self.check_cont_ping_log)
             if check_on_dest:
                 backup_uri, self.vm.connect_uri = self.vm.connect_uri, dest_uri
-            self.vm.cleanup_serial_console()
-            self.vm.create_serial_console()
-            vm_session = self.vm.wait_for_serial_login(timeout=360)
+            vm_session = self.vm.wait_for_serial_login(timeout=360, recreate_serial_console=True)
             vm_session.cmd(
                 "> {0}; sleep 5; grep time= {0}".format(self.check_cont_ping_log))
             o = vm_session.cmd_output(f"cat {self.check_cont_ping_log}")
