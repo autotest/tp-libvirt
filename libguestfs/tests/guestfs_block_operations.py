@@ -170,7 +170,7 @@ def test_blockdev_ro(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_num = prepare_attached_device(gf, device_in_gf)
+    part_num = prepare_attached_device(test, gf, device_in_gf)
     part_name = "%s%s" % (device_in_gf, part_num)
 
     mkfs_result = gf.mkfs("ext3", part_name)
@@ -261,7 +261,7 @@ def test_blockdev_rw(test, vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    part_num = prepare_attached_device(gf, device_in_gf)
+    part_num = prepare_attached_device(test, gf, device_in_gf)
     part_name = "%s%s" % (device_in_gf, part_num)
     part_name_in_vm = "%s%s" % (device_in_vm, part_num)
 
