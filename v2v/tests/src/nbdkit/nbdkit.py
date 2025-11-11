@@ -696,6 +696,27 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         if not re.search(r'nbdkit: debug: times .*-D curl.times=1.*', cmd.stderr_text):
             test.fail('fail to test curl.time option')
 
+    def check_blkhash_option():
+        qcow2_image = params_get(params, 'disk_path')
+        cmd = process.run("nbdcopy --blkhash -- %s null:" % qcow2_image, shell=True, ignore_status=True)
+        hash_code = cmd.stdout_text.strip()
+        if len(hash_code) != 64:
+            test.fail('Expected 64-character hash, got length %d: %s' % (len(hash_code), hash_code))
+
+        hash_option = params_get(params, "hash_option")
+        test_state = params_get(params, "test_state")
+        if test_state == "positive":
+            cmd = process.run("nbdcopy --blkhash=%s -- %s null:" % (hash_option, qcow2_image), shell=True, ignore_status=True)
+            hash_code = cmd.stdout_text.strip()
+            if len(hash_code) != 32:
+                test.fail('Expected 32-character hash, got length %d: %s' % (len(hash_code), hash_code))
+        elif test_state == "negative":
+            cmd = process.run("nbdcopy --blkhash=%s -- %s null:" % (hash_option, qcow2_image), shell=True, ignore_status=True)
+            hash_warning_msg = cmd.stderr_text.strip()
+            expected_msg = params_get(params, "expected_warn_msg")
+            if expected_msg not in hash_warning_msg:
+                test.fail('Expected warning "%s" not found in stderr: %s' % (expected_msg, hash_warning_msg))
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -767,5 +788,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_tar_filter()
     elif checkpoint == 'check_curl_time_option':
         check_curl_time_option()
+    elif checkpoint == 'check_blkhash_option':
+        check_blkhash_option()
     else:
         test.error('Not found testcase: %s' % checkpoint)
