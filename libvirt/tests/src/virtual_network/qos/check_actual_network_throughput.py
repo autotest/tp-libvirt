@@ -46,6 +46,7 @@ def run(test, params, env):
     net_xml = NetworkXML.new_from_net_dumpxml('default')
     bk_net_xml = net_xml.copy()
     firewalld = service.Factory.create_service("firewalld")
+    iface_type = params.get("iface_type")
 
     try:
         if br_type == 'linux_br':
@@ -119,11 +120,12 @@ def run(test, params, env):
         )
         vm_sess.close()
         vm.destroy()
-        ovs_list_cmd = 'ovs-vsctl list qos'
-        ovs_list_output = process.run(ovs_list_cmd).stdout_text
-        if ovs_list_output:
-            test.fail(f'There should be no output of command {ovs_list_cmd}.'
-                      f'But we got {ovs_list_output}')
+        if iface_type == "bridge" and br_type == "ovs_br":
+            ovs_list_cmd = 'ovs-vsctl list qos'
+            ovs_list_output = process.run(ovs_list_cmd).stdout_text
+            if ovs_list_output:
+                test.fail(f'There should be no output of command {ovs_list_cmd}.'
+                          f'But we got {ovs_list_output}')
 
     finally:
         bkxml.sync()

@@ -105,7 +105,7 @@ def run(test, params, env):
             utils_net.create_linux_bridge_tmux(bridge_name, iface_name=host_iface)
 
             remote_host_iface = utils_net.get_default_gateway(
-                iface_name=True, session=remote_session, force_dhcp=True, json=True)
+                iface_name=True, session=remote_session, force_dhcp=False, json=True)
             params.update({"remote_host_iface": remote_host_iface})
             utils_net.create_linux_bridge_tmux(
                 bridge_name, iface_name=remote_host_iface, session=remote_session)
@@ -200,7 +200,7 @@ def run(test, params, env):
     iface_dict = eval(params.get("iface_dict", "{}"))
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True, json=True)
+        iface_name=True, force_dhcp=False, json=True)
 
     vm_name = guest_os.get_vm(params)
     vm = env.get_vm(vm_name)
