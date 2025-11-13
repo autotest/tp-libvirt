@@ -12,6 +12,7 @@ from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
 from virttest import utils_conn
+from virttest import utils_net
 
 from virttest.libvirt_xml import vm_xml
 from virttest.migration import MigrationTest
@@ -817,3 +818,48 @@ def update_port_for_firewall_rule(params):
     migration_port = ret.stdout_text.strip().split("\n")[0].split("    ")[4].split(':')[-1]
     params.update({"firewall_rule_on_dest": firewall_rule_on_dest % migration_port})
     params.update({"firewall_rule_on_src": firewall_rule_on_src % migration_port})
+
+
+def change_queues_continuously_during_mig(params):
+    """
+    Continuously change queue numbers during migration, cycling through the full change_list
+    This function is called by action_during_mig framework during migration.
+
+    :param params: dict containing queue change parameters including vm object
+    """
+    vm = params.get("vm")
+    # Get queue change parameters
+    change_list = params.get("change_list", "1,2,1,3,1,4,1")
+    queue_change_interval = params.get("queue_change_interval", "2.0")
+    max_iterations = params.get("max_iterations", "3")
+
+    logging.info("Starting continuous queue changes during migration")
+    # Parse parameters - they come as strings from action_during_mig
+    if isinstance(change_list, str):
+        change_list = [int(x.strip()) for x in change_list.split(",")]
+    interval = float(queue_change_interval)
+    iterations = int(max_iterations)
+    logging.info("Queue change cycle: %s, interval: %s, iterations: %s", change_list, interval, iterations)
+
+    vm.create_serial_console()
+    session = vm.wait_for_serial_login(timeout=30)
+    mac_address = vm.get_virsh_mac_address(0)
+    ifname = utils_net.get_linux_ifname(session, mac_address)
+    logging.info("Using network interface: %s", ifname)
+
+    change_count = 0
+    for iteration in range(iterations):
+        logging.debug("Starting iteration %d of %d", iteration + 1, iterations)
+        for queue_num in change_list:
+            try:
+                # Simple ethtool command like original approach
+                content = session.cmd("ethtool -L %s combined %d" % (ifname, queue_num))
+                logging.debug("Set queues in guest result:\n%s", content)
+                change_count += 1
+                logging.debug("Changed to %d queues (iter %d, change %d)",
+                              queue_num, iteration + 1, change_count)
+                time.sleep(interval)
+            except Exception as e:
+                logging.warning("Queue change failed: %s", str(e))
+    logging.info("Completed %d queue changes successfully", change_count)
+    session.close()
