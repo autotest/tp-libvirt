@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import time
 from avocado.utils import process
 
 import aexpect
@@ -73,6 +74,7 @@ def run(test, params, env):
     multiple_nexthops = 'yes' == params.get('multiple_nexthops', 'no')
     libvirtd_debug_file = params.get('libvirtd_debug_file')
     warning_check = params.get('warning_check')
+    use_domain_name_opts = 'yes' == params.get('use_domain_name_opts')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
@@ -100,6 +102,13 @@ def run(test, params, env):
             virtqemud_config = VirtQemudConfig()
             virtqemud_config.log_outputs = "1:file:{0}".format(libvirtd_debug_file)
             utils_libvirtd.Libvirtd('virtqemud').restart()
+
+        if use_domain_name_opts:
+            hostname = params.get('hostname')
+            fqdn = params.get('fqdn')
+            iface_attrs['backend']['hostname'] = hostname
+            iface_attrs['backend']['fqdn'] = fqdn
+
         libvirt_vmxml.modify_vm_device(vmxml, 'interface', iface_attrs,
                                        virsh_instance=virsh_ins)
         LOG.debug(virsh_ins.dumpxml(vm_name).stdout_text)
@@ -119,6 +128,30 @@ def run(test, params, env):
         passt.check_vm_mtu(session, vm_iface, mtu)
         passt.check_default_gw(session, host_iface, multiple_nexthops)
         passt.check_nameserver(session)
+        if use_domain_name_opts:
+            session.cmd(
+                'tshark -f "udp port 67 or 68 or 546 or 547" -T json -e dhcp.fqdn.name -e dhcpv6.client_domain -e dhcp.option.hostname > dhcp.json & 2> /dev/null &', ignore_all_errors=True)
+            session.cmd('dhcpcd &> /dev/null', ignore_all_errors=True)
+            time.sleep(5)
+            session.cmd('killall tshark dhcpcd')
+            for dhcp_opt_key in ['dhcp.option.hostname', 'dhcp.fqdn.name', 'dhcpv6.client_domain']:
+                jq_query = '''jq -M '[.[] | ._source.layers."{0}"[]?] | unique[]' dhcp.json > result'''.format(dhcp_opt_key)
+                session.cmd(jq_query)
+                dhcp_opt_val = session.cmd('cat result')
+                if len(dhcp_opt_val.split()) != 1:
+                    test.fail(
+                        'Expect to get only 1 value from dhcp option {0} but failed'.format(dhcp_opt_key))
+                if dhcp_opt_key == 'dhcp.option.hostname':
+                    if hostname not in dhcp_opt_val:
+                        test.fail('The hostname={0} in domain XML does not match the result {1}={2} in tshark'.format(
+                            hostname, dhcp_opt_key, dhcp_opt_val))
+                else:
+                    # Note: the fqdn with trailing dot will cause this check fail. It is a wireshark dissectors issue
+                    # E.g: fqdn=xxx.xxx. , wireshark will represent it like dhcp_fqdn_name=xxx.xxx
+                    # see also https://bugs.passt.top/show_bug.cgi?id=170
+                    if fqdn not in dhcp_opt_val:
+                        test.fail('The dhcp fqdn={0} in domain XML does not match the result {1}={2} in tshark'.format(
+                            fqdn, dhcp_opt_key, dhcp_opt_val))
 
         ips = {
             'outside_ip': outside_ip,
