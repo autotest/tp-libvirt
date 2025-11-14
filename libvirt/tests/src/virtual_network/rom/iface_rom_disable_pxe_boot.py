@@ -75,11 +75,11 @@ def run(test, params, env):
 
     if not utils_misc.wait_for(
             lambda: utils_net.get_default_gateway(
-                iface_name=True, force_dhcp=True, json=True) is not None, timeout=15):
+                iface_name=True, force_dhcp=False, json=True) is not None, timeout=15):
         test.fail("Cannot get default gateway in 15s")
     host_iface = params.get("host_iface")
     iface_name = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True).split()[0]
+        iface_name=True, force_dhcp=False).split()[0]
     utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
     iface_attrs = eval(params.get("iface_attrs") % bridge_name)
     disk_order = int(params.get("disk_order"))
