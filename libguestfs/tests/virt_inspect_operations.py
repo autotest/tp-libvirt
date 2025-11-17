@@ -170,7 +170,7 @@ def test_inspect_get(test, vm, params):
         test.fail(fail_info)
 
 
-def run_virt_inspect_operations(test, params, env):
+def run(test, params, env):
     """
     Test libguestfs with virt-inspect command.
     """
