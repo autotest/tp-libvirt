@@ -776,6 +776,13 @@ class VMChecker(object):
             err_msg = "Not find viostor info"
             self.log_err(err_msg)
 
+        # Get enumeration drivers
+        LOG.info("Getting enumeration drivers")
+        output = self.checker.get_enumeration_drivers()
+        if re.search('The parameter is incorrect.*', output):
+            err_msg = "Can't get all enumeration drivers"
+            self.log_err(err_msg)
+
         # Check Red Hat VirtIO drivers and display adapter
         if not compare_version(FEATURE_SUPPORT['virtio_skip']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['virtio_skip']
