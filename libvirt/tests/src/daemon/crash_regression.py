@@ -8,6 +8,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import libvirt_vmxml
 from virttest.utils_libvirtd import LibvirtdSession
 from virttest.utils_libvirtd import Libvirtd
 from virttest.libvirt_xml import xcepts
@@ -40,8 +41,12 @@ def run_shutdown_console(params, libvirtd, vm):
     """
     Start a vm with console connected and then shut it down.
     """
+    vm_xml = VMXML.new_from_inactive_dumpxml(vm.name)
+    vm_xml_backup = vm_xml.copy()
+    libvirt_vmxml.modify_vm_device(vm_xml, 'interface', {'driver': None})
     vm.start(autoconsole=True)
     vm.shutdown()
+    vm_xml_backup.sync()
 
 
 def run_restart_console(params, libvirtd, vm):
