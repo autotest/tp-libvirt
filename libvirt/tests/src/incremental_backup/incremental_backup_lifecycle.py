@@ -184,6 +184,10 @@ def test_kill_qemu_during_libvirtd_restart(test, params, backup_file_list):
 
     :return: return the list of backup files.
     """
+    # This test scenario might produce 'leaked clusters' warnings in qcow2 image checks.
+    # Setting this parameter prevents the test from failing due to these non-critical warnings.
+    params['skip_cluster_leak_warn'] = 'yes'
+
     if backup_file_list is None:
         backup_file_list = []
     vm_name = params.get("main_vm")
