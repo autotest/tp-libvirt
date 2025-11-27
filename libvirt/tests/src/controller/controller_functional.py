@@ -439,7 +439,7 @@ def run(test, params, env):
         :return: None
         """
         session = vm.wait_for_login(serial=True)
-        cmd = 'lszdev generic-ccw --columns ID'
+        cmd = 'lszdev --columns ID'
         status, output = session.cmd_status_output(cmd)
         logging.debug("lszdev output is: %s", output)
         if status:
