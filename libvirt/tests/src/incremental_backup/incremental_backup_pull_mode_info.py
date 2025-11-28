@@ -125,19 +125,30 @@ def run(test, params, env):
         if scratch_device in three_domstats_output.stdout_text:
             test.fail("The scratch device is still existed which is not expected!")
 
-    def check_domblk_info(target_min, target_max):
+    def check_domblk_info(dd_count, dd_seek):
         """
-        Check the domblk info.
+        Check the domain block info using domblkinfo command.
 
-        :params target_min: the min value of the block allocation
-        :params target_max: the max value of the block allocation
+        This function verifies that the block allocation of the target disk
+        matches the expected allocation based on the data written to the disk.
+
+        :param dd_count: The count parameter used in dd command
+        :param dd_seek: The seek parameter used in dd command
+        :raises: test.fail if block allocation is not within expected range
         """
         test.log.debug("TEST STEP: check the domblk info")
         domblk_output = virsh.domblkinfo(vm_name, target_disk, debug=True)
-        block_allocation = 0
         for line in domblk_output.stdout_text.splitlines():
             if "Allocation" in line:
-                block_allocation = int(line.split(":")[-1].strip())
+                block_allocation = float(line.split(":")[-1].strip())
+            if "Capacity" in line:
+                disk_capacity_bytes = float(line.split(":")[-1].strip())
+        capacity_MB = disk_capacity_bytes / 1024 / 1024
+        write_end_MB = int(dd_seek) + int(dd_count)
+        expected_MB = min(write_end_MB, capacity_MB)
+        target_min = expected_MB * 0.8
+        target_max = expected_MB * 1.2
+        block_allocation = block_allocation / 1024 / 1024
         if not (target_min <= block_allocation <= target_max):
             test.fail("The block allocation %s is not expected! It's not between %s and %s."
                       % (block_allocation, target_min, target_max))
@@ -169,7 +180,7 @@ def run(test, params, env):
         test.log.debug("TEST STEP2: write datas to the guest disk.")
         write_datas(dd_seek)
         if domblkinfo_check:
-            check_domblk_info(target_min, target_max)
+            check_domblk_info(dd_count, dd_seek)
         test.log.debug("TEST STEP3: prepare the backup xml.")
         backup_options, scratch_device = prepare_backup_xml()
         test.log.debug("TEST STEP4: start the backup job.")
@@ -180,11 +191,12 @@ def run(test, params, env):
         if not domblkinfo_check:
             check_scratch_info(scratch_device)
         else:
-            check_domblk_info(target_min, target_max)
-            write_datas(dd_seek="300")
-            check_domblk_info(target_min * 2, target_max * 2)
+            check_domblk_info(dd_count, dd_seek)
+            dd_seek = 300
+            write_datas(dd_seek)
+            check_domblk_info(dd_count, dd_seek)
             virsh.domjobabort(vm_name, debug=True, ignore_status=False)
-            check_domblk_info(target_min * 2, target_max * 2)
+            check_domblk_info(dd_count, dd_seek)
 
     finally:
         if vm.is_alive():
