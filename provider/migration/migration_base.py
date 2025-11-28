@@ -7,6 +7,7 @@ import time
 from avocado.core import exceptions
 from avocado.utils import process
 
+from provider.virtual_network import network_base    # pylint: disable=W0611
 from virttest import remote
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
