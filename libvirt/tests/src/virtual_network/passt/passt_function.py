@@ -73,6 +73,7 @@ def run(test, params, env):
     multiple_nexthops = 'yes' == params.get('multiple_nexthops', 'no')
     libvirtd_debug_file = params.get('libvirtd_debug_file')
     warning_check = params.get('warning_check')
+    qemu_log_file = params.get('qemu_log_file')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name,
                                                    virsh_instance=virsh_ins)
@@ -136,14 +137,22 @@ def run(test, params, env):
         if 'portForwards' in iface_attrs:
             passt.check_portforward(vm, host_ip, params, host_iface)
 
-        if vhostuser and warning_check:
-            # Exclude the warning like: 'warning : qemuDomainObjTaintMsg:5529 : Domain ... is tainted: custom-monitor'
-            check_warning = process.run('grep -v "qemuDomainObjTaintMsg.*custom-monitor {0}"|grep "warning :"'.format(libvirtd_debug_file),
-                                        shell=True,
-                                        ignore_status=True,
-                                        logger=LOG)
-            if check_warning.exit_status == 0:
-                test.fail('Get warnings in virtqemud log: {0}'.format(check_warning.stdout_text))
+        if vhostuser:
+            if warning_check:
+                # Exclude the warning like: 'warning : qemuDomainObjTaintMsg:5529 : Domain ... is tainted: custom-monitor'
+                check_warning = process.run('grep -v "qemuDomainObjTaintMsg.*custom-monitor {0}"|grep "warning :"'.format(libvirtd_debug_file),
+                                            shell=True,
+                                            ignore_status=True,
+                                            logger=LOG)
+                if check_warning.exit_status == 0:
+                    test.fail('Get warnings in virtqemud log: {0}'.format(check_warning.stdout_text))
+
+                check_qemu_warning = process.run('grep warning: {0}'.format(qemu_log_file),
+                                                 shell=True,
+                                                 ignore_status=True,
+                                                 logger=LOG)
+                if not check_qemu_warning.exit_status:
+                    test.fail('Get warnings in qemu log {0}: {1}'.format(qemu_log_file, check_qemu_warning.stdout_text))
 
         vm_sess = vm.wait_for_serial_login(timeout=360)
         vm_sess.cmd('systemctl start firewalld')
