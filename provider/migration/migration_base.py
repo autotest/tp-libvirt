@@ -12,6 +12,7 @@ from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
 from virttest import utils_conn
+from virttest import utils_test                      # pylint: disable=W0611
 
 from virttest.libvirt_xml import vm_xml
 from virttest.migration import MigrationTest
