@@ -239,8 +239,12 @@ def run(test, params, env):
             xml_max_mem_rt = int(dom_xml.max_mem_rt)
             xml_max_mem = int(dom_xml.max_mem)
             xml_cur_mem = int(dom_xml.current_mem)
-            assert int(max_mem_rt) == xml_max_mem_rt
-
+            if 'ppc64' in arch:
+                # for arch ppc64 and hugepages, the run time max memory grows and never shrinks.
+                # libvirt rounded max memory boundaries to align with memory block size (usually 64 MiB or 128 MiB)
+                assert int(max_mem_rt) <= xml_max_mem_rt
+            else:
+                assert int(max_mem_rt) == xml_max_mem_rt
             # Check attached/detached memory
             logging.info("at_mem=%s,dt_mem=%s", at_mem, dt_mem)
             logging.info("detach_device is %s", detach_device)
@@ -506,12 +510,12 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    arch = platform.machine()
 
     if not libvirt_version.version_compare(1, 2, 14):
         test.cancel("Memory hotplug not supported in current libvirt version.")
 
     if 'align_256m' in params.get('name', ''):
-        arch = platform.machine()
         if arch.lower() != 'ppc64le':
             test.cancel('This case is for ppc64le only.')
 
