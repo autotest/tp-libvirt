@@ -80,7 +80,8 @@ def run(test, params, env):
         libvirt.check_result(res, expected_fails=fail_patterns)
     finally:
         session = vm.wait_for_login()
-        session.cmd_output('userdel -r %s' % guest_user)
+        if not session.cmd_status("id %s" % guest_user):
+            session.cmd("userdel -r -f %s" % guest_user)
         session.close()
-        process.run("userdel -r %s" % host_test_user)
+        process.run("userdel -r -f %s" % host_test_user, ignore_status=True)
         backup_xml.sync()
