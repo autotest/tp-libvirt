@@ -257,10 +257,8 @@ def poweroff_vm(params):
 
     if poweroff_vm_dest:
         dest_uri = params.get("virsh_migrate_desturi")
-        migration_obj.vm.cleanup_serial_console()
         backup_uri, migration_obj.vm.connect_uri = migration_obj.vm.connect_uri, dest_uri
-        migration_obj.vm.create_serial_console()
-        remote_vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
+        remote_vm_session = migration_obj.vm.wait_for_serial_login(timeout=120, recreate_serial_console=True)
         remote_vm_session.cmd("poweroff", ignore_all_errors=True)
         remote_vm_session.close()
         migration_obj.vm.cleanup_serial_console()
@@ -776,9 +774,7 @@ def write_vm_disk_on_dest(params):
     migration_obj = params.get("migration_obj")
 
     backup_uri, migration_obj.vm.connect_uri = migration_obj.vm.connect_uri, desturi
-    migration_obj.vm.cleanup_serial_console()
-    migration_obj.vm.create_serial_console()
-    vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
+    vm_session = migration_obj.vm.wait_for_serial_login(timeout=120, recreate_serial_console=True)
     vm_session.cmd("while true; do echo 'do disk I/O error test' >> /tmp/disk_io_error_test; sleep 1; done &")
     vm_session.close()
     migration_obj.vm.connect_uri = backup_uri
