@@ -273,6 +273,11 @@ def run(test, params, env):
         if 'cpuset' in vcpu_attrs:
             if vcpu_attrs['cpuset'] == "x,y":
                 vcpu_attrs['cpuset'] = "0,%s" % (cpu_max - 1)
+                # Updating max cpus according to smp value if topology is present
+                if vmxml.get_cpu_topology():
+                    topology = vmxml.get_cpu_topology()
+                    max_vcpu = (int(topology['sockets']) * int(topology['cores']) * int(topology['threads']))
+                    vcpu_attrs['vcpu'] = max_vcpu
         vmxml.setup_attrs(**vcpu_attrs)
         vmxml.sync()
         try:
