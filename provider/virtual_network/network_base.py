@@ -7,6 +7,8 @@ import shutil
 import aexpect
 from avocado.core import exceptions
 from avocado.utils import process
+
+from virttest import data_dir
 from virttest import remote
 from virttest import utils_misc
 from virttest import utils_net
@@ -448,16 +450,38 @@ def exec_netperf_test(params, env):
     netperf_server = params.get("netperf_server")
     extra_cmd_opts = params.get("extra_cmd_opts", "")
     netperf_timeout = params.get("netperf_timeout", "60")
-    test_protocol = params.get("test_protocol")
+    test_protocol = params.get("test_protocol", "TCP_STREAM")
+
+    # Command configuration parameters
+    firewall_cmd = params.get("firewall_cmd", "systemctl stop firewalld")
+    restore_firewall_cmd = params.get("restore_firewall_cmd", "systemctl start firewalld")
+    netserver_cmd = params.get("netserver_cmd", "netserver")
+    netperf_bin = params.get("netperf_bin", "netperf")
+    netperf_opts = params.get("netperf_opts", "-C -c")
+    cleanup_netserver_cmd = params.get("cleanup_netserver_cmd", "killall netserver")
+    guest_netperf_path = params.get("guest_netperf_path")
+    netperf_install_cmd = params.get("netperf_install_cmd")
+    install_from_file = params.get_boolean("install_from_file")
+    remote_server = params.get_boolean("remote_server", False)
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+
     vms = params.get('vms').split()
     vm_objs = {vm_i: env.get_vm(vm_i) for vm_i in vms}
+
     before_test_cores = process.run("coredumpctl list", ignore_status=True, verbose=True).stdout_text
 
     def _get_access_info(netperf_address):
         LOG.debug(f"check {netperf_address}...")
         session = None
         if re.match(r"((\d){1,3}\.){3}(\d){1,3}", netperf_address):
-            func = process.run
+            if remote_server:
+                remote_session = remote.remote_login(
+                    "ssh", server_ip, "22", server_user, server_pwd, r'[$#%]')
+                func = remote_session.cmd_output
+            else:
+                func = process.run
             test_ip = netperf_address
         else:
             if netperf_address not in vms:
@@ -472,22 +496,43 @@ def exec_netperf_test(params, env):
 
     c_func, c_ip, c_session = _get_access_info(netperf_client)
     s_func, s_ip, s_session = _get_access_info(netperf_server)
-
+    if not utils_package.package_install("netperf", s_session):
+        raise exceptions.TestError("Unable to install netperf in the server host!")
+    # install netperf on guest (also cover windows type)
     try:
-        if not utils_package.package_install("netperf", c_session):
-            raise exceptions.TestError("Unable to install netperf in the client host!")
-        if not utils_package.package_install("netperf", s_session):
-            raise exceptions.TestError("Unable to install netperf in the server host!")
-        c_func("systemctl stop firewalld")
-        s_func("systemctl stop firewalld")
+        if install_from_file:
+            netperf_src = os.path.join(data_dir.get_deps_dir("netperf"), params.get("netperf_source"))
+            for session, vm_name in [(c_session, netperf_client)]:
+                if session and vm_name in vms:
+                    vm = vm_objs.get(vm_name)
+                    remote.copy_files_to(vm.get_address(), "scp",
+                                         params.get("username"), params.get("password"), 22,
+                                         netperf_src, guest_netperf_path, 600)
+                    if netperf_install_cmd:
+                        o = session.cmd(netperf_install_cmd, ignore_all_errors=True)
+                        logging.debug("Install guest on output:%s ", o)
 
+        else:
+            if not utils_package.package_install("netperf", c_session):
+                raise exceptions.TestError("Unable to install netperf in the server host!")
+
+        # Disable firewall
+        c_func(firewall_cmd)
+        s_func(firewall_cmd)
+
+        # Start netserver
         LOG.debug("Start netserver...")
-        if s_ip == netperf_server:
-            s_func("killall netserver", ignore_status=True)
-        s_func("netserver")
+        try:
+            if s_ip == netperf_server:
+                s_func("killall netserver")
+        except Exception as e:
+            logging.debug('Kill existed netserver failed: %s' % str(e))
 
+        s_func(netserver_cmd)
+
+        # Run netperf client
         LOG.debug("Run netperf command...")
-        test_cmd = f"netperf -H {s_ip} -l {netperf_timeout} -C -c -t {test_protocol} {extra_cmd_opts}"
+        test_cmd = f"{netperf_bin} -H {s_ip} -l {netperf_timeout} -t {test_protocol} {netperf_opts} {extra_cmd_opts}"
         c_func(test_cmd, timeout=120)
 
         for vm in vm_objs.values():
@@ -505,8 +550,8 @@ def exec_netperf_test(params, env):
 
     finally:
         LOG.info("Test teardown: Cleanup env.")
-        s_func("killall netserver")
-        s_func("systemctl start firewalld")
+        s_func(cleanup_netserver_cmd)
+        s_func(restore_firewall_cmd)
         # TODO: Start firewalld on guest
         process.run("systemctl start firewalld", ignore_status=True)
 
