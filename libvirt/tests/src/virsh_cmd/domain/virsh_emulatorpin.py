@@ -3,7 +3,6 @@ import logging as log
 import random
 
 from avocado.utils import cpu
-from avocado.utils import process
 
 from virttest import libvirt_cgroup
 from virttest import utils_libvirtd, virsh
@@ -211,16 +210,19 @@ def add_emulatorpin_xml(params, cpulist, test):
                   "vm xml is:%s\n", vm_xml.VMXML.new_from_dumpxml(vm_name))
 
 
-def check_allowed_list(test, check_list):
+def check_allowed_list(test, vm, check_list):
     """
     Check the cpus_allowed_list for emulator's thread
 
     :param test: the test object
+    :param vm: the VM object of the guest under test
     :param check_list: the expected cpu allowed list
     :raises: test.fail if get unexpected emulatorpin value
     :return: None
     """
-    pid = process.run('pidof qemu-kvm', shell=True).stdout_text.strip()
+    pid = vm.get_pid()
+    if not pid:
+        test.error("Can not get the qemu pid of VM %s" % vm.name)
     res = cpuutils.cpu_allowed_list_by_task(pid, pid)
     if res == check_list:
         logging.info("Get expected emulatorpin value.")
@@ -284,7 +286,7 @@ def run(test, params, env):
             test.fail("VM Fails to start: %s" % detail)
         if check_cpus_allowed_list:
             check_list = vcpu_attrs['cpuset']
-            check_allowed_list(test, check_list)
+            check_allowed_list(test, vm, check_list)
 
     # Assemble cpu list for positive test
     if status_error == "no":
@@ -345,7 +347,7 @@ def run(test, params, env):
                     test_dicts['cpu_list'] = cpus_parser(cpulist)
                     set_emulatorpin_parameter(test_dicts, test)
             if check_cpus_allowed_list:
-                check_allowed_list(test, cpulist)
+                check_allowed_list(test, vm, cpulist)
         if status_error == "yes":
             if change_parameters == "no":
                 get_emulatorpin_parameter(test_dicts, test)
