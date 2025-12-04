@@ -75,7 +75,7 @@ def run(test, params, env):
         :param fmt: Expected disk format.
         :return: If device's format equals to fmt, return True, else return False.
         """
-        cmd_result = process.run("qemu-img" + ' -h', ignore_status=True,
+        cmd_result = process.run("qemu-img info" + ' -h', ignore_status=True,
                                  shell=True, verbose=False)
         if b'-U' in cmd_result.stdout:
             cmd = ("qemu-img info -U %s| grep -i 'file format' "
