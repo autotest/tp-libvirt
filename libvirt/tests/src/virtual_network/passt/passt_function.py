@@ -138,7 +138,7 @@ def run(test, params, env):
 
         if vhostuser and warning_check:
             # Exclude the warning like: 'warning : qemuDomainObjTaintMsg:5529 : Domain ... is tainted: custom-monitor'
-            check_warning = process.run('grep -v "qemuDomainObjTaintMsg.*custom-monitor {0}"|grep "warning :"'.format(libvirtd_debug_file),
+            check_warning = process.run('grep -v "qemuDomainObjTaintMsg.*custom-monitor" {0}|grep "warning :"'.format(libvirtd_debug_file),
                                         shell=True,
                                         ignore_status=True,
                                         logger=LOG)
