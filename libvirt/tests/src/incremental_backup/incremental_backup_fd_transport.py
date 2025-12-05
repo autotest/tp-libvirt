@@ -52,8 +52,7 @@ def run(test, params, env):
         checkpoint_dev = checkpoint_xml.CheckpointXML()
         checkpoint_dev.setup_attrs(**checkpoint_dict)
         test.log.debug("The checkpoint xml is: %s" % checkpoint_dev)
-        backup_options = backup_dev.xml + " " + checkpoint_dev.xml
-        return backup_options
+        return backup_dev, checkpoint_dev
 
     def start_backup():
         """
@@ -66,7 +65,8 @@ def run(test, params, env):
             checkpoint_name = "check_%s" % backup_type
             backup_dict = eval(params.get("backup_dict", "{}") % scratch_file)
             checkpoint_dict = eval(params.get("checkpoint_dict", "{}") % checkpoint_name)
-            backup_options = prepare_backup_xml(backup_dict, checkpoint_dict)
+            backup_dev, checkpoint_dev = prepare_backup_xml(backup_dict, checkpoint_dict)
+            backup_options = backup_dev.xml + " " + checkpoint_dev.xml
             virsh.backup_begin(vm_name, backup_options, debug=True, ignore_status=False)
             if backup_type == "full":
                 nbd_params = {
