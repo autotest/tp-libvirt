@@ -21,7 +21,8 @@ def run(test, params, env):
         """
         try:
             session = vm.wait_for_login()
-            session.cmd_output('useradd %s' % name)
+            session.cmd('useradd %s' % name)
+            session.cmd('setsebool virt_qemu_ga_manage_ssh on')
         finally:
             session.close()
         virsh.set_user_password(vm_name, name, passwd, debug=True)
@@ -52,7 +53,7 @@ def run(test, params, env):
             key_path = '/root/.ssh/id_rsa'
         else:
             key_path = '/home/%s/.ssh/id_rsa' % host_test_user
-        cmd = 'su - %s -c "ssh -i %s -o StrictHostKeyChecking=no %s@%s"' % (
+        cmd = 'su - %s -c "ssh -i %s -o StrictHostKeyChecking=no %s@%s hostname"' % (
                 host_test_user, key_path, guest_user, vm_ip)
         conn = process.run(cmd, shell=True, verbose=True, ignore_status=True)
         return conn.exit_status == 0
@@ -138,7 +139,11 @@ def run(test, params, env):
                     test.fail("ssh connection to guest should fail")
     finally:
         session = vm.wait_for_login()
-        session.cmd_output('userdel -r %s' % guest_user)
+        if not session.cmd_status("id %s" % guest_user):
+            session.cmd('userdel -r -f %s' % guest_user)
+        session.cmd('setsebool virt_qemu_ga_manage_ssh off')
         session.close()
-        process.run("userdel -r %s" % host_pre_added_user)
-        process.run("userdel -r %s" % host_test_user)
+        process.run("userdel -r -f %s" % host_pre_added_user,
+                    ignore_status=True)
+        process.run("userdel -r -f %s" % host_test_user,
+                    ignore_status=True)
