@@ -8,6 +8,9 @@
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import os
+import shutil
+
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -57,7 +60,8 @@ def run(test, params, env):
             if persistent_xml_path == "persistent_xml_exist":
                 persistent_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
                 persistent_xml.title = xml_title
-                extra = "%s --persistent-xml %s" % (extra, persistent_xml.xml)
+                shutil.copy(persistent_xml.xml, new_persistent_xml_apth)
+                extra = "%s --persistent-xml %s" % (extra, new_persistent_xml_apth)
             else:
                 extra = "%s --persistent-xml /var/tmp/persistent_xml_non_exist_test" % extra
         params.update({"virsh_migrate_extra": extra})
@@ -118,6 +122,7 @@ def run(test, params, env):
                     test.fail("The domain is found on the target host, but expected not.")
 
     vm_name = params.get("migrate_main_vm")
+    new_persistent_xml_apth = "/var/tmp/new_persistent_xml_apth.xml"
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
@@ -127,3 +132,5 @@ def run(test, params, env):
         verify_test()
     finally:
         migration_obj.cleanup_connection()
+        if os.path.exists(new_persistent_xml_apth):
+            os.remove(new_persistent_xml_apth)
