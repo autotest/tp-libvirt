@@ -817,3 +817,21 @@ def update_port_for_firewall_rule(params):
     migration_port = ret.stdout_text.strip().split("\n")[0].split("    ")[4].split(':')[-1]
     params.update({"firewall_rule_on_dest": firewall_rule_on_dest % migration_port})
     params.update({"firewall_rule_on_src": firewall_rule_on_src % migration_port})
+
+
+def dd_vm_disk(params):
+    """
+    dd vm's disk
+
+    :param params: dictionary with the test parameter, get dest uri and migration object
+    """
+    migration_obj = params.get("migration_obj")
+    dev_name = params.get("dev_name")
+
+    migration_obj.vm.cleanup_serial_console()
+    migration_obj.vm.create_serial_console()
+    vm_session = migration_obj.vm.wait_for_serial_login(timeout=120)
+    vm_session.cmd(f"mkfs.ext4 /dev/{dev_name}")
+    vm_session.cmd(f"mount /dev/{dev_name} /mnt")
+    vm_session.cmd(f"nohup sh -c 'sleep 2 && dd if=/dev/urandom of=/mnt/test.data bs=1M count=100' > /dev/null 2>&1 &")
+    vm_session.close()
