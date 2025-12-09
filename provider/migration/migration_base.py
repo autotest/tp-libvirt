@@ -6,12 +6,14 @@ import time
 
 from avocado.core import exceptions
 from avocado.utils import process
+from avocado.core.exceptions import TestError
 
 from virttest import remote
 from virttest import virsh                           # pylint: disable=W0611
 from virttest import utils_misc                      # pylint: disable=W0611
 from virttest import utils_libvirtd                  # pylint: disable=W0611
 from virttest import utils_conn
+from virttest import utils_net
 
 from virttest.libvirt_xml import vm_xml
 from virttest.migration import MigrationTest
@@ -817,3 +819,41 @@ def update_port_for_firewall_rule(params):
     migration_port = ret.stdout_text.strip().split("\n")[0].split("    ")[4].split(':')[-1]
     params.update({"firewall_rule_on_dest": firewall_rule_on_dest % migration_port})
     params.update({"firewall_rule_on_src": firewall_rule_on_src % migration_port})
+
+
+def change_queues_continuously_during_mig(params):
+    """
+    Continuously change queue numbers during migration, cycling through the full change_list
+    This function is called by action_during_mig framework during migration.
+
+    :param params: dict containing queue change parameters including vm object
+    """
+    vm = params.get("vm")
+    change_list = [int(i) for i in params.get_list("change_list", [1, 2, 1, 3, 1, 4, 1])]
+    interval = params.get_numeric("queue_change_interval", "2.0")
+    iterations = params.get_numeric("max_iterations", "3")
+
+    logging.info("Starting continuous queue changes during migration")
+    logging.info("Queue change cycle: %s, interval: %s, iterations: %s", change_list, interval, iterations)
+
+    vm.create_serial_console()
+    session = vm.wait_for_serial_login(timeout=300)
+    mac_address = vm.get_virsh_mac_address(0)
+    ifname = utils_net.get_linux_ifname(session, mac_address)
+    logging.info("Using network interface: %s", ifname)
+
+    change_count = 0
+    for iteration in range(iterations):
+        logging.debug("Starting iteration %d of %d", iteration + 1, iterations)
+        for queue_num in change_list:
+            try:
+                utils_net.set_channel(session, ifname, "combined", int(queue_num))
+                change_count += 1
+                logging.debug("Changed to %s queues (iter %d, change %d)",
+                              queue_num, iteration + 1, change_count)
+                time.sleep(interval)
+            except Exception as e:
+                raise TestError("Queue change failed: %s", str(e))
+
+    logging.info("Completed %d queue changes successfully", change_count)
+    session.close()
