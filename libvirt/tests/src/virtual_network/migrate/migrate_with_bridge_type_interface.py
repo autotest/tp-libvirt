@@ -110,10 +110,15 @@ def run(test, params, env):
             )
 
         elif bridge_type == "ovs":
-            utils_net.create_ovs_bridge(ovs_bridge_name, ip_options="-color=never")
+            utils_net.create_ovs_bridge(
+                ovs_bridge_name, ip_options="-color=never", iface_name=host_iface
+            )
 
             utils_net.create_ovs_bridge(
-                ovs_bridge_name, session=remote_session, ip_options="-color=never"
+                ovs_bridge_name,
+                session=remote_session,
+                ip_options="-color=never",
+                iface_name=remote_host_iface,
             )
             libvirt_network.create_or_del_network(
                 network_dict, remote_args=remote_virsh_dargs
@@ -174,9 +179,14 @@ def run(test, params, env):
             )
 
         elif bridge_type == "ovs":
-            utils_net.delete_ovs_bridge(ovs_bridge_name, ip_options="-color=never")
             utils_net.delete_ovs_bridge(
-                ovs_bridge_name, session=remote_session, ip_options="-color=never"
+                ovs_bridge_name, ip_options="-color=never", iface_name=host_iface
+            )
+            utils_net.delete_ovs_bridge(
+                ovs_bridge_name,
+                session=remote_session,
+                ip_options="-color=never",
+                iface_name=remote_host_iface,
             )
 
             libvirt_network.create_or_del_network(
