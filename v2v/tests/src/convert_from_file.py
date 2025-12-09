@@ -247,9 +247,10 @@ def run(test, params, env):
                 if not res:
                     test.error('Not found cpuid.coresPerSocket in vmx file')
                 corespersocket = int(res.group(1))
-                params['msg_content_yes'] += '<rasd:num_of_sockets>' + str(numvcpus//corespersocket) + '%'
-                params['msg_content_yes'] += '<rasd:cpu_per_socket>' + str(corespersocket) + '%'
-                params['msg_content_yes'] += '<rasd:threads_per_cpu>' + '1'
+                params['msg_content_yes'] += "sockets='%s'.*" % (numvcpus // corespersocket)
+                params['msg_content_yes'] += "cores='%s'.*" % corespersocket
+                params['msg_content_yes'] += "threads='1'.*"
+                LOG.info('msg_content_yes is %s', params['msg_content_yes'])
         # copy ova from nfs storage before v2v conversion
         if input_mode == 'ova':
             src_dir = params.get('ova_dir')
@@ -278,9 +279,10 @@ def run(test, params, env):
                 if not res:
                     test.error('Not found CoresPerSocket in ovf file')
                 corespersocket = int(res.group(1))
-                params['msg_content_yes'] += '<rasd:num_of_sockets>' + str(numvcpus//corespersocket) + '%'
-                params['msg_content_yes'] += '<rasd:cpu_per_socket>' + str(corespersocket) + '%'
-                params['msg_content_yes'] += '<rasd:threads_per_cpu>' + '1'
+                params['msg_content_yes'] += "sockets='%s'.*" % (numvcpus // corespersocket)
+                params['msg_content_yes'] += "cores='%s'.*" % corespersocket
+                params['msg_content_yes'] += "threads='1'.*"
+                LOG.info('msg_content_yes is %s', params['msg_content_yes'])
         if input_mode == 'disk':
             tmp_path = data_dir.get_tmp_dir()
             image_path = 'cd %s ; curl -O %s --insecure' % (tmp_path, params.get('image_url'))
