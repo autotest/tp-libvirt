@@ -17,6 +17,7 @@ from virttest import remote
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
 from virttest.utils_v2v import params_get
+from virttest import ssh_key
 from avocado.utils import process
 from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
@@ -158,25 +159,31 @@ def run(test, params, env):
         Check virt-customize package related options (firstboot-install, run, run-command, update).
         :param vmcheck: VMCheck object for vm checking
         """
-        def output():
-            for _ in range(3):
-                try:
-                    output = vmcheck.session.cmd('rpm -q libvirt virt-v2v nfs-utils kernel')
-                except ShellStatusError as e:
-                    LOG.warning("Caught expected error from rpm command: %s", e)
-                    output = e.output
-                LOG.debug(output)
-                if 'not installed' in output:
-                    time.sleep(10)
+        def get_pkg_info():
+            """
+            Inner function to repeatedly check for package installation.
+            """
+            for _ in range(5):
+                # Use run_cmd to avoid ShellCmdError and get status and output
+                status, output = vmcheck.run_cmd('rpm -q virtio-win nfs-utils kernel libvirt')
+                LOG.debug("rpm check status: %s, output: %s", status, output)
+                if status != 0:
+                    firstboot_file = vmcheck.run_cmd('cat /root/virt-sysprep-firstboot.log')
+                    LOG.info('firstboot log is %s', firstboot_file)
+                    LOG.info("One or more packages not yet installed, retrying in 20 seconds...")
+                    time.sleep(20)
                 else:
+                    # Status is 0, meaning all packages were found.
                     return output
+            # Return the last output if all retries fail
             return output
 
-        pkg_output = output()
-        if re.search(r'not installed', pkg_output):
-            test.error('expected package are not installed')
+        pkg_output = get_pkg_info()
+        if 'not installed' in pkg_output:
+            test.error('Expected packages were not installed')
+
         if not re.search(r'kernel.*\.el\d+_\d+', pkg_output):
-            test.error('fail to test virt-customise update option')
+            test.error('Failed to verify kernel update via virt-customize --update option.')
 
     def virt_customize_file_related(vmcheck):
         """
@@ -1016,6 +1023,7 @@ def run(test, params, env):
             network_configure_cmd = r'powershell.exe -ExecutionPolicy ByPass -NoProfile -file "C:\network-configure.ps1"'
             v2v_params['v2v_opts'] += " --firstboot-command '%s'" % network_configure_cmd
         if 'virt_customize_file_related' in checkpoint:
+            ssh_key.get_public_key().rstrip()
             v2v_params['v2v_opts'] += " --ssh-inject root:file:/root/.ssh/id_rsa.pub" \
                                       " --ssh-inject root:string:'ssh-rsa AAtesttesttest'" \
                                       " --touch /home/testfile1" \
@@ -1030,7 +1038,7 @@ dnf -y install libvirt
             script_path = os.path.join(data_dir.get_tmp_dir(), "test.sh")
             with open(script_path, "w") as f:
                 f.write(lines)
-            v2v_params['v2v_opts'] += " --firstboot-install virt-v2v" \
+            v2v_params['v2v_opts'] += " --firstboot-install virtio-win" \
                                       " --run %s" \
                                       " --run-command 'yum install nfs-utils -y'" \
                                       " --update" % script_path
@@ -1050,9 +1058,10 @@ dnf -y install libvirt
             res_cpu_topology = ET.fromstring(raw_dumpxml.stdout_text).find(".//cpu/topology")
             if res_cpu_topology is None:
                 test.error("Not found cpu topology")
-            params['msg_content_yes'] += '<rasd:num_of_sockets>' + res_cpu_topology.get('sockets') + '%'
-            params['msg_content_yes'] += '<rasd:cpu_per_socket>' + res_cpu_topology.get('cores') + '%'
-            params['msg_content_yes'] += '<rasd:threads_per_cpu>' + res_cpu_topology.get('threads')
+            params['msg_content_yes'] += "sockets='%s'.*" % res_cpu_topology.get('sockets')
+            params['msg_content_yes'] += "cores='%s'.*" % res_cpu_topology.get('cores')
+            params['msg_content_yes'] += "threads='%s'.*" % res_cpu_topology.get('threads')
+            LOG.info('msg_content_yes is %s', params['msg_content_yes'])
             v2v_result = utils_v2v.v2v_cmd(v2v_params)
         else:
             if 'exist_uuid' in checkpoint:
