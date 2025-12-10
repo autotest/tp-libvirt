@@ -477,12 +477,19 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
         process.run('nbdkit file %s --filter=cow cow-on-read=true' % image_path, shell=True)
+        process.run('nbdinfo --size nbd://localhost', shell=True)
         cmd_proc = process.run('ls -l /proc/`pidof nbdkit`/fd', shell=True)
-        if re.search(r'3 -> /var/tmp/.*(deleted)', cmd_proc.stdout_text):
-            output_1 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/3", shell=True)
+        if re.search(r'\d+ -> /var/tmp/.*(deleted)', cmd_proc.stdout_text):
+            command_1 = "ls -l /proc/`pidof nbdkit`/fd | grep '(deleted)' | awk '{for(i=1; i<=NF; i++) if ($i == \"->\") print $(i-1)}'"
+            fd_id = process.run(command_1, shell=True)
+            fd_id_str = fd_id.stdout.decode('utf-8').strip()
+            if not fd_id_str:
+                test.fail('Unable to find deleted FD for cow overlay')
+            output_1 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/{fd_id_str}".format(fd_id_str=fd_id_str), shell=True)
             if re.search(r"0 512 4096", output_1.stdout_text):
                 process.run("nbdsh -u nbd://localhost -c 'h.pread(8*1024*1024, 0)'", shell=True)
-                output_2 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/3", shell=True)
+                process.run("nbdsh -u nbd://localhost -c 'h.pread(8*1024*1024, 0)'", shell=True)
+                output_2 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/{fd_id_str}".format(fd_id_str=fd_id_str), shell=True)
                 if not re.search(r"16384 512 4096", output_2.stdout_text):
                     test.fail('cow-on-read=true option does not work')
         else:
