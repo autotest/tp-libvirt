@@ -69,6 +69,7 @@ def run(test, params, env):
     error_msg_2 = params.get("error_msg_2", "")
     minus_error_msg = params.get("minus_error_msg", "")
     start_error_msg = params.get("start_error_msg", "")
+    func_not_supported_since_libvirt_ver = eval(params.get("func_not_supported_since_libvirt_ver", "()"))
 
     num = params.get("num")
     mem_config = params.get("mem_config")
@@ -77,8 +78,10 @@ def run(test, params, env):
     start_vm_error = "yes" == params.get("start_vm_error", "no")
 
     try:
-        if num == "zero" and mem_config == "numa":
-            libvirt_version.is_libvirt_feature_supported(params)
+        libvirt_version.is_libvirt_feature_supported(params)
+        if func_not_supported_since_libvirt_ver:
+            if libvirt_version.version_compare(*func_not_supported_since_libvirt_ver):
+                test.cancel("Test is not supported since libvirt version:%s" % str(func_not_supported_since_libvirt_ver))
         setup_test()
         run_test()
 
