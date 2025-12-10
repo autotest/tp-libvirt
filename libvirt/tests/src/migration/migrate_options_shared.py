@@ -1401,6 +1401,10 @@ def run(test, params, env):
         src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
             remove_dict)
 
+        # Clean up and backup existing VM on destination host before migration
+        logging.debug("Clean up VM on destination host before migration")
+        migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
+
         if extra.count("xbzrle") and extra.count("parallel"):
             if libvirt_version.version_compare(9, 4, 0):
                 asynch_migration = False
