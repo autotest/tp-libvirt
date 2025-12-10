@@ -105,7 +105,7 @@ def run(test, params, env):
                            "but found {}".format(added_parts))
             cmd = cmds_in_guest[0] % added_parts[0]
             run_cmd_in_guest(test, vm_session, cmd)
-            virsh.detach_device(vm_name, to_file_xml, debug=True, ignore_status=False)
+            virsh.detach_device(vm_name, to_file_xml, debug=True, ignore_status=False, wait_for_event=True)
             cmd = cmds_in_guest[1] % added_parts[0]
             run_cmd_in_guest(test, vm_session, cmd, any_error=True)
             libvirt_vmxml.check_guest_xml(vm_name, pat_in_dumpxml, status_error=True)
