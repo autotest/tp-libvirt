@@ -732,6 +732,10 @@ def run(test, params, env):
             if 'without_default_net' in checkpoint:
                 if virsh.net_state_dict()[net_name]['active']:
                     log_fail("Bridge virbr0 already started during conversion")
+            if checkpoint == 'check_boot_order':
+                guest_xml =  virsh.dumpxml(vm_name)
+                if not re.search("boot order='/d+'.*", guest_xml):
+                    test.error("Not found boot order")
             if 'rhsrvany_checksum' in checkpoint:
                 check_rhsrvany_checksums(vmchecker.checker)
             if 'block_dev' in checkpoint and not os.path.exists(blk_dev_link):
