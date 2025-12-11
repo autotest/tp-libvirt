@@ -153,12 +153,12 @@ def run(test, params, env):
         :param vm: VM object
         """
         firewall_stop = params.get("firewall_stop", "service iptables stop")
-
+        firewall_stop_client = params.get("firewall_stop_client")
         test.log.debug("Stopping firewall in guest and host")
         session = vm.wait_for_login(timeout=login_timeout)
         try:
             process.run(firewall_stop, shell=True)
-            session.cmd(firewall_stop)
+            session.cmd(firewall_stop_client)
         except process.CmdError as e:
             test.error("Could not stop firewall: %s", str(e))
         finally:
