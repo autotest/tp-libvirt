@@ -187,12 +187,11 @@ def run(test, params, env):
         :param src: Source host of transfer file
         :return: Tuple (status, error msg/tcpdump result)
         """
-        #guest_ip = vm.get_address()
         vm.cleanup_serial_console()
         # Give it time to cleanup, remove it would cause login failed for this case
         time.sleep(2)
         vm.create_serial_console()
-        session = vm.wait_for_serial_login(timeout=60)
+        session = vm.wait_for_serial_login(timeout=login_timeout)
         guest_ip = network_base.get_vm_ip(session, vm.get_mac_address(0))
 
         sess = remote.remote_login(
@@ -359,7 +358,7 @@ def run(test, params, env):
         # Give it time to cleanup, remove it would cause login failed for this case
         time.sleep(2)
         vm.create_serial_console()
-        session = vm.wait_for_serial_login(timeout=60)
+        session = vm.wait_for_serial_login(timeout=login_timeout)
 
         pretest_status = ethtool_save_params(session)
         failed_tests = []

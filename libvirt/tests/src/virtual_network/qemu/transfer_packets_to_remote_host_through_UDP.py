@@ -20,8 +20,6 @@ from virttest import utils_package
 from virttest import remote
 from virttest.libvirt_xml import vm_xml
 
-from provider.virtual_network import network_base
-
 
 def run(test, params, env):
     """
@@ -37,16 +35,16 @@ def run(test, params, env):
 
     """
 
-    def disable_firewall(session, params, guest_os_type="linux"):
+    def disable_firewall(session, params, os_type="linux"):
         """
         Disable firewall on the target system.
         :param session: Session object for executing commands
         :param params: Params object
-        :param guest_os_type: OS type ("linux" or "windows")
+        :param os_type: OS type ("linux" or "windows")
         """
         firewall_cmd = params.get("firewall_cmd")
 
-        if guest_os_type == "linux":
+        if os_type == "linux":
             status = session.cmd_status(firewall_cmd)
             if status != 0:
                 test.log.debug("Failed to disable firewall or already disabled")
@@ -80,10 +78,9 @@ def run(test, params, env):
             test.log.debug('Install netperf in guest')
             guest_session.cmd(install_cmd, timeout=600)
 
-        # Verify installation
         test.log.debug('Verify netperf installation')
         status, output = guest_session.cmd_status_output(verify_cmd)
-        if status == 0 and 'netperf' in output:
+        if status == 0 and 'netperf' in output.lower():
             test.log.debug('Netperf installation verified successfully')
         else:
             test.fail('Failed to install/transfer netperf to guest: status=%s, output=%s' % (status, output))
@@ -100,6 +97,8 @@ def run(test, params, env):
         remote_passwd = params.get("remote_pwd")
 
         test.log.debug('Scp netperf to remote host.')
+        netperf_pkg_remote = params.get("netperf_pkg_remote")
+        netperf_linux_path = os.path.join(data_dir.get_deps_dir("netperf"), netperf_pkg_remote)
         utils_misc.make_dirs(os.path.dirname(netperf_linux_path), host_session)
         remote.copy_files_to(remote_ip, 'scp', remote_user, remote_passwd,
                              '22', netperf_linux_path, netperf_linux_path)
@@ -232,10 +231,9 @@ def run(test, params, env):
     netperf_version = params.get("netperf_version")
 
     # Handle variable substitution in paths
-    remote_ip = params.get("remote_ip")
+    remote_ip = params.get("migrate_dest_host")
     remote_user = params.get("remote_user", "root")
     remote_passwd = params.get("remote_pwd")
-    local_passwd = params.get("local_pwd")
     guest_passwd = params.get("password")
     guest_os_type = params.get("os_type", "linux")
     packet_size = params.get("udp_packet_size")
@@ -245,7 +243,6 @@ def run(test, params, env):
 
     netperf_pkg = params.get('netperf_pkg')
     netperf_linux_path = os.path.join(data_dir.get_deps_dir("netperf"), netperf_pkg)
-    netperf_windows_path = os.path.join(data_dir.get_deps_dir("netperf"), netperf_pkg)
 
     remote_session = remote.remote_login(
         "ssh", remote_ip, "22", remote_user, remote_passwd, r"[\#\$]\s*$")
@@ -268,7 +265,7 @@ def run(test, params, env):
         vm_session = vm.wait_for_login()
         test.log.debug("Guest xml:\n%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
 
-        vm_ip = network_base.get_vm_ip(vm_session, vm_xml.VMXML.get_first_mac_by_name(vm_name))
+        vm_ip = vm.get_address()
         test.log.debug("VM IP: %s and Remote host: %s", vm_ip, remote_ip)
 
         test.log.info("TEST_STEP2: Start netperf server on remote host")
