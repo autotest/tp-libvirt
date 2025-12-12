@@ -732,7 +732,10 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_filter_stats_fd_leak()
     elif checkpoint in ['has_run_againt_vddk', 'vddk_stats', 'backend_datapath_controlpath',
                         'scan_readahead_blocksize', 'vddk_with_delay_close_open_option']:
-        test_has_run_againt_vddk()
+        try:
+            test_has_run_againt_vddk()
+        finally:
+            process.run("rm -rf /home/vddk_libdir", shell=True, ignore_status=True)
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
     elif checkpoint == 'data_corruption':
