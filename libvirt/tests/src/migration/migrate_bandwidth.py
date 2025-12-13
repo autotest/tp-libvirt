@@ -226,6 +226,7 @@ def run(test, params, env):
                                     ignore_status=True, virsh_opt=virsh_options,
                                     func=action_during_mig,
                                     extra_opts=extra,
+                                    test=test,
                                     **extra_args)
 
         if int(migration_test.ret.exit_status) == 0:

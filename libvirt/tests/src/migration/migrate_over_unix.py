@@ -245,6 +245,7 @@ def run(test, params, env):
                                     ignore_status=True, virsh_opt=virsh_options,
                                     func=action_during_mig,
                                     extra_opts=extra,
+                                    test=test,
                                     **extra_args)
 
         mig_result = migration_test.ret
@@ -262,6 +263,7 @@ def run(test, params, env):
                                         virsh_opt=virsh_options,
                                         extra_opts=extra,
                                         func=action_during_mig,
+                                        test=test,
                                         **extra_args)
 
             mig_result = migration_test.ret

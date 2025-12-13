@@ -184,7 +184,8 @@ class MigrationBase(object):
         # Execute migration process
         do_mig_param = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
                         "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
-                        "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args}
+                        "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args,
+                        "test_obj": self.test}
         migration_base.do_migration(**do_mig_param)
 
     def run_migration_again(self):
