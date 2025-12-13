@@ -2401,7 +2401,8 @@ def run(test, params, env):
                                         thread_timeout=900,
                                         ignore_status=True,
                                         func=check_migration_disk_port,
-                                        func_params=func_dict)
+                                        func_params=func_dict,
+                                        test=test)
             if migration_test.RET_MIGRATION:
                 remote_session = remote.wait_for_login('ssh', server_ip, '22',
                                                        server_user, server_pwd,

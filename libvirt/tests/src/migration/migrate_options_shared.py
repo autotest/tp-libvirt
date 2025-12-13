@@ -18,6 +18,7 @@ from avocado.core import exceptions
 from virttest import libvirt_vm
 from virttest import utils_misc
 from virttest import utils_split_daemons
+from virttest import utils_sys
 from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
@@ -1417,7 +1418,7 @@ def run(test, params, env):
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
-            migration_test.check_result(mig_result, params)
+            migration_test.check_result(mig_result, params, [vm], test)
         else:
 
             logging.debug("vm.connect_uri=%s", vm.connect_uri)
@@ -1427,6 +1428,7 @@ def run(test, params, env):
                                             options, thread_timeout=900,
                                             ignore_status=True, virsh_opt=virsh_opt,
                                             func=action_during_mig, extra_opts=extra,
+                                            test=test,
                                             **extra_args)
                 mig_result = migration_test.ret
             except exceptions.TestFail as fail_detail:

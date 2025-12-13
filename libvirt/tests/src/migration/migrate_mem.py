@@ -437,7 +437,7 @@ def run_migration(vm, params, test):
     migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                 options, thread_timeout=900,
                                 ignore_status=True, virsh_opt=virsh_options,
-                                func=func_name, **extra_args)
+                                func=func_name, test=test, **extra_args)
 
     mig_result = migration_test.ret
     if int(mig_result.exit_status) == 0:

@@ -101,6 +101,7 @@ def do_migration(**kwargs):
     extra = kwargs.get('extra')
     action_during_mig = kwargs.get('action_during_mig')
     extra_args = kwargs.get('extra_args')
+    test_obj = kwargs.get('test_obj')
     vm_name = None
 
     if extra and "--dname" in extra:
@@ -122,6 +123,7 @@ def do_migration(**kwargs):
                               extra_opts=extra,
                               func=action_during_mig,
                               multi_funcs=None,
+                              test=test_obj,
                               **extra_args)
     elif isinstance(action_during_mig, list):
         mig_test.do_migration(vms, src_uri, dest_uri, 'orderly',
@@ -131,6 +133,7 @@ def do_migration(**kwargs):
                               extra_opts=extra,
                               func=None,
                               multi_funcs=action_during_mig,
+                              test=test_obj,
                               **extra_args)
 
 
