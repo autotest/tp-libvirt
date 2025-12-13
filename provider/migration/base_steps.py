@@ -1,3 +1,4 @@
+import logging
 import os
 import platform
 import time
@@ -18,6 +19,8 @@ from virttest import virsh
 
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_vmxml
+
+from avocado.utils import process
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -182,7 +185,8 @@ class MigrationBase(object):
             self.migration_test.run_stress_in_vm(self.vm, self.params)
 
         # Execute migration process
-        do_mig_param = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": None,
+        logging.debug("11111111111999999999999:%s", self.vm.connect_uri)
+        do_mig_param = {"vm": self.vm, "mig_test": self.migration_test, "src_uri": self.vm.connect_uri,
                         "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                         "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args}
         migration_base.do_migration(**do_mig_param)
