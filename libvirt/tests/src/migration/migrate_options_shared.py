@@ -28,6 +28,7 @@ from virttest import utils_package
 from virttest import utils_iptables
 from virttest import utils_conn
 from virttest import utils_config
+from virttest import utils_sys
 from virttest import xml_utils
 from virttest import migration
 
@@ -1417,7 +1418,7 @@ def run(test, params, env):
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
-            migration_test.check_result(mig_result, params)
+            migration_test.check_result(mig_result, params, [vm])
         else:
 
             logging.debug("vm.connect_uri=%s", vm.connect_uri)
@@ -1628,6 +1629,7 @@ def run(test, params, env):
             cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
             logging.info(cmd_result)
             if cmd_result.exit_status:
+                utils_sys.get_qemu_log([vm], type="both", params=params)
                 destroy_cmd = "virsh destroy %s" % vm_name
                 remote.run_remote_cmd(destroy_cmd, params, runner_on_target,
                                       ignore_status=False)
