@@ -905,6 +905,9 @@ def run(test, params, env):
             snapshot_info = snapshot(disk_info)
             v2v_options += " -io vddk-file='%s'" % snapshot_info
 
+        if checkpoint == 'check_parallel_option':
+            v2v_options += ' --parallel 2'
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
