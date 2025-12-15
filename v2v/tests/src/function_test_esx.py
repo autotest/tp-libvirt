@@ -776,6 +776,9 @@ def run(test, params, env):
             LOG.info('use time is %s' % usetime)
             if int(usetime) > 800:
                 test.fail("conversion time is too long, please check v2v performance")
+        if 'check_boot_order' in checkpoint:
+            if not re.search(r"boot order='\d+'.*|bootOrder:.*\d+.*", output):
+                test.fail("Not found boot order info in guest libvirtxml")
         # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
