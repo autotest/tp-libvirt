@@ -234,7 +234,7 @@ def run(test, params, env):
         if os.path.exists(source_socket):
             os.remove(source_socket)
         remote.run_remote_cmd("rm -f %s" % source_socket, params)
-        if image_mode:
+        if not image_mode:
             remote.run_remote_cmd("restorecon /usr/bin/swtpm_setup", params, ignore_status=False)
             remote.run_remote_cmd("restorecon /usr/bin/swtpm", params, ignore_status=False)
             process.run("restorecon /usr/bin/swtpm_setup", ignore_status=False, shell=True)
