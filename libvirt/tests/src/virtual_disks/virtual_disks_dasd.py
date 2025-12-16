@@ -2,6 +2,7 @@
 # disable pylint spell checker to allow for dasda, fdasda, vdb, vda, virtio, blk
 import logging as log
 import re
+import time
 
 from avocado.core.exceptions import TestError
 
@@ -49,6 +50,8 @@ def try_enable_disk(disk_id):
 
     cmd = "chzdev -e %s" % disk_id
     err, out = cmd_status_output(cmd, shell=True)
+    logging.debug("Sleep for 1 sec accounting for delayed CRW.")
+    time.sleep(1)
     if 'already configured' not in out:
         cleanup_actions.append(lambda: disable_disk(disk_id))
         if err:
@@ -65,6 +68,8 @@ def disable_disk(disk_id):
 
     cmd = "chzdev -d %s" % disk_id
     err, out = cmd_status_output(cmd, shell=True)
+    logging.debug("Sleep for 1 sec accounting for delayed CRW.")
+    time.sleep(1)
     if err:
         raise TestError("Couldn't disable dasd '%s'. %s" % (disk_id, out))
 

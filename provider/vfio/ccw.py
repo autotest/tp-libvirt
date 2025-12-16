@@ -1,4 +1,5 @@
 import logging as log
+import time
 
 from avocado.core.exceptions import TestError
 from virttest import utils_package, virsh
@@ -159,6 +160,8 @@ def set_device_offline(device_id, session=None):
 
     cmd = "chccwdev -d %s" % device_id
     err, out = cmd_status_output(cmd, shell=True, session=session)
+    logging.debug("Wait for 1 second to account for delayed CRW.")
+    time.sleep(1)
     if err:
         raise TestError("Could not set device offline. %s" % out)
 
@@ -174,6 +177,8 @@ def set_device_online(device_id, session=None):
 
     cmd = "chccwdev -e %s" % device_id
     err, out = cmd_status_output(cmd, shell=True, session=session)
+    logging.debug("Wait for 1 second to account for delayed CRW.")
+    time.sleep(1)
     if err:
         raise TestError("Could not set device online. %s" % out)
 
@@ -236,6 +241,8 @@ def set_override(schid):
 
     cmd = "driverctl -b css set-override %s vfio_ccw" % schid
     err, out = cmd_status_output(cmd, shell=True)
+    logging.debug("Wait for 1 second to account for delayed CRW.")
+    time.sleep(1)
     if err:
         raise TestError("Can't set driver override. %s" % out)
 
@@ -250,6 +257,8 @@ def unset_override(schid):
 
     cmd = "driverctl -b css unset-override %s" % schid
     err, out = cmd_status_output(cmd, shell=True)
+    logging.debug("Wait for 1 second to account for delayed CRW.")
+    time.sleep(1)
     if err:
         raise TestError("Can't unset driver override. %s" % out)
 
