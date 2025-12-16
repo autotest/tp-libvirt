@@ -162,6 +162,7 @@ def set_device_offline(device_id, session=None):
     err, out = cmd_status_output(cmd, shell=True, session=session)
     logging.debug("Wait for 1 second to account for delayed CRW.")
     time.sleep(1)
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     if err:
         raise TestError("Could not set device offline. %s" % out)
 
@@ -179,6 +180,7 @@ def set_device_online(device_id, session=None):
     err, out = cmd_status_output(cmd, shell=True, session=session)
     logging.debug("Wait for 1 second to account for delayed CRW.")
     time.sleep(1)
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     if err:
         raise TestError("Could not set device online. %s" % out)
 
@@ -243,6 +245,7 @@ def set_override(schid):
     err, out = cmd_status_output(cmd, shell=True)
     logging.debug("Wait for 1 second to account for delayed CRW.")
     time.sleep(1)
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     if err:
         raise TestError("Can't set driver override. %s" % out)
 
@@ -259,6 +262,7 @@ def unset_override(schid):
     err, out = cmd_status_output(cmd, shell=True)
     logging.debug("Wait for 1 second to account for delayed CRW.")
     time.sleep(1)
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     if err:
         raise TestError("Can't unset driver override. %s" % out)
 
