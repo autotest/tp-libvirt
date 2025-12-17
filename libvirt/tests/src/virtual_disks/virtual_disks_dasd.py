@@ -48,6 +48,7 @@ def try_enable_disk(disk_id):
     :raises: TestError if can't use disk
     """
 
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     cmd = "chzdev -e %s" % disk_id
     err, out = cmd_status_output(cmd, shell=True)
     logging.debug("Sleep for 1 sec accounting for delayed CRW.")
@@ -67,6 +68,7 @@ def disable_disk(disk_id):
     :raises: TestError if can't use disk
     """
 
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     cmd = "chzdev -d %s" % disk_id
     err, out = cmd_status_output(cmd, shell=True)
     logging.debug("Sleep for 1 sec accounting for delayed CRW.")
