@@ -49,7 +49,7 @@ def run(test, params, env):
     cpu_mode = params.get('cpu_mode', "host-passthrough")
     cpu_check = params.get('cpu_check', "full")
     feature_name = params.get('feature_name', "vmx")
-    feature_check_name = params.get('feature_check_name', feature_name)
+    feature_check_pattern = params.get('feature_check_pattern', feature_name)
     feature_policy = params.get('feature_policy', "require")
     host_supported_feature = "yes" == params.get("host_supported_feature", "no")
     check_vm_feature = "yes" == params.get("check_vm_feature", "no")
@@ -61,7 +61,7 @@ def run(test, params, env):
     try:
         libvirt_version.is_libvirt_feature_supported(params)
 
-        flags_cmd = "grep -qw %s /proc/cpuinfo" % feature_check_name
+        flags_cmd = "grep -qw %s /proc/cpuinfo" % feature_check_pattern
         res = process.run(flags_cmd, shell=True, ignore_status=True).exit_status
         if host_supported_feature == bool(res):
             test.cancel('The host does not support current test!')
