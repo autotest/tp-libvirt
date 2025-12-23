@@ -157,12 +157,17 @@ def run(test, params, env):
             test.log.debug("Migration returns function results:%s", func_returns)
             if int(migration_obj.migration_test.ret.exit_status) == 0:
                 test.fail("Expected failed, but migrate successfully.")
-            if not libvirt.check_vm_state(vm.name, migrate_src_state, uri=migration_obj.src_uri):
-                test.faile("Check vm state on source host fail.")
-            dest_vm_list = virsh.dom_list(options="--all --persistent", debug=True, uri=dest_uri)
+            if not libvirt.check_vm_state(vm.name, migrate_src_state, uri=migration_obj.src_uri, debug=True):
+                test.fail("Check vm state on source host fail.")
+            dest_vm_list = virsh.dom_list(options="--all", debug=True, uri=dest_uri)
             if migrate_dest_state == "nonexist":
                 if vm_name in dest_vm_list.stdout.strip():
                     test.fail("%s should not exist." % vm_name)
+            else:
+                if not libvirt.check_vm_state(vm.name, migrate_dest_state, uri=dest_uri, debug=True):
+                    test.fail("Check vm state on target host fail.")
+                if migrate_dest_state == "paused":
+                    virsh.destroy(vm.name, uri=dest_uri, debug=True)
         else:
             migration_obj.verify_default()
 
