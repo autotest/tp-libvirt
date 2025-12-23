@@ -220,7 +220,9 @@ def check_allowed_list(test, check_list):
     :raises: test.fail if get unexpected emulatorpin value
     :return: None
     """
-    pid = process.run('pidof qemu-kvm', shell=True).stdout_text.strip()
+    # Generic command to get top process id for qemu-kvm or qemu-system-*
+    pid_cmd = "pgrep -x \"$(ps -eo comm | grep -E \'^(qemu-system-|qemu-kvm)\' | head -n1)\""
+    pid = process.run(pid_cmd, shell=True).stdout_text.strip()
     res = cpuutils.cpu_allowed_list_by_task(pid, pid)
     if res == check_list:
         logging.info("Get expected emulatorpin value.")
