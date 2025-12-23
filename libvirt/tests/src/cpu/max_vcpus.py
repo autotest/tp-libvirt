@@ -1,4 +1,5 @@
 import logging as log
+import re
 
 from virttest import virsh
 from virttest import libvirt_xml
@@ -60,6 +61,19 @@ def run(test, params, env):
         iommu_device.driver = dargs.get('driver', {'intremap': 'on', 'eim': 'on'})
         vmxml.add_device(iommu_device)
 
+    def _parse_version(version_str):
+        """
+        Parse a version string in the format 'x.x.x' into a tuple of integers.
+
+        :param version_str: the version string to parse
+        :return: a tuple containing three integers
+        """
+        regex_str = r"(\d+)\.(\d+)\.(\d+)"
+        matches = re.search(regex_str, version_str)
+        if matches is None:
+            test.error('version of machine type is not expected as x.x.x but %s' % version_str)
+        return tuple(map(int, matches.groups()))
+
     try:
         # Check the output of "virsh maxvcpus" for both i440fx and q35 VM
         if check == 'virsh_maxvcpus':
@@ -110,9 +124,14 @@ def run(test, params, env):
                                           machtype_vcpunum_dict[key]))
                 if key.startswith('pc-q35') or key == 'q35':
                     exp_val = report_num_q35_7_8
+                    if key.startswith('pc-q35-rhel'):
+                        version_str = key.replace('pc-q35-rhel', '')
+                        version = _parse_version(version_str)
                     if key == "pc-q35-rhel7.3.0":
                         exp_val = report_num_q35_73
-                    elif key == "pc-q35-rhel9.6.0" or key == "pc-q35-rhel10.0.0" or key == 'q35':
+                    elif key == 'q35':
+                        exp_val = report_num_q35_9_6
+                    elif key.startswith('pc-q35-rhel') and version >= (9, 6, 0):
                         exp_val = report_num_q35_9_6
                     else:
                         if libvirt_version.version_compare(7, 0, 0):
