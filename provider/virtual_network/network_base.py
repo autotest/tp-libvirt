@@ -653,3 +653,98 @@ def set_guest_iface_mtu(test, vm_session, iface_name='', mtu=1500):
     status, output = vm_session.cmd_status_output(cmd)
     if status:
         test.fail("Fail to set mtu on guest interface: %s." % output)
+
+
+def pin_vcpus(vm, cpus):
+    """
+    Pin all vcpus of a VM to the given CPU list.
+
+    :param vm: libvirt vm object
+    :param cpus: sorted list of host cpu ids in the node node
+    :return: number of vcpus pinned
+    """
+
+    dominfo = vm.dominfo()
+    vcpu_count = int(dominfo.get("CPU(s)", 0))
+
+    for vcpu in range(vcpu_count):
+        cpu = cpus[vcpu]
+        vm.vcpupin(vcpu, str(cpu))
+        LOG.info("Pinned %d vcpu of vm %s to host cpu %s", vcpu, vm.name, cpu)
+    return vcpu_count
+
+
+def get_vhost_tids(vm):
+    """
+    Get vhost thread IDs for a VM.
+
+    Compatible with both environments:
+    - Old: vhost threads are qemu user threads
+    - New: vhost threads are kernel threads named 'vhost-<qemu-pid>'
+
+    :param vm: libvirt vm object
+    :return: list of vhost thread ids
+    """
+    pid = vm.get_pid()
+    if not pid:
+        LOG.warning("Cannot get QEMU PID for VM %s", vm.name)
+        return []
+
+    ps_cmd = (
+        "(ps -L -p {} -o tid,comm | awk '$2~/^vhost/{{print $1; found=1}} END{{exit !found}}') || "
+        "(ps -eLo pid,comm | awk '$2==\"vhost-{}\"{{print $1}}')"
+    ).format(pid, pid)
+
+    out = process.system_output(ps_cmd, shell=True, ignore_status=True).decode()
+    tids = [int(t) for t in out.splitlines() if t.isdigit()]
+    LOG.info("Detected vhost threads for VM %s (pid %s): %s", vm.name, pid, tids or "none")
+    return tids
+
+
+def pin_vhost_threads(vm, vhost_tids, cpus):
+    """
+    Pin vhost threads to specified host cpus.
+
+    :param vm: libvirt vm object
+    :param vhost_tids: list of vhost thread ids
+    :param cpus: list of host cpu ids
+    """
+    for tid, cpu in zip(vhost_tids, cpus):
+        cmd = "taskset -pc %s %s" % (cpu, tid)
+        process.run(cmd, shell=True)
+        LOG.info(
+            "Pinned vhost thread %s of vm %s to cpu %s",
+            tid, vm.name, cpu
+        )
+
+
+def pin_vcpu_vhost_threads(vm, node=None):
+    """
+    Pin VM vCPUs and vhost threads to host CPUs.
+
+    If a numa node is provided, pin to CPUs in that node.
+    If node is None, pin sequentially to all available CPUs.
+
+    :param vm: libvirt VM object
+    :param node: NUMA node ID or None
+    """
+    try:
+        if node is not None:
+            node = utils_misc.NumaNode(int(node))
+            cpus = sorted(node.cpus)
+        else:
+            cpus = list(range(os.cpu_count()))
+        # pin vCPUs
+        vcpu_count = pin_vcpus(vm, cpus)
+
+        # handle vhost pinning
+        vhost_tids = get_vhost_tids(vm)
+        if not vhost_tids:
+            LOG.info("No vhost threads detected for VM %s, skip vhost pinning", vm.name)
+        elif vcpu_count + len(vhost_tids) > len(cpus):
+            LOG.info("Skip vhost pinning for VM %s: insufficient CPUs", vm.name)
+        else:
+            vhost_cpus = cpus[vcpu_count: vcpu_count + len(vhost_tids)]
+            pin_vhost_threads(vm, vhost_tids, vhost_cpus)
+    except Exception as e:
+        raise exceptions.TestError("Failed to pin VM threads: %s" % e)
