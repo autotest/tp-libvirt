@@ -10,6 +10,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
 # Author: Prudhvi Miryala<mprudhvi@linux.vnet.ibm.com>
+# Author: Tasmiya.Nalatwad<tasmiya@linux.vnet.ibm.com>
 # Host device hotplug test
 
 
@@ -17,18 +18,20 @@ import os
 import logging as log
 import aexpect
 import time
+import platform
+import random
 
 from avocado.utils import process
+from avocado.utils import distro
 
 from virttest import virsh
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 from virttest.test_setup import PciAssignable
-from virttest import utils_misc
+from virttest import utils_test, utils_misc
 from virttest import data_dir
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest import utils_package
-from virttest import utils_net
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 
@@ -56,6 +59,9 @@ def run(test, params, env):
         10. test virsh dumpxml
         11. hotunplug the device
         12. test stress
+        13. Perform multiple hotplug/unplug operations
+        14. Perfomr random reboots in between
+           multiple hotplug/unplug
            to verify the new network device.
     """
     # get the params from params
@@ -75,8 +81,16 @@ def run(test, params, env):
     virsh_dumpxml = params.get("virsh_dumpxml", "no")
     virsh_dump = params.get("virsh_dump", "no")
     flood_ping = params.get("flood_ping", "no")
+    arch = platform.machine()
+    multiple_hotplug_hotunplug = params.get("multiple_hotplug_hotunplug", "no")
+    number_of_hotplug_unplug = int(params.get("number_of_hotplug_unplug", "1"))
+    random_reboot = params.get("random_reboot", "no")
+    cntlr_index = params.get("index", "1")
+    cntlr_model = params.get("model", "pci-root")
+    cntlr_type = "pci"
+
     # Check the parameters from configuration file.
-    for each_param in params.itervalues():
+    for each_param in params.values():
         if "ENTER_YOUR" in each_param:
             test.cancel("Please enter the configuration details of %s."
                         % each_param)
@@ -85,19 +99,37 @@ def run(test, params, env):
     devices = vmxml.get_devices()
     pci_devs = []
     dargs = {'debug': True, 'ignore_status': True}
+
+    controllers = vmxml.get_controllers(cntlr_type, cntlr_model)
+    index_list = []
+    for controller in controllers:
+        index_value = controller.get("index")
+        if index_value is not None:
+            index_list.append(int(index_value))
+
+    if index_list:
+        next_index = max(index_list) + 1
+    else:
+        next_index = int(cntlr_index)
     controller = Controller("controller")
-    controller.type = "pci"
-    controller.index = params.get("index", "1")
-    controller.model = params.get("model", "pci-root")
+    controller.type = cntlr_type
+    controller.index = str(next_index)
+    controller.model = cntlr_model
+
     devices.append(controller)
     vmxml.set_devices(devices)
     vmxml.sync()
     if not vm.is_alive():
         vm.start()
         session = vm.wait_for_login()
-    if not utils_package.package_install(["ppc64-diag",
-                                          "librtas", "powerpc-utils"],
-                                         session, 360):
+    detected_distro = distro.detect()
+    pkg = ["ppc64-diag", "powerpc-utils"]
+    if detected_distro.name == "sles16":
+        if int(detected_distro.version) == 16:
+            pkg.extend(["librtas2"])
+    if detected_distro.name in ("fedora", "rhel"):
+        pkg.extend(["librtas"])
+    if not utils_package.package_install(pkg, session, 360):
         test.cancel('Fail on dependencies installing')
     if virsh_dump == "yes":
         dump_file = os.path.join(data_dir.get_tmp_dir(), "virshdump.xml")
@@ -122,7 +154,7 @@ def run(test, params, env):
 
     def detach_device(pci_devs, pci_ids):
         # detaching the device from host
-        for pci_value, pci_node in map(None, pci_devs, pci_ids):
+        for pci_value, pci_node in zip(pci_devs, pci_ids):
             pci_value = pci_value.replace(".", "_")
             cmd = "lspci -ks %s | grep 'Kernel driver in use' |\
                    awk '{print $5}'" % pci_node
@@ -138,7 +170,7 @@ def run(test, params, env):
 
     def reattach_device(pci_devs, pci_ids):
         # reattach the device to host
-        for pci_value, pci_node in map(None, pci_devs, pci_ids):
+        for pci_value, pci_node in zip(pci_devs, pci_ids):
             pci_value = pci_value.replace(".", "_")
             cmd = "lspci -ks %s | grep 'Kernel driver in use' |\
                    awk '{print $5}'" % pci_node
@@ -160,8 +192,12 @@ def run(test, params, env):
         return nic_list_after != nic_list_before
 
     def device_hotplug():
-        if not libvirt_version.version_compare(3, 10, 0):
-            detach_device(pci_devs, pci_ids)
+        if arch == "ppc64le":
+            if libvirt_version.version_compare(3, 10, 0):
+                detach_device(pci_devs, pci_ids)
+        else:
+            if not libvirt_version.version_compare(3, 10, 0):
+                detach_device(pci_devs, pci_ids)
         # attach the device in hotplug mode
         result = virsh.attach_device(vm_name, dev.xml,
                                      flagstr="--live", debug=True)
@@ -190,7 +226,8 @@ def run(test, params, env):
 
     def test_ping():
         try:
-            output = session.cmd_output("lspci -nn | grep %s" % device_name)
+            session = vm.wait_for_login()
+            output = session.cmd_output('lspci -nn | grep "%s"' % device_name)
             nic_id = str(output).split(' ', 1)[0]
             nic_name = str(utils_misc.get_interface_from_pci_id(nic_id,
                                                                 session))
@@ -198,8 +235,9 @@ def run(test, params, env):
             session.cmd("ip addr add %s/%s dev %s"
                         % (net_ip, netmask, nic_name))
             session.cmd("ip link set %s up" % nic_name)
-            s_ping, o_ping = utils_net.ping(dest=server_ip, count=5,
-                                            interface=net_ip)
+            s_ping, o_ping = utils_test.ping(dest=server_ip, count=5,
+                                             interface=net_ip, timeout=30,
+                                             session=session)
             logging.info(s_ping)
             logging.info(o_ping)
             if s_ping:
@@ -211,8 +249,9 @@ def run(test, params, env):
 
     def test_flood_ping():
         # Test Flood Ping
-        s_ping, o_ping = utils_net.ping(dest=server_ip, count=5,
-                                        interface=net_ip, flood=True)
+        s_ping, o_ping = utils_test.ping(dest=server_ip, count=5,
+                                         interface=net_ip, timeout=30,
+                                         flood=True, session=session)
         logging.info(s_ping)
         logging.info(o_ping)
         if s_ping:
@@ -263,6 +302,15 @@ def run(test, params, env):
         if cmd_result.exit_status:
             test.fail("Failed to virsh dump of domain %s" % vm_name)
 
+    def rand_reboot(iteration):
+        #  Set probability of reboot per iteration (e.g., 30%)
+        reboot_chance = 0.3
+        if random.random() < reboot_chance:
+            logging.debug("Rebooting at iteration %s", iteration)
+            test_reboot()
+            time.sleep(5)
+            logging.debug("Random reboot completed, and adapter found in the VM after reboot")
+
     try:
         for stress_value in range(0, int(stress_val)):
             device_hotplug()
@@ -278,6 +326,21 @@ def run(test, params, env):
             if virsh_dump == "yes":
                 test_dump()
             device_hotunplug()
+
+        if multiple_hotplug_hotunplug == "yes":
+            for iteration in range(number_of_hotplug_unplug):
+                logging.info("Performing Hotplug/Hotunplug of pci device for %s time", iteration)
+                device_hotplug()
+                test_ping()
+                device_hotunplug()
+
+        if random_reboot == "yes":
+            for iteration in range(number_of_hotplug_unplug):
+                logging.info("Performing Hotplug/Hotunplug of pci device for %s time", iteration)
+                device_hotplug()
+                test_ping()
+                rand_reboot(iteration)
+                device_hotunplug()
 
     finally:
         # clean up
