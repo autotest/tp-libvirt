@@ -1,5 +1,6 @@
 import re
 import os
+import pwd
 import signal
 import logging
 import tempfile
@@ -22,6 +23,7 @@ def run(test, params, env):
     """
     checkpoint = params.get('checkpoint')
     version_required = params.get('version_required')
+    unprivileged_user = params.get('unprivileged_user')
 
     def test_filter_stats_fd_leak():
         """
@@ -773,7 +775,36 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
     elif checkpoint == 'cow_on_read_true':
         cow_on_read_true()
     elif checkpoint == 'cow_on_read_path':
-        cow_on_read_path()
+            regular_sudo_config = '/etc/sudoers.d/v2v_test'
+            try:
+                with open(regular_sudo_config, 'w') as fd:
+                    fd.write('%s ALL=(ALL)  NOPASSWD: ALL' % unprivileged_user)
+
+                # create user
+                try:
+                    pwd.getpwnam(unprivileged_user)
+                except KeyError:
+                    process.system("useradd %s" % unprivileged_user)
+
+                # generate ssh-key
+                rsa_private_key_path = '/home/%s/.ssh/id_rsa' % unprivileged_user
+                rsa_public_key_path = '/home/%s/.ssh/id_rsa.pub' % unprivileged_user
+                process.system(
+                    'su - %s -c \'ssh-keygen -t rsa -q -N "" -f %s\'' %
+                    (unprivileged_user, rsa_private_key_path))
+
+                with open(rsa_public_key_path) as fd:
+                    pub_key = fd.read()
+                
+                # Run the cow_on_read_path test as the non-root user
+                LOG.info("Running cow_on_read_path test as non-root user: %s" % unprivileged_user)
+                cow_on_read_path()
+            finally:
+                # Cleanup: remove sudoers config and user
+                if os.path.exists(regular_sudo_config):
+                    os.remove(regular_sudo_config)
+                if unprivileged_user:
+                    process.run("userdel -fr %s" % unprivileged_user, shell=True, ignore_status=True)
     elif checkpoint == 'cow_block_size':
         cow_block_size()
     elif checkpoint == 'reduce_verbosity_debugging':
