@@ -10,8 +10,6 @@ from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-from virttest.utils_libvirt import libvirt_bios
-from virttest.utils_test import libvirt
 
 from provider.guest_os_booting import guest_os_booting_base as guest_os
 from provider.migration import base_steps
@@ -144,9 +142,6 @@ def run(test, params, env):
             os_dict = eval(params.get("os_dict"))
             vmxml.del_os()
             vmxml.setup_attrs(os=os_dict)
-        elif boot_type == "statless_uefi":
-            vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
-            vmxml.setup_attrs(os=loader_dict)
         else:
             vmxml.setup_attrs(os=loader_dict)
         vmxml.sync()
@@ -161,8 +156,8 @@ def run(test, params, env):
 
         """
         test.log.info("Verify test again.")
-        dargs = {"check_disk_on_dest": "no"}
-        migration_obj.migration_test.post_migration_check([vm], dargs)
+        params.update({"check_disk_on_dest": "no"})
+        migration_obj.migration_test.post_migration_check([vm], params)
 
     def cleanup_test():
         """
