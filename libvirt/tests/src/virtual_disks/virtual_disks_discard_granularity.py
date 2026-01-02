@@ -163,6 +163,8 @@ def check_vm_dumpxml(params, test, expected_attribute=True):
             expected_discard_granularity = params.get("discard_granularity")
             if actual_discard_granularity != expected_discard_granularity:
                 test.fail("actual discard_granularity: %s is not equal to expected: %s" % (actual_discard_granularity, expected_discard_granularity))
+            else:
+                test.log.debug("Get expected discard_granularity: %s" % actual_discard_granularity)
 
 
 def run(test, params, env):
@@ -207,7 +209,7 @@ def run(test, params, env):
             socket_path = params.get("socket_file")
             vsock_service_id = start_vhost_sock_service(vhost_source_file_path, socket_path)
         # For invalid discard granularity test, it need update value accordingly
-        elif test_scenario in ["failure_vm_tart"]:
+        elif test_scenario in ["failure_vm_start"]:
             params.update({'discard_granularity': params.get('invalid_discard_granularity')})
 
         device_obj = create_customized_disk(params)
@@ -254,8 +256,14 @@ def run(test, params, env):
                                          debug=True, ignore_status=True)
             error_msg = params.get("error_msg")
             libvirt.check_result(result, error_msg)
-        elif test_scenario in ["boundary_vm_tart"]:
-            expected_attribute = "yes" == params.get("expected_attribute")
+        elif test_scenario in ["boundary_vm_start"]:
+            expected_attribute = "yes" == params.get("expected_attribute", "no")
+            discard_granularity = params.get("discard_granularity")
+            if discard_granularity == '0':
+                if libvirt_version.version_compare(11, 7, 0):
+                    expected_attribute = True
+                else:
+                    expected_attribute = False
             check_vm_dumpxml(params, test, expected_attribute)
         else:
             if not check_blockio_discard_granularity(vm, new_disk, discard_granularity_in_unit):

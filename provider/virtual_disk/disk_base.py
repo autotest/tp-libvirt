@@ -481,7 +481,10 @@ class DiskBase(object):
 
         process.run("ssh-keygen -t rsa -q -N '' -f %s" % keyfile, shell=True)
         process.run("ssh-keyscan -p 22 127.0.0.1 >> %s" % known_hosts_path, shell=True)
-        process.run("cat %s >> %s" % (f"{keyfile}.pub", authorized_path), shell=True)
+        pub_key = f"{keyfile}.pub"
+        with open(pub_key, "r", encoding="utf-8") as src, \
+             open(authorized_path, "w", encoding="utf-8") as dst:
+            dst.write(src.read())
         process.run("sshd -t", shell=True)
         process.run("systemctl reload sshd", shell=True)
 

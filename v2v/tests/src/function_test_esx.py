@@ -17,6 +17,7 @@ from virttest import remote
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
 from virttest.utils_v2v import params_get
+from virttest import ssh_key
 from avocado.utils import process
 from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
@@ -152,6 +153,69 @@ def run(test, params, env):
         pattern = r'\s+'.join(cfg_content.split())
         if not re.search(pattern, content):
             log_fail('Not found "%s"' % cfg_content)
+
+    def virt_customize_pkg_related(vmcheck):
+        """
+        Check virt-customize package related options (firstboot-install, run, run-command, update).
+        :param vmcheck: VMCheck object for vm checking
+        """
+        def get_pkg_info():
+            """
+            Inner function to repeatedly check for package installation.
+            """
+            for _ in range(5):
+                # Use run_cmd to avoid ShellCmdError and get status and output
+                status, output = vmcheck.run_cmd('rpm -q virtio-win nfs-utils kernel libvirt')
+                LOG.debug("rpm check status: %s, output: %s", status, output)
+                if status != 0:
+                    firstboot_file = vmcheck.run_cmd('cat /root/virt-sysprep-firstboot.log')
+                    LOG.info('firstboot log is %s', firstboot_file)
+                    LOG.info("One or more packages not yet installed, retrying in 20 seconds...")
+                    time.sleep(20)
+                else:
+                    # Status is 0, meaning all packages were found.
+                    return output
+            # Return the last output if all retries fail
+            return output
+
+        pkg_output = get_pkg_info()
+        if 'not installed' in pkg_output:
+            test.error('Expected packages were not installed')
+
+        if not re.search(r'kernel.*\.el\d+_\d+', pkg_output):
+            test.error('Failed to verify kernel update via virt-customize --update option.')
+
+    def virt_customize_file_related(vmcheck):
+        """
+        Check virt-customize file related options (ssh-inject, touch, write, edit, scrub).
+        :param vmcheck: VMCheck object for vm checking
+        """
+        content1 = vmcheck.session.cmd('cat /root/.ssh/authorized_keys')
+        LOG.info('content1 is %s', content1)
+        if not re.search(r'AAtesttesttest', content1):
+            test.error('Fail to test virt-customize ssh-inject option')
+        content2 = vmcheck.session.cmd(r'cat /home/testfile1 |grep editoption || true')
+        LOG.info('content2 is %s', content2)
+        if not re.search(r'editoption', content2):
+            test.error('Fail to test virt-customize touch, write, edit options')
+        content3 = vmcheck.session.cmd('ls /root')
+        LOG.info('content3 is %s', content3)
+        if re.search(r'anaconda-ks.cfg', content3):
+            test.error('Fail to test virt-customize scrub option')
+
+    def virt_customize_permission_related(vmcheck):
+        """
+        Check virt-customize permission related options (root-password, password-crypto, chown).
+        :param vmcheck: VMCheck object for vm checking
+        """
+        content1 = vmcheck.session.cmd('stat /home')
+        LOG.info('content1 is %s', content1)
+        if not re.search(r'Access.*0755.*Uid.*1.* Gid.*1.*bin', content1):
+            test.error('Fail to test virt-customize chown option')
+        content2 = vmcheck.session.cmd('cat /etc/shadow |grep root')
+        LOG.info('content2 is %s', content2)
+        if not re.search(r'\$5\$', content2):
+            test.error('Fail to test virt-customize password-crypto option')
 
     def check_device_map(vmcheck):
         """
@@ -400,7 +464,7 @@ def run(test, params, env):
         output = virsh.net_list("--all").stdout.strip()
         LOG.info(output)
 
-    def check_static_ip_conf(vmcheck):
+    def check_static_ip_conf(ip_config_list, mac_addr, vmcheck):
         """
         Check static IP configuration in VM
 
@@ -409,14 +473,7 @@ def run(test, params, env):
         def _static_ip_check():
             cmd = 'ipconfig /all'
             _, output = vmcheck.run_cmd(cmd, debug=False)
-            v2v_cmd = params_get(params, 'v2v_command')
-            # --mac 00:50:56:ac:7a:4d:ip:192.168.1.2,192.168.1.1,22,192.168.1.100,10.73.2.108,10.66.127.10'
-            mac_ip_pattern = '--mac (([0-9a-zA-Z]{2}:){6})ip:([0-9,.]+)'
-            ip_config_list = re.search(mac_ip_pattern, v2v_cmd).group(3)
-            mac_addr = re.search(mac_ip_pattern, v2v_cmd).group(1)[
-                0:-1].upper().replace(':', '-')
             eth_adapter_ptn = r'Ethernet adapter Ethernet.*?NetBIOS over Tcpip'
-
             try:
                 ipconfig = [
                     v for v in re.findall(
@@ -625,7 +682,23 @@ def run(test, params, env):
                 else:
                     check_linux_ogac(vmchecker.checker)
             if 'mac_ip' in checkpoint:
-                check_static_ip_conf(vmchecker.checker)
+                v2v_cmd = params_get(params, 'v2v_command')
+                # --mac 00:50:56:ac:7a:4d:ip:192.168.1.2,192.168.1.1,22,192.168.1.100,10.73.2.108,10.66.127.10'
+                mac_ip_pattern = '--mac (([0-9a-zA-Z]{2}:){6})ip:([0-9,.]+)'
+                ip_config_list = re.search(mac_ip_pattern, v2v_cmd).group(3)
+                mac_addr = re.search(mac_ip_pattern, v2v_cmd).group(1)[
+                           0:-1].upper().replace(':', '-')
+                check_static_ip_conf(ip_config_list, mac_addr, vmchecker.checker)
+            if checkpoint[0].startswith('virt_customize_firstboot'):
+                ip_config_list = params_get(params, 'static_mac_ip')
+                mac_addr = params_get(params, 'mac_addr')
+                check_static_ip_conf(ip_config_list, mac_addr, vmchecker.checker)
+                if 'virt_customize_firstboot_and_upload_option' in checkpoint:
+                    cmd = r'powershell.exe dir c:\\'
+                    _, output = vmchecker.checker.run_cmd(cmd, debug=False)
+                    LOG.info('output dir: %s', output)
+                    if not re.search(r'network1', output):
+                        test.fail('Not found expected file, fail to test virt-customize upload option')
             ret = vmchecker.run()
             if len(ret) == 0:
                 LOG.info("All common checkpoints passed")
@@ -634,6 +707,12 @@ def run(test, params, env):
                 test.fail('CDROM no longer exists')
             if 'vmtools' in checkpoint:
                 check_vmtools(vmchecker.checker, checkpoint)
+            if 'virt_customize_pkg_related' in checkpoint:
+                virt_customize_pkg_related(vmchecker.checker)
+            if 'virt_customize_file_related' in checkpoint:
+                virt_customize_file_related(vmchecker.checker)
+            if 'virt_customize_permission_related' in checkpoint:
+                virt_customize_permission_related(vmchecker.checker)
             if 'modprobe' in checkpoint:
                 check_modprobe(vmchecker.checker)
             if 'device_map' in checkpoint:
@@ -697,6 +776,9 @@ def run(test, params, env):
             LOG.info('use time is %s' % usetime)
             if int(usetime) > 800:
                 test.fail("conversion time is too long, please check v2v performance")
+        if 'check_boot_order' in checkpoint:
+            if not re.search(r"boot order='\d+'.*|bootOrder:.*\d+.*", output):
+                test.fail("Not found boot order info in guest libvirtxml")
         # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
@@ -934,7 +1016,40 @@ def run(test, params, env):
             v2v_params['v2v_opts'] += ' -oo create=true'
             for i in range(1, vm_disk_count + 1):
                 v2v_params['v2v_opts'] += ' -oo disk=%s/disk%s.img' % (os_directory, i)
-
+        if 'virt_customize_firstboot_and_upload_option' in checkpoint:
+            line = r'powershell.exe -ExecutionPolicy ByPass -NoProfile -file "C:\network-configure.ps1"'
+            script_path = os.path.join(data_dir.get_tmp_dir(), "network-configure.bat")
+            with open(script_path, "w") as f:
+                f.write(line)
+            v2v_params['v2v_opts'] += ' --upload %s:/network1 --firstboot %s' % (script_path, script_path)
+        if 'virt_customize_firstboot_cmd_option' in checkpoint:
+            network_configure_cmd = r'powershell.exe -ExecutionPolicy ByPass -NoProfile -file "C:\network-configure.ps1"'
+            v2v_params['v2v_opts'] += " --firstboot-command '%s'" % network_configure_cmd
+        if 'virt_customize_file_related' in checkpoint:
+            ssh_key.get_public_key().rstrip()
+            v2v_params['v2v_opts'] += " --ssh-inject root:file:/root/.ssh/id_rsa.pub" \
+                                      " --ssh-inject root:string:'ssh-rsa AAtesttesttest'" \
+                                      " --touch /home/testfile1" \
+                                      " --write /home/testfile1:'root:home:'" \
+                                      " --scrub /root/anaconda-ks.cfg" \
+                                      " --edit /home/testfile1:'s/^root:.*?:/editoption/'"
+        if 'virt_customize_pkg_related' in checkpoint:
+            lines = """
+#!/bin/bash
+dnf -y install libvirt
+"""
+            script_path = os.path.join(data_dir.get_tmp_dir(), "test.sh")
+            with open(script_path, "w") as f:
+                f.write(lines)
+            v2v_params['v2v_opts'] += " --firstboot-install virtio-win" \
+                                      " --run %s" \
+                                      " --run-command 'yum install nfs-utils -y'" \
+                                      " --update" % script_path
+        if 'virt_customize_permission_related' in checkpoint:
+            password = params_get(params, 'password')
+            v2v_params['v2v_opts'] += " --root-password password:%s" \
+                                      " --password-crypto sha256" \
+                                      " --chown '1:1:/home'" % password
         virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                        'remote_user': 'root', 'remote_pwd': source_pwd,
                        'auto_close': True,
@@ -946,9 +1061,10 @@ def run(test, params, env):
             res_cpu_topology = ET.fromstring(raw_dumpxml.stdout_text).find(".//cpu/topology")
             if res_cpu_topology is None:
                 test.error("Not found cpu topology")
-            params['msg_content_yes'] += '<rasd:num_of_sockets>' + res_cpu_topology.get('sockets') + '%'
-            params['msg_content_yes'] += '<rasd:cpu_per_socket>' + res_cpu_topology.get('cores') + '%'
-            params['msg_content_yes'] += '<rasd:threads_per_cpu>' + res_cpu_topology.get('threads')
+            params['msg_content_yes'] += "sockets='%s'.*" % res_cpu_topology.get('sockets')
+            params['msg_content_yes'] += "cores='%s'.*" % res_cpu_topology.get('cores')
+            params['msg_content_yes'] += "threads='%s'.*" % res_cpu_topology.get('threads')
+            LOG.info('msg_content_yes is %s', params['msg_content_yes'])
             v2v_result = utils_v2v.v2v_cmd(v2v_params)
         else:
             if 'exist_uuid' in checkpoint:

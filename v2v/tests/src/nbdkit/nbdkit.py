@@ -477,12 +477,19 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
         process.run('nbdkit file %s --filter=cow cow-on-read=true' % image_path, shell=True)
+        process.run('nbdinfo --size nbd://localhost', shell=True)
         cmd_proc = process.run('ls -l /proc/`pidof nbdkit`/fd', shell=True)
-        if re.search(r'3 -> /var/tmp/.*(deleted)', cmd_proc.stdout_text):
-            output_1 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/3", shell=True)
+        if re.search(r'\d+ -> /var/tmp/.*(deleted)', cmd_proc.stdout_text):
+            command_1 = "ls -l /proc/`pidof nbdkit`/fd | grep '(deleted)' | awk '{for(i=1; i<=NF; i++) if ($i == \"->\") print $(i-1)}'"
+            fd_id = process.run(command_1, shell=True)
+            fd_id_str = fd_id.stdout.decode('utf-8').strip()
+            if not fd_id_str:
+                test.fail('Unable to find deleted FD for cow overlay')
+            output_1 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/{fd_id_str}".format(fd_id_str=fd_id_str), shell=True)
             if re.search(r"0 512 4096", output_1.stdout_text):
                 process.run("nbdsh -u nbd://localhost -c 'h.pread(8*1024*1024, 0)'", shell=True)
-                output_2 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/3", shell=True)
+                process.run("nbdsh -u nbd://localhost -c 'h.pread(8*1024*1024, 0)'", shell=True)
+                output_2 = process.run("stat -L --format='%b %B %o' /proc/`pidof nbdkit`/fd/{fd_id_str}".format(fd_id_str=fd_id_str), shell=True)
                 if not re.search(r"16384 512 4096", output_2.stdout_text):
                     test.fail('cow-on-read=true option does not work')
         else:
@@ -696,6 +703,27 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         if not re.search(r'nbdkit: debug: times .*-D curl.times=1.*', cmd.stderr_text):
             test.fail('fail to test curl.time option')
 
+    def check_blkhash_option():
+        qcow2_image = params_get(params, 'disk_path')
+        cmd = process.run("nbdcopy --blkhash -- %s null:" % qcow2_image, shell=True, ignore_status=True)
+        hash_code = cmd.stdout_text.strip()
+        if len(hash_code) != 64:
+            test.fail('Expected 64-character hash, got length %d: %s' % (len(hash_code), hash_code))
+
+        hash_option = params_get(params, "hash_option")
+        test_state = params_get(params, "test_state")
+        if test_state == "positive":
+            cmd = process.run("nbdcopy --blkhash=%s -- %s null:" % (hash_option, qcow2_image), shell=True, ignore_status=True)
+            hash_code = cmd.stdout_text.strip()
+            if len(hash_code) != 32:
+                test.fail('Expected 32-character hash, got length %d: %s' % (len(hash_code), hash_code))
+        elif test_state == "negative":
+            cmd = process.run("nbdcopy --blkhash=%s -- %s null:" % (hash_option, qcow2_image), shell=True, ignore_status=True)
+            hash_warning_msg = cmd.stderr_text.strip()
+            expected_msg = params_get(params, "expected_warn_msg")
+            if expected_msg not in hash_warning_msg:
+                test.fail('Expected warning "%s" not found in stderr: %s' % (expected_msg, hash_warning_msg))
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -704,7 +732,10 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_filter_stats_fd_leak()
     elif checkpoint in ['has_run_againt_vddk', 'vddk_stats', 'backend_datapath_controlpath',
                         'scan_readahead_blocksize', 'vddk_with_delay_close_open_option']:
-        test_has_run_againt_vddk()
+        try:
+            test_has_run_againt_vddk()
+        finally:
+            process.run("rm -rf /home/vddk_libdir", shell=True, ignore_status=True)
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
     elif checkpoint == 'data_corruption':
@@ -767,5 +798,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_tar_filter()
     elif checkpoint == 'check_curl_time_option':
         check_curl_time_option()
+    elif checkpoint == 'check_blkhash_option':
+        check_blkhash_option()
     else:
         test.error('Not found testcase: %s' % checkpoint)

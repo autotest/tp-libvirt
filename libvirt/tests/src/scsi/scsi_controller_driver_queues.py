@@ -56,7 +56,7 @@ def run(test, params, env):
                               "but found '%s'." % (expect_value, dev.driver.get("queues")))
                 if actual_driver_iothreads != driver_iothreads:
                     test.fail("Expect the scsi controller iothread to be '%s',"
-                              "but found '%s'." % (driver_iothreads, actual_driver.iothreads))
+                              "but found '%s'." % (driver_iothreads, actual_driver_iothreads))
         test.log.info("TEST_STEP3: check the qemu command line.")
         if check_qemu_pattern:
             libvirt.check_qemu_cmd_line(check_qemu_pattern)

@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 
 from virttest.utils_misc import wait_for, cmd_status_output
@@ -5,6 +6,8 @@ from virttest.utils_zchannels import ChannelPaths
 from virttest.libvirt_xml.vm_xml import VMXML
 
 from provider.vfio import ccw
+
+LOG = logging.getLogger('avocado.' + __name__)
 
 
 def mdev_listed(uuid):

@@ -95,7 +95,7 @@ def run(test, params, env):
         """
         cmd = "cat /proc/meminfo"
         proc_mem = session.cmd_output(cmd)
-        total_usable_mem = re.search(r"MemTotal:\s+(\d+)\s+[kK]B", proc_mem).group(1)
+        total_usable_mem = re.search(r"MemTotal:\s+(\d+)\s+[kK]i?B", proc_mem).group(1)
         return int(total_usable_mem)
 
     def vm_unusable_mem(session):
@@ -105,13 +105,13 @@ def run(test, params, env):
         # Get total physical memory from dmidecode
         cmd = "dmidecode -t 17"
         dmi_mem = session.cmd_output(cmd)
-        dmi_mem_size = re.findall(r"Size:\s(\d+\s+[K|M|G]B)", dmi_mem)
+        dmi_mem_size = re.findall(r"Size:\s(\d+\s+[K|M|G]i?B)", dmi_mem)
         if not dmi_mem_size:
             test.fail("Cannot get memory size info inside VM.")
         total_physical_mem = 0
         for size_info in dmi_mem_size:
             mem_size = int(size_info.split()[0].strip())
-            mem_unit = size_info.split()[1].strip()
+            mem_unit = size_info.split()[1].strip().replace("i", "")
             if mem_unit.lower() == "kb":
                 total_physical_mem += mem_size
             elif mem_unit.lower() == "mb":

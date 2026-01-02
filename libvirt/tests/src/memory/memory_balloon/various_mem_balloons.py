@@ -31,7 +31,7 @@ def run(test, params, env):
         expect_exist = (memballoon_model != "none")
         libvirt.check_qemu_cmd_line(pattern, expect_exist=expect_exist)
 
-    def check_device_on_guest(guest_session=None, close_session=False):
+    def check_device_on_guest(guest_session=None, close_session=False, guest_cmd="lspci -vvv"):
         """
         Check if memory balloon device exists on guest.
 
@@ -42,7 +42,6 @@ def run(test, params, env):
         """
 
         test.log.info("TEST_STEP: 5. Check device exists on guest")
-        guest_cmd = "lspci -vvv"
         if guest_session is None:
             guest_session = vm.wait_for_login()
 
@@ -225,7 +224,7 @@ def run(test, params, env):
         expected_xpath = [{'element_attrs': [f".//memballoon[@model='{memballoon_model}']/alias[@name='{memballoon_alias_name}']"]}]
         check_vm_xml(expected_xpath)
         check_device_on_qemu_cmd_line()  # TEST_STEP: 4. Check the qemu cmd for device & id)
-        guest_session = check_device_on_guest()  # TEST_STEP: 5. Check device exists on guest
+        guest_session = check_device_on_guest(guest_cmd=guest_cmd)  # TEST_STEP: 5. Check device exists on guest
 
         virsh_helper.check_save_restore(save_file_name)  # TEST_STEP: 6. save and restore
 
@@ -269,6 +268,7 @@ def run(test, params, env):
     memballoon_model = params.get("memballoon_model", "")
     memballoon_alias_name = params.get("memballoon_alias_name", "")
     model_defined = (memballoon_model != "none")
+    guest_cmd = params.get("guest_cmd", "lspci -vvv")
 
     mem_unit = params.get("mem_unit", "")
     mem_value = params.get("mem_value", "")

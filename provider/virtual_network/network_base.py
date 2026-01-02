@@ -3,10 +3,13 @@ import math
 import os
 import re
 import shutil
+import time
 
 import aexpect
 from avocado.core import exceptions
 from avocado.utils import process
+
+from virttest import data_dir
 from virttest import remote
 from virttest import utils_misc
 from virttest import utils_net
@@ -149,20 +152,29 @@ def ping_check(params, ips, session=None, force_ipv4=True, **args):
         raise exceptions.TestFail('.'.join(failures))
 
 
-def create_tap(tap_name, bridge_name, user, flag=''):
+def create_tap(tap_name, bridge_name, user, flag='', session=None, tap_mtu=''):
     """
     Create tap device
 
     :param tap_name: name of tap device
     :param bridge_name: bridge to connect to
     :param user: user with access
+    :param flag: additional flags for tap creation
+    :param session: session object for remote execution, None for local
+    :param tap_mtu: tap mtu setting value
     """
     # Create tap device with ip command
     tap_cmd = f'ip tuntap add mode tap user {user} group {user} name ' \
               f'{tap_name} {flag};ip link set {tap_name} up;' \
               f'ip link set {tap_name} master {bridge_name}'
     # Execute command as root
-    process.run(tap_cmd, shell=True, verbose=True)
+    if session:
+        session.cmd(tap_cmd, timeout=60)
+    else:
+        process.run(tap_cmd, shell=True, verbose=True)
+
+    if tap_mtu:
+        set_tap_mtu(tap_name, tap_mtu, session)
 
 
 def create_macvtap(macvtap_name, iface, user):
@@ -193,23 +205,33 @@ def create_macvtap(macvtap_name, iface, user):
     return mac_addr
 
 
-def set_tap_mtu(tap, mtu_size):
+def set_tap_mtu(tap, mtu_size, session=None):
     """
     Set mtu for tap/macvtap device
 
     :param tap: tap/macvtap device name
     :param mtu_size: mtu size to set
+    :param session: session object for remote execution, None for local
     """
-    process.run(f'ip link set dev {tap} mtu {mtu_size}')
+    mtu_cmd = f'ip link set dev {tap} mtu {mtu_size}'
+    if session:
+        session.cmd(mtu_cmd, timeout=30)
+    else:
+        process.run(mtu_cmd)
 
 
-def delete_tap(tap_name):
+def delete_tap(tap_name, session=None):
     """
     Delete tap/macvtap device with given name
 
     :param tap_name: name of tap/macvtap device
+    :param session: session object for remote execution, None for local
     """
-    process.run(f'ip l del {tap_name}', shell=True, ignore_status=True)
+    del_cmd = f'ip l del {tap_name}'
+    if session:
+        session.cmd(del_cmd)
+    else:
+        process.run(del_cmd, shell=True, ignore_status=True)
 
 
 def prepare_vmxml_for_unprivileged_user(up_user, root_vmxml):
@@ -386,6 +408,7 @@ def preparation_for_iface(iface_type, params):
         network_dict = eval(params.get("network_dict", "[]"))
         if network_dict:
             libvirt_network.create_or_del_network(network_dict)
+            virsh.net_list("--all", debug=True)
 
 
 def cleanup_for_iface(iface_type, params):
@@ -447,16 +470,40 @@ def exec_netperf_test(params, env):
     netperf_server = params.get("netperf_server")
     extra_cmd_opts = params.get("extra_cmd_opts", "")
     netperf_timeout = params.get("netperf_timeout", "60")
-    test_protocol = params.get("test_protocol")
+    test_protocol = params.get("test_protocol", "TCP_STREAM")
+
+    # Command configuration parameters
+    firewall_cmd = params.get("firewall_cmd", "systemctl stop firewalld")
+    netserver_cmd = params.get("netserver_cmd", "netserver")
+    netperf_bin = params.get("netperf_bin", "netperf")
+    netperf_opts = params.get("netperf_opts", "")
+    guest_netperf_path = params.get("guest_netperf_path")
+    netperf_install_cmd = params.get("netperf_install_cmd")
+    install_from_file = params.get_boolean("install_from_file", False)
+    remote_server = params.get_boolean("remote_server", False)
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+    cp_client = params.get("cp_client")
+    cp_port = params.get("cp_port")
+
     vms = params.get('vms').split()
     vm_objs = {vm_i: env.get_vm(vm_i) for vm_i in vms}
+
     before_test_cores = process.run("coredumpctl list", ignore_status=True, verbose=True).stdout_text
 
     def _get_access_info(netperf_address):
         LOG.debug(f"check {netperf_address}...")
         session = None
         if re.match(r"((\d){1,3}\.){3}(\d){1,3}", netperf_address):
-            func = process.run
+            if remote_server:
+                remote_session = remote.remote_login(
+                    "ssh", server_ip, "22", server_user, server_pwd, r'[$#%]')
+                func = remote_session.cmd_output
+                session = remote_session
+            else:
+                func = process.run
+                session = None
             test_ip = netperf_address
         else:
             if netperf_address not in vms:
@@ -472,21 +519,53 @@ def exec_netperf_test(params, env):
     c_func, c_ip, c_session = _get_access_info(netperf_client)
     s_func, s_ip, s_session = _get_access_info(netperf_server)
 
+    # install netperf on server
+    if not utils_package.package_install("netperf", s_session):
+        raise exceptions.TestError("Unable to install netperf on the server!")
+
+    # install netperf on guest (also cover windows type)
     try:
-        if not utils_package.package_install("netperf", c_session):
-            raise exceptions.TestError("Unable to install netperf in the client host!")
-        if not utils_package.package_install("netperf", s_session):
-            raise exceptions.TestError("Unable to install netperf in the server host!")
-        c_func("systemctl stop firewalld")
+        if install_from_file:
+            netperf_src = os.path.join(data_dir.get_deps_dir("netperf"), params.get("netperf_source"))
+            for session, vm_name in [(c_session, netperf_client)]:
+                if session and vm_name in vms:
+                    vm = vm_objs.get(vm_name)
+                    remote.copy_files_to(vm.get_address(), cp_client,
+                                         params.get("username"), params.get("password"), cp_port,
+                                         netperf_src, guest_netperf_path, 600)
+                    if netperf_install_cmd:
+                        o = session.cmd(netperf_install_cmd, ignore_all_errors=True)
+                        logging.debug("Install guest on output:%s ", o)
+
+        else:
+            if not utils_package.package_install("netperf", c_session):
+                raise exceptions.TestError("Unable to install netperf on the client!")
+
+        # Disable firewall
+        c_func(firewall_cmd)
+        # Add delay for Windows firewall changes to take effect
+        firewall_delay = params.get("firewall_delay", "0")
+        if int(firewall_delay) > 0:
+            LOG.debug(f"Waiting {firewall_delay} seconds for firewall changes to take effect...")
+            time.sleep(int(firewall_delay))
+
+        # All server in these scenarios are linux, so we use this.
         s_func("systemctl stop firewalld")
 
+        # Start netserver
         LOG.debug("Start netserver...")
-        if s_ip == netperf_server:
-            s_func("killall netserver", ignore_status=True)
-        s_func("netserver")
+        try:
+            if s_ip == netperf_server:
+                s_func("killall netserver")
+        except Exception as e:
+            logging.debug('Kill existed netserver failed: %s' % str(e))
 
+        time.sleep(5)
+        s_func(netserver_cmd)
+
+        # Run netperf client
         LOG.debug("Run netperf command...")
-        test_cmd = f"netperf -H {s_ip} -l {netperf_timeout} -C -c -t {test_protocol} {extra_cmd_opts}"
+        test_cmd = f"{netperf_bin} -H {s_ip} -l {netperf_timeout} -t {test_protocol} {netperf_opts} {extra_cmd_opts}"
         c_func(test_cmd, timeout=120)
 
         for vm in vm_objs.values():
@@ -503,7 +582,7 @@ def exec_netperf_test(params, env):
             raise exceptions.TestFail("There are coredump files during the test!")
 
     finally:
-        LOG.info("Test teardown: Cleanup env.")
+        LOG.info("Netperf test teardown: Cleanup env.")
         s_func("killall netserver")
         s_func("systemctl start firewalld")
         # TODO: Start firewalld on guest

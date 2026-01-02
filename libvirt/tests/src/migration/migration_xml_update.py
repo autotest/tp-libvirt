@@ -26,9 +26,12 @@ def prepare_vm(vm, vm_name, vmxml, params):
     if vm.is_alive():
         vm.destroy()
     dev_type = params.get("remove_all")
+    dev_dir = eval(params.get("add_device"))
+    if dev_type == "interface":
+        current_mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
+        dev_dir['mac_address'] = current_mac
     vmxml.remove_all_device_by_type(dev_type)
     vmxml.sync()
-    dev_dir = eval(params.get("add_device"))
     dev = libvirt_vmxml.create_vm_device_by_type(dev_type, dev_dir)
     virsh.attach_device(vm_name, dev.xml, flagstr="--config", debug="True")
 
@@ -55,6 +58,11 @@ def create_migration_xml(test, vm_name, params):
         old_address = dev.find("address")
         dev.remove(old_address)
         dev.append(new_address)
+    elif modify == "mtu":
+        # Update MTU size for interface element
+        mtu_element = dev.find("mtu")
+        mtu_element.attrib['size'] = params.get("updated_mtu")
+
     ElementTree.ElementTree(vmxml).write(tmp_file)
 
 

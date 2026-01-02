@@ -28,6 +28,7 @@ from virttest import utils_package
 from virttest import utils_iptables
 from virttest import utils_conn
 from virttest import utils_config
+from virttest import utils_sys
 from virttest import xml_utils
 from virttest import migration
 
@@ -1417,7 +1418,7 @@ def run(test, params, env):
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
-            migration_test.check_result(mig_result, params)
+            migration_test.check_result(mig_result, params, [vm])
         else:
 
             logging.debug("vm.connect_uri=%s", vm.connect_uri)
@@ -1602,8 +1603,8 @@ def run(test, params, env):
                           "should not more than 1 second")
         if params.get("actions_after_migration"):
             do_actions_after_migrate(params)
-
-        if migrate_vm_back:
+        status_error = params.get("status_error", "no") == "yes"
+        if migrate_vm_back and not status_error:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -1628,6 +1629,7 @@ def run(test, params, env):
             cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
             logging.info(cmd_result)
             if cmd_result.exit_status:
+                utils_sys.get_qemu_log([vm], type="both", params=params)
                 destroy_cmd = "virsh destroy %s" % vm_name
                 remote.run_remote_cmd(destroy_cmd, params, runner_on_target,
                                       ignore_status=False)
@@ -1675,7 +1677,7 @@ def run(test, params, env):
                 remote_session.close()
 
             # Clean up of pre migration setup for local machine
-            if migrate_vm_back:
+            if migrate_vm_back and not status_error:
                 if 'ssh_connection' in locals():
                     ssh_connection.auto_recover = True
                 if 'src_full_uri' in locals():

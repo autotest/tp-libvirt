@@ -2434,14 +2434,14 @@ def run(test, params, env):
 
             try:
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
-                logging.debug("Check if remote guest exists")
+                logging.debug(f"TEST_STEP: Check if remote guest '{target_vm_name}' exists on '{server_ip}'")
                 if remote_virsh_session.domain_exists(target_vm_name) is False:
                     test.cancel("The guest '%s' on remote '%s' should be "
                                 "installed before the test."
                                 % (target_vm_name, server_ip))
                 # Check the prepared guest state on remote host.
                 # 'shut off' is expected.
-                logging.debug("Check if remote guest is in shutoff")
+                logging.debug(f"TEST_STEP: Check if remote guest is in shutoff.")
                 if remote_virsh_session.is_alive(target_vm_name):
                     test.error("The guest '%s' on remote "
                                "'%s' should not be alive."
@@ -2472,27 +2472,26 @@ def run(test, params, env):
                                 % (nfs_mount_dir, image_name)}
                 guest_config.sub(pattern2repl)
 
-                logging.debug("Modify remote guest xml's machine type")
                 arch = platform.machine()
-                if arch.count("ppc64"):
-                    machine_type = "pseries"
-
+                specific_machine_type = params.get("specific_machine_type", machine_type)
+                logging.debug(f"TEST_STEP: Modify remote guest xml's machine type {specific_machine_type}")
                 pattern2repl = {r".*.machine=.*":
                                 "<type arch='%s' machine='%s'>hvm</type>"
-                                % (arch, machine_type)}
+                                % (arch, specific_machine_type)}
+                logging.debug(f"Pattern to replace: {pattern2repl}")
                 guest_config.sub(pattern2repl)
 
                 # undefine remote guest
-                logging.debug("Undefine remote guest")
+                logging.debug(f"TEST_STEP: Undefine remote guest {target_vm_name}")
                 remote_virsh_session.undefine(target_vm_name, options="--nvram")
 
                 # redefine remote guest using updated XML
-                logging.debug("Redefine remote guest")
+                logging.debug("TEST_STEP: Redefine remote guest")
                 result = remote_virsh_session.define(xml_path)
-                logging.debug(result.stdout.strip())
+                logging.debug(f"result of redefine: {result}")
 
                 # start remote guest
-                logging.debug("Start remote guest")
+                logging.debug("TEST_STEP: Start remote guest")
                 remote_virsh_session.start(target_vm_name)
 
                 # dumpxml remote guest
