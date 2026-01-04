@@ -217,7 +217,7 @@ def run(test, params, env):
     try:
         setup_test()
         if tcp_config_list:
-            libvirt_network.change_tcp_config(eval(tcp_config_list))
+            libvirt_network.change_tcp_config(eval(tcp_config_list), params)
         if test_case != "src_and_dest_keepalive_disabled":
             # Monitor event on source/target host
             virsh_session, remote_virsh_session = migration_base.monitor_event(params)
@@ -230,5 +230,5 @@ def run(test, params, env):
             migration_obj.verify_default()
     finally:
         if recover_tcp_config_list:
-            libvirt_network.change_tcp_config(eval(recover_tcp_config_list))
+            libvirt_network.change_tcp_config(eval(recover_tcp_config_list), params)
         cleanup_test()
