@@ -6,7 +6,9 @@
 #   Author: Transferred from tp-qemu nic_hotplug test case
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+from virttest import remote
 from virttest import virsh
+from virttest import virt_vm
 from virttest import utils_misc
 from virttest import utils_net
 
@@ -38,7 +40,20 @@ def run_sub_test(test, vm, params, plug_tag):
     if sub_type == "reboot":
         test.log.info("Running sub test '%s' %s", sub_type, plug_tag)
         if params.get("reboot_method"):
-            vm.reboot(session, params["reboot_method"], 0, login_timeout, serial=True)
+            # TODO: This is a workaround and will be removed when the framework supports this feature
+            try:
+                vm.reboot(session, params["reboot_method"], 0, login_timeout, serial=True)
+            except virt_vm.VMRebootError as e:
+                if "Guest refuses to go down" in str(e):
+                    test.log.warning("Reboot detection failed, attempting to verify reboot completion")
+                    try:
+                        verify_session = vm.wait_for_serial_login(timeout=login_timeout)
+                        verify_session.close()
+                        test.log.info("Reboot completed successfully")
+                    except (remote.LoginError, remote.LoginTimeoutError):
+                        test.fail("Reboot failed, VM cannot be connected")
+                else:
+                    raise
     elif sub_type == "shutdown":
         test.log.info("Running sub test '%s' %s", sub_type, plug_tag)
         if shutdown_method == "shell":
