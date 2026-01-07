@@ -42,14 +42,14 @@ def run(test, params, env):
         :param params: Params object
         :param os_type: OS type ("linux" or "windows")
         """
-        firewall_cmd = params.get("firewall_cmd")
-
         if os_type == "linux":
+            firewall_cmd = params.get("linux_firewall_cmd")
             status = session.cmd_status(firewall_cmd)
             if status != 0:
                 test.log.debug("Failed to disable firewall or already disabled")
         else:
             try:
+                firewall_cmd = params.get("windows_firewall_cmd")
                 session.cmd(firewall_cmd, timeout=30)
                 test.log.debug("Disabled legacy Windows firewall")
                 session.cmd('netsh advfirewall set allprofiles state off', timeout=30)
