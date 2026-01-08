@@ -14,6 +14,7 @@ from virttest import utils_conn
 from virttest import utils_libvirtd
 from virttest import utils_iptables
 from virttest import utils_misc
+from virttest import utils_sys
 from virttest import virsh
 
 from virttest.utils_libvirt import libvirt_disk
@@ -280,6 +281,7 @@ class MigrationBase(object):
         self.test.log.info("Start migration: %s", cmd)
         cmd_result = remote.run_remote_cmd(cmd, self.params, runner_on_target)
         if cmd_result.exit_status:
+            utils_sys.get_qemu_log([self.vm], type="both", params=self.params)
             self.test.fail("Failed to run '%s' on remote: %s"
                            % (cmd, cmd_result))
         self.vm.connect_uri = self.src_uri
