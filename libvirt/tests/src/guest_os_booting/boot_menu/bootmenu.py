@@ -7,6 +7,7 @@
 
 #   Author: Meina Li <meili@redhat.com>
 #
+import re
 import time
 
 from virttest import virsh
@@ -28,6 +29,7 @@ def run(test, params, env):
     bootmenu_enable = params.get("bootmenu_enable")
     bootmenu_dict = eval(params.get("bootmenu_dict") % (bootmenu_enable, bootmenu_timeout))
     check_prompt = params.get("check_prompt")
+    check_not_prompt = params.get("check_not_prompt", "").split(",")
     error_msg = params.get("error_msg", "")
     status_error = "yes" == params.get("status_error", "no")
     directly_boot = "yes" == params.get("directly_boot", "no")
@@ -57,8 +59,28 @@ def run(test, params, env):
                 time.sleep(sleep_time)
                 for _ in range(2):
                     vm.serial_console.sendcontrol('[')
-                vm.serial_console.read_until_any_line_matches([check_prompt], timeout=30,
-                                                              internal_timeout=0.5)
+                if check_prompt:
+                    vm.serial_console.read_until_any_line_matches([check_prompt], timeout=30,
+                                                                  internal_timeout=0.5)
+                if check_not_prompt:
+                    time.sleep(1)
+                    output = vm.serial_console.get_output()
+                    output_lines = output.split('\n')
+                    matches = { check_not_prompt[0]:None, check_not_prompt[2]: None}
+                    for i in range(len(output_lines)):
+                        line = output_lines[i]
+                        for pattern in matches:
+                            if re.match(pattern, line):
+                                matches[pattern] = i
+                        if all(v is not None for v in matches.values()):
+                            break
+                    vals = list(matches.values())
+                    if None in vals:
+                        test.fail(f"Expected lines not found: {matches}")
+                    for i in range(vals[0], vals[1]):
+                        if re.match(check_not_prompt[1], output_lines[i]):
+                            test.fail(f"Found unexpected {check_not_prompt[1]}"
+                                      f" at line {i} in output.")
                 test.log.info("Get check point as expected")
                 if firmware_type == "seabios":
                     vm.serial_console.send('1')
