@@ -32,6 +32,11 @@ def run(test, params, env):
     file_trans_timeout = params.get_numeric("file_trans_timeout", "1200")
     file_md5_check_timeout = params.get_numeric("file_md5_check_timeout", "600")
     link_local_ipv6_addr = params.get_boolean("link_local_ipv6_addr")
+    host_br = params.get("netdst", "virbr0")
+
+    hostbr_info = utils_net.get_net_if_addrs(host_br)
+    if not hostbr_info.get("ipv6"):
+        test.cancel(f"Host bridge '{host_br}' requires IPv6 for this test")
 
     def get_file_md5sum(file_name, session, timeout):
         """
@@ -52,7 +57,7 @@ def run(test, params, env):
     for vm_name in params.get_list("vms", "vm1 vm2"):
         vms.append(env.get_vm(vm_name))
 
-    host_ifname = params.get("netdst") if link_local_ipv6_addr else None
+    host_ifname = host_br if link_local_ipv6_addr else None
     host_address = utils_net.get_host_ip_address(
         params, ip_ver="ipv6", linklocal=link_local_ipv6_addr
     )
