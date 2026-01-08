@@ -27,7 +27,9 @@ def run(test, params, env):
     firmware_type = params.get("firmware_type")
     bootmenu_timeout = params.get("bootmenu_timeout")
     bootmenu_enable = params.get("bootmenu_enable")
-    bootmenu_dict = eval(params.get("bootmenu_dict") % (bootmenu_enable, bootmenu_timeout))
+    bootmenu_dict = eval(
+        params.get("bootmenu_dict") % (bootmenu_enable, bootmenu_timeout)
+    )
     check_prompt = params.get("check_prompt")
     check_not_prompt = params.get("check_not_prompt", "").split(",")
     error_msg = params.get("error_msg", "")
@@ -58,15 +60,16 @@ def run(test, params, env):
                 sleep_time = int(bootmenu_timeout) / 1000
                 time.sleep(sleep_time)
                 for _ in range(2):
-                    vm.serial_console.sendcontrol('[')
+                    vm.serial_console.sendcontrol("[")
                 if check_prompt:
-                    vm.serial_console.read_until_any_line_matches([check_prompt], timeout=30,
-                                                                  internal_timeout=0.5)
+                    vm.serial_console.read_until_any_line_matches(
+                        [check_prompt], timeout=30, internal_timeout=0.5
+                    )
                 if check_not_prompt:
                     time.sleep(1)
                     output = vm.serial_console.get_output()
-                    output_lines = output.split('\n')
-                    matches = { check_not_prompt[0]:None, check_not_prompt[2]: None}
+                    output_lines = output.split("\n")
+                    matches = {check_not_prompt[0]: None, check_not_prompt[2]: None}
                     for i in range(len(output_lines)):
                         line = output_lines[i]
                         for pattern in matches:
@@ -79,11 +82,13 @@ def run(test, params, env):
                         test.fail(f"Expected lines not found: {matches}")
                     for i in range(vals[0], vals[1]):
                         if re.match(check_not_prompt[1], output_lines[i]):
-                            test.fail(f"Found unexpected {check_not_prompt[1]}"
-                                      f" at line {i} in output.")
+                            test.fail(
+                                f"Found unexpected {check_not_prompt[1]}"
+                                f" at line {i} in output."
+                            )
                 test.log.info("Get check point as expected")
                 if firmware_type == "seabios":
-                    vm.serial_console.send('1')
+                    vm.serial_console.send("1")
                 else:
                     virsh.destroy(vm_name)
                     virsh.start(vm_name, debug=True, ignore_status=False)
