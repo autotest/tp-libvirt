@@ -13,6 +13,7 @@ import time
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
+from virttest.utils_libvirt import libvirt_vmxml
 
 from provider.guest_os_booting import guest_os_booting_base as guest_os
 
@@ -32,6 +33,7 @@ def run(test, params, env):
     )
     check_prompt = params.get("check_prompt")
     check_not_prompt = params.get("check_not_prompt", "").split(",")
+    disk_order = eval(params.get("disk_order", "{}"))
     error_msg = params.get("error_msg", "")
     status_error = "yes" == params.get("status_error", "no")
     directly_boot = "yes" == params.get("directly_boot", "no")
@@ -44,6 +46,8 @@ def run(test, params, env):
     try:
         try:
             guest_os.prepare_os_xml(vm_name, bootmenu_dict)
+            if disk_order:
+                libvirt_vmxml.modify_vm_device(vmxml, "disk", disk_order)
         except xcepts.LibvirtXMLError as details:
             if error_msg and error_msg in str(details):
                 test.log.info("Get expected error message: %s.", error_msg)
