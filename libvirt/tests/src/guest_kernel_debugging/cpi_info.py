@@ -1,7 +1,9 @@
 import logging as log
 import re
+import time
 
 from virttest import utils_misc, virsh
+from avocado.utils import process
 from virttest.utils_cpi import (
     CPIChecker,
     get_cpi_config,
@@ -298,6 +300,99 @@ def run(test, params, env):
 
         logging.info("Long system name validation test passed")
 
+    def test_nested_kvm_cpi():
+        """
+        Test case 4: Test CPI system_level behavior in nested KVM environment
+
+        Steps:
+        1. L1 host: enable nested
+        2. L2 guest: Check /sys/firmware/cpi/system_level and verify hypervisor_bit is '0'
+        3. L2 guest: enable nested and Boot L3 guest
+        4. L2 guest: Check /sys/firmware/cpi/system_level and verify hypervisor_bit is '1'
+        """
+        logging.info("=== Test Case 4: Nested KVM CPI ===")
+
+        # Login L2 guest
+        session = vm.wait_for_login(timeout=60)
+
+        def check_and_enable_nested(is_guest=False):
+            current_nested = None
+            try:
+                if is_guest:
+                    # Check on L2 guest
+                    current_nested = session.cmd_output(
+                        "cat /sys/module/kvm/parameters/nested", timeout=30
+                    )
+                    logging.info(f"Current nested status: {current_nested}")
+                else:
+                    # Check on L1 host
+                    current_nested = process.run(
+                        "cat /sys/module/kvm/parameters/nested", timeout=30
+                    ).stdout_text.strip()
+                    logging.info(f"Current nested status: {current_nested}")
+            except Exception as e:
+                logging.warning(f"Failed to check current nested status: {e}")
+
+            # Reload kvm module with nested=1 if not already enabled
+            if current_nested != "1":
+                logging.info("Reloading kvm module with nested=1")
+                try:
+                    # Reload kvm modules with nested enabled
+                    if is_guest:
+                        # Reload on L2 guest
+                        session.cmd_output(
+                            "rmmod kvm ; modprobe kvm nested=1", timeout=30
+                        )
+                        # Verify nested is enabled
+                        current_nested = session.cmd_output(
+                            "cat /sys/module/kvm/parameters/nested", timeout=30
+                        )
+                    else:
+                        process.run(
+                            "rmmod kvm ; modprobe kvm nested=1", timeout=30
+                        ).stdout_text.strip()
+                        # Verify nested is enabled
+                        current_nested = process.run(
+                            "cat /sys/module/kvm/parameters/nested", timeout=30
+                        ).stdout_text.strip()
+                    if current_nested != "1":
+                        test.fail("Failed to enable nested virtualization")
+                    logging.info("Nested virtualization enabled successfully")
+                except Exception as e:
+                    test.fail(f"Failed to reload kvm module: {e}")
+            else:
+                logging.info("Nested virtualization already enabled")
+
+        logging.info("Step 1: Enabling nested virtualization on L1 host")
+        check_and_enable_nested(is_guest=False)
+
+        logging.info("Step 2: Checking CPI system_level on L2 guest")
+        checker = CPIChecker(vm, serial=serial)
+        system_level = checker.get_cpi_field("system_level")
+        parsed = checker._parse_system_level(system_level)
+        if parsed['hypervisor_bit'] != 0:
+            test.fail(f"L2 hypervisor_bit should be 0, but actual is "
+                      f"{parsed['hypervisor_bit']}")
+
+        logging.info("Step 3: Enable nested on L2 guest and Boot L3 guest")
+        check_and_enable_nested(is_guest=True)
+        session.cmd(
+            '/usr/libexec/qemu-kvm -machine s390-ccw-virtio -no-shutdown &',
+            shell=True, timeout=30)
+        # wait L3 guest to boot up
+
+        logging.info("Step 4: Checking CPI system_level on L2 guest")
+        system_level = checker.get_cpi_field("system_level")
+        parsed = checker._parse_system_level(system_level)
+        if parsed['hypervisor_bit'] != 1:
+            test.fail(f"L2 hypervisor_bit should be 1, but actual is "
+                      f"{parsed['hypervisor_bit']}")
+        if session is not None:
+            try:
+                session.close()
+            except Exception as e:
+                logging.warning(f"Failed to close session: {e}")
+
     def cleanup_cpi_config():
         """
         Clean up CPI configuration by restoring from backup
@@ -315,6 +410,8 @@ def run(test, params, env):
             test_managedsave()
         elif test_case_name == "long_system_name":
             test_long_system_name(test_system_name)
+        elif test_case_name == "nested_kvm_cpi":
+            test_nested_kvm_cpi()
         else:
             test.error(f"Unknown test case: {test_case_name}")
 
