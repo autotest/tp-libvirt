@@ -8,6 +8,8 @@
 #
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import time
+
 from virttest import utils_misc
 from virttest import virsh
 from virttest import test_setup
@@ -44,6 +46,72 @@ def run(test, params, env):
         test.log.debug("Get current vm attrs is :%s" % vm_attrs)
         return vm_attrs
 
+    def check_vm_status_and_log(vm, step_name):
+        """
+        Check VM status and collect debug info if VM is dead.
+
+        :param vm: VM object
+        :param step_name: Current test step name for logging
+        :raises: test.error if VM is unexpectedly dead
+        """
+        if not vm.is_alive():
+            test.log.error("VM died unexpectedly at step: %s" % step_name)
+            # Collect debug information
+            try:
+                result = virsh.domstate(vm_name, "--reason", debug=True)
+                test.log.error("VM state with reason: %s" % result.stdout_text)
+            except Exception as e:
+                test.log.error("Failed to get VM state: %s" % e)
+
+            # Try to get libvirt logs
+            try:
+                result = virsh.dumpxml(vm_name, debug=True)
+                test.log.debug("VM XML: %s" % result.stdout_text)
+            except Exception as e:
+                test.log.error("Failed to dump VM XML: %s" % e)
+
+            test.error("VM is dead at step '%s'. Check libvirtd/qemu logs "
+                       "for more details." % step_name)
+
+    def wait_for_vm_login_with_retry(vm, timeout=360, retry_count=3):
+        """
+        Wait for VM login with retry logic and status checks.
+
+        :param vm: VM object
+        :param timeout: Login timeout in seconds
+        :param retry_count: Number of retry attempts
+        :return: session object
+        """
+        last_exception = None
+        for attempt in range(retry_count):
+            test.log.info("Login attempt %d/%d" % (attempt + 1, retry_count))
+
+            # Check VM is still alive before attempting login
+            check_vm_status_and_log(vm, "before login attempt %d" % (attempt + 1))
+
+            try:
+                session = vm.wait_for_login(timeout=timeout)
+                test.log.info("Successfully logged into VM")
+                return session
+            except Exception as e:
+                last_exception = e
+                test.log.warning("Login attempt %d failed: %s" % (attempt + 1, e))
+
+                # Check if VM died during login attempt
+                if not vm.is_alive():
+                    test.log.error("VM died during login attempt")
+                    check_vm_status_and_log(vm, "after failed login")
+                    break
+
+                if attempt < retry_count - 1:
+                    test.log.info("Waiting 30 seconds before retry...")
+                    time.sleep(30)
+
+        # If we get here, all attempts failed
+        check_vm_status_and_log(vm, "all login attempts exhausted")
+        test.error("Failed to login to VM after %d attempts: %s" %
+                   (retry_count, last_exception))
+
     def setup_test():
         """
         Prepare init xml
@@ -73,7 +141,18 @@ def run(test, params, env):
         test.log.info("TEST_STEP3: Start vm")
         if not vm.is_alive():
             vm.start()
-        session = vm.wait_for_login()
+            # Wait a bit for VM to stabilize after start
+            time.sleep(5)
+
+        # Verify VM started successfully
+        check_vm_status_and_log(vm, "after vm.start()")
+
+        # Use enhanced login with retry
+        login_timeout = int(params.get("login_timeout", 360))
+        session = wait_for_vm_login_with_retry(vm, timeout=login_timeout)
+
+        # Double-check VM is still alive after login
+        check_vm_status_and_log(vm, "after successful login")
 
         test.log.info("TEST_STEP4: Check the qemu cmd line")
         for check_item in qemu_line:
@@ -85,10 +164,16 @@ def run(test, params, env):
                                         expect_exist=bool(existed))
 
         test.log.info("TEST_STEP5: Consume the guest memory")
+        # Check VM status before memory operation
+        check_vm_status_and_log(vm, "before consume memory")
+
         status, output = libvirt_memory.consume_vm_freememory(session)
         if status:
             test.fail("Fail to consume guest memory. Error:%s" % output)
         session.close()
+
+        # Check VM status after memory operation
+        check_vm_status_and_log(vm, "after consume memory")
 
         test.log.info("TEST_STEP6:  Check the locked memory pages")
         lock_pages_2 = int(utils_memory.read_from_vmstat("nr_mlock"))
