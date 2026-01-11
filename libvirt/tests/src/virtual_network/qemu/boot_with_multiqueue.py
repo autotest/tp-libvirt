@@ -1,7 +1,10 @@
+import os
 import re
 
+from virttest import data_dir
 from virttest import utils_net
 from virttest import utils_test
+from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 
@@ -59,6 +62,19 @@ def run(test, params, env):
             if msis != 2 * queues + 2:
                 test.fail("Expected MSI count: %s, but got: %s" % (2 * queues + 2, msis))
     else:
+        # Attach virtio-win CDROM
+        virtio_iso = params.get("cdrom_virtio")
+        virtio_path = os.path.join(data_dir.get_data_dir(), virtio_iso)
+        real_virtio_path = os.path.realpath(virtio_path)
+
+        if os.path.exists(real_virtio_path):
+            test.log.debug("Attaching virtio-win CDROM: %s", real_virtio_path)
+            virsh.attach_disk(vm.name, real_virtio_path, "sdd",
+                              extra="--type cdrom --mode readonly",
+                              debug=True, ignore_status=False)
+            test.log.debug("Successfully attached virtio-win CDROM")
+        else:
+            test.error("Virtio-win ISO not found at: %s" % real_virtio_path)
         # verify driver
         test.log.debug("Check if the driver is installed and verified")
         driver_name = params.get("driver_name", "netkvm")
