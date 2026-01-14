@@ -8,6 +8,7 @@ from virttest import data_dir
 from virttest import migration
 from virttest import libvirt_remote
 from virttest import libvirt_vm
+from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_config
 from virttest import utils_conn
@@ -38,9 +39,11 @@ class MigrationBase(object):
     :param remote_libvirtd_log: remote.RemoteFile object
     """
 
-    def __init__(self, test, vm, params):
+    def __init__(self, test, vm, params, remote_virsh=None):
         """
         Init params and other necessary variables
+
+        :param remote_virsh: Optional VirshPersistent session for destination host operations
 
         """
         self.test = test
@@ -53,6 +56,12 @@ class MigrationBase(object):
         self.check_cont_ping = "yes" == self.params.get("check_cont_ping", "no")
         self.check_cont_ping_log = self.params.get("check_cont_ping_log", "/tmp/log_file")
         self.remote_libvirtd_log = None
+        self.server_ip = self.params.get("server_ip")
+        self.server_user = self.params.get("server_user", "root")
+        self.server_pwd = self.params.get("server_pwd")
+        self.do_destination_vm_backup = "yes" == self.params.get("do_destination_vm_backup", "no")
+        self.dest_backup_xml = None
+        self.remote_virsh = remote_virsh
 
         migration_test = migration.MigrationTest()
         migration_test.check_parameters(params)
@@ -62,6 +71,48 @@ class MigrationBase(object):
         vm_name = params.get("migrate_main_vm")
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         self.orig_config_xml = new_xml.copy()
+
+        if self.do_destination_vm_backup:
+            self._backup_and_undefine_destination_vm_if_needed(vm_name)
+
+    def _backup_and_undefine_destination_vm_if_needed(self, vm_name):
+        """
+        If enabled, handle pre-existing destination VM with the same name:
+        - Fail if it is running (blocker)
+        - Backup its XML (optional / enabled via params)
+        - Undefine it on destination to avoid name conflict during migration
+
+        :param vm_name: VM name to check on destination host
+        """
+        if self.remote_virsh is None:
+            self.test.fail("Test setup error: Destination VM backup is enabled "
+                           "(do_destination_vm_backup=yes), but no remote_virsh "
+                           "session was provided to MigrationBase.__init__")
+
+        if not self.remote_virsh.domain_exists(vm_name, debug=True):
+            return
+
+        # Check if VM is running - we can only backup/undefine if it's not running
+        if not self.remote_virsh.is_dead(vm_name, debug=True):
+            self.test.fail(f"VM '{vm_name}' is running on destination host. {self.server_ip} "
+                           "Cannot proceed - VM must be stopped first.")
+
+        self.test.log.info(f"VM '{vm_name}' exists on destination host {self.server_ip}, "
+                           "backing it up")
+        dest_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
+            vm_name,
+            virsh_instance=self.remote_virsh
+        )
+        self.dest_backup_xml = dest_xml.copy()
+
+        # Undefine the VM on destination to avoid conflicts during migration
+        self.test.log.info(f"Undefining VM '{vm_name}' on destination host {self.server_ip}")
+        # Use comprehensive undefine options to remove everything
+        undef_opts = "--managed-save --snapshots-metadata --nvram"
+        if libvirt_version.version_compare(7, 5, 0):
+            undef_opts += " --checkpoints-metadata"
+
+        self.remote_virsh.undefine(vm_name, options=undef_opts)
 
     def setup_default(self, use_console=False):
         """
@@ -253,19 +304,16 @@ class MigrationBase(object):
         options = self.params.get("virsh_migrate_options", "--live --verbose")
         dest_uri = self.params.get("virsh_migrate_desturi")
         self.vm.connect_uri = dest_uri
-        server_ip = self.params.get("server_ip")
-        server_user = self.params.get("server_user", "root")
-        server_pwd = self.params.get("server_pwd")
 
         client_ip = self.params.get("client_ip")
         client_pwd = self.params.get("client_pwd")
-        runner_on_target = remote.RemoteRunner(host=server_ip,
-                                               username=server_user,
-                                               password=server_pwd)
+        runner_on_target = remote.RemoteRunner(host=self.server_ip,
+                                               username=self.server_user,
+                                               password=self.server_pwd)
         ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                   server_pwd=client_pwd,
-                                                  client_ip=server_ip,
-                                                  client_pwd=server_pwd)
+                                                  client_ip=self.server_ip,
+                                                  client_pwd=self.server_pwd)
         try:
             ssh_connection.conn_check()
         except utils_conn.ConnectionError:
@@ -342,6 +390,26 @@ class MigrationBase(object):
             del self.remote_libvirtd_log
         # Clean VM on destination and source
         self.migration_test.cleanup_vm(self.vm, dest_uri)
+
+        # Restore destination VM if it was backed up
+        if self.dest_backup_xml:
+            vm_name = self.params.get("migrate_main_vm")
+            self.test.log.info(f"Restoring VM '{vm_name}' on destination host {self.server_ip}")
+            remote.scp_to_remote(
+                self.server_ip,
+                "22",
+                self.server_user,
+                self.server_pwd,
+                self.dest_backup_xml.xml,
+                self.dest_backup_xml.xml,
+                limit="",
+                log_filename=None,
+                timeout=60,
+                interface=None,
+            )
+            if not self.dest_backup_xml.define(virsh_instance=self.remote_virsh):
+                self.test.log.warning(f"Failed to restore VM '{vm_name}' on destination host {self.server_ip}")
+
         self.orig_config_xml.sync()
 
     def setup_connection(self, use_console=False):
@@ -390,9 +458,6 @@ class MigrationBase(object):
         log_file = self.params.get("libvirtd_debug_file", "/var/log/libvirt/virtqemud.log")
         log_filters = self.params.get("libvirtd_debug_filters", "1:*")
         remote_file_type = self.params.get("remote_file_type", "virtqemud")
-        server_ip = self.params.get("server_ip", self.params.get("migrate_dest_host"))
-        server_user = self.params.get("server_user", "root")
-        server_pwd = self.params.get("server_pwd", self.params.get("migrate_dest_pwd"))
 
         self.test.log.debug(f"Start setting {remote_file_type} log on remote host")
         service_name = utils_libvirtd.Libvirtd(remote_file_type).service_name
@@ -404,9 +469,9 @@ class MigrationBase(object):
                               '".*log_filters\s*=.*": \'log_filters="%s"\', '
                               '".*log_outputs\s*=.*": \'log_outputs="1:file:%s"\'}') % (log_level, log_filters, log_file)
         self.remote_libvirtd_log = libvirt_remote.update_remote_file(self.params, libvirtd_conf_dest, file_path)
-        remote_runner = remote.RemoteRunner(host=server_ip,
-                                            username=server_user,
-                                            password=server_pwd)
+        remote_runner = remote.RemoteRunner(host=self.server_ip,
+                                            username=self.server_user,
+                                            password=self.server_pwd)
         utils_libvirtd.Libvirtd(remote_file_type, session=remote_runner.session).restart()
         self.params.update({
             "remote_session": remote_runner.session
@@ -439,12 +504,9 @@ class MigrationBase(object):
                 local_str_in_log = False
                 libvirt.check_logfile(check_log, log_file, str_in_log=local_str_in_log)
         if check_str_remote_log or check_no_str_remote_log:
-            server_ip = self.params.get("server_ip")
-            server_user = self.params.get("server_user", "root")
-            server_pwd = self.params.get("server_pwd")
-            runner_on_target = remote.RemoteRunner(host=server_ip,
-                                                   username=server_user,
-                                                   password=server_pwd)
+            runner_on_target = remote.RemoteRunner(host=self.server_ip,
+                                                   username=self.server_user,
+                                                   password=self.server_pwd)
 
         if check_str_remote_log:
             for check_log in check_str_remote_log:
@@ -469,11 +531,8 @@ class MigrationBase(object):
         :param port: port
         :param add: True for add port, False for remove port
         """
-        server_ip = self.params.get("server_ip")
-        server_user = self.params.get("server_user")
-        server_pwd = self.params.get("server_pwd")
-        remote_session = remote.wait_for_login('ssh', server_ip, '22',
-                                               server_user, server_pwd,
+        remote_session = remote.wait_for_login('ssh', self.server_ip, '22',
+                                               self.server_user, self.server_pwd,
                                                r"[\#\$]\s*$")
         firewall_cmd = utils_iptables.Firewall_cmd(remote_session)
         if add:
@@ -520,7 +579,7 @@ def prepare_disks_remote(params, vm):
     :param vm: vm object
     """
     server_ip = params.get("server_ip")
-    server_user = params.get("server_user")
+    server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
 
     remote_session = remote.remote_login("ssh", server_ip, "22",
@@ -587,7 +646,7 @@ def check_cpu_for_mig(params):
     """
     dest_uri = params.get("virsh_migrate_desturi")
     remote_ip = params.get("server_ip")
-    remote_user = params.get("server_user")
+    remote_user = params.get("server_user", "root")
     remote_pwd = params.get("server_pwd")
 
     # aarch64 only supports migration tests between hosts with the same CPU, so
