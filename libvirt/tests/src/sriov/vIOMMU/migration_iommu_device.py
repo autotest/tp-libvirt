@@ -13,27 +13,39 @@ def run(test, params, env):
     This case starts vm with different iommu device settings then migrate it
     to and back to check network works well.
     """
-    def check_iommu_xml(vm, params):
+    def setup_remote_virsh_session(params):
+        """
+        Setup remote virsh session for destination host operations
+
+        :param params: Dictionary with the test parameters
+        :return: VirshPersistent session
+        """
+        server_ip = params.get("server_ip")
+        server_user = params.get("server_user", "root")
+        server_pwd = params.get("server_pwd")
+
+        remote_virsh_dargs = {
+            'remote_ip': server_ip,
+            'remote_user': server_user,
+            'remote_pwd': server_pwd,
+            'unprivileged_user': None,
+            'ssh_remote_auth': True
+        }
+        return virsh.VirshPersistent(**remote_virsh_dargs)
+
+    def check_iommu_xml(vm, params, remote_virsh):
         """
         Check the iommu xml of the migrated vm
 
         :param vm: VM object
         :param params: Dictionary with the test parameters
+        :param remote_virsh: VirshPersistent session for destination host
         """
         iommu_dict = eval(params.get('iommu_dict', '{}'))
         if not iommu_dict:
             return
-        server_ip = params.get("server_ip")
-        server_user = params.get("server_user", "root")
-        server_pwd = params.get("server_pwd")
-        remote_virsh_dargs = {'remote_ip': server_ip,
-                              'remote_user': server_user,
-                              'remote_pwd': server_pwd,
-                              'unprivileged_user': None,
-                              'ssh_remote_auth': True}
-        virsh_session_remote = virsh.VirshPersistent(**remote_virsh_dargs)
         migrated_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                vm.name, virsh_instance=virsh_session_remote)
+                vm.name, virsh_instance=remote_virsh)
         vm_iommu = migrated_vmxml.devices.by_device_tag(
             'iommu')[0].fetch_attrs()
         for attr, value in iommu_dict.items():
@@ -71,14 +83,17 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     test_obj = viommu_base.VIOMMUTest(vm, test, params)
-    migration_obj = base_steps.MigrationBase(test, vm, params)
+
+    # Setup remote virsh session for destination operations
+    remote_virsh = setup_remote_virsh_session(params)
+    migration_obj = base_steps.MigrationBase(test, vm, params, remote_virsh=remote_virsh)
 
     try:
         setup_test()
         test.log.info("TEST_STEP: Migrate the VM to the target host.")
         migration_obj.run_migration()
         migration_obj.verify_default()
-        check_iommu_xml(vm, params)
+        check_iommu_xml(vm, params, remote_virsh)
 
         migrate_vm_back = "yes" == params.get("migrate_vm_back", "yes")
         if migrate_vm_back:
@@ -88,3 +103,6 @@ def run(test, params, env):
             migration_obj.check_vm_cont_ping(False)
     finally:
         test_obj.teardown_iommu_test()
+        migration_obj.cleanup_default()
+        if remote_virsh:
+            remote_virsh.close_session()
