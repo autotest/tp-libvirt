@@ -59,7 +59,7 @@ def run(test, params, env):
         Disable or enable MSI from guest.
         """
         hwid = win_dev.get_hwids(session, device_name, devcon_folder, login_timeout)[0]
-        session.cmd(params["msi_cmd"] % (hwid, 0 if enable else 1))
+        session.cmd(params["msi_cmd"] % (hwid, 1 if enable else 0))
 
     tmp_dir = params["tmp_dir"]
     filesize = int(params.get("filesize"))

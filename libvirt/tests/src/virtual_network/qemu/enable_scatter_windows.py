@@ -172,9 +172,10 @@ def run(test, params, env):
 
     # Attach virtio-win CDROM
     virtio_path = os.path.join(data_dir.get_data_dir(), virtio_iso)
-    if os.path.exists(virtio_path):
-        test.log.debug("Attaching virtio-win CDROM: %s", virtio_path)
-        virsh.attach_disk(vm.name, virtio_path, "sdd",
+    real_virtio_path = os.path.realpath(virtio_path)
+    if os.path.exists(real_virtio_path):
+        test.log.debug("Attaching virtio-win CDROM: %s", real_virtio_path)
+        virsh.attach_disk(vm.name, real_virtio_path, "sdd",
                           extra="--type cdrom --mode readonly",
                           debug=True, ignore_status=False)
         test.log.debug("Successfully attached virtio-win CDROM")
