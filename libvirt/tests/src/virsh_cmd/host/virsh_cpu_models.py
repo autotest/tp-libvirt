@@ -81,5 +81,9 @@ def run(test, params, env):
         logging.debug("Get the CPU models for arch: %s" % arch)
         result = virsh.cpu_models(arch, options=option, uri=connect_uri,
                                   ignore_status=True, debug=True)
+        # Check if the architecture is not supported; log it and skip to the next architecture.
+        if "architecture is not supported by CPU driver" in result.stderr:
+            logging.info("%s architecture is not supported by CPU driver as expected" % arch)
+            continue
         utlv.check_exit_status(result, expect_error=status_error)
         compare_cpu_model_with_qemu(test, params, result, qemu_cmd)
