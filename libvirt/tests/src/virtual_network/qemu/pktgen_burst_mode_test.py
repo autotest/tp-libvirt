@@ -61,7 +61,9 @@ def run(test, params, env):
                 pktgen_utils.install_package(host_ver)
 
         test.log.debug("TEST_STEP 2: Test with guest and host connectivity")
-        vm.start()
+        if not vm.is_alive():
+            vm.start()
+        vm.verify_alive()
         test.log.debug("Test with Guest xml:%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
         session = vm.wait_for_serial_login(restart_network=True)
         network_base.ping_check(params, ips, session, force_ipv4=True)
@@ -96,6 +98,9 @@ def run(test, params, env):
     guest_ver_cmd = params.get("guest_ver_cmd")
     test_vm = params.get_boolean("test_vm")
     host_ver = os.uname().release
-    ips = {'host_ip': utils_net.get_host_ip_address(params)}
+    params_for_ip = params.copy()
+    if params.get("netdst") == "private":
+        params_for_ip["netdst"] = params.get("priv_brname", "atbr0")
+    ips = {'host_ip': utils_net.get_host_ip_address(params_for_ip)}
 
     run_test()

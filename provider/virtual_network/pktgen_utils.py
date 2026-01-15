@@ -8,7 +8,7 @@ from virttest import data_dir
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import utils_package
-
+from virttest.utils_test import libvirt
 
 LOG_JOB = logging.getLogger("avocado.test")
 
@@ -41,7 +41,7 @@ class PktgenConfig:
             vm.copy_files_to(source_path, self.dest_path)
             guest_mac = vm.get_mac_address(0)
             self.interface = utils_net.get_linux_ifname(session_serial, guest_mac)
-            host_iface = utils_net.get_default_gateway(iface_name=True, force_dhcp=False, json=True)
+            host_iface = libvirt.get_ifname_host(vm.name, guest_mac)
             dsc_dev = utils_net.Interface(host_iface)
             self.dsc = dsc_dev.get_mac()
             self.runner = session_serial.cmd
@@ -150,8 +150,11 @@ def install_package(ver, pagesize=None, vm=None, session_serial=None):
         local_path = "/tmp/%s.rpm" % kernel_ver
         remote_path = "/tmp/"
         vm.copy_files_to(local_path, remote_path)
-    utils_misc.cmd_status_output(cmd_install, session=session_serial)
-    utils_misc.cmd_status_output(cmd_clean, session=session_serial)
+        utils_misc.cmd_status_output(cmd_install, session=session_serial)
+        utils_misc.cmd_status_output(cmd_clean, session=session_serial)
+    else:
+        utils_misc.cmd_status_output(cmd_install, shell=True)
+        utils_misc.cmd_status_output(cmd_clean, shell=True)
 
 
 def format_result(result):
