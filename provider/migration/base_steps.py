@@ -72,7 +72,8 @@ class MigrationBase(object):
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         self.orig_config_xml = new_xml.copy()
 
-        self._backup_and_undefine_destination_vm_if_needed(vm_name)
+        if self.do_destination_vm_backup:
+            self._backup_and_undefine_destination_vm_if_needed(vm_name)
 
     def _backup_and_undefine_destination_vm_if_needed(self, vm_name):
         """
@@ -83,9 +84,6 @@ class MigrationBase(object):
 
         :param vm_name: VM name to check on destination host
         """
-        if not self.do_destination_vm_backup:
-            return
-
         if self.remote_virsh is None:
             self.test.fail("Test setup error: Destination VM backup is enabled "
                            "(do_destination_vm_backup=yes), but no remote_virsh "
