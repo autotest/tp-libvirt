@@ -61,7 +61,8 @@ def run(test, params, env):
                 pktgen_utils.install_package(host_ver)
 
         test.log.debug("TEST_STEP 2: Test with guest and host connectivity")
-        vm.start()
+        if not vm.is_alive():
+            vm.start()
         test.log.debug("Test with Guest xml:%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
         session = vm.wait_for_serial_login(restart_network=True)
         network_base.ping_check(params, ips, session, force_ipv4=True)
