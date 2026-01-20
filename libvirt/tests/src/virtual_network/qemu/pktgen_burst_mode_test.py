@@ -97,6 +97,9 @@ def run(test, params, env):
     guest_ver_cmd = params.get("guest_ver_cmd")
     test_vm = params.get_boolean("test_vm")
     host_ver = os.uname().release
-    ips = {'host_ip': utils_net.get_host_ip_address(params)}
+    params_for_ip = params.copy()
+    if params.get("netdst") == "private":
+        params_for_ip["netdst"] = params.get("priv_brname", "atbr0")
+    ips = {'host_ip': utils_net.get_host_ip_address(params_for_ip)}
 
     run_test()
