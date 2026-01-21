@@ -83,7 +83,7 @@ def run(test, params, env):
 
             def _get_test_ip():
                 nonlocal bind_ip
-                bind_ip = passt.generate_random_ip_addr()
+                bind_ip = passt.generate_random_ip_addr(exclude_multicast_addr=True)
                 if bind_ip not in str(host_iface_list):
                     return True
             if not utils_misc.wait_for(_get_test_ip, 10, 0.1):
