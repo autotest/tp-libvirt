@@ -40,7 +40,7 @@ def run(test, params, env):
         test.fail("Missing required configuration: vcpu_num must be specified")
 
     # Get VM object
-    vm_name = params.get("migrate_main_vm", params.get("main_vm"))
+    vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
 
     # Initialize migration base helper
