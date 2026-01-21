@@ -733,10 +733,6 @@ def run(test, params, env):
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
-        elif checkpoint not in ['length_of_error', 'empty_nic_source_network', 'line_no_wrap',
-                                'empty_nic_source_bridge', 'machine_readable', 'in_place',
-                                'virt_v2v_open', 'virt_v2v_inspector']:
-            v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
         if "qemu:///session" in v2v_options or no_root:
