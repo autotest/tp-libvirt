@@ -9,6 +9,7 @@
 import aexpect.remote
 import re
 import os
+import time
 
 from virttest import utils_net
 from virttest import virsh
@@ -147,7 +148,6 @@ def run(test, params, env):
                 vm.cleanup_serial_console()
             vm.create_serial_console()
             vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
-            vm_session_after_mig.cmd("dhclient -r; dhclient", timeout=120)
 
             test.log.info("TEST_STEP: Testing guest ping to outside")
             ips = {"outside_ip": outside_ip}
@@ -193,6 +193,8 @@ def run(test, params, env):
                 network_dict, is_del=True, remote_args=remote_virsh_dargs
             )
             libvirt_network.create_or_del_network(network_dict, is_del=True)
+        # Add some waiting time to make host connection stable after cleaning bridge.
+        time.sleep(5)
         migration_obj.cleanup_connection()
 
     server_ip = params["server_ip"] = params.get("migrate_dest_host")
@@ -233,7 +235,7 @@ def run(test, params, env):
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     remote_session = aexpect.remote.remote_login(
-        "ssh", server_ip, "22", server_user, server_pwd, r"[$#%]"
+        "ssh", server_ip, "22", server_user, server_pwd, '#',
     )
     remote_host_iface = params.get("remote_host_iface")
     if not remote_host_iface:
