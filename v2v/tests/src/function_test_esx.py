@@ -1045,6 +1045,15 @@ dnf -y install libvirt
                                       " --run %s" \
                                       " --run-command 'yum install nfs-utils -y'" \
                                       " --update" % script_path
+        if 'virt_customize_incompatible_cmd' in checkpoint:
+            lines = """
+#!/bin/bash
+dnf -y install libvirt
+"""
+            script_path = os.path.join(data_dir.get_tmp_dir(), "test.sh")
+            with open(script_path, "w") as f:
+                f.write(lines)
+            v2v_params['v2v_opts'] += " --run %s" % script_path
         if 'virt_customize_permission_related' in checkpoint:
             password = params_get(params, 'password')
             v2v_params['v2v_opts'] += " --root-password password:%s" \
