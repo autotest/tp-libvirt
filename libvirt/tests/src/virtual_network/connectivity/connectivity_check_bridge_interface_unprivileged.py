@@ -41,7 +41,6 @@ def run(test, params, env):
     try:
         utils_net.create_linux_bridge_tmux(linux_bridge, host_iface)
         process.run(f'ip l show type bridge {linux_bridge}', shell=True)
-        process.run('chmod u+s /usr/libexec/qemu-bridge-helper', shell=True)
 
         with open(br_conf_file, 'a') as fh:
             fh.write(f'allow {linux_bridge}\n')
