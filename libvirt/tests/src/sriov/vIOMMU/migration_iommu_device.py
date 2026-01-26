@@ -87,4 +87,5 @@ def run(test, params, env):
             migration_obj.migration_test.ping_vm(vm, params)
             migration_obj.check_vm_cont_ping(False)
     finally:
+        migration_obj.cleanup_connection()
         test_obj.teardown_iommu_test()
