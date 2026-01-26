@@ -170,8 +170,8 @@ def run(test, params, env):
                 if status != 0:
                     firstboot_file = vmcheck.run_cmd('cat /root/virt-sysprep-firstboot.log')
                     LOG.info('firstboot log is %s', firstboot_file)
-                    LOG.info("One or more packages not yet installed, retrying in 20 seconds...")
-                    time.sleep(20)
+                    LOG.info("One or more packages not yet installed, retrying in 100 seconds...")
+                    time.sleep(100)
                 else:
                     # Status is 0, meaning all packages were found.
                     return output
@@ -577,7 +577,7 @@ def run(test, params, env):
             else:
                 test.fail('%s of rhsrvany.exe is not correct' % key)
 
-    def verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vcenter_ip):
+    def verify_certificate(certs_src_dir, certs_dest_dir):
         process.run('yum install ca-certificates -y | update-ca-trust',  shell=True)
         mount_cert_dir = utils_v2v.v2v_mount(certs_src_dir, 'certs_src_dir')
         if not os.path.exists(certs_dest_dir):
@@ -585,8 +585,6 @@ def run(test, params, env):
         process.run('scp -r %s/* %s' % (mount_cert_dir, certs_dest_dir), shell=True)
         process.run('umount %s' % mount_cert_dir, shell=True)
         process.run('update-ca-trust extract', shell=True)
-        with open('/etc/hosts', "w") as f:
-            f.write('%s %s' % (vcenter_ip, vcenter_fdqn))
 
     def check_online_disks(vmcheck):
         """
@@ -1072,6 +1070,7 @@ dnf -y install libvirt
             if checkpoint[0] in [
                 'verify_certificate',
                 'verify_custom_path_cert',
+                'verify_esxi_certificate',
                 'mismatched_uuid',
                 'no_uuid',
                 'invalid_source',
@@ -1120,18 +1119,24 @@ dnf -y install libvirt
             certs_src_dir = params.get('certs_src_dir')
             certs_dest_dir = params.get('certs_dest_dir')
             vcenter_fdqn = params.get('vcenter_fdqn')
-            verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vpx_hostname)
+            verify_certificate(certs_src_dir, certs_dest_dir)
             new_cmd = v2v_result.replace('/?no_verify=1', '').replace(vpx_hostname, vcenter_fdqn)
         if 'verify_custom_path_cert' in checkpoint:
             certs_src_dir = params.get('certs_src_dir')
             cert_file = params.get('cert_file')
             certs_dest_dir = os.path.join(data_dir.get_tmp_dir(), 'vmwarecert')
             vcenter_fdqn = params.get('vcenter_fdqn')
-            verify_certificate(certs_src_dir, certs_dest_dir, vcenter_fdqn, vpx_hostname)
+            verify_certificate(certs_src_dir, certs_dest_dir)
             new_cmd = v2v_result.replace('/?no_verify=1', '/?cacert=%s/%s' % (certs_dest_dir, cert_file)).replace(vpx_hostname, vcenter_fdqn)
+        if 'verify_esxi_certificate' in checkpoint:
+            certs_src_dir = params.get('certs_src_dir')
+            certs_dest_dir = params.get('certs_dest_dir')
+            verify_certificate(certs_src_dir, certs_dest_dir)
+            new_cmd = v2v_result.replace('/?no_verify=1', '')
         if checkpoint[0] in [
             'verify_certificate',
             'verify_custom_path_cert',
+            'verify_esxi_certificate',
             'mismatched_uuid',
             'no_uuid',
             'invalid_source',
