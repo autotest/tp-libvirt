@@ -261,12 +261,16 @@ def unset_override(schid):
     :raises TestError: if override can't be unset
     """
 
+    _, dmesg_before = cmd_status_output("dmesg", shell=True)
     logging.debug(cmd_status_output("lscss -t 3390")[1])
     cmd = "driverctl -b css unset-override %s" % schid
     err, out = cmd_status_output(cmd, shell=True)
     logging.debug("Wait to account for delayed CRW.")
     time.sleep(2)
     logging.debug(cmd_status_output("lscss -t 3390")[1])
+    _, dmesg_after = cmd_status_output("dmesg", shell=True)
+    logging.debug("dmesg since unset-override:")
+    logging.debug("\n".join(set(dmesg_after.split("\n")) - set(dmesg_before.split("\n"))))
     if err:
         raise TestError("Can't unset driver override. %s" % out)
 
