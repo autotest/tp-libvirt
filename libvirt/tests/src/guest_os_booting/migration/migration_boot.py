@@ -26,6 +26,10 @@ def run(test, params, env):
         if os_attrs_boots:
             os_attrs = {'boots': os_attrs_boots}
             vmxml.setup_attrs(os=os_attrs)
+            try:
+                vmxml.xmltreefile.remove_by_xpath('/devices/disk/boot')
+            except (AttributeError, TypeError):
+                pass  # Element already doesn't exist
         else:
             vm_os = vmxml.os
             vm_os.del_boots()
