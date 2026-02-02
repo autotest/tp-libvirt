@@ -255,12 +255,11 @@ def run(test, params, env):
         error_msg = None
         if status_error == "no" and not post_action:
             # Close then establish a connection with the serial console
-            vm.cleanup_serial_console()
-            vm.create_serial_console()
             # Serial login the vm to check link status
             # Start vm check the link statue
             session = vm.wait_for_serial_login(username=username,
-                                               password=password)
+                                               password=password,
+                                               recreate_serial_console=True)
             guest_if_name = utils_net.get_linux_ifname(session, mac_address)
 
             # Check link state in guest
