@@ -310,7 +310,7 @@ def run(test, params, env):
                                        extra_opts=extra_options,
                                        shell=True)
             # Check migration result
-            obj_migration.check_result(obj_migration.ret, params)
+            obj_migration.check_result(obj_migration.ret, params, vms)
 
             # Check "postcopy-active" event after postcopy migration
             logging.debug("Check postcopy-active event after postcopy migration")

@@ -75,7 +75,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP: Shutdown and start VM, check vhostvdpa disk r/w.")
         virsh.shutdown(vm.name, wait_for_event=True,
                        event_type="disconnected.*(\n.*)*Shutdown Finished.*(\n.*)*Stopped",
-                       **VIRSH_ARGS)
+                       event_timeout=30, **VIRSH_ARGS)
         virsh.start(vm.name, **VIRSH_ARGS)
         vm_session = vm.wait_for_login()
         check_disk_io(vm_session, new_disk, cmd_in_vm, is_mount=False)

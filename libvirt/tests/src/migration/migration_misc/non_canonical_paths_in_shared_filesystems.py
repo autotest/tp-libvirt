@@ -47,17 +47,18 @@ def setup_for_shared_filesystems(params, test):
         if not utils_misc.check_exists(path):
             process.run(f"mkdir -p {path}", shell=True, verbose=True)
 
-    remote_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
-    utils_disk.mount(mount_images_path, images_path, session=remote_session)
-    utils_disk.mount(mount_nvram_path, nvram_path, session=remote_session)
-    utils_disk.mount(mount_swtpm_path, swtpm_path, session=remote_session)
-    remote_session.close()
-
-    process.run(f"cd {nfs_images_path}; mkdir nfs; ln -s nfs nfs-link", shell=True, verbose=True)
-
     utils_disk.mount(nfs_images_path, images_path, options=nfs_mount_options)
     utils_disk.mount(nfs_nvram_path, nvram_path, options=nfs_mount_options)
     utils_disk.mount(nfs_swtpm_path, swtpm_path, options=nfs_mount_options)
+
+    remote_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
+    utils_disk.mount(mount_images_path, images_path, session=remote_session, verbose=True)
+    utils_disk.mount(mount_nvram_path, nvram_path, session=remote_session, verbose=True)
+    utils_disk.mount(mount_swtpm_path, swtpm_path, session=remote_session, verbose=True)
+    remote_session.close()
+
+    cmd = f"mkdir {images_path}/nfs; ln -s {images_path}/nfs {images_path}/nfs-link"
+    process.run(cmd, shell=True, verbose=True)
 
     remote_obj = None
     local_obj = None
@@ -100,6 +101,7 @@ def cleanup_for_shared_filesystems(params, test):
 
     libvirt.setup_or_cleanup_nfs(is_setup=False)
     process.run(f"rm -rf {export_dir}", shell=True, ignore_status=True)
+    process.run(f"rm -rf {images_path}/nfs*", shell=True, ignore_status=True)
 
 
 def run(test, params, env):

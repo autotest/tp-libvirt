@@ -83,7 +83,7 @@ def run(test, params, env):
 
             def _get_test_ip():
                 nonlocal bind_ip
-                bind_ip = passt.generate_random_ip_addr()
+                bind_ip = passt.generate_random_ip_addr(exclude_multicast_addr=True)
                 if bind_ip not in str(host_iface_list):
                     return True
             if not utils_misc.wait_for(_get_test_ip, 10, 0.1):
@@ -109,6 +109,10 @@ def run(test, params, env):
                         'PORT_EXAMPLE', str(port)))
                     iface_attrs.update(portForwards)
                     break
+        elif scenario == 'mem_backing_hugepage':
+            vmxml.setup_attrs(**eval(params.get('mem_backing_attrs')))
+            virsh.define(vmxml.xml, **VIRSH_ARGS)
+
         else:
             return
 
@@ -138,6 +142,12 @@ def run(test, params, env):
             # with inactive interface
             if passt_ver >= passt_ver_cmp:
                 status_error, error_msg = False, ''
+
+        if scenario == 'mem_backing_hugepage':
+            passt_pid = process.run("pidof passt", ignore_status=True).stdout_text
+            if passt_pid:
+                test.fail("Passt process(PID {0}) is not cleaned after VM fails to start".format(passt_pid))
+
         libvirt.check_exit_status(result, status_error)
         if error_msg:
             libvirt.check_result(result, error_msg)
@@ -147,6 +157,10 @@ def run(test, params, env):
             utils_package.package_install('passt')
         firewalld.start()
         virsh.destroy(vm_name, uri=virsh_uri)
+        # Kill the legacy passt process for the issue like https://issues.redhat.com/browse/RHEL-92842
+        if scenario == 'mem_backing_hugepage' and passt_pid:
+            process.run("kill {0}".format(passt_pid))
+
         bkxml.sync(virsh_instance=virsh_ins)
         if root:
             shutil.rmtree(log_dir)

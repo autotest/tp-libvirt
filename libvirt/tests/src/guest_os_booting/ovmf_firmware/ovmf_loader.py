@@ -47,7 +47,7 @@ def run(test, params, env):
     incorrect_loader_path = params.get("incorrect_loader_path", "")
     use_file = "yes" == params.get("use_file", "no")
     stateless = "yes" == params.get("stateless", "no")
-    custom_loader_path = params.get("custom_loader_path")
+    custom_loader_path = params.get("custom_loader_path", "")
     loader_path = params.get("loader_path")
     libvirt_version.is_libvirt_feature_supported(params)
 
