@@ -187,6 +187,8 @@ class MigrationBase(object):
                         "dest_uri": dest_uri, "options": options, "virsh_options": virsh_options,
                         "extra": extra, "action_during_mig": action_during_mig, "extra_args": extra_args}
         migration_base.do_migration(**do_mig_param)
+        if self.params.get_boolean("set_remote_libvirtd_log"):
+            utils_sys.display_remote_log(self.params, self.test)
 
     def run_migration_again(self):
         """
@@ -384,14 +386,15 @@ class MigrationBase(object):
         Set remote libvirtd log file
 
         """
-        log_level = self.params.get("libvirtd_debug_level")
-        log_file = self.params.get("libvirtd_debug_file")
-        log_filters = self.params.get("libvirtd_debug_filters")
-        remote_file_type = self.params.get("remote_file_type")
-        server_ip = self.params.get("server_ip")
-        server_user = self.params.get("server_user")
-        server_pwd = self.params.get("server_pwd")
+        log_level = self.params.get("libvirtd_debug_level", "1")
+        log_file = self.params.get("libvirtd_debug_file", "/var/log/libvirt/virtqemud.log")
+        log_filters = self.params.get("libvirtd_debug_filters", "1:*")
+        remote_file_type = self.params.get("remote_file_type", "virtqemud")
+        server_ip = self.params.get("server_ip", self.params.get("migrate_dest_host"))
+        server_user = self.params.get("server_user", "root")
+        server_pwd = self.params.get("server_pwd", self.params.get("migrate_dest_pwd"))
 
+        self.test.log.debug(f"Start setting {remote_file_type} log on remote host")
         service_name = utils_libvirtd.Libvirtd(remote_file_type).service_name
         file_path = utils_config.get_conf_obj(service_name).conf_path
         self.test.log.debug("Config file path: %s" % file_path)
@@ -405,6 +408,9 @@ class MigrationBase(object):
                                             username=server_user,
                                             password=server_pwd)
         utils_libvirtd.Libvirtd(remote_file_type, session=remote_runner.session).restart()
+        self.params.update({
+            "remote_session": remote_runner.session
+        })
 
     def check_local_and_remote_log(self, local_str_in_log=True, remote_str_in_log=True):
         """
