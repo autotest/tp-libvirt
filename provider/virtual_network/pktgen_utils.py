@@ -5,6 +5,7 @@ import os
 from avocado.utils import process
 
 from virttest import data_dir
+from virttest import remote
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import utils_package
@@ -25,6 +26,8 @@ class PktgenConfig:
         pkt_cate,
         vm=None,
         session_serial=None,
+        script=None,
+        params=None
     ):
         """
         Configure pktgen test environment for different packet categories.
@@ -32,19 +35,46 @@ class PktgenConfig:
         :param pkt_cate: Packet category (tx, rx, loopback)
         :param vm: VM instance
         :param session_serial: Serial session for guest command execution
+        :param script: Script name to execute
+        :param params: Dictionary with the test parameters
         :return: Configured PktgenConfig instance
         """
         source_path = os.path.join(data_dir.get_shared_dir(), "scripts/pktgen_perf")
+        guest_mac = vm.get_mac_address(0)
+        guest_eth = utils_net.get_linux_ifname(session_serial, guest_mac)
 
         if pkt_cate == "tx":
             LOG_JOB.info("test guest tx pps performance")
             vm.copy_files_to(source_path, self.dest_path)
-            guest_mac = vm.get_mac_address(0)
-            self.interface = utils_net.get_linux_ifname(session_serial, guest_mac)
-            host_iface = libvirt.get_ifname_host(vm.name, guest_mac)
-            dsc_dev = utils_net.Interface(host_iface)
-            self.dsc = dsc_dev.get_mac()
+            if params.get("pktgen_tx_dst_mac"):
+                self.dsc = params.get("pktgen_tx_dst_mac")
+            else:
+                host_iface = libvirt.get_ifname_host(vm.name, guest_mac)
+                dsc_dev = utils_net.Interface(host_iface)
+                self.dsc = dsc_dev.get_mac()
+            self.interface = guest_eth
             self.runner = session_serial.cmd
+        elif pkt_cate == "rx":
+            LOG_JOB.info("test guest rx pps performance")
+            if params.get("client"):
+                client_ip = params.get("client")
+                username = params.get("username_client", "root")
+                password = params.get("password_client")
+                remote.copy_files_to(
+                    client_ip, "scp", username, password, 22,
+                    source_path, self.dest_path, timeout=600
+                )
+                self.interface = params.get("pktgen_rx_iface")
+                remote_session = remote.remote_login(
+                    "ssh", client_ip, "22",
+                    username, password, r'[$#%]'
+                )
+                self.runner = remote_session.cmd
+            else:
+                process.run("cp -r %s %s" % (source_path, self.dest_path))
+                self.interface = libvirt.get_ifname_host(vm.name, guest_mac)
+                self.runner = process.run
+            self.dsc = guest_mac
         return self
 
     def generate_pktgen_cmd(
@@ -82,44 +112,48 @@ class PktgenConfig:
 
         if (
             session_serial
-            and self.runner.__name__ == session_serial.cmd.__name__
+            and self.runner == session_serial.cmd
         ):
             cmd = f"{cmd} &"
 
         return cmd
 
 
-def run_test(script, cmd, runner, interface, timeout):
+def run_test(script, cmd, runner, interface, timeout, session_serial=None, pkt_cate="tx"):
     """
     Run pktgen  script on remote and gather packet numbers/time and
     calculate mpps.
     :param script: pktgen script name.
     :param cmd: The command to execute the pktgen script
     :param runner: The command runner function
-    :param interface: The network interface used by pktgen.
+    :param interface: The VM Ethernet interface used to collect packet counters.
     :param timeout: The maximum time allowed for the test to run
+    :param session_serial: Session serial for VM
+    :param pkt_cate: Packet category (tx/rx), used to select counter type
     :return: The calculated MPPS (Million Packets Per Second)
     """
-
-    packets = "cat /sys/class/net/%s/statistics/tx_packets" % interface
+    counter = "rx_packets" if pkt_cate == "rx" else "tx_packets"
+    packets = "cat /sys/class/net/%s/statistics/%s" % (interface, counter)
     LOG_JOB.info("Start pktgen test by cmd '%s'", cmd)
     try:
-        packet_b = runner(packets)
+        packet_b = session_serial.cmd(packets)
         packet_a = None
         runner(cmd, timeout)
+        packet_a = session_serial.cmd(packets)
     except aexpect.ShellTimeoutError:
         # when pktgen script is running on guest, the pktgen process
         # need to be killed.
-        kill_cmd = (
-            "kill -9 `ps -ef | grep %s --color | grep -v grep | "
-            "awk '{print $2}'`" % script
-        )
-        runner(kill_cmd)
-        packet_a = runner(packets)
+        if session_serial and runner == session_serial.cmd:
+            kill_cmd = (
+                "kill -9 `ps -ef | grep %s --color | grep -v grep | "
+                "awk '{print $2}'`" % script
+            )
+            runner(kill_cmd)
+        packet_a = session_serial.cmd(packets)
     except process.CmdError:
         # when pktgen script is running on host, the pktgen process
         # will be quit when timeout triggers, so no need to kill it.
-        packet_a = runner(packets)
+        packet_a = session_serial.cmd(packets)
 
     return "{:.2f}".format((int(packet_a) - int(packet_b)) / timeout / 10 ** 6)
 
@@ -193,6 +227,8 @@ def run_tests_for_category(
     # Get single values for threads and burst instead of looping
     threads = params.get("pktgen_threads", "")
     burst = params.get("burst", "")
+    guest_mac = vm.get_mac_address(0)
+    guest_eth = utils_net.get_linux_ifname(session_serial, guest_mac)
 
     record_line = ""
     for record in record_list:
@@ -208,9 +244,11 @@ def run_tests_for_category(
 
             # Use single values directly since they're not lists
             size = params.get("pkt_size", "")
+            pkt_cate_r = None
+
             if pkt_cate != "loopback":
                 pktgen_config = pktgen_config.configure_pktgen(
-                    pkt_cate, vm, session_serial
+                    pkt_cate, vm, session_serial, script=script, params=params
                 )
                 exec_cmd = pktgen_config.generate_pktgen_cmd(
                     script,
@@ -227,8 +265,10 @@ def run_tests_for_category(
                         script,
                         exec_cmd,
                         pktgen_config.runner,
-                        pktgen_config.interface,
+                        guest_eth,
                         timeout,
+                        session_serial,
+                        pkt_cate=pkt_cate,
                     )
 
             line = "%s|" % format_result(size)
