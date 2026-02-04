@@ -21,15 +21,16 @@ def run(test, params, env):
     """
     Test passt function
     """
+    # Cancel test when host using ovs bridge
+    network_base.cancel_if_ovs_bridge(params, test)
     libvirt_version.is_libvirt_feature_supported(params)
     root = 'root_user' == params.get('user_type', '')
+    vm_name = params.get('main_vm')
     if root:
-        vm_name = params.get('main_vm')
         vm = env.get_vm(vm_name)
         virsh_ins = virsh
         test_user = 'root'
     else:
-        vm_name = params.get('unpr_vm_name')
         test_user = params.get('test_user', '')
         test_passwd = params.get('test_passwd', '')
         unpr_vm_args = {
@@ -47,7 +48,8 @@ def run(test, params, env):
         host_session.close()
 
     rand_id = utils_misc.generate_random_string(3)
-    bridge_name = 'br_' + rand_id
+    netdst = params.get("netdst")
+    bridge_name = netdst if netdst else 'br_' + rand_id
     tap_type = params.get('tap_type', '')
     tap_name = tap_type + '_' + rand_id
     tap_name_2 = tap_name + '_2'
@@ -82,7 +84,8 @@ def run(test, params, env):
 
         if tap_type:
             if tap_type == 'tap':
-                utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
+                if not netdst:
+                    utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
                 network_base.create_tap(
                     tap_name, bridge_name, test_user, flag=tap_flag)
                 if iface_amount == 'two_ifaces':
@@ -151,6 +154,7 @@ def run(test, params, env):
                 iface_vm = iface_vm_info['ifname']
                 LOG.debug(f'Disabling Reverse Path Filtering for {iface_vm}')
                 session.cmd(f'sysctl -w net.ipv4.conf.{iface_vm}.rp_filter=0')
+                session.cmd(f'nmcli device connect {iface_vm}', timeout=10)
                 LOG.debug(f'Check connetivity of iface {iface_vm}({mac})')
                 ping_args = {
                     'vm_ping_outside': {'interface': iface_vm},
@@ -201,6 +205,6 @@ def run(test, params, env):
             network_base.delete_tap(tap_name)
             if iface_amount == 'two_ifaces':
                 network_base.delete_tap(tap_name_2)
-            if tap_type == 'tap':
+            if not netdst and tap_type == 'tap':
                 utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
         bkxml.sync(virsh_instance=virsh_ins)
