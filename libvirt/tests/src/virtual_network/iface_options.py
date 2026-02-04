@@ -786,6 +786,8 @@ def run(test, params, env):
                 backend = ast.literal_eval(iface_backend)
                 backend_tap = "/dev/net/tun"
                 backend_vhost = "/dev/vhost-net"
+                # Cancel test when host using ovs bridge
+                network_base.cancel_if_ovs_bridge(params, test)
                 if not backend:
                     backend["tap"] = backend_tap
                     backend["vhost"] = backend_vhost
