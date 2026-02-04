@@ -27,6 +27,8 @@ def run(test, params, env):
     3. Guest ping check
     4. Detach the interface and check no interface result
     """
+    # Cancel test when host using ovs bridge
+    network_base.cancel_if_ovs_bridge(params, test)
 
     def setup_test():
         """Setup VM without any interfaces and create required tap devices"""
@@ -100,7 +102,7 @@ def run(test, params, env):
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     device_type = params.get('device_type')
-    default_br = params.get('default_br')
+    default_br = params.get("netdst", params.get('default_br'))
     tap_name = params.get('tap_name', 'mytap0')
     macvtap_name = params.get('macvtap_name', 'mymacvtap0')
     expected_xpaths_attach = eval(params.get('expected_xpaths_attach'))
