@@ -30,7 +30,7 @@ def run(test, params, env):
         test.log.info("Verify steps.")
         migration_obj.verify_default()
         if test_case == "tcp_common":
-            libvirt.check_logfile("shutting down", qemu_log, str_in_log=False)
+            libvirt.check_logfile("shutting down, reason=migrated", qemu_log, str_in_log=True)
 
     libvirt_version.is_libvirt_feature_supported(params)
 
