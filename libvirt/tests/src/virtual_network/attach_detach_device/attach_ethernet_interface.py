@@ -52,6 +52,11 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         libvirt_vmxml.check_guest_xml_by_xpaths(vmxml, expected_xpaths_attach)
 
+        # Clean the console session which created by create_vm_libvirt=yes
+        if vm.serial_console:
+            vm.cleanup_serial_console()
+        vm.create_serial_console()
+
         session = vm.wait_for_serial_login()
         if not utils_misc.wait_for(
             lambda: len(utils_net.get_linux_iface_info(session=session)) == 2, timeout=15
@@ -100,7 +105,7 @@ def run(test, params, env):
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     device_type = params.get('device_type')
-    default_br = params.get('default_br')
+    default_br = params.get('netdst')
     tap_name = params.get('tap_name', 'mytap0')
     macvtap_name = params.get('macvtap_name', 'mymacvtap0')
     expected_xpaths_attach = eval(params.get('expected_xpaths_attach'))
