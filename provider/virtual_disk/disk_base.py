@@ -200,12 +200,13 @@ class DiskBase(object):
             device_format = self.params.get("device_format", "qcow2")
             export_name = self.params.get("export_name", "new")
             tls_enabled = "yes" == self.params.get("enable_tls", "yes")
+            shared_num = self.params.get("shared_num")
             image_size = kwargs.get("size",
                                     self.params.get("image_size", "500M"))
 
             self.disk_backend = NbdExport(
                 image_path, image_format=device_format, port=nbd_server_port,
-                image_size=image_size, export_name=export_name, tls=tls_enabled)
+                image_size=image_size, export_name=export_name, tls=tls_enabled, shared_num=shared_num)
             self.disk_backend.start_nbd_server()
             utils_misc.wait_for(
                 lambda: process.system('netstat -nlp | grep %s ' % nbd_server_port, ignore_status=True, shell=True) == 0, 10)
