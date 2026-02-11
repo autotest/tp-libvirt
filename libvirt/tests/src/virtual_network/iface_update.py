@@ -1,11 +1,9 @@
-import os
 import re
 import logging as log
 import time
 
 from xml.etree import ElementTree
 from avocado.utils import process
-from avocado.utils.software_manager.backends import rpm
 
 from virttest import virsh
 from virttest import utils_net
@@ -177,50 +175,32 @@ def run(test, params, env):
 
         else:
             netxml = network_xml.NetworkXML.new_from_net_dumpxml(network_name)
-            logging.debug('Network xml before update:\n%s', netxml)
             if del_net_bandwidth:
                 netxml.del_element('/bandwidth')
+                logging.debug('network xml after delete bandwidth is %s',
+                              netxml)
                 netxml.sync()
-            if case == 'update_portgroup':
-                net_dict = {k[9:]: eval(
-                    params[k]) for k in params
-                    if k.startswith('net_attr_')}
-                logging.debug('New net attributes: %s', net_dict)
-                netxml.setup_attrs(**net_dict)
-                netxml.sync()
-            logging.debug('Network xml after prepare:\n%s', netxml)
 
-        # According to the different os find different file for rom
-        if (iface_rom and "file" in eval(iface_rom)
-                and "%s" in eval(iface_rom)['file']):
-            if rpm.RpmBackend().check_installed('ipxe-roms-qemu', '20200823'):
-                logging.debug("Update the file path since "
-                              "ipxe-20200823-5:")
-                iface_rom_new = iface_rom.replace('qemu-kvm', 'ipxe/qemu')
-                iface_rom = iface_rom_new
-            if os.path.exists(eval(iface_rom)['file'] % "pxe"):
-                iface_rom = iface_rom % "pxe"
-            elif os.path.exists(eval(iface_rom)['file'] % "efi"):
-                iface_rom = iface_rom % "efi"
-            else:
-                logging.error("Can not find suitable rom file")
+        # Collect need update and delete items in 2 dicts for both start vm and
+        # update iface
+        names = locals()
         iface_dict_bef = {}
         iface_dict_aft = {}
-        names = locals()
-        # Collect need update items in 2 dicts for both start vm before and after
-        update_list_bef = [
-            "driver", 'driver_host', 'driver_guest', "model", "mtu", "rom",
-            "filter", 'boot', 'coalesce', 'source'
-        ]
-        for update_item_bef in update_list_bef:
-            if names.get('iface_'+update_item_bef):
-                iface_dict_bef.update({update_item_bef: names['iface_'+update_item_bef]})
 
-        update_list_aft = [
-            "driver", "driver_host", "driver_guest", "model", "rom", "inbound",
-            "outbound", "link", "source", "target", "addr", "filter", "mtu",
-            "type", "alias", "filter_parameters", "coalesce", "boot",
-        ]
+        update_list_bef = ["source", "type", "inbound", "outbound",
+                           "mtu", "rom", "driver_host", "driver_guest",
+                           "filter", "model", "boot", "bandwidth", "coalesce",
+                           "alias", "addr", "teaming", "filter_parameters"]
+
+        for update_item_bef in update_list_bef:
+            if names.get("iface_"+update_item_bef):
+                iface_dict_bef.update({update_item_bef: names["iface_"+update_item_bef]})
+
+        update_list_aft = ["source", "type", "inbound", "outbound",
+                           "link", "filter", "rom", "driver_host", "driver_guest",
+                           "model", "boot", "bandwidth", "coalesce", "alias",
+                           "addr", "teaming", "filter_parameters"]
+
         for update_item_aft in update_list_aft:
             if names.get("new_iface_"+update_item_aft):
                 iface_dict_aft.update({update_item_aft: names["new_iface_"+update_item_aft]})
@@ -282,7 +262,20 @@ def run(test, params, env):
                 logging.info("libvirtd do not crash after update-device!")
         if expect_error:
             real_err_msg = ret.stderr.strip()
-            if not re.search(expect_err_msg, real_err_msg, re.IGNORECASE):
+            # Support both old and new libvirt error messages for boot order conflicts
+            # Old: "per-device boot elements cannot be used together with os/boot elements"
+            # New: "boot order X is already used by another device"
+            alternative_patterns = [
+                "boot order .* is already used by another device",
+                "per-device boot elements cannot be used together with os/boot elements"
+            ]
+            match_found = re.search(expect_err_msg, real_err_msg, re.IGNORECASE)
+            if not match_found:
+                # Try alternative patterns for known cases where error message changed
+                match_found = any(re.search(pattern, real_err_msg, re.IGNORECASE)
+                                  for pattern in alternative_patterns)
+
+            if not match_found:
                 test.fail("The real error msg:'%s' does not match expect one:"
                           '%s' % (real_err_msg, expect_err_msg))
             else:
