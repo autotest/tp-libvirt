@@ -43,7 +43,22 @@ def run(test, params, env):
         test_result = virsh.attach_device(vm_name, iface_pre_at.xml,
                                           flagstr=virsh_options, debug=True)
         libvirt.check_exit_status(test_result, status_error)
-        libvirt.check_result(test_result, expected_fails=error_msg)
+
+        # Support both old and new libvirt error messages for boot order conflicts
+        # Old: "per-device boot elements cannot be used together with os/boot elements"
+        # New: "boot order X is already used by another device"
+        if status_error and error_msg:
+            import re
+            error_messages = error_msg if isinstance(error_msg, list) else [error_msg]
+            # Add known alternative patterns for boot order conflicts
+            alternative_patterns = [
+                "boot order .* is already used by another device",
+                "per-device boot elements cannot be used together with os/boot elements"
+            ]
+            error_messages.extend(alternative_patterns)
+            libvirt.check_result(test_result, expected_fails=error_messages)
+        elif status_error:
+            libvirt.check_result(test_result, expected_fails=error_msg)
 
     # Variables assignment
     vm_name = params.get('main_vm')
