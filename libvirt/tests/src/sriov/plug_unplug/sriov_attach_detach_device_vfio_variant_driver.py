@@ -41,7 +41,7 @@ def run(test, params, env):
 
     dev_type = params.get("dev_type", "hostdev_interface")
     device_type = "hostdev" if dev_type == "hostdev_device" else "interface"
-    expr_driver = params.get("expr_driver", "mlx5_vfio_pci")
+    expr_driver = params.get("expr_driver")
     test_pf = params.get("test_pf")
     pf_pci = utils_sriov.get_pf_pci(test_pf=test_pf)
     iface_number = int(params.get("iface_number", "1"))
@@ -51,6 +51,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     orig_vm_xml = new_xml.copy()
+    original_drivers = {}
     try:
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'hostdev')
@@ -66,6 +67,10 @@ def run(test, params, env):
         for idx in range(iface_number):
             test.log.info("TEST_STEP: Attach a hostdev interface/device to VM")
             vf_pci = utils_sriov.get_vf_pci_id(pf_pci, idx)
+            if vf_pci not in original_drivers:
+                original_driver = libvirt_vfio.get_pci_driver(vf_pci)
+                original_drivers[vf_pci] = original_driver
+                test.log.debug(f"Stored original driver for {vf_pci}: {original_driver}")
             iface_dict = parse_iface_dict(vf_pci)
             iface_dev = libvirt_vmxml.create_vm_device_by_type(device_type, iface_dict)
             virsh.attach_device(vm.name, iface_dev.xml, ignore_status=False,
@@ -99,7 +104,13 @@ def run(test, params, env):
                       "device!" % vm_hostdevs)
         else:
             test.log.debug("Verify: The hostdev interface/device in VM xml is removed successfully - PASS")
-        libvirt_vfio.check_vfio_pci(vf_pci, exp_driver="mlx5_core")
+
+        # Verify original drivers are restored after detach
+        for idx in range(iface_number):
+            vf_pci = utils_sriov.get_vf_pci_id(pf_pci, idx)
+            original_driver = original_drivers[vf_pci]
+            libvirt_vfio.check_vfio_pci(vf_pci, exp_driver=original_driver)
+            test.log.debug(f"Verify: Original driver {original_driver} restored for {vf_pci} - PASS")
         test.log.debug("Verify: Check VF driver successfully after detaching hostdev interface/device - PASS")
         virsh.reboot(vm.name, ignore_status=False, debug=True)
         test.log.debug("Verify: VM reboot is successful after detaching hostdev interface/device - PASS")
