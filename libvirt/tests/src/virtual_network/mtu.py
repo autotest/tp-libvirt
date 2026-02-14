@@ -17,6 +17,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.utils_test import libvirt
+from provider.virtual_network import network_base
 
 DEFAULT_NET = 'default'
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
@@ -53,6 +54,24 @@ def run(test, params, env):
     if create_tap and 'managed_no' in params['name']:
         if not libvirt_version.version_compare(7, 0, 0):
             test.cancel('This test is not supported until libvirt-7.0.0')
+
+    # Cancel OVS related test cases when the host is a Linux Bridge
+    is_ovs_test = (net_type == 'openvswitch' or
+                   check == 'ovswitch_net' or
+                   'openvswitch' in params.get('add_pkg', ''))
+    if is_ovs_test:
+        host_bridge = params.get('netdst', '').split(',')[0]
+        try:
+            br_backend = utils_net.find_bridge_manager(host_bridge)
+            if isinstance(br_backend, utils_net.Bridge):
+                test.cancel("OVS test case skipped on Linux Bridge host")
+        except process.CmdError:
+            pass
+
+    # Non-Linux Bridge hosts skip Linux Bridge tests
+    if (net_type in ('network', 'bridge') or
+            (not net_type and (create_tap or check in ['save', 'managedsave', 'hotplug_save']))):
+        network_base.cancel_if_ovs_bridge(params, test)
 
     def set_network(size, net='default'):
         """
