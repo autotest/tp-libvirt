@@ -17,6 +17,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.utils_test import libvirt
+from provider.virtual_network import network_base
 
 DEFAULT_NET = 'default'
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
@@ -53,6 +54,12 @@ def run(test, params, env):
     if create_tap and 'managed_no' in params['name']:
         if not libvirt_version.version_compare(7, 0, 0):
             test.cancel('This test is not supported until libvirt-7.0.0')
+
+    if net_type in ('network', 'bridge'):
+        network_base.cancel_if_ovs_bridge(params, test)
+
+    if not net_type and (create_tap or check in ['save', 'managedsave', 'hotplug_save']):
+        network_base.cancel_if_ovs_bridge(params, test)
 
     def set_network(size, net='default'):
         """
