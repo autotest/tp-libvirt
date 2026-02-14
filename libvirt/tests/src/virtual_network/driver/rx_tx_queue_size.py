@@ -32,6 +32,15 @@ def run(test, params, env):
         mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
         iface_attrs['mac_address'] = mac
 
+        bridge_name = params.get('netdst', '').split(',')[0]
+        if bridge_name != "virbr0":
+            iface_attrs['type_name'] = 'bridge'
+            iface_attrs['source'] = {'bridge': bridge_name}
+            if 'network' in iface_attrs.get('source', {}):
+                del iface_attrs['source']['network']
+
+            network_base.setup_ovs_bridge_attrs(params, iface_attrs)
+
         vmxml.del_device('interface', by_tag=True)
         libvirt_vmxml.modify_vm_device(
             vmxml, 'interface', iface_attrs, sync_vm=False)
