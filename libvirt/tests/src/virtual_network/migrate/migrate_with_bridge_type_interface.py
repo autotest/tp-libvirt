@@ -8,12 +8,9 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 import aexpect.remote
 import re
-import os
 
 from virttest import utils_net
 from virttest import virsh
-from virttest.libvirt_xml import vm_xml
-from virttest.utils_libvirt import libvirt_network
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.libvirt_xml.vm_xml import VMXML
 
@@ -30,7 +27,7 @@ def run(test, params, env):
     3. Check on target host for network functions:
        - Guest ping outside
        - Check for multiqueue
-       - Check multiqueues in VM live XML (should have <driver ... queues='5'>)
+       - Check multi queues in VM live XML (should have <driver ... queues='5'>)
     4. Migrate back from dst to src
 
     :param test: test object
@@ -68,62 +65,42 @@ def run(test, params, env):
         """
         Setup VM interface according to configuration
         """
+        iface_attrs = {
+            'type_name': params.get('iface_type', 'bridge'),
+            'model': params.get('iface_model', 'virtio'),
+            'driver': {'driver_attr': {'queues': str(iface_queues)}}
+        }
+
+        bridge_name = params.get('netdst', '').split(',')[0]
+        iface_attrs['source'] = {'bridge': bridge_name}
+
+        # Automatically detect and configure OVS bridge
+        network_base.setup_ovs_bridge_attrs(params, iface_attrs)
+
         vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
         vm_xml.remove_all_device_by_type("interface")
         vm_xml.sync()
+
         if interface_timing == "hotplug":
             if not vm.is_alive():
                 vm.start()
-            iface = libvirt_vmxml.create_vm_device_by_type("interface", iface_dict)
+            iface = libvirt_vmxml.create_vm_device_by_type("interface", iface_attrs)
             virsh.attach_device(
                 vm_name, iface.xml, flagstr="--config", debug=True, ignore_status=False
             )
         else:
             libvirt_vmxml.modify_vm_device(
-                VMXML.new_from_inactive_dumpxml(vm_name), "interface", iface_dict
+                VMXML.new_from_inactive_dumpxml(vm_name), "interface", iface_attrs
             )
             vm.start()
         vm.wait_for_serial_login().close()
         test.log.debug("Guest xml:\n%s", VMXML.new_from_dumpxml(vm_name))
-
-    def cleanup_nvram():
-        """
-        Clean up NVRAM file to avoid UEFI boot issues
-        """
-        nvram_file = f"/var/lib/libvirt/qemu/nvram/{vm_name}_VARS.fd"
-        if os.path.exists(nvram_file):
-            test.log.info(f"Removing NVRAM file: {nvram_file}")
-            os.remove(nvram_file)
 
     def setup_test():
         """
         Setup test environment for migration with bridge type interface
         """
         test.log.info("Setting up test environment")
-        # Clean up NVRAM to avoid UEFI boot issues
-        cleanup_nvram()
-
-        if bridge_type == "linux":
-            utils_net.create_linux_bridge_tmux(bridge_name, iface_name=host_iface)
-            utils_net.create_linux_bridge_tmux(
-                bridge_name, iface_name=remote_host_iface, session=remote_session
-            )
-
-        elif bridge_type == "ovs":
-            utils_net.create_ovs_bridge(
-                ovs_bridge_name, ip_options="-color=never", iface_name=host_iface
-            )
-
-            utils_net.create_ovs_bridge(
-                ovs_bridge_name,
-                session=remote_session,
-                ip_options="-color=never",
-                iface_name=remote_host_iface,
-            )
-            libvirt_network.create_or_del_network(
-                network_dict, remote_args=remote_virsh_dargs
-            )
-            libvirt_network.create_or_del_network(network_dict)
 
         if vm.is_alive():
             vm.destroy()
@@ -170,39 +147,12 @@ def run(test, params, env):
         Cleanup test environment
         """
         test.log.info("Cleaning up test environment")
-        if bridge_type == "linux":
-            utils_net.delete_linux_bridge_tmux(bridge_name, iface_name=host_iface)
-            utils_net.delete_linux_bridge_tmux(
-                bridge_name,
-                iface_name=params.get("remote_host_iface"),
-                session=remote_session,
-            )
-
-        elif bridge_type == "ovs":
-            utils_net.delete_ovs_bridge(
-                ovs_bridge_name, ip_options="-color=never", iface_name=host_iface
-            )
-            utils_net.delete_ovs_bridge(
-                ovs_bridge_name,
-                session=remote_session,
-                ip_options="-color=never",
-                iface_name=remote_host_iface,
-            )
-
-            libvirt_network.create_or_del_network(
-                network_dict, is_del=True, remote_args=remote_virsh_dargs
-            )
-            libvirt_network.create_or_del_network(network_dict, is_del=True)
         migration_obj.cleanup_connection()
 
     server_ip = params["server_ip"] = params.get("migrate_dest_host")
     server_user = params.get("server_user")
     server_pwd = params.get("server_pwd") or params.get("migrate_dest_pwd")
     outside_ip = params.get("outside_ip")
-    bridge_name = params.get("bridge_name")
-    bridge_type = params.get("bridge_type")
-    ovs_bridge_name = params.get("ovs_bridge_name")
-    network_dict = eval(params.get("network_dict", "{}"))
     interface_timing = params.get("interface_timing")
     iface_queues = int(params.get("iface_queues", "5"))
     new_queues = int(params.get("new_queues", "3"))
@@ -220,7 +170,6 @@ def run(test, params, env):
     src_uri = params.get("virsh_migrate_connect_uri")
     dest_uri = params.get("virsh_migrate_desturi")
     expected_xpath = eval(params.get("expected_xpath"))
-    iface_dict = eval(params.get("iface_dict", "{}"))
     host_iface = params.get("host_iface")
     host_iface = (
         host_iface
@@ -230,7 +179,6 @@ def run(test, params, env):
 
     vm_name = guest_os.get_vm(params)
     vm = env.get_vm(vm_name)
-    new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     remote_session = aexpect.remote.remote_login(
         "ssh", server_ip, "22", server_user, server_pwd, r"[$#%]"
