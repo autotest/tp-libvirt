@@ -16,6 +16,39 @@ from virttest.utils_test import libvirt
 from provider.migration import base_steps
 
 
+def prepare_swtpm_selinux(params, test, session=None):
+    """
+    Prepare SELinux environment for swtpm to work properly.
+    This fixes "Permission denied" errors when libvirt tries to execute swtpm.
+
+    :param params: dict, test parameters
+    :param test: test object
+    :param session: remote session object (None for local execution)
+    """
+    test.log.info("Preparing SELinux environment for swtpm%s.",
+                  " on remote host" if session else "")
+
+    commands = [
+        "rpm -q swtpm-selinux || yum install -y swtpm-selinux",
+        "restorecon -v /usr/bin/swtpm",
+        "restorecon -v /usr/bin/swtpm_setup",
+        "restorecon -Rv /var/lib/swtpm-localca 2>/dev/null || true",
+        "getsebool swtpm_use_tpm_device &>/dev/null && setsebool -P swtpm_use_tpm_device on || true",
+        "getsebool virt_use_swtpm &>/dev/null && setsebool -P virt_use_swtpm on || true",
+    ]
+
+    for cmd in commands:
+        test.log.debug("Running: %s", cmd)
+        if session:
+            status, output = session.cmd_status_output(cmd, timeout=120)
+            if status and "rpm -q" not in cmd:
+                test.log.warning("Command '%s' failed on remote: %s", cmd, output)
+        else:
+            result = process.run(cmd, ignore_status=True, shell=True, timeout=120)
+            if result.exit_status and "rpm -q" not in cmd:
+                test.log.warning("Command '%s' failed: %s", cmd, result.stderr_text)
+
+
 def check_tpm_security_context(params, vm, test, expected_contexts, remote_host=False):
     """
     Check TPM state file security contexts
@@ -26,7 +59,7 @@ def check_tpm_security_context(params, vm, test, expected_contexts, remote_host=
     :param expected_contexts: expected tpm security context
     :param remote_host: True to check context on remote host
     """
-    test.log.debug("Check tpm security context: %s (remote)", remote)
+    test.log.debug("Check tpm security context: %s (remote)", remote_host)
     domuuid = vm.get_uuid()
     cmd = "ls -hZR /var/lib/libvirt/swtpm/%s/tpm2/tpm2-00.permall" % domuuid
     if remote_host:
@@ -186,12 +219,21 @@ def run(test, params, env):
         src_mount_path = params.get("src_mount_path")
 
         test.log.info("Setup for nfs storage type.")
+
+        # Prepare SELinux for swtpm on local host
+        prepare_swtpm_selinux(params, test)
+
         migration_obj.setup_connection()
         if not os.path.exists(swtpm_path):
             os.mkdir(swtpm_path)
         libvirt.setup_or_cleanup_nfs(True, mount_dir=swtpm_path, is_mount=True, export_dir=nfs_export_dir)
         server_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
+
+        # Prepare SELinux for swtpm on remote host
+        prepare_swtpm_selinux(params, test, session=server_session)
+
         utils_disk.mount(src_mount_path, swtpm_path, session=server_session)
+        server_session.close()
         setup_vtpm(params, test, vm, migration_obj)
         check_tpm_security_context(params, vm, test, tpm_security_contexts)
         check_swtpm_process(params, test)
@@ -213,6 +255,10 @@ def run(test, params, env):
         server_pwd = params.get("server_pwd", params.get("remote_pwd"))
 
         test.log.info("Setup for ceph storage type.")
+
+        # Prepare SELinux for swtpm on local host
+        prepare_swtpm_selinux(params, test)
+
         if set_remote_libvirtd_log:
             migration_obj.set_remote_log()
 
@@ -220,6 +266,10 @@ def run(test, params, env):
             os.mkdir(swtpm_path)
         utils_disk.mount(src_mount_path, swtpm_path, fstype="ceph", options="name=admin,secret=%s" % ceph_key)
         server_session = remote.wait_for_login("ssh", server_ip, "22", server_user, server_pwd, r"[\#\$]\s*$")
+
+        # Prepare SELinux for swtpm on remote host
+        prepare_swtpm_selinux(params, test, session=server_session)
+
         utils_disk.mount(src_mount_path, swtpm_path, fstype="ceph", options="name=admin,secret=%s" % ceph_key, session=server_session)
         process.run("restorecon -Rv /var/lib/libvirt/swtpm", ignore_status=False, shell=True)
         server_session.close()
