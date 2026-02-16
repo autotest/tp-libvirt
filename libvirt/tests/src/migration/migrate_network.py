@@ -313,10 +313,7 @@ def run(test, params, env):
                       vm_xml.VMXML.new_from_dumpxml(vm_name))
 
         # Check local guest network connection before migration
-        if vm.serial_console is not None:
-            vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login(timeout=240)
+        vm_session = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
         if not utils_package.package_install('dhcp-client', session=vm_session):
             test.error("Failed to install dhcp-client on guest.")
         utils_net.restart_guest_network(vm_session)
@@ -343,10 +340,7 @@ def run(test, params, env):
         # Check network accessibility after migration
         if int(mig_result.exit_status) == 0:
             vm.connect_uri = dest_uri
-            if vm.serial_console is not None:
-                vm.cleanup_serial_console()
-            vm.create_serial_console()
-            vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
+            vm_session_after_mig = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
             vm_session_after_mig.cmd(restart_dhclient)
             check_vm_network_accessed(ping_dest, session=vm_session_after_mig)
 
@@ -393,10 +387,7 @@ def run(test, params, env):
             logging.debug("VM is migrated back.")
 
             vm.connect_uri = bk_uri
-            if vm.serial_console is not None:
-                vm.cleanup_serial_console()
-            vm.create_serial_console()
-            vm_session_after_mig_bak = vm.wait_for_serial_login(timeout=240)
+            vm_session_after_mig_bak = vm.wait_for_serial_login(timeout=240, recreate_serial_console=True)
             vm_session_after_mig_bak.cmd(restart_dhclient)
             check_vm_network_accessed(ping_dest, vm_session_after_mig_bak)
     finally:
