@@ -516,8 +516,23 @@ TIMEOUT 3"""
             pkg = "libvirt-bin"
         else:
             pkg = "libvirt"
+        # Immutable/bootc guests can't persist installs; skip or use transient
+        immut_checks = [
+            'test -f /run/ostree-booted',
+            'grep -qi "bootc" /etc/os-release',
+            'command -v rpm-ostree'
+        ]
+        if any(session.cmd_status(c) == 0 for c in immut_checks):
+        # Prefer clean skip to avoid false FAILs on read-only systems
+            test.cancel("Guest is immutable (bootc/ostree); skip guest-libvirt checks")
+        # Normal install path
         if not utils_package.package_install(pkg, session):
-            test.error("Failed to install libvirt package on guest")
+            # On bootc-enabled dnf, try a transient overlay
+            if session.cmd_status('dnf --help | grep -q -- "--transient"') == 0:
+                if session.cmd_status(f'dnf -y --transient install {pkg}') != 0:
+                    test.error("Failed to install libvirt on immutable guest even with --transient")
+            else:
+                test.error("Failed to install libvirt package on guest")
         # Try to load tun module first
         session.cmd("lsmod | grep tun || modprobe  tun")
         # Check network state on guest
