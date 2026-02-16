@@ -2,6 +2,7 @@
 # disable pylint spell checker to allow for dasda, fdasda, vdb, vda, virtio, blk
 import logging as log
 import re
+import time
 
 from avocado.core.exceptions import TestError
 
@@ -47,12 +48,18 @@ def try_enable_disk(disk_id):
     :raises: TestError if can't use disk
     """
 
-    cmd = "chzdev -e %s" % disk_id
-    err, out = cmd_status_output(cmd, shell=True)
-    if 'already configured' not in out:
-        cleanup_actions.append(lambda: disable_disk(disk_id))
+    cmd = "lszdev --online %s" % disk_id
+    err, _ = cmd_status_output(cmd, shell=True)
+    if err:  # device not online
+        logging.debug(cmd_status_output("lscss -t 3390")[1])
+        cmd = "chzdev -e %s" % disk_id
+        err, out = cmd_status_output(cmd, shell=True)
+        logging.debug("Wait to account for delayed CRW.")
+        time.sleep(2)
+        logging.debug(cmd_status_output("lscss -t 3390")[1])
         if err:
-            raise TestError("Couldn't enable dasd '%s'. %s" % (disk_id, out))
+            raise TestError(f"Couldn't set device online: {out}")
+        cleanup_actions.append(lambda: disable_disk(disk_id))
 
 
 def disable_disk(disk_id):
@@ -63,8 +70,12 @@ def disable_disk(disk_id):
     :raises: TestError if can't use disk
     """
 
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     cmd = "chzdev -d %s" % disk_id
     err, out = cmd_status_output(cmd, shell=True)
+    logging.debug("Wait to account for delayed CRW.")
+    time.sleep(2)
+    logging.debug(cmd_status_output("lscss -t 3390")[1])
     if err:
         raise TestError("Couldn't disable dasd '%s'. %s" % (disk_id, out))
 
