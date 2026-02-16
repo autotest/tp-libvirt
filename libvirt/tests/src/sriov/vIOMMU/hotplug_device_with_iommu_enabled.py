@@ -64,10 +64,9 @@ def run(test, params, env):
         test.log.info("TEST_STEP: Start the VM.")
         if not vm.is_alive():
             vm.start()
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
-            timeout=int(params.get('login_timeout')))
+            timeout=int(params.get('login_timeout')),
+            recreate_serial_console=True)
         pre_devices = viommu_base.get_devices_pci(vm_session, test_devices)
         if disk_dict:
             test.log.info("TEST_STEP: Attach a disk device to VM.")
