@@ -84,11 +84,12 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     test_obj = viommu_base.VIOMMUTest(vm, test, params)
 
-    # Setup remote virsh session for destination operations
-    remote_virsh = setup_remote_virsh_session(params)
-    migration_obj = base_steps.MigrationBase(test, vm, params, remote_virsh=remote_virsh)
-
+    remote_virsh = None
+    migration_obj = None
     try:
+        # Setup remote virsh session for destination operations
+        remote_virsh = setup_remote_virsh_session(params)
+        migration_obj = base_steps.MigrationBase(test, vm, params, remote_virsh=remote_virsh)
         setup_test()
         test.log.info("TEST_STEP: Migrate the VM to the target host.")
         migration_obj.run_migration()
@@ -102,8 +103,8 @@ def run(test, params, env):
             migration_obj.migration_test.ping_vm(vm, params)
             migration_obj.check_vm_cont_ping(False)
     finally:
-        migration_obj.cleanup_connection()
-        test_obj.teardown_iommu_test()
-        migration_obj.cleanup_default()
+        if migration_obj:
+            migration_obj.cleanup_connection()
         if remote_virsh:
             remote_virsh.close_session()
+        test_obj.teardown_iommu_test()
