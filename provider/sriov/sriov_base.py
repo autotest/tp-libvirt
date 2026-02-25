@@ -192,6 +192,22 @@ class SRIOVTest(object):
             if vf_pci_addr2.get('type'):
                 del vf_pci_addr2['type']
             iface_dict = eval(self.params.get('hostdev_dict', '{}'))
+
+        driver_dict = eval(self.params.get("driver_dict", "{}"))
+        if driver_dict:
+            if iface_dict.get("driver"):
+                # We need to merge the key/values for driver_attr.
+                # For example:
+                #  iface_dict = {'driver': {'driver_attr': {'name': 'vfio'}}}
+                #  driver_dict = {'driver': {'driver_attr': {'iommufd': 'yes'}}}
+                # The expected result:
+                #  iface_dict = {'driver': {'driver_attr': {'name': 'vfio', 'iommufd': 'yes'}}}
+                existing_driver_dict = iface_dict.get("driver")
+                existing_attrs_dict = existing_driver_dict.get("driver_attr")
+                for attr_key, attr_value in driver_dict.get("driver").get("driver_attr").items():
+                    existing_attrs_dict.update({attr_key: attr_value})
+            else:
+                iface_dict.update(driver_dict)
         return iface_dict
 
     def parse_network_dict(self):
