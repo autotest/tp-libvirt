@@ -748,3 +748,41 @@ def pin_vcpu_vhost_threads(vm, node=None):
             pin_vhost_threads(vm, vhost_tids, vhost_cpus)
     except Exception as e:
         raise exceptions.TestError("Failed to pin VM threads: %s" % e)
+
+
+def cancel_if_ovs_bridge(params, test):
+    """
+    Cancel test if host using OVS bridge (for only Linux Bridge tests).
+
+    :param params: Test parameters dict
+    :param test: Test object
+    """
+    bridge_name = params.get('netdst', '').split(',')[0]
+
+    try:
+        br_backend = utils_net.find_bridge_manager(bridge_name)
+        if not isinstance(br_backend, utils_net.Bridge):
+            test.cancel("Host does not use Linux Bridge")
+    except process.CmdError:
+        pass
+
+
+def setup_ovs_bridge_attrs(params, iface_attrs):
+    """
+    Setup OVS bridge attributes based on netdst parameter.
+
+    :param params: Test parameters dict
+    :param iface_attrs: Interface attributes dictionary to modify
+    :return: True if OVS configuration applied, False otherwise
+    """
+    bridge_name = params.get('netdst', '').split(',')[0]
+    is_ovs_bridge = not isinstance(utils_net.find_bridge_manager(bridge_name), utils_net.Bridge)
+
+    if is_ovs_bridge:
+        # Configure for OVS bridge
+        iface_attrs['type_name'] = 'bridge'
+        iface_attrs['source'] = {'bridge': bridge_name}
+        iface_attrs['virtualport'] = {'type': 'openvswitch'}
+        LOG.debug(f"Configured OVS bridge: {bridge_name}")
+        return True
+    return False
