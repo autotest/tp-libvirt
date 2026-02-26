@@ -61,6 +61,10 @@ def run(test, params, env):
             utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
             network_base.create_tap(tap_name, bridge_name, "root")
 
+        # Configure ovs bridge when host using ovs bridge
+        if params.get("network_test") == "yes":
+            network_base.setup_ovs_bridge_attrs(params, iface_attrs)
+
         mac = vm_xml.VMXML.get_first_mac_by_name(vm_name, virsh_ins)
         vmxml.del_device('interface', by_tag=True)
         libvirt_vmxml.modify_vm_device(
