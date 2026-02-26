@@ -3,6 +3,7 @@ import logging
 from provider.virtual_network import network_base
 
 from virttest import utils_libvirtd
+from virttest import utils_net
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -24,6 +25,8 @@ def run(test, params, env):
     network_attrs = eval(params.get('network_attrs'))
     iface_attrs = eval(params.get('iface_attrs'))
     outside_ip = params.get('outside_ip')
+    # Cancel test when host using ovs bridge
+    network_base.cancel_if_ovs_bridge(params, test)
 
     bkxmls = list(map(vm_xml.VMXML.new_from_inactive_dumpxml, vms))
 
@@ -55,16 +58,25 @@ def run(test, params, env):
                       'running')
             return
 
-        session, ep_session = (vm_inst.wait_for_login()
+        session, ep_session = (vm_inst.wait_for_login(serial=True)
                                for vm_inst in [vm, ep_vm])
         mac, ep_mac = list(map(vm_xml.VMXML.get_first_mac_by_name, vms))
 
         ips_v4 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
                                            network_attrs['name'],
                                            ip_ver='ipv4')
+
+        for vm_session in [session, ep_session]:
+            try:
+                utils_net.restart_guest_network(vm_session, ip_version='ipv6', timeout=15)
+                LOG.info('DHCPv6 request completed')
+            except Exception as e:
+                LOG.warning(f'DHCPv6 request failed: {e}')
+
         ips_v6 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
                                            network_attrs['name'],
                                            ip_ver='ipv6')
+
         ips_v4['outside_ip'] = outside_ip
         network_base.ping_check(params, ips_v4, session,
                                 force_ipv4=True)
