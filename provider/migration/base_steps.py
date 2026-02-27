@@ -8,6 +8,7 @@ from virttest import data_dir
 from virttest import migration
 from virttest import libvirt_remote
 from virttest import libvirt_vm
+from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_config
 from virttest import utils_conn
@@ -38,9 +39,11 @@ class MigrationBase(object):
     :param remote_libvirtd_log: remote.RemoteFile object
     """
 
-    def __init__(self, test, vm, params):
+    def __init__(self, test, vm, params, remote_virsh=None):
         """
         Init params and other necessary variables
+
+        :param remote_virsh: Optional VirshPersistent session for destination host operations
 
         """
         self.test = test
@@ -53,6 +56,9 @@ class MigrationBase(object):
         self.check_cont_ping = "yes" == self.params.get("check_cont_ping", "no")
         self.check_cont_ping_log = self.params.get("check_cont_ping_log", "/tmp/log_file")
         self.remote_libvirtd_log = None
+        self.do_destination_vm_backup = "yes" == self.params.get("do_destination_vm_backup", "no")
+        self.dest_backup_xml = None
+        self.remote_virsh = remote_virsh
 
         migration_test = migration.MigrationTest()
         migration_test.check_parameters(params)
@@ -62,6 +68,38 @@ class MigrationBase(object):
         vm_name = params.get("migrate_main_vm")
         new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         self.orig_config_xml = new_xml.copy()
+
+        # Back up destination VM if requested
+        if self.do_destination_vm_backup:
+            # Validate that remote_virsh session was provided
+            if self.remote_virsh is None:
+                self.test.fail("Test setup error: Destination VM backup is enabled "
+                               "(do_destination_vm_backup=yes), but no remote_virsh "
+                               "session was provided to MigrationBase.__init__")
+
+            # Check if VM exists on destination and back it up
+            if self.remote_virsh.domain_exists(vm_name):
+                # Check if VM is running - we can only backup/undefine if it's not running
+                if not self.remote_virsh.is_dead(vm_name):
+                    self.test.fail("VM '%s' is running on destination host. "
+                                   "Cannot proceed - VM must be stopped first." % vm_name)
+
+                self.test.log.info("VM '%s' exists on destination, backing it up", vm_name)
+                dest_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                    vm_name,
+                    virsh_instance=self.remote_virsh
+                )
+                self.dest_backup_xml = dest_xml.copy()
+
+                # Undefine the VM on destination to avoid conflicts during migration
+                self.test.log.info("Undefining VM '%s' on destination", vm_name)
+                # Use comprehensive undefine options to remove everything
+                undef_opts = "--managed-save --snapshots-metadata --nvram"
+                if libvirt_version.version_compare(7, 5, 0):
+                    undef_opts += " --checkpoints-metadata"
+
+                # Let undefine fail naturally if there's an issue - will raise CmdError
+                self.remote_virsh.undefine(vm_name, options=undef_opts)
 
     def setup_default(self, use_console=False):
         """
@@ -342,6 +380,15 @@ class MigrationBase(object):
             del self.remote_libvirtd_log
         # Clean VM on destination and source
         self.migration_test.cleanup_vm(self.vm, dest_uri)
+
+        # Restore destination VM if it was backed up
+        if self.dest_backup_xml:
+            vm_name = self.params.get("migrate_main_vm")
+            self.test.log.info("Restoring VM '%s' on destination", vm_name)
+            self.dest_backup_xml.virsh = self.remote_virsh
+            if not self.dest_backup_xml.define():
+                self.test.log.warning("Failed to restore VM '%s' on destination", vm_name)
+
         self.orig_config_xml.sync()
 
     def setup_connection(self, use_console=False):
