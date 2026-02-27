@@ -35,6 +35,7 @@ def run(test, params, env):
     libvirt_version.is_libvirt_feature_supported(params)
 
     test_case = params.get('test_case', '')
+    migrate_vm_back = params.get_boolean("migrate_vm_back", True)
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     qemu_log = "/var/log/libvirt/qemu/%s.log" % vm_name
@@ -44,5 +45,7 @@ def run(test, params, env):
         setup_test()
         migration_obj.run_migration()
         verify_test()
+        if migrate_vm_back:
+            migration_obj.run_migration_back()
     finally:
         migration_obj.cleanup_connection()
