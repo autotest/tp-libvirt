@@ -55,6 +55,9 @@ def run(test, params, env):
     # For VDDK
     input_transport = params.get("input_transport")
     vddk_libdir = params.get('vddk_libdir')
+    src_uri_type = params.get("src_uri_type")
+    esxi_password = params.get('esxi_password')
+    vpx_passwd = params.get("vpx_password")
     # nfs mount source
     vddk_libdir_src = params.get('vddk_libdir_src')
     vddk_thumbprint = params.get('vddk_thumbprint')
@@ -733,7 +736,14 @@ def run(test, params, env):
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
-
+        if checkpoint in ['vddk_compression_zlib', 'vddk_compression_skipz', 'vddk_compression_fastlz']:
+            v2v_options += " -v -x"
+        if checkpoint == 'vddk_compression_zlib':
+            v2v_options += ' -io vddk-compression=zlib'
+        if checkpoint == 'vddk_compression_skipz':
+            v2v_options += ' -io vddk-compression=skipz'
+        if checkpoint == 'vddk_compression_fastlz':
+            v2v_options += ' -io vddk-compression=fastlz'
         # Prepare for libvirt unprivileged user session connection
         if "qemu:///session" in v2v_options or no_root:
             try:
@@ -776,14 +786,14 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
-            source_pwd = vpx_passwd = params.get("vpx_password")
-            vpx_passwd_file = os.path.join(
-                data_dir.get_tmp_dir(), "vpx_passwd")
+            source_pwd = vpx_passwd if src_uri_type != 'esx' else esxi_password
+            source_passwd_file = os.path.join(
+                data_dir.get_tmp_dir(), "source_passwd")
             LOG.info("Building ESX no password interactive verification.")
-            pwd_f = open(vpx_passwd_file, 'w')
-            pwd_f.write(vpx_passwd)
+            pwd_f = open(source_passwd_file, 'w')
+            pwd_f.write(source_pwd)
             pwd_f.close()
-            output_option += " -ip %s" % vpx_passwd_file
+            output_option += " -ip %s" % source_passwd_file
             # rhel8 slow stream doesn't support option 'ip' temporarily
             # so use option 'password-file' instead.
             if not utils_v2v.v2v_supported_option("-ip <filename>"):
@@ -791,7 +801,10 @@ def run(test, params, env):
                     '-ip', '--password-file', 1)
             # For VDDK
             if input_transport == 'vddk':
-                vddk_thumbprint = utils_v2v.get_vddk_thumbprint(remote_host, source_pwd, 'vpx')
+                if src_uri_type == 'esx':
+                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(esx_ip, source_pwd, 'esx')
+                else:
+                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(remote_host, source_pwd, 'vpx')
                 with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
                     utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
                     process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
@@ -907,6 +920,12 @@ def run(test, params, env):
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
+        if hypervisor == 'esx':
+            v2v_uri = utils_v2v.Uri('esx')
+            if src_uri_type == 'esx':
+                vpx_dc = None
+            remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
+            cmd = re.sub(r'(vpx|esx)://\S+?\?no_verify=1', remote_uri, cmd)
         if v2v_user:
             cmd_export_env = 'export LIBGUESTFS_BACKEND=direct'
             cmd = "%s '%s;%s'" % (su_cmd, cmd_export_env, cmd)
@@ -930,6 +949,9 @@ def run(test, params, env):
         if checkpoint == 'virt_v2v_inspector':
             cmd = re.sub(r".*/bin/virt-v2v", 'virt-v2v-inspector', cmd)
             cmd = cmd.replace('-i libvirt', '')
+        if checkpoint in ['vddk_compression_zlib', 'vddk_compression_skipz']:
+            cmd = re.sub(r"-io vddk-thumbprint=\S+\s*", '', cmd)
+
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
         if new_vm_name:
@@ -938,7 +960,7 @@ def run(test, params, env):
         check_result(cmd, cmd_result, status_error)
     finally:
         if hypervisor == "esx":
-            process.run("rm -rf %s" % vpx_passwd_file, ignore_status=True)
+            process.run("rm -rf %s" % source_passwd_file, ignore_status=True)
         if checkpoint == "weak_dendency":
             utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
