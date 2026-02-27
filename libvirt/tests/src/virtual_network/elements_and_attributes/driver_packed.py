@@ -5,6 +5,7 @@ from virttest import utils_net
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
+from virttest.utils_zchannels import SubchannelPaths
 
 from provider.virtual_network import network_base
 from provider.interface import interface_base
@@ -12,7 +13,25 @@ from provider.interface import interface_base
 VIRSH_ARGS = {'ignore_status': False, 'debug': True}
 
 
-def check_packed_virtqueue(session, expected_packed_bit, test):
+def check_packed_virtqueue(session, expected_packed_bit, test, bustype):
+    """
+    Check if packed virtqueue is enabled on the VM
+
+    :param session: VM session
+    :param expected_packed_bit: Expected packed bit value
+    :param test: Test instance
+    :param bustype: determines how to look up device information
+    """
+    test.log.debug("Checking packed virtqueue configuration...")
+    if bustype == "pci":
+        _check_packed_virtqueue_pci(session, expected_packed_bit, test)
+    elif bustype == "ccw":
+        _check_packed_virtqueue_ccw(session, expected_packed_bit, test)
+    else:
+        test.error(f"Unknown bus type: {bustype}")
+
+
+def _check_packed_virtqueue_pci(session, expected_packed_bit, test):
     """
     Check if packed virtqueue is enabled on the VM
 
@@ -20,8 +39,6 @@ def check_packed_virtqueue(session, expected_packed_bit, test):
     :param expected_packed_bit: Expected packed bit value
     :param test: Test instance
     """
-    test.log.debug("Checking packed virtqueue configuration...")
-
     # 1. Get the PCI address of the network device
     lspci_output = session.cmd_output("lspci | grep Eth")
     test.log.debug(f"lspci output: {lspci_output}")
@@ -36,8 +53,18 @@ def check_packed_virtqueue(session, expected_packed_bit, test):
     find_cmd = 'find / -name features | grep "%s"' % pci_addr
     virtio_features_file = session.cmd_output(find_cmd)
 
-    if not virtio_features_file:
-        test.fail(f"Virtio features file not found for PCI address {pci_addr}")
+    _check_features_file(virtio_features_file, session, expected_packed_bit, test)
+
+
+def _check_features_file(virtio_features_file, session, expected_packed_bit,  test):
+    """
+    Check packed information from features file
+
+    :param virtio_features_file: the features attribute of the virtio device
+    :param session: VM session
+    :param expected_packed_bit: Expected packed bit value
+    :param test: test instance
+    """
     test.log.debug(f"Using virtio features file: {virtio_features_file}")
 
     packed_bit_cmd = f"cat {virtio_features_file}"
@@ -61,6 +88,46 @@ def check_packed_virtqueue(session, expected_packed_bit, test):
         test.log.debug("Packed bit check: PASS")
     else:
         test.fail(f"Expected packed bit {expected_packed_bit}, but got {packed_bit}")
+
+
+def _check_packed_virtqueue_ccw(session, expected_packed_bit, test):
+    """
+    Check if packed virtqueue is enabled on the VM
+
+    :param session: VM session
+    :param expected_packed_bit: Expected packed bit value
+    :param test: Test instance
+    """
+    iface_cu_type = "3832/01"
+    subchannel = _get_subchannel_by_cu_type(iface_cu_type, session)
+    if not subchannel:
+        test.error("The VM doesn't have an interface.")
+    hex_part = subchannel.split('.')[-1]
+    index = int(hex_part, 16)
+    virtio_features_file = f"/sys/bus/virtio/drivers/virtio_net/virtio{index}/features"
+
+    _check_features_file(virtio_features_file, session, expected_packed_bit, test)
+
+
+def _get_subchannel_by_cu_type(cu_type, session=None):
+    """
+    Get Subchannel value for a device with the specified CU Type.
+
+    :param cu_type: CU Type to search for (e.g., "3832/01")
+    :param session: guest session; if None, host info is handled
+    :return: Subchannel value or None if not found
+    """
+    subchannel_paths = SubchannelPaths(session=session)
+    subchannel_paths.get_info()
+
+    cu_type_index = subchannel_paths.HEADER["CU Type"]
+    subchan_index = subchannel_paths.HEADER["Subchan."]
+
+    for device in subchannel_paths.devices:
+        if device[cu_type_index].strip() == cu_type:
+            return device[subchan_index].strip()
+
+    return None
 
 
 def check_multiqueue_settings(session, expected_queue_count, test):
@@ -102,6 +169,7 @@ def run(test, params, env):
     vcpu_num = params.get('vcpu_num', '4')
     iface_attrs = eval(params.get('iface_attrs', '{}'))
     packed_check = params.get('packed_check', 'no') == 'yes'
+    bustype = params.get('bustype', 'pci')
     expected_packed_bit = params.get('expected_packed_bit', '1')
     check_multiqueue = params.get('check_multiqueue', 'no') == 'yes'
     expected_queue_count = int(params.get('expected_queue_count', '4'))
@@ -138,7 +206,7 @@ def run(test, params, env):
 
         test.log.debug("Test Step 2: Check packed virtqueue configuration")
         if packed_check:
-            check_packed_virtqueue(session, expected_packed_bit, test)
+            check_packed_virtqueue(session, expected_packed_bit, test, bustype)
 
         test.log.debug("Test Step 3: Check multiqueue settings")
         if check_multiqueue:
