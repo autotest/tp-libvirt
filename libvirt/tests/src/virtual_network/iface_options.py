@@ -104,6 +104,16 @@ def run(test, params, env):
         source = iface_source
         if source:
             net_ifs = utils_net.get_net_if(state="UP")
+            # if no interfaces are available in UP state,
+            # iterate through all interfaces with UNKNOWN
+            # state and check if they can be pinged to the
+            # internet through.
+            if len(net_ifs) == 0:
+                unknown_net_ifs = utils_net.get_net_if(state="UNKNOWN")
+                for interface in unknown_net_ifs:
+                    if utils_net.ping(dest="google.com", interface=interface, count=5, timeout=120)[0] == 0:
+                        net_ifs.append(interface)
+                        break
             # Check source device is valid or not,
             # if it's not in host interface list, try to set
             # source device to first active interface of host
