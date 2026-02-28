@@ -50,8 +50,10 @@ def run(test, params, env):
             libvirt.add_vm_device(
                 vm_xml.VMXML.new_from_dumpxml(vm_name), iface_dev2)
 
+        test.log.debug("VM XML before vm starts:\n%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
         test.log.info("TEST_STEP2: Start the VM")
         vm.start()
+        test.log.debug("VM XML after vm starts:\n%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
         vm.cleanup_serial_console()
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(timeout=240)
