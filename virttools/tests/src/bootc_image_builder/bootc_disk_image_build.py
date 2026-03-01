@@ -81,7 +81,8 @@ def prepare_env_and_execute_bib(params, test):
     if disk_image_type in ["ami"]:
         bib_utils.prepare_aws_env(params)
 
-    if bib_ref in ["upstream_bib", "rhel_9.4_nightly_bib", "rhel_9.5_nightly_bib", "rhel_9.6_nightly_bib", "rhel_10.0_bib"]:
+    if bib_ref in ["upstream_bib", "rhel_9.4_nightly_bib", "rhel_9.5_nightly_bib",
+                   "rhel_9.6_nightly_bib", "rhel_9.7_nightly_bib", "rhel_10.0_bib", "rhel_10.1_bib", "rhel_9.8_nightly_bib", "rhel_10.2_bib"]:
         auth_file = bib_utils.create_auth_json_file(params)
         bib_utils.podman_login_with_auth(auth_file, params.get("redhat_stage_registry"))
         options = " -v %s:/run/containers/0/auth.json " % auth_file
