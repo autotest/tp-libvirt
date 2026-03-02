@@ -38,9 +38,7 @@ def revert_snap_and_check_files(params, vm, test, snap_name, expected_files):
 
     virsh.snapshot_revert(vm.name, snap_name, options=options, **virsh_dargs)
 
-    vm.cleanup_serial_console()
-    vm.create_serial_console()
-    session = vm.wait_for_serial_login()
+    session = vm.wait_for_serial_login(recreate_serial_console=True)
     for file in expected_files:
         output = session.cmd('ls %s' % file)
         if file not in output:
