@@ -107,10 +107,17 @@ class MigrationBase(object):
 
         # Undefine the VM on destination to avoid conflicts during migration
         self.test.log.info(f"Undefining VM '{vm_name}' on destination host {self.server_ip}")
-        # Use comprehensive undefine options to remove everything
         undef_opts = "--managed-save --snapshots-metadata --nvram"
-        if libvirt_version.version_compare(7, 5, 0):
-            undef_opts += " --checkpoints-metadata"
+        remote_session = remote.wait_for_login('ssh', self.server_ip, '22',
+                                               self.server_user, self.server_pwd,
+                                               r"[\#\$]\s*$")
+        try:
+            checkpoints_params = {"func_supported_since_libvirt_ver": "(7, 5, 0)"}
+            if libvirt_version.is_libvirt_feature_supported(
+                    checkpoints_params, ignore_error=True, session=remote_session):
+                undef_opts += " --checkpoints-metadata"
+        finally:
+            remote_session.close()
 
         self.remote_virsh.undefine(vm_name, options=undef_opts)
 
