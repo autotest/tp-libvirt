@@ -1,6 +1,6 @@
 import logging
 
-from virttest import virsh
+from virttest import virsh, utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -26,6 +26,10 @@ def run(test, params, env):
             if not vm.is_alive():
                 vm.start()
             ga_start = True if guest_agent_status == 'start' else False
+            session = vm.wait_for_login()
+            if not utils_package.package_install('qemu-guest-agent', session, 60):
+                test.fail("Failed to install 'qemu-guest-agent' in guest OS.")
+            session.close()
             vm.set_state_guest_agent(ga_start)
         virsh_result = virsh.domifaddr(test_vm_name, options=virsh_options,
                                        debug=True)
