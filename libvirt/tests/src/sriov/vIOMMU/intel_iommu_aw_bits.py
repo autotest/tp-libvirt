@@ -28,10 +28,9 @@ def run(test, params, env):
             if err_msg:
                 libvirt.check_result(result, err_msg)
             return
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(
-            timeout=int(params.get('login_timeout')))
+            timeout=int(params.get('login_timeout')),
+            recreate_serial_console=True)
         test.log.debug(vm_xml.VMXML.new_from_dumpxml(vm.name))
 
         test.log.info("TEST_STEP: Check dmesg message.")
