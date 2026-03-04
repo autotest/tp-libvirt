@@ -251,6 +251,7 @@ def run(test, params, env):
         if not cold_update:
             vm.start()
 
+        libvirtd_restarted = False
         if iface_mtu:
             # Do check for mtu size after start vm
             target_dev = libvirt.get_interface_details(vm_name)[0]['interface']
@@ -266,7 +267,16 @@ def run(test, params, env):
 
             check_mtu()
             utils_libvirtd.libvirtd_restart()
+            libvirtd_restarted = True
             check_mtu()
+
+        # This is a workaround to let virt-install create vm can be management by domif-setlink
+        # and cleanup exists serial session, since restart libvirtd will render the original invalid
+        if not cold_update and vm.is_alive() and not libvirtd_restarted:
+            logging.info("Restart libvirtd server")
+            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd.restart()
+            libvirtd_restarted = True
 
         # Do update for iface_driver
         logging.info('Creating new iface xml.')
@@ -312,6 +322,14 @@ def run(test, params, env):
                     # Checking the statue in guest
                     mac_addr = iface_aft.find('mac').get('address')
                     state_map = "%s.*\n.*%s" % (iface_link_value.upper(), mac_addr)
+
+                    # Cleanup and recreate serial console since libvirtd was restarted
+                    if libvirtd_restarted:
+                        if vm.serial_console:
+                            vm.cleanup_serial_console()
+                        # Recreate serial console after libvirtd restart
+                        vm.create_serial_console()
+
                     session = vm.wait_for_serial_login()
                     logging.info("ip link output:%s", session.cmd_output("ip link"))
                     if_name = utils_net.get_net_if(
