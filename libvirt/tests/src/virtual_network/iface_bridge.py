@@ -110,8 +110,10 @@ def run(test, params, env):
         # guest ping endpoint
         ping(guest_ip, endpoint_ip, ping_count, ping_timeout, session=guest_session)
 
+    # Cancel test when host using ovs bridge
+    network_base.cancel_if_ovs_bridge(params, test)
     # Get test params
-    bridge_name = params.get("bridge_name", "test_br0")
+    bridge_name = params.get("netdst") or params.get("bridge_name", "test_br0")
     filter_name = params.get("filter_name", "vdsm-no-mac-spoofing")
     ping_count = params.get("ping_count", "5")
     ping_timeout = float(params.get("ping_timeout", "10"))
@@ -123,7 +125,7 @@ def run(test, params, env):
     iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
     attach_interface = "yes" == params.get("attach_interface", "no")
     iface_model = params.get("iface_model", "virtio")
-    iface_source = eval(params.get("iface_source", "{'bridge':'test_br0'}"))
+    iface_source = eval(params.get("iface_source", "{'bridge':'%s'}" % bridge_name))
     iface_type = params.get("iface_type", 'bridge')
     iface_target = params.get("iface_target", "br_target")
     iface_alias = params.get("iface_alias", None)
@@ -169,11 +171,12 @@ def run(test, params, env):
     mac = utils_net.generate_mac_address_simple()
 
     try:
-        if libvirt.check_iface(bridge_name, "exists", "--all"):
-            test.cancel("The bridge %s already exist" % bridge_name)
-        s, o = utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
-        if s:
-            test.fail("Failed to create linux bridge on the host. Status: %s Stdout: %s" % (s, o))
+        if params.get("bridge_name") and not params.get("netdst"):
+            if libvirt.check_iface(bridge_name, "exists", "--all"):
+                test.cancel("The bridge %s already exist" % bridge_name)
+            s, o = utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
+            if s:
+                test.fail("Failed to create linux bridge on the host. Status: %s Stdout: %s" % (s, o))
         define_nwfilter(filter_name)
         if create_network:
             create_bridge_network(bridge_name, iface_source["network"], net_inbound, net_outbound)
@@ -335,7 +338,10 @@ def run(test, params, env):
         else:
             if start_vm2:
                 # Start vm2 connect to the same bridge
-                mac2 = utils_net.generate_mac_address_simple()
+                if params.get("bridge_name") and not params.get("netdst"):
+                    mac2 = utils_net.generate_mac_address_simple()
+                else:
+                    mac2 = vm_xml.VMXML.get_first_mac_by_name(vm2_name)
                 vm2_iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac2}
                 libvirt.modify_vm_iface(vm2_name, "update_iface", vm2_iface_params)
                 if vm2.is_alive():
@@ -400,7 +406,7 @@ def run(test, params, env):
         if os.path.exists(bridge_script):
             process.run("rm -rf %s" % bridge_script, shell=True, verbose=True)
         br_path = "/sys/class/net/%s" % bridge_name
-        if os.path.exists(br_path):
+        if os.path.exists(br_path) and params.get("bridge_name") and not params.get("netdst"):
             utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
         # reload network configuration
         NM_service.restart()
