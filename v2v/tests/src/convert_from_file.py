@@ -251,6 +251,8 @@ def run(test, params, env):
                 params['msg_content_yes'] += "cores='%s'.*" % corespersocket
                 params['msg_content_yes'] += "threads='1'.*"
                 LOG.info('msg_content_yes is %s', params['msg_content_yes'])
+            if checkpoint == 'character_slash':
+                v2v_params['new_name'] = re.sub(r'/', '_', v2v_params['new_name'])
         # copy ova from nfs storage before v2v conversion
         if input_mode == 'ova':
             src_dir = params.get('ova_dir')

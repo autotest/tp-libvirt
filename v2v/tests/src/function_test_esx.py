@@ -649,6 +649,10 @@ def run(test, params, env):
 
             # vmchecker must be put before skip_vm_check in order to clean up
             # the VM.
+            if 'char_slash' in checkpoint:
+                params["main_vm"] = re.sub(r'/', '_', params["main_vm"])
+                params["main_vm"] = params["main_vm"][:params["main_vm"].rfind("_") + 1]
+
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
             if skip_vm_check == 'yes':
@@ -662,7 +666,7 @@ def run(test, params, env):
                                                     timeout=v2v_timeout):
                     test.fail('Import VM failed')
             elif output_mode == 'libvirt':
-                virsh.start(vm_name, debug=True)
+                virsh.start(params["main_vm"], debug=True)
 
             # Check guest following the checkpoint document after conversion
             LOG.info('Checking common checkpoints for v2v')
@@ -1083,6 +1087,7 @@ dnf -y install libvirt
                 'mismatched_uuid',
                 'no_uuid',
                 'invalid_source',
+                'char_slash',
                     'system_rhv_pem']:
                 cmd_only = True
                 auto_clean = False
@@ -1142,6 +1147,8 @@ dnf -y install libvirt
             certs_dest_dir = params.get('certs_dest_dir')
             verify_certificate(certs_src_dir, certs_dest_dir)
             new_cmd = v2v_result.replace('/?no_verify=1', '')
+        if 'char_slash' in checkpoint:
+            new_cmd = v2v_result.replace('-on %s' % vm_name, '')
         if checkpoint[0] in [
             'verify_certificate',
             'verify_custom_path_cert',
@@ -1150,6 +1157,7 @@ dnf -y install libvirt
             'no_uuid',
             'invalid_source',
             'exist_uuid',
+            'char_slash',
                 'system_rhv_pem']:
             v2v_result = utils_v2v.cmd_run(
                 new_cmd, params.get('v2v_dirty_resources'))
