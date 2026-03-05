@@ -1,6 +1,8 @@
 import logging
+import aexpect
 
 from provider.virtual_network import network_base
+from avocado.core import exceptions
 
 from virttest import utils_libvirtd
 from virttest import virsh
@@ -8,7 +10,7 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_network
 from virttest.utils_libvirt import libvirt_service
-from virttest.utils_libvirt import libvirt_vmxml
+from virttest.libvirt_xml.devices import interface
 
 LOG = logging.getLogger('avocado.' + __name__)
 
@@ -24,6 +26,7 @@ def run(test, params, env):
     network_attrs = eval(params.get('network_attrs'))
     iface_attrs = eval(params.get('iface_attrs'))
     outside_ip = params.get('outside_ip')
+    dhcp_cmd = params.get('dhcp_cmd')
 
     bkxmls = list(map(vm_xml.VMXML.new_from_inactive_dumpxml, vms))
 
@@ -44,8 +47,25 @@ def run(test, params, env):
                  'network. One vm is the vm to be tested, another vm act as '
                  'endpoint.')
         vmxml, ep_vmxml = list(map(vm_xml.VMXML.new_from_inactive_dumpxml, vms))
-        [libvirt_vmxml.modify_vm_device(vmxml_i, 'interface', iface_attrs)
-         for vmxml_i in [vmxml, ep_vmxml]]
+
+        # Preserve original MAC addresses for ssh connectivity
+        original_mac = vmxml.get_devices('interface')[0].mac_address
+        ep_original_mac = ep_vmxml.get_devices('interface')[0].mac_address
+
+        # Re-write interface parameters with preserved MAC addresses and remove
+        # bridge attribute
+        for vm_i, preserved_mac in [(vmxml, original_mac), (ep_vmxml, ep_original_mac)]:
+            vm_i.del_device('interface', by_tag=True)
+            # Create interface with correct XML structure and preserved MAC
+            iface = interface.Interface('network')
+            iface.source = iface_attrs.get('source',
+                                           {'network': network_attrs['name']})
+            iface.model = iface_attrs.get('model', 'virtio')
+            iface.mac_address = preserved_mac
+
+            # Add interface to VM
+            vm_i.add_device(iface)
+            vm_i.sync()
 
         LOG.info('TEST_STEP: Start the 2 VMs')
         [vm_inst.start() for vm_inst in [vm, ep_vm]]
@@ -62,9 +82,28 @@ def run(test, params, env):
         ips_v4 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
                                            network_attrs['name'],
                                            ip_ver='ipv4')
-        ips_v6 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
-                                           network_attrs['name'],
-                                           ip_ver='ipv6')
+
+        # Try to get IPv6 addresses, if failed, request via DHCP and retry
+        try:
+            ips_v6 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
+                                               network_attrs['name'],
+                                               ip_ver='ipv6')
+        except (aexpect.ShellError, exceptions.TestError) as e:
+            LOG.info(f'Failed to get IPv6 addresses: {e}')
+
+            # Request IPv6 addresses via DHCP on both VMs
+            for vm_session in [session, ep_session]:
+                try:
+                    vm_session.cmd(dhcp_cmd, timeout=15)
+                    LOG.info('DHCPv6 request completed')
+                except aexpect.ShellError as e:
+                    LOG.warning(f'DHCP request failed: {e}')
+
+            # Retry getting IPv6 addresses
+            LOG.info('Retrying IPv6 address collection after DHCP')
+            ips_v6 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
+                                               network_attrs['name'],
+                                               ip_ver='ipv6')
         ips_v4['outside_ip'] = outside_ip
         network_base.ping_check(params, ips_v4, session,
                                 force_ipv4=True)
