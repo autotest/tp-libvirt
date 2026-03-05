@@ -3,6 +3,7 @@ import logging as log
 from avocado.core import exceptions
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest import utils_net
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -256,15 +257,21 @@ def run(test, params, env):
             logging.info("Starting PCI address difference and detach test")
             check_pci_address_difference(vm_name, iface_mac)
 
-            logging.info("Detaching interface with MAC %s using --persistent", iface_mac)
-            detach_options = "%s --mac %s --persistent" % (iface_type, iface_mac)
+            logging.info("Detaching interface with MAC %s using --persistent --live", iface_mac)
+            detach_options = "%s --mac %s --persistent --live" % (iface_type, iface_mac)
             detach_result = virsh.detach_interface(vm_name, detach_options, **virsh_dargs)
             libvirt.check_exit_status(detach_result)
 
-            logging.info("Verifying interface removal from both active and inactive XML")
-            if check_interface_xml(vm_name, iface_type, iface_source,
-                                   iface_mac, params, check_active=True):
+            logging.info("Waiting for interface detach to complete")
+
+            def _check_interface_detached():
+                return not check_interface_xml(vm_name, iface_type, iface_source,
+                                               iface_mac, params, check_active=True)
+
+            if not utils_misc.wait_for(_check_interface_detached, timeout=60, step=5):
                 test.fail("Interface still exists in active XML after detach")
+
+            logging.info("Verifying interface removal from inactive XML")
             if check_interface_xml(vm_name, iface_type, iface_source,
                                    iface_mac, params, check_active=False):
                 test.fail("Interface still exists in inactive XML after detach")
