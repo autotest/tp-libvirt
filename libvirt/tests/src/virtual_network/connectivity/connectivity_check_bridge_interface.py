@@ -2,7 +2,6 @@ import logging
 import re
 
 from avocado.utils import process
-from virttest import utils_misc
 from virttest import utils_net
 from virttest import libvirt_version
 from virttest import virsh
@@ -40,17 +39,23 @@ def run(test, params, env):
     vm_name = params.get('main_vm')
     vms = params.get('vms').split()
     vm, ep_vm = (env.get_vm(vm_i) for vm_i in vms)
+    login_timeout = params.get_numeric('login_timeout')
     scenario = params.get('scenario')
     outside_ip = params.get('outside_ip')
-    rand_id = utils_misc.generate_random_string(3)
-    bridge_type = params.get('bridge_type', '')
-    bridge_name = bridge_type + '_' + rand_id
+    netdst = params.get('netdst', 'virbr0')
+    bridge_name = netdst.split(',')[0]
     iface_attrs = parse_attrs('iface_attrs', params)
     iface_attrs['source']['bridge'] = bridge_name
     vm_attrs = eval(params.get('vm_attrs', '{}'))
     nwfilter_attrs = parse_attrs('nwfilter_attrs', params)
     iface_in_vm = params.get('iface_in_vm')
     iface_in_vm = iface_in_vm if iface_in_vm else 'eno'
+
+    # Setup OVS bridge configuration if needed
+    network_base.setup_ovs_bridge_attrs(params, iface_attrs)
+
+    if nwfilter_attrs:
+        network_base.cancel_if_ovs_bridge(params, test)
 
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
@@ -59,12 +64,6 @@ def run(test, params, env):
     bkxmls = list(map(vm_xml.VMXML.new_from_inactive_dumpxml, vms))
 
     try:
-        if bridge_type == 'linux_br':
-            utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
-            process.run(f'ip l show type bridge {bridge_name}', shell=True)
-        elif bridge_type == 'ovs_br':
-            utils_net.create_ovs_bridge(bridge_name)
-
         if nwfilter_attrs and not libvirt_version.version_compare(8, 0, 0):
             nwf = nwfilter_xml.NwfilterXML()
             nwf.setup_attrs(**nwfilter_attrs)
@@ -94,7 +93,7 @@ def run(test, params, env):
          for vm_x in vms]
 
         [vm_i.start() for vm_i in [vm, ep_vm]]
-        session, ep_session = (vm_inst.wait_for_serial_login()
+        session, ep_session = (vm_inst.wait_for_serial_login(timeout=login_timeout)
                                for vm_inst in [vm, ep_vm])
 
         ips_v4 = network_base.get_test_ips(session, mac, ep_session, ep_mac,
@@ -165,9 +164,5 @@ def run(test, params, env):
 
     finally:
         [backup_xml.sync() for backup_xml in bkxmls]
-        if bridge_type == 'linux_br':
-            utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
-        if bridge_type == 'ovs_br':
-            utils_net.delete_ovs_bridge(bridge_name)
         if nwfilter_attrs:
             virsh.nwfilter_undefine(nwfilter_attrs['filter_name'])
