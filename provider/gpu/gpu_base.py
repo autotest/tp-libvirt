@@ -24,6 +24,7 @@ from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_libvirt import libvirt_pcicontr
 from virttest.utils_test import libvirt
 
 LOG = logging.getLogger("avocado." + __name__)
@@ -118,7 +119,10 @@ class GPUTest(object):
         :return: The updated iface_dict
         """
         gpu_pci_addr = self.gpu_pci_addr
-        hostdev_dict = eval(self.params.get('hostdev_dict', '{}'))
+        if self.params.get("gpu_hostdev_dict"):
+            hostdev_dict = eval(self.params.get('gpu_hostdev_dict'))
+        else:
+            hostdev_dict = eval(self.params.get('hostdev_dict', '{}'))
         return hostdev_dict
 
     def check_gpu_dev(self, vm, status_error=False):
@@ -203,6 +207,78 @@ class GPUTest(object):
             if not utils_package.package_install(pkgs, vm_session):
                 self.test.fail(f"Unable to install {pkgs} in guest!")
 
+    def setup_gpu_controllers(self, vmxml):
+
+        pre_idx = libvirt_pcicontr.get_max_contr_indexes(vmxml, "pci", "pcie-root-port")[-1]
+        #pre_contr_bus = "%0#4x" % int(pre_idx)
+        #contr_attrs = {"bus": pre_contr_bus}
+        pcihole64 = eval(self.params.get('pcihole64', '4294967296'))
+        pci_root_dict = {"pcihole64": pcihole64}
+        libvirt_vmxml.modify_vm_device(
+            vmxml,
+            "controller",
+            pci_root_dict, 
+            sync_vm=False
+        )
+        pxb_ctrl_attrs = self.params.get('pxb_ctrl_attrs', '{}')
+        if pxb_ctrl_attrs:
+            pxb_index = pre_idx + 1
+            pxb_slot = libvirt_pcicontr.get_free_pci_slot(vmxml)
+            pxb_ctrl_attrs = eval(pxb_ctrl_attrs % (str(pxb_index), pxb_slot))
+            libvirt_vmxml.modify_vm_device(
+                vmxml, 
+                "controller",
+                pxb_ctrl_attrs, 
+                sync_vm=False
+            )
+            pcie_root_port_attrs = self.params.get('pcie_root_port_attrs', '{}')
+            if pcie_root_port_attrs:
+                pcie_root_port_index = pxb_index + 1
+                pcie_root_port_bus = "%0#4x" % int(pxb_index)
+                pcie_root_port_attrs = eval(pcie_root_port_attrs % (pcie_root_port_index, pcie_root_port_bus))
+                libvirt_vmxml.modify_vm_device(
+                    vmxml, 
+                    "controller",
+                    pcie_root_port_attrs,
+                    sync_vm=False)
+            # gpu_address = '{"type": "pci", "domain": "0x0000", "bus": "0x02", "slot": "0x20", "function":"0x0"}'
+            # gpu_hostdev_dict = {'type':'pci','address': {'attrs':{"type": "pci", "domain": "0x0000", "bus": "%s", "slot": "0x00", "function":"0x0"}}}}
+            gpu_hostdev_dict = self.params.get('gpu_hostdev_dict', '{}')
+            if gpu_hostdev_dict:
+                gpu_hostdev_dict = eval(gpu_hostdev_dict % ("%0#4x" % int(pcie_root_port_index)))
+                libvirt_vmxml.modify_vm_device(vmxml, "hostdev", gpu_hostdev_dict, sync_vm=False)
+            iommu_dict = self.params.get('iommu_dict', '{}')
+            if iommu_dict:
+                iommu_dict = eval(iommu_dict % str(pxb_index))
+                libvirt_vmxml.modify_vm_device(vmxml, "iommu", iommu_dict, sync_vm=False)
+
+        return vmxml
+
+    def setup_gpu_config(self):
+
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name)
+        vm_attrs = eval(self.params.get('vm_attrs', '{}'))
+        if vm_attrs:
+            vmxml.setup_attrs(**vm_attrs)
+
+        memory_backing = eval(self.params.get('memory_backing', '{}'))
+        if memory_backing:
+            mem_backing = vm_xml.VMMemBackingXML()
+            mem_backing.setup_attrs(**memory_backing)
+            vmxml.mb = mem_backing
+        features_xml = vmxml.features        
+        for feature_name in ["ras", "acpi", "apic"]:
+            if features_xml.has_feature(feature_name):
+                features_xml.remove_feature(feature_name)
+        features_xml.acpi = True
+        features_xml.apic = True
+        features_xml.ras = "on"        
+        vmxml.features = features_xml
+
+        vmxml = self.setup_gpu_controllers(vmxml)
+        vmxml.sync()
+        self.test.log.debug("After setup, guest xml:\n%s", vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name))
+
     def setup_default(self, **dargs):
         """
         Default setup
@@ -212,8 +288,12 @@ class GPUTest(object):
         dev_name = dargs.get('dev_name')
         managed_disabled = dargs.get('managed_disabled', False)
 
-        self.test.log.debug("Removing the existing hostdev device...")
-        libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'hostdev')
+        if dargs.get("remove_hostdev", "yes") == "yes":
+            self.test.log.debug("Removing the existing hostdev device...")
+            libvirt_vmxml.remove_vm_devices_by_type(self.vm, 'hostdev')
+
+        if dargs.get("test_hopper_gpu", "no") == "yes":
+            self.setup_gpu_config()
 
         if managed_disabled:
             virsh.nodedev_detach(dev_name, debug=True, ignore_status=False)
