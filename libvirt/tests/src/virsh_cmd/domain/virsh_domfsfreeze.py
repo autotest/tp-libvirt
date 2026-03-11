@@ -17,7 +17,7 @@ def run(test, params, env):
     3. fsfreeze a mountpoint without --mountpoint
     """
 
-    def check_freeze(session):
+    def check_freeze(session, options):
         """
         Check whether file system has been frozen by touch a test file
         and see if command will hang.
@@ -25,8 +25,9 @@ def run(test, params, env):
         :param session: Guest session to be tested.
         """
         try:
-            output = session.cmd_output('touch freeze_test',
-                                        timeout=10)
+            path = options.split()[-1]
+            cmd = 'touch %s/freeze_test' % path
+            output = session.cmd_output(cmd, timeout=10)
             test.fail("Failed to freeze file system. "
                       "Create file succeeded:%s\n" % output)
         except aexpect.ShellTimeoutError:
@@ -98,7 +99,7 @@ def run(test, params, env):
                 # command should succeed
                 virsh.domtime(vm_ref, ignore_status=False)
             else:
-                check_freeze(session)
+                check_freeze(session, options)
 
     finally:
         # Do domain recovery
