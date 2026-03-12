@@ -1,10 +1,13 @@
 import os
 import ast
+import re
+import time
 
 from avocado.utils import process
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_backup
+from virttest import libvirt_version
 from virttest.utils_libvirtd import Libvirtd
 
 from virttest.libvirt_xml import vm_xml
@@ -33,6 +36,7 @@ def prepare_backup_xml(test, params, backup_type):
     test.log.debug("The backup xml is %s." % backup_dev)
     checkpoint_dev = checkpoint_xml.CheckpointXML()
     checkpoint_dev.setup_attrs(**checkpoint_dict)
+    test.log.debug("The checkpoint xml is %s." % checkpoint_dev)
     backup_options = backup_dev.xml + " " + checkpoint_dev.xml
     return backup_options
 
@@ -209,6 +213,94 @@ def test_kill_qemu_during_libvirtd_restart(test, params, backup_file_list):
     return backup_file_list
 
 
+def test_shutdown_vm(test, params, backup_file_list):
+    """
+    Test shutdown vm with incremental backup using --preserve-domain-on-shutdown.
+
+    :param backup_file_list: Placeholder parameter for interface compatibility, not used in this function.
+    """
+    def get_blockjob_progress(vm_name, target_disk):
+        """
+        Get blockjob progress percentage.
+
+        :param vm_name: VM name
+        :param target_disk: target disk name
+        :return: progress percentage as float
+        """
+        blockjob_result = virsh.blockjob(vm_name, target_disk, debug=True)
+        if blockjob_result.exit_status != 0:
+            return None
+        output = blockjob_result.stdout.strip() + " " + blockjob_result.stderr.strip()
+        match = re.search(r'\[\s*(\d+\.?\d*)\s*%\s*\]', output)
+        if match:
+            progress = float(match.group(1))
+            test.log.info("Current blockjob progress: %.2f%%" % progress)
+            return progress
+        return None
+
+    def check_vm_state_and_progress(vm_name, target_disk, expected_state, previous_progress, stage_name):
+        """
+        Check VM state and verify blockjob progress increases.
+
+        :param vm_name: VM name
+        :param target_disk: target disk name
+        :param expected_state: expected VM state (e.g., "paused", "running")
+        :param previous_progress: previous blockjob progress percentage
+        :param stage_name: description of the current stage
+        :return: current blockjob progress percentage
+        """
+        if not libvirt.check_vm_state(vm_name, expected_state):
+            current_state = virsh.domstate(vm_name).stdout.strip()
+            test.fail("Expected VM to be %s at '%s' stage, but got state: %s"
+                      % (expected_state, stage_name, current_state))
+
+        current_progress = get_blockjob_progress(vm_name, target_disk)
+        if current_progress is None:
+            test.fail("Blockjob should still be active at '%s' stage" % stage_name)
+
+        if current_progress <= previous_progress:
+            test.fail("Blockjob progress should increase at '%s' stage. Previous: %.2f%%, Current: %.2f%%"
+                      % (stage_name, previous_progress, current_progress))
+
+        return current_progress
+
+    libvirt_version.is_libvirt_feature_supported(params)
+    vm_name = params.get("main_vm")
+    target_disk = params.get("target_disk")
+    backup_options_extra = params.get("backup_options_extra", "")
+    resume_after_shutdown = params.get_boolean("resume_after_shutdown", False)
+
+    test.log.info("Start full backup with --preserve-domain-on-shutdown.")
+    backup_options = prepare_backup_xml(test, params, backup_type="full")
+    backup_options += backup_options_extra
+    virsh.backup_begin(vm_name, backup_options, debug=True, ignore_status=False)
+    virsh.blockjob(vm_name, target_disk, options="--bandwidth 100", debug=True, ignore_status=False)
+    time.sleep(2)
+    initial_progress = get_blockjob_progress(vm_name, target_disk)
+    if initial_progress is None:
+        test.fail("Failed to get initial blockjob progress")
+
+    test.log.info("Shutdown the guest and check the guest status.")
+    virsh.shutdown(vm_name, debug=True, ignore_status=False)
+    time.sleep(8)
+    paused_progress = check_vm_state_and_progress(vm_name, target_disk, "paused",
+                                                  initial_progress, "after shutdown")
+
+    if resume_after_shutdown:
+        test.log.info("Resume the guest and check the guest status.")
+        virsh.resume(vm_name, debug=True, ignore_status=False)
+        time.sleep(5)
+        check_vm_state_and_progress(vm_name, target_disk, "running",
+                                    paused_progress, "after resume")
+    else:
+        test.log.info("Abort the blockjob and check the guest status.")
+        virsh.domjobabort(vm_name, debug=True, ignore_status=False)
+        time.sleep(5)
+        if not libvirt.check_vm_state(vm_name, "shut off"):
+            test.fail("Expected VM to be shut off after aborting blockjob, but got unexpected state: %s"
+                      % virsh.domstate(vm_name).stdout.strip())
+
+
 def run(test, params, env):
     """
     Test vm lifecycle with incremental backup
@@ -224,7 +316,8 @@ def run(test, params, env):
         'save_vm': test_save_vm,
         'managedsave': test_managedsave,
         'restart_service': test_restart_service,
-        'kill_qemu_during_libvirtd_restart': test_kill_qemu_during_libvirtd_restart
+        'kill_qemu_during_libvirtd_restart': test_kill_qemu_during_libvirtd_restart,
+        'shutdown_vm': test_shutdown_vm
         }
     run_test = test_functions.get(case)
     if not run_test:
@@ -234,6 +327,7 @@ def run(test, params, env):
         backup_file_list = None
         if not vm.is_alive():
             vm.start()
+        vm.wait_for_login().close()
         backup_file_list = run_test(test, params, backup_file_list)
     finally:
         utils_backup.clean_checkpoints(vm_name)
