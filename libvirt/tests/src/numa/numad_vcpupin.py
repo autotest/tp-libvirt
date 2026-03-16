@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import utils_libvirtd
 
+from virttest.utils_libvirt import libvirt_cpu
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -23,7 +24,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
-
+    cpu_not_to_pin = libvirt_cpu.get_host_cpu_unavailable_pin(backup_xml)
     # Prepare numatune memory parameter dict
     mem_tuple = ('memory_mode', 'memory_placement', 'memory_nodeset')
     numa_memory = {}
@@ -68,6 +69,8 @@ def run(test, params, env):
         cpus_list = list(map(str, cpuutils.cpu_online_list()))
         logging.info("active cpus in host are %s", cpus_list)
         for cpu in cpus_list:
+            if cpu in cpu_not_to_pin:
+                continue
             ret = virsh.vcpupin(vm_name, 0, cpu, debug=True,
                                 ignore_status=True)
             if ret.exit_status:
