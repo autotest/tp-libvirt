@@ -215,6 +215,8 @@ def run(test, params, env):
     7. Check in VM that interface is detached successfully
     8. Check live XML that interface XML disappeared
     """
+    # Skip the OVS bridge test
+    network_base.cancel_if_ovs_bridge(params, test)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
