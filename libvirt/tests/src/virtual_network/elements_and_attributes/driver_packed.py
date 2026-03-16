@@ -2,6 +2,7 @@ import re
 
 from virttest import virsh
 from virttest import utils_net
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
@@ -34,10 +35,11 @@ def check_packed_virtqueue(session, expected_packed_bit, test):
     test.log.debug(f"Extracted PCI address: {pci_addr}")
 
     find_cmd = 'find / -name features | grep "%s"' % pci_addr
+    if not utils_misc.wait_for(lambda: session.cmd_status_output(find_cmd)[0] == 0,
+                               timeout=30, step=2):
+        test.fail(f"Virtio features file not found for PCI address {pci_addr}")
     virtio_features_file = session.cmd_output(find_cmd)
 
-    if not virtio_features_file:
-        test.fail(f"Virtio features file not found for PCI address {pci_addr}")
     test.log.debug(f"Using virtio features file: {virtio_features_file}")
 
     packed_bit_cmd = f"cat {virtio_features_file}"
