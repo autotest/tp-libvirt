@@ -69,7 +69,7 @@ def run(test, params, env):
                     vm.serial_console.read_until_any_line_matches(
                         [check_prompt], timeout=30, internal_timeout=0.5
                     )
-                if check_not_prompt:
+                if check_not_prompt and len(check_not_prompt) >= 3:
                     time.sleep(1)
                     output = vm.serial_console.get_output()
                     output_lines = output.split("\n")
