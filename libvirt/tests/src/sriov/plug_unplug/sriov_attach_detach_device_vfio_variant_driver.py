@@ -103,8 +103,6 @@ def run(test, params, env):
         test.log.debug("Verify: Check VF driver successfully after detaching hostdev interface/device - PASS")
         virsh.reboot(vm.name, ignore_status=False, debug=True)
         test.log.debug("Verify: VM reboot is successful after detaching hostdev interface/device - PASS")
-        vm.cleanup_serial_console()
-        vm.create_serial_console()
-        vm.wait_for_serial_login().close()
+        vm.wait_for_serial_login(recreate_serial_console=True).close()
     finally:
         orig_vm_xml.sync()
