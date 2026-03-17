@@ -166,7 +166,7 @@ def run(test, params, env):
         virsh.restore(state_file, ignore_status=False, debug=True)
         check_virtio_mem_device_xml({init_alias_name: init_xpath_list, plug_alias_name: plug_xpath_list})
 
-        virsh.managedsave(vm_name, ignore_status=False, debug=True)
+        vm.managedsave()
         vm.start()
         check_virtio_mem_device_xml({init_alias_name: init_xpath_list, plug_alias_name: plug_xpath_list})
 
