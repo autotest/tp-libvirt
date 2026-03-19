@@ -724,6 +724,21 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             if expected_msg not in hash_warning_msg:
                 test.fail('Expected warning "%s" not found in stderr: %s' % (expected_msg, hash_warning_msg))
 
+    def check_blocksize_constraints():
+        expected_fields = params_get(params, "expected_fields").split()
+        cmd_data = "nbdkit data base64=MTIz size=1M --run 'nbdinfo \"$uri\"'"
+        cmd_memory = "nbdkit memory 10G --run 'nbdinfo \"$uri\"'"
+        cmd_sparse_random = "nbdkit sparse-random size=1T --run 'nbdinfo \"$uri\"'"
+
+        with tempfile.TemporaryDirectory(prefix="nbdkit_floppy_") as floppy_dir:
+            cmd_floppy = "nbdkit floppy %s --run 'nbdinfo \"$uri\"'" % floppy_dir
+            for cmd_str in [cmd_data, cmd_memory, cmd_floppy, cmd_sparse_random]:
+                result = process.run(cmd_str, shell=True, ignore_status=True)
+                cmd_output = (result.stdout_text + result.stderr_text).strip()
+                for field in expected_fields:
+                    if field not in cmd_output:
+                        test.fail('Expected field "%s" not found in export output: %s' % (field, cmd_output))
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -800,5 +815,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         check_curl_time_option()
     elif checkpoint == 'check_blkhash_option':
         check_blkhash_option()
+    elif checkpoint == 'blocksize_constraints':
+        check_blocksize_constraints()
     else:
         test.error('Not found testcase: %s' % checkpoint)
