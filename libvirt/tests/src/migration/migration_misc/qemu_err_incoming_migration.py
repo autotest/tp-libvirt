@@ -2,6 +2,8 @@ from avocado.utils import memory
 from avocado.utils import process
 
 from virttest import remote
+from virttest import utils_disk
+from virttest import utils_libvirtd
 
 from virttest.libvirt_xml import vm_xml
 
@@ -46,6 +48,9 @@ def run(test, params, env):
         vm.start()
         vm.wait_for_login().close()
 
+        utils_disk.mount("hugetlbfs", vm_hugepage_mountpoint, "hugetlbfs", session=remote_runner.session)
+        utils_libvirtd.Libvirtd("virtqemud", session=remote_runner.session).restart()
+
     def cleanup_test():
         """
         Cleanup steps for cases
@@ -55,10 +60,19 @@ def run(test, params, env):
         global hugepage_num
         process.run(f"sysctl vm.nr_hugepages={hugepage_num}", shell=True)
         remote.run_remote_cmd(f"sysctl vm.nr_hugepages={hugepage_num}", params)
+        utils_disk.umount("hugetlbfs", vm_hugepage_mountpoint, "hugetlbfs", session=remote_runner.session)
+        utils_libvirtd.Libvirtd("virtqemud", session=remote_runner.session).restart()
         migration_obj.cleanup_connection()
 
     vm_name = params.get("migrate_main_vm")
+    vm_hugepage_mountpoint = params.get("vm_hugepage_mountpoint")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user", "root")
+    server_pwd = params.get("server_pwd")
 
+    remote_runner = remote.RemoteRunner(host=server_ip,
+                                        username=server_user,
+                                        password=server_pwd)
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
