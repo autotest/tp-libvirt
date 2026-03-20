@@ -739,6 +739,76 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                     if field not in cmd_output:
                         test.fail('Expected field "%s" not found in export output: %s' % (field, cmd_output))
 
+    def test_nbdkit_instance_name():
+        from subprocess import Popen, TimeoutExpired
+
+        # Define our ports and a log file path within the test's debug directory
+        instances = [
+            {"name": "server-gold", "port": 10809},
+            {"name": "server-silver", "port": 10810}
+        ]
+        log_path = os.path.join(data_dir.get_tmp_dir(), "nbdkit_debug.log")
+
+        # Store the Popen objects here
+        handles = []
+        try:
+            with open(log_path, "a") as log_file:
+                for inst in instances:
+                    LOG.info(f"Starting nbdkit instance: {inst['name']}")
+
+                    # Construct the command
+                    # --foreground: Keeps it attached so we can redirect output easily
+                    # --debug: Required to see the instance name in logs
+                    cmd = [
+                        "nbdkit", "-f", "-v",
+                        "--name", inst['name'],
+                        "--port", str(inst['port']),
+                        "memory", "10M"
+                    ]
+                    # Start nbdkit as a background process, piping stderr to our log file
+                    p = Popen(cmd, stderr=log_file, stdout=log_file)
+                    handles.append((inst, p))
+
+            for inst, p in handles:
+                if p.poll() is not None:
+                    test.fail(f"nbdkit {inst['name']} failed to start! Check {log_path}")
+
+            # Allow nbdkit instances time to start listening
+            import time
+            time.sleep(1)
+
+            # Trigger activity with qemu-io
+            for inst in instances:
+                LOG.info(f"Writing to {inst['name']} on port {inst['port']}")
+                qemu_cmd = f"qemu-io -f raw nbd://localhost:{inst['port']} -c \'write 0 1M\'"
+
+                result = process.run(qemu_cmd, shell=True)
+                if result.exit_status != 0:
+                    test.fail(f"qemu-io failed for {inst['name']}")
+
+            # VALIDATION: Check the log file for the specific instance names
+            with open(log_path, 'r') as f:
+                log_content = f.read()
+
+                for inst in instances:
+                    # Look for the debug pattern -> nbdkit[name]: debug: ...
+                    expected_tag = f"nbdkit[{inst['name']}]: debug:"
+                    if expected_tag not in log_content:
+                        test.fail(f"Instance name '{inst['name']}' was not found in debug logs!")
+                    LOG.info(f"Validated instance {inst['name']} appears in the debug logs")
+        finally:
+            # Cleanup: Kill the processes
+            LOG.info("Cleanup: Kill the processes")
+            for _, p in handles:
+                if p.poll() is None:
+                    p.terminate()
+                    try:
+                        # Wait up to 5 seconds for it to exit
+                        p.wait(timeout=5)
+                    except TimeoutExpired:
+                        # Force kill if it's being stubborn
+                        p.kill()
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -817,5 +887,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         check_blkhash_option()
     elif checkpoint == 'blocksize_constraints':
         check_blocksize_constraints()
+    elif checkpoint == 'test_nbdkit_instance_name':
+        test_nbdkit_instance_name()
     else:
         test.error('Not found testcase: %s' % checkpoint)
