@@ -24,8 +24,9 @@ def run(test, params, env):
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
         iface_name=True, force_dhcp=True, json=True)
     rand_id = utils_misc.generate_random_string(3)
-    bridge_name = "br_" + rand_id
     tap_name = "tap_" + rand_id
+    netdst = (params.get('netdst') or '').split(',', 1)[0].strip()
+    bridge_name = netdst if netdst else "br_" + rand_id
     interface_type = params.get("interface_type")
     iface_attrs = eval(params.get("iface_attrs", "{}"))
     initial_link_state = params.get("initial_link_state", "")
@@ -44,7 +45,9 @@ def run(test, params, env):
 
     try:
         if interface_type == "ethernet":
-            utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
+            network_base.cancel_if_ovs_bridge(params, test)
+            if not netdst:
+                utils_net.create_linux_bridge_tmux(bridge_name, host_iface)
             network_base.create_tap(tap_name, bridge_name, "root")
 
         mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
@@ -109,4 +112,5 @@ def run(test, params, env):
         bkxml.sync()
         if interface_type == "ethernet":
             network_base.delete_tap(tap_name)
-            utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
+            if not netdst:
+                utils_net.delete_linux_bridge_tmux(bridge_name, host_iface)
