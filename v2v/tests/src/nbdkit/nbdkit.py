@@ -739,6 +739,56 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                     if field not in cmd_output:
                         test.fail('Expected field "%s" not found in export output: %s' % (field, cmd_output))
 
+    def test_count_filter():
+        from subprocess import Popen, TimeoutExpired
+
+        log_path = os.path.join(data_dir.get_tmp_dir(), "nbdkit_debug.log")
+
+        try:
+            with open(log_path, "a") as log_file:
+                LOG.info(f"Starting nbdkit")
+                cmd = ["nbdkit", "-f", "-v", "memory", "10M", "--filter=count"]
+                # Start nbdkit as a background process, piping stderr to log file
+                p = Popen(cmd, stderr=log_file, stdout=log_file)
+
+            if p.poll() is not None:
+                test.fail(f"nbdkit failed to start! Check {log_path}")
+
+            # Allow nbdkit instances time to start listening
+            import time
+            time.sleep(1)
+
+            # Trigger activity with qemu-io
+            LOG.info("Writing to nbdkit")
+            qemu_cmd = f"qemu-io -f raw nbd://localhost -c \'write 0 1M\' -c \'read 0 1M\' -c \'discard 0 1M\'"
+
+            result = process.run(qemu_cmd, shell=True)
+            if result.exit_status != 0:
+                test.fail(f"qemu-io failed")
+
+            # VALIDATION: Check the log file for the read, written, zeroed, trimmed  reports
+            with open(log_path, 'r') as f:
+                log_content = f.read()
+                LOG.info(f"logging info ----> {log_content}")
+                # Look for the expected pattern
+                expected_patterns = ["count: pwrite count=1048576", "count: pread count=1048576", "count: trim count=1048576"]
+
+                for pattern in expected_patterns:
+                    if pattern not in log_content:
+                        test.fail(f"'{pattern}' was not found in debug logs!")
+                    LOG.info(f"Pattern {pattern} appears in the debug logs")
+        finally:
+            # Cleanup: Kill the processes
+            LOG.info("Cleanup: Kill the processes")
+            if p.poll() is None:
+                p.terminate()
+                try:
+                    # Wait up to 5 seconds for it to exit
+                    p.wait(timeout=5)
+                except TimeoutExpired:
+                    # Force kill if it's being stubborn
+                    p.kill()
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -817,5 +867,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         check_blkhash_option()
     elif checkpoint == 'blocksize_constraints':
         check_blocksize_constraints()
+    elif checkpoint == 'test_count_filter':
+        test_count_filter()
     else:
         test.error('Not found testcase: %s' % checkpoint)
