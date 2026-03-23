@@ -752,7 +752,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         # Store the Popen objects here
         handles = []
         try:
-            with open(log_path, "a") as log_file:
+            with open(log_path, "w") as log_file:
                 for inst in instances:
                     LOG.info(f"Starting nbdkit instance: {inst['name']}")
 
