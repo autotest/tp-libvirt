@@ -809,6 +809,69 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                         # Force kill if it's being stubborn
                         p.kill()
 
+    def test_nbd_data_integrity():
+        from subprocess import Popen, PIPE, STDOUT
+        import time
+        # --- Configuration ---
+        SOCKET = "/tmp/test.sock"
+        IMG_PATH = os.path.join(data_dir.get_tmp_dir(), "test.img")
+        IMAGE_SIZE = "1G"
+
+        LOG.info(f"Prepare {IMAGE_SIZE} image file")
+        cmd = f"truncate -s {IMAGE_SIZE} {IMG_PATH}"
+        process.run(cmd, shell=True, ignore_status=True)
+        if os.path.exists(SOCKET):
+            os.remove(SOCKET)
+
+        LOG.info("Starting nbdkit server in background")
+        nbd_log_file = os.path.join(data_dir.get_tmp_dir(), "nbd_log_file.log")
+        # Start nbdkit with debug flags enabled
+        with open(nbd_log_file, "w") as nbd_log_file:
+            server_cmd = ["nbdkit", "-f", "-v", "-D", "file.zero=1", "-U", SOCKET, "file", IMG_PATH]
+            nbd_server = Popen(server_cmd, stdout=nbd_log_file, stderr=nbd_log_file)
+        # Wait for the socket file to appear
+        time.sleep(1)
+
+        test_state = params_get(params, "test_state")
+        try:
+            if test_state == "positive":
+                LOG.info("Testing nbdcopy with 32M")
+                cmd = f"nbdcopy --request-size=32M /dev/zero nbd+unix:///?socket={SOCKET}"
+                result = process.run(cmd, shell=True, ignore_status=True)
+                exp_warn = "No space left on device"
+                if exp_warn not in result.stderr_text:
+                    test.fail(f"Expected warning {exp_warn}, got {result.stderr_text}")
+
+                LOG.info("Verification (Compare with /dev/zero)")
+                cmd = f"nbdcopy nbd+unix:///?socket={SOCKET} - | cmp -n {IMAGE_SIZE} - /dev/zero"
+                result = process.run(cmd, shell=True, ignore_status=True)
+
+                if result.exit_status != 0:
+                    test.fail(f"Check Failed: Mismatch found! {result.stderr_text}")
+
+                LOG.info("Verification (MD5 Hash Check)")
+                # Pipe the output directly into a hash to save memory
+                hash_cmd = f"nbdcopy nbd+unix:///?socket={SOCKET} - | head -c {IMAGE_SIZE} | md5sum"
+                result = process.run(hash_cmd, shell=True, ignore_status=True)
+                actual_md5 = result.stdout_text
+                result = process.run("head -c 1G /dev/zero | md5sum", shell=True, ignore_status=True)
+                expected_md5 = result.stdout_text
+                if actual_md5 != expected_md5:
+                    test.fail("[FAILURE] Data corruption detected.")
+            elif test_state == "negative":
+                LOG.info("Testing nbdcopy with 128M (Expected Failure)")
+                cmd = f"nbdcopy --request-size=128M /dev/zero nbd+unix:///?socket={SOCKET}"
+                result = process.run(cmd, shell=True, ignore_status=True)
+                err_msg = "must be a power of 2 within 4096-33554432: 128M"
+                if err_msg not in result.stderr_text:
+                    test.fail(f"Expected warning {err_msg}, got {result.stderr_text}")
+        finally:
+            LOG.info("Cleaning up")
+            nbd_server.terminate()
+            nbd_server.wait()
+            if os.path.exists(SOCKET):
+                os.remove(SOCKET)
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -889,5 +952,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         check_blocksize_constraints()
     elif checkpoint == 'test_nbdkit_instance_name':
         test_nbdkit_instance_name()
+    elif checkpoint == 'check_data_integrity':
+        test_nbd_data_integrity()
     else:
         test.error('Not found testcase: %s' % checkpoint)
