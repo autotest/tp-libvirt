@@ -658,7 +658,7 @@ def run(test, params, env):
             if checkpoint == 'without_ic':
                 input_option = "-i ova %s -of raw" % input_file
             # Build network&bridge option to avoid network error
-            if checkpoint not in ['virt_v2v_open', 'virt_v2v_inspector']:
+            if checkpoint not in ['virt_v2v_open', 'virt_v2v_inspector', 'detect_gpo_av']:
                 v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                                  params.get("output_network"))
         elif input_mode == "disk":
@@ -946,14 +946,33 @@ def run(test, params, env):
             cmd = re.sub(r".*/bin/virt-v2v", '/usr/libexec/virt-v2v-in-place', cmd)
         if checkpoint == 'virt_v2v_open':
             cmd = re.sub(r".*/bin/virt-v2v", 'virt-v2v-open', cmd)
-        if checkpoint == 'virt_v2v_inspector':
+        if checkpoint in ['virt_v2v_inspector', 'detect_gpo_av']:
             cmd = re.sub(r".*/bin/virt-v2v", 'virt-v2v-inspector', cmd)
             cmd = cmd.replace('-i libvirt', '')
         if checkpoint in ['vddk_compression_zlib', 'vddk_compression_skipz']:
             cmd = re.sub(r"-io vddk-thumbprint=\S+\s*", '', cmd)
+        if checkpoint == 'esx_ipv6':
+            ipv4_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
+            esx_ipv6_addr = params.get('esx_ipv6_addr')
+            if not esx_ipv6_addr:
+                test.error("esx ipv6_addr parameter is missing")
+            cmd = re.sub(ipv4_pattern, esx_ipv6_addr, cmd)
+        if checkpoint == 'vpx_with_invalid_esx_ipv6':
+            ipv4_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
+            vpx_ipv6_addr = params.get('vpx_ipv6_addr')
+            if not vpx_ipv6_addr:
+                test.error("vpx_ipv6_addr parameter is missing")
+            cmd = re.sub(ipv4_pattern, vpx_ipv6_addr, cmd)
+            cmd = re.sub(r'/\[(.*?)\]/', r'/\1/', cmd)
+            cmd_export_env = 'LIBVIRT_DEBUG=1'
+            cmd = "%s %s" % (cmd_export_env, cmd)
 
-        cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
-                                 ignore_status=True)
+        if checkpoint == 'vpx_with_invalid_esx_ipv6':
+            cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
+                                     ignore_status=True, shell=True)
+        else:
+            cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
+                                     ignore_status=True)
         if new_vm_name:
             vm_name = new_vm_name
             params['main_vm'] = new_vm_name
