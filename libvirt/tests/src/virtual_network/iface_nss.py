@@ -6,6 +6,7 @@ from virttest.utils_test.__init__ import ping
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest.libvirt_xml.devices import interface
+from provider.virtual_network import network_base
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -55,6 +56,8 @@ def run(test, params, env):
     3. Start the vm and check if the libvirt-nss module works properly by checking if the guest's hostname or
     domain name can be resolved successfully
     """
+    # Skip the OVS bridge test
+    network_base.cancel_if_ovs_bridge(params, test)
     nss_option = params.get("nss_option", None)
     guest_name = params.get("guest_name", "nssguest")
     net_name = params.get("net_name", "default")
@@ -82,6 +85,7 @@ def run(test, params, env):
         new_iface = interface.Interface('network')
         new_iface.xml = iface_xml.xml
         new_iface.type_name = "network"
+        new_iface.del_source()
         new_iface.source = {'network': net_name}
         vmxml.add_device(new_iface)
         vmxml.sync()
