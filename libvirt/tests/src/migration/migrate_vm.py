@@ -2734,7 +2734,7 @@ def run(test, params, env):
                           % (cmd, output))
 
     finally:
-        logging.info("Recovery test environment")
+        logging.info("TEST_RECOVERY: Recovery test environment")
 
         logging.debug("Removing vm on remote if it exists.")
         virsh.remove_domain(vm.name, options='--nvram', uri=uri)
@@ -2862,10 +2862,10 @@ def run(test, params, env):
                                                 cleanup=True,
                                                 ports=uri_port[1:])
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
-                logging.debug("Destroy remote guest")
-                remote_virsh_session.destroy(target_vm_name)
-                logging.debug("Recover remote guest xml")
-                remote_virsh_session.define(xml_path)
+                logging.debug("TEST_RECOVERY: Destroy remote guest")
+                remote_virsh_session.destroy(target_vm_name, ignore_status=True)
+                logging.debug("TEST_RECOVERY: Recover remote guest xml")
+                remote_virsh_session.define(xml_path, ignore_status=True)
             except (process.CmdError, remote.SCPError) as detail:
                 test.error(detail)
             finally:
