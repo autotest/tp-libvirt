@@ -30,6 +30,7 @@ def run(test, params, env):
 
     vm_name = params.get("migrate_main_vm")
     test_case = params.get('test_case', '')
+    migrate_vm_back = params.get_boolean("migrate_vm_back", True)
 
     virsh_session = None
     remote_virsh_session = None
@@ -47,5 +48,7 @@ def run(test, params, env):
         migration_obj.run_migration()
         verify_test()
         migration_base.check_event_output(params, test, virsh_session, remote_virsh_session)
+        if migrate_vm_back:
+            migration_obj.run_migration_back()
     finally:
         migration_obj.cleanup_connection()
