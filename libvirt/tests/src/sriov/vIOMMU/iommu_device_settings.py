@@ -1,13 +1,11 @@
 from virttest import utils_disk
-from virttest import utils_net
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 
+from provider.sriov import check_points as sriov_check_points
 from provider.sriov import sriov_base
 from provider.viommu import viommu_base
-
-from provider.sriov import check_points as sriov_check_points
 
 
 def run(test, params, env):
@@ -80,11 +78,6 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Check if the VM disk and network are woring well.")
         utils_disk.dd_data_to_vm_disk(vm_session, "/mnt/test")
-        if need_sriov:
-            sriov_check_points.check_vm_network_accessed(vm_session, ping_dest=ping_dest)
-        else:
-            s, o = utils_net.ping(ping_dest, count=5, timeout=10, session=vm_session)
-            if s:
-                test.fail("Failed to ping %s! status: %s, output: %s." % (ping_dest, s, o))
+        sriov_check_points.check_network_access(test, vm_session, need_sriov, ping_dest)
     finally:
         test_obj.teardown_iommu_test()

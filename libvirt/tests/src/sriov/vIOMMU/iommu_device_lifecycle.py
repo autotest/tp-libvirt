@@ -1,37 +1,19 @@
+import ast
 import os
 
 from virttest import utils_misc
-from virttest import utils_net
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
 
 from provider.save import save_base
+from provider.sriov import check_points as sriov_check_points
 from provider.sriov import sriov_base
 from provider.viommu import viommu_base
-from provider.sriov import check_points as sriov_check_points
 from provider.vm_lifecycle import lifecycle_base
 
 VIRSH_ARGS = {'debug': True, 'ignore_status': False}
-
-
-def check_network_access(test, session, need_sriov, ping_dest):
-    """
-    Verify network connectivity in the VM after lifecycle operations.
-
-    :param test: Test object for logging and assertions
-    :param session: Active session to the VM
-    :param need_sriov: Boolean indicating if SRIOV network testing is required
-    :param ping_dest: Destination IP address to ping for connectivity test
-    :raises: TestFail if network connectivity fails
-    """
-    if need_sriov:
-        sriov_check_points.check_vm_network_accessed(session, ping_dest=ping_dest)
-    else:
-        s, o = utils_net.ping(ping_dest, count=5, timeout=10, session=session)
-        if s:
-            test.fail(f"Failed to ping {ping_dest}! status: {s}, output: {o}")
 
 
 def test_save_suspend(test, vm, save_path, test_scenario):
@@ -83,13 +65,15 @@ def test_reboot_reset_shutdown(test, vm, params, need_sriov, ping_dest, test_sce
         else:
             return
     elif test_scenario == "reset":
-        lifecycle_base.test_reset(test, vm, login_timeout)
+        test.log.info("TEST_STEP: Reset the VM.")
+        vm.reboot(method="libvirt_reset", serial=True, timeout=login_timeout)
     else:  # reboot_many_times
         for _ in range(int(params.get('loop_time', '5'))):
-            lifecycle_base.test_reboot(test, vm, params, login_timeout)
+            test.log.info("TEST_STEP: Reboot the VM.")
+            vm.reboot(serial=True, timeout=login_timeout)
 
     session = vm.wait_for_serial_login(timeout=login_timeout)
-    check_network_access(test, session, need_sriov, ping_dest)
+    sriov_check_points.check_network_access(test, session, need_sriov, ping_dest)
     session.close()
 
 
@@ -105,12 +89,12 @@ def setup_vm_xml(test, vm, test_obj, need_sriov=False, cleanup_ifaces=True):
     :raises: TestFail if VM XML configuration fails
     """
     test.log.info("TEST_SETUP: Update VM XML.")
-    test_obj.setup_iommu_test(iommu_dict=eval(test_obj.params.get('iommu_dict', '{}')),
+    test_obj.setup_iommu_test(iommu_dict=ast.literal_eval(test_obj.params.get('iommu_dict', '{}')),
                               cleanup_ifaces=cleanup_ifaces)
     test_obj.prepare_controller()
 
     for dev in ["disk", "video"]:
-        dev_dict = eval(test_obj.params.get('%s_dict' % dev, '{}'))
+        dev_dict = ast.literal_eval(test_obj.params.get('%s_dict' % dev, '{}'))
         if dev == "disk":
             dev_dict = test_obj.update_disk_addr(dev_dict)
         libvirt_vmxml.modify_vm_device(
