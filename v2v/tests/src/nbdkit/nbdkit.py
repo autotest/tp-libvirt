@@ -862,6 +862,33 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                 # stop() is better than terminate() here as it handles the wait() logic
                 p.stop(timeout=5)
 
+    def test_data_plugin_supports_base64_in_format_string():
+        import base64
+        test_state = params_get(params, "test_state")
+        if test_state == "positive":
+            # Prepare the data
+            original_text = b"nbdkit-test123"
+            # Encode bytes to a base64 string
+            b64_input = base64.b64encode(original_text).decode()
+            cmd_str = f"nbdkit -U - data \'base64:{b64_input}\' --run 'nbdcopy $uri -'"
+            # Execute command
+            result = process.run(cmd_str, shell=True, ignore_status=True)
+            # Result.stdout contains the raw binary output from nbdcopy
+            cmd_output = result.stdout
+            if original_text not in cmd_output:
+                test.fail(f"Base64 decoding failed. Expected {original_text!r}, got {cmd_output!r}")
+        elif test_state == "negative":
+            # Negative scenario - Check with invalid value
+            invalid_b64 = "base64:SGVsbG8@@@"
+            cmd_str = f"nbdkit -U - data \'{invalid_b64}\' --run 'nbdcopy $uri -'"
+            # Execute command
+            result = process.run(cmd_str, shell=True, ignore_status=True)
+            # Verify the error message
+            cmd_output = result.stderr_text
+            err_msg = params_get(params, "expected_err_msg")
+            if err_msg not in cmd_output:
+                test.fail(f"Error message - \'{err_msg}\' not appeared.")
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -944,5 +971,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_nbdkit_instance_name()
     elif checkpoint == 'test_count_filter':
         test_count_filter()
+    elif checkpoint == 'test_data_plugin_supports_base64_in_format_string':
+        test_data_plugin_supports_base64_in_format_string()
     else:
         test.error('Not found testcase: %s' % checkpoint)
