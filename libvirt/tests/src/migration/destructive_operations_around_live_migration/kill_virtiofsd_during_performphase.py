@@ -38,15 +38,14 @@ def run(test, params, env):
         mount_dir = params.get("mount_dir")
         expect_str = params.get("expect_str")
 
-        cmd1 = f"chcon -t virtd_exec_t /usr/libexec/virtiofsd"
-        cmd2 = f"mkdir -p {mnt_path_name}"
-        cmd3 = f"systemd-run /usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name}"
-        multi_cmd1 = f"{cmd1}; {cmd2}; {cmd3}"
-        process.run(multi_cmd1, shell=True, ignore_status=False)
+        cmd1 = f"mkdir -p {mnt_path_name}"
+        cmd2 = f"nohup /usr/libexec/virtiofsd --socket-path={socket_path} -o source={mnt_path_name} --log-level off > /dev/null 2>&1 & disown"
+        multi_cmd1 = f"{cmd1}; {cmd2}"
+        process.run(multi_cmd1, shell=True, ignore_status=False, ignore_bg_processes=True)
         remote.run_remote_cmd(multi_cmd1, params, ignore_status=False)
-        cmd4 = f"chcon -t svirt_image_t {socket_path}"
-        cmd5 = f"chown qemu:qemu {socket_path}"
-        multi_cmd2 = f"{cmd4}; {cmd5}"
+        cmd3 = f"chcon -t svirt_image_t {socket_path}"
+        cmd4 = f"chown qemu:qemu {socket_path}"
+        multi_cmd2 = f"{cmd3}; {cmd4}"
         process.run(multi_cmd2, shell=True, ignore_status=False)
         remote.run_remote_cmd(multi_cmd2, params, ignore_status=False)
 
@@ -96,6 +95,19 @@ def run(test, params, env):
             if virsh.domain_exists(vm_name, uri=dest_uri):
                 test.fail("The domain on target host is found, but expected not")
 
+    def cleanup_test():
+        """
+        Cleanup steps for cases
+
+        """
+        socket_path = params.get("socket_path")
+
+        migration_obj.cleanup_connection()
+        remote.run_remote_cmd('pkill virtiofsd', params, ignore_status=True)
+        remote.run_remote_cmd(f"rm -rf {socket_path}", params, ignore_status=True)
+        process.run("pkill virtiofsd", shell=True, ignore_status=True)
+        process.run(f"rm -rf {socket_path}", shell=True, ignore_status=True)
+
     libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("migrate_main_vm")
 
@@ -107,4 +119,4 @@ def run(test, params, env):
         migration_obj.run_migration()
         verify_test()
     finally:
-        migration_obj.cleanup_connection()
+        cleanup_test()

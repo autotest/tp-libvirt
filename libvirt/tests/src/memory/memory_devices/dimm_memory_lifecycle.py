@@ -188,7 +188,7 @@ def run(test, params, env):
         check_dimm_mem_device_xml(
             {init_alias_name: init_xpath_list, plug_alias_name: plug_xpath_list})
 
-        virsh.managedsave(vm_name, **virsh_dargs)
+        vm.managedsave()
         vm.start()
         check_dimm_mem_device_xml(
             {init_alias_name: init_xpath_list, plug_alias_name: plug_xpath_list})

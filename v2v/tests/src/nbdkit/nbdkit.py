@@ -871,6 +871,85 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             nbd_server.wait()
             if os.path.exists(SOCKET):
                 os.remove(SOCKET)
+    def test_count_filter():
+        # p is our SubProcess object
+        p = None
+        try:
+            LOG.info("Starting nbdkit")
+            # Define the command.
+            cmd = "nbdkit -f -v memory 10M --filter=count"
+
+            # Instantiate the SubProcess object
+            # Note: We pass the LOG so it knows where to send output
+            p = process.SubProcess(cmd, shell=True, logger=LOG)
+
+            # Start it in the background
+            p.start()
+
+            # Check if the process actually started (has a PID)
+            if not p.get_pid():
+                test.fail("nbdkit failed to start!")
+
+            # Allow nbdkit instance time to start listening
+            import time
+            time.sleep(1)
+
+            # Trigger activity with qemu-io (Synchronous run is fine here)
+            LOG.info("Writing data to nbdkit")
+            qemu_cmd = "qemu-io -f raw nbd://localhost -c 'write 0 1M' -c 'read 0 1M' -c 'write -z 1M 1M' -c 'discard 0 1M'"
+            result = process.run(qemu_cmd, shell=True)
+            if result.exit_status != 0:
+                test.fail(f"qemu-io failed with status {result.exit_status}")
+
+            # VALIDATION: Check the captured output
+            # SubProcess captures stdout and stderr separately as bytes
+            log_content = (p.get_stdout() + p.get_stderr()).decode('utf-8', errors='replace')
+            LOG.info(f"Captured output: {log_content}")
+
+            expected_patterns = [
+                "count: pwrite count=1048576",
+                "count: pread count=1048576",
+                "count: zero count=1048576",
+                "count: trim count=1048576"
+            ]
+            for pattern in expected_patterns:
+                if pattern not in log_content:
+                    # We show the log content to help debug why it failed
+                    test.fail(f"'{pattern}' was not found in logs!")
+                LOG.info(f"Pattern '{pattern}' found.")
+        finally:
+            # Cleanup using the class methods
+            if p and p.poll() is None:
+                LOG.info("Cleanup: Stopping nbdkit process")
+                # stop() is better than terminate() here as it handles the wait() logic
+                p.stop(timeout=5)
+
+    def test_data_plugin_supports_base64_in_format_string():
+        import base64
+        test_state = params_get(params, "test_state")
+        if test_state == "positive":
+            # Prepare the data
+            original_text = b"nbdkit-test123"
+            # Encode bytes to a base64 string
+            b64_input = base64.b64encode(original_text).decode()
+            cmd_str = f"nbdkit -U - data \'base64:{b64_input}\' --run 'nbdcopy $uri -'"
+            # Execute command
+            result = process.run(cmd_str, shell=True, ignore_status=True)
+            # Result.stdout contains the raw binary output from nbdcopy
+            cmd_output = result.stdout
+            if original_text not in cmd_output:
+                test.fail(f"Base64 decoding failed. Expected {original_text!r}, got {cmd_output!r}")
+        elif test_state == "negative":
+            # Negative scenario - Check with invalid value
+            invalid_b64 = "base64:SGVsbG8@@@"
+            cmd_str = f"nbdkit -U - data \'{invalid_b64}\' --run 'nbdcopy $uri -'"
+            # Execute command
+            result = process.run(cmd_str, shell=True, ignore_status=True)
+            # Verify the error message
+            cmd_output = result.stderr_text
+            err_msg = params_get(params, "expected_err_msg")
+            if err_msg not in cmd_output:
+                test.fail(f"Error message - \'{err_msg}\' not appeared.")
 
     if version_required and not multiple_versions_compare(
             version_required):
@@ -954,5 +1033,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_nbdkit_instance_name()
     elif checkpoint == 'check_data_integrity':
         test_nbd_data_integrity()
+    elif checkpoint == 'test_count_filter':
+        test_count_filter()
+    elif checkpoint == 'test_data_plugin_supports_base64_in_format_string':
+        test_data_plugin_supports_base64_in_format_string()
     else:
         test.error('Not found testcase: %s' % checkpoint)
