@@ -219,7 +219,7 @@ def run(test, params, env):
                     test.fail(msg)
             session.close()
         if params.get("reboot_after_config", "yes") == "yes":
-            vm.reboot(method="system_reset", serial=True)
+            vm.reboot(method="libvirt_reset", serial=True)
 
     test.log.info(
         "TEST_STEP 4: Ensure guest networking is ready "

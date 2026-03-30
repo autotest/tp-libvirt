@@ -9,7 +9,7 @@ def run(test, params, env):
     """
     Qemu reboot test:
     1) Log into a guest
-    3) Send a reboot command or a system_reset monitor command (optional)
+    3) Send a reboot command or a virsh-reset command (optional)
     4) Wait until the guest is up again
     5) Log into the guest to verify it's up again
 
@@ -41,7 +41,7 @@ def run(test, params, env):
     if params.get("reboot_method"):
         for vm in vms:
             test.log.debug("Reboot guest '%s'." % vm.name)
-            if params.get("reboot_method") == "system_reset":
+            if params.get("reboot_method") == "libvirt_reset":
                 time.sleep(params.get_numeric("sleep_before_reset", 10))
             # Reboot the VM
             if serial_login:
