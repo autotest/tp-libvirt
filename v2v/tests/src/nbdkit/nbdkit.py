@@ -889,6 +889,72 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
             if err_msg not in cmd_output:
                 test.fail(f"Error message - \'{err_msg}\' not appeared.")
 
+    def test_nbd_data_integrity():
+        # --- Configuration ---
+        SOCKET = "/tmp/test.sock"
+        IMG_PATH = os.path.join(data_dir.get_tmp_dir(), "test.img")
+        IMAGE_SIZE = "1G"
+        p = None
+        try:
+            LOG.info(f"Prepare {IMAGE_SIZE} image file")
+            cmd = f"truncate -s {IMAGE_SIZE} {IMG_PATH}"
+            process.run(cmd, shell=True, ignore_status=True)
+            if os.path.exists(SOCKET):
+                os.remove(SOCKET)
+
+            LOG.info("Starting nbdkit server in background")
+            cmd = f"nbdkit -D file.zero=1 -U  {SOCKET} file {IMG_PATH}"
+            p = process.SubProcess(cmd, shell=True, logger=LOG)
+            p.start()
+            # Check if the process actually started (has a PID)
+            if not p.get_pid():
+                test.fail("nbdkit failed to start!")
+
+            # Wait for the socket file to appear
+            import time
+            time.sleep(1)
+
+            test_state = params_get(params, "test_state")
+            if test_state == "positive":
+                LOG.info("Testing nbdcopy with 32M")
+                cmd = f"nbdcopy --request-size=32M /dev/zero nbd+unix:///?socket={SOCKET}"
+                result = process.run(cmd, shell=True, ignore_status=True)
+                exp_warn = "No space left on device"
+                if exp_warn not in result.stderr_text:
+                    test.fail(f"Expected warning {exp_warn}, got {result.stderr_text}")
+
+                LOG.info("Verification (Compare with /dev/zero)")
+                cmd = f"nbdcopy nbd+unix:///?socket={SOCKET} - | cmp -n {IMAGE_SIZE} - /dev/zero"
+                result = process.run(cmd, shell=True, ignore_status=True)
+
+                if result.exit_status != 0:
+                    test.fail(f"Check Failed: Mismatch found! {result.stderr_text}")
+
+                LOG.info("Verification (MD5 Hash Check)")
+                # Pipe the output directly into a hash to save memory
+                hash_cmd = f"nbdcopy nbd+unix:///?socket={SOCKET} - | head -c {IMAGE_SIZE} | md5sum"
+                result = process.run(hash_cmd, shell=True, ignore_status=True)
+                actual_md5 = result.stdout_text
+                result = process.run("head -c 1G /dev/zero | md5sum", shell=True, ignore_status=True)
+                expected_md5 = result.stdout_text
+                if actual_md5 != expected_md5:
+                    test.fail("[FAILURE] Data corruption detected.")
+            elif test_state == "negative":
+                LOG.info("Testing nbdcopy with 128M (Expected Failure)")
+                cmd = f"nbdcopy --request-size=128M /dev/zero nbd+unix:///?socket={SOCKET}"
+                result = process.run(cmd, shell=True, ignore_status=True)
+                err_msg = "must be a power of 2 within 4096-33554432: 128M"
+                if err_msg not in result.stderr_text:
+                    test.fail(f"Expected warning {err_msg}, got {result.stderr_text}")
+        finally:
+            # Cleanup using the class methods
+            if p and p.poll() is None:
+                LOG.info("Cleanup: Stopping nbdkit process")
+                # stop() is better than terminate() here as it handles the wait() logic
+                p.stop(timeout=5)
+            if os.path.exists(SOCKET):
+                os.remove(SOCKET)
+
     if version_required and not multiple_versions_compare(
             version_required):
         test.cancel("Testing requires version: %s" % version_required)
@@ -973,5 +1039,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         test_count_filter()
     elif checkpoint == 'test_data_plugin_supports_base64_in_format_string':
         test_data_plugin_supports_base64_in_format_string()
+    elif checkpoint == 'check_data_integrity':
+        test_nbd_data_integrity()
     else:
         test.error('Not found testcase: %s' % checkpoint)
