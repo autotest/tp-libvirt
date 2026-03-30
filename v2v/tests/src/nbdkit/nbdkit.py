@@ -810,58 +810,57 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                         p.kill()
 
     def test_count_filter():
-        from subprocess import Popen, TimeoutExpired
-
-        log_path = os.path.join(data_dir.get_tmp_dir(), "nbdkit_count_filter_debug.log")
-
+        # p is our SubProcess object
+        p = None
         try:
-            with open(log_path, "w") as log_file:
-                LOG.info("Starting nbdkit")
-                cmd = ["nbdkit", "-f", "-v", "memory", "10M", "--filter=count"]
-                # Start nbdkit as a background process, piping stderr and stdout to log file
-                p = Popen(cmd, stderr=log_file, stdout=log_file)
+            LOG.info("Starting nbdkit")
+            # Define the command.
+            cmd = "nbdkit -f -v memory 10M --filter=count"
 
-            if p.poll() is not None:
-                test.fail(f"nbdkit failed to start! Check {log_path}")
+            # Instantiate the SubProcess object
+            # Note: We pass the LOG so it knows where to send output
+            p = process.SubProcess(cmd, shell=True, logger=LOG)
 
-            # Allow nbdkit instances time to start listening
+            # Start it in the background
+            p.start()
+
+            # Check if the process actually started (has a PID)
+            if not p.get_pid():
+                test.fail("nbdkit failed to start!")
+
+            # Allow nbdkit instance time to start listening
             import time
             time.sleep(1)
 
-            # Trigger activity with qemu-io
+            # Trigger activity with qemu-io (Synchronous run is fine here)
             LOG.info("Writing data to nbdkit")
-            qemu_cmd = "qemu-io -f raw nbd://localhost -c \'write 0 1M\' -c \'read 0 1M\' -c \'write -z 1M 1M\' -c \'discard 0 1M\'"
-
+            qemu_cmd = "qemu-io -f raw nbd://localhost -c 'write 0 1M' -c 'read 0 1M' -c 'write -z 1M 1M' -c 'discard 0 1M'"
             result = process.run(qemu_cmd, shell=True)
             if result.exit_status != 0:
-                test.fail("qemu-io failed")
+                test.fail(f"qemu-io failed with status {result.exit_status}")
 
-            # VALIDATION: Check the log file for the read, written, zeroed, trimmed  reports
-            with open(log_path, 'r') as f:
-                log_content = f.read()
-                # Look for the expected pattern
-                expected_patterns = [
-                    "count: pwrite count=1048576",
-                    "count: pread count=1048576",
-                    "count: zero count=1048576",
-                    "count: trim count=1048576"
-                ]
+            # VALIDATION: Check the captured output
+            # SubProcess captures stdout and stderr separately as bytes
+            log_content = (p.get_stdout() + p.get_stderr()).decode('utf-8', errors='replace')
+            LOG.info(f"Captured output: {log_content}")
 
-                for pattern in expected_patterns:
-                    if pattern not in log_content:
-                        test.fail(f"'{pattern}' was not found in debug logs!")
-                    LOG.info(f"Pattern {pattern} appears in the debug logs")
+            expected_patterns = [
+                "count: pwrite count=1048576",
+                "count: pread count=1048576",
+                "count: zero count=1048576",
+                "count: trim count=1048576"
+            ]
+            for pattern in expected_patterns:
+                if pattern not in log_content:
+                    # We show the log content to help debug why it failed
+                    test.fail(f"'{pattern}' was not found in logs!")
+                LOG.info(f"Pattern '{pattern}' found.")
         finally:
-            # Cleanup: Kill the processes
-            LOG.info("Cleanup: Kill the processes")
-            if p.poll() is None:
-                p.terminate()
-                try:
-                    # Wait up to 5 seconds for it to exit
-                    p.wait(timeout=5)
-                except TimeoutExpired:
-                    # Force kill if it's being stubborn
-                    p.kill()
+            # Cleanup using the class methods
+            if p and p.poll() is None:
+                LOG.info("Cleanup: Stopping nbdkit process")
+                # stop() is better than terminate() here as it handles the wait() logic
+                p.stop(timeout=5)
 
     if version_required and not multiple_versions_compare(
             version_required):
