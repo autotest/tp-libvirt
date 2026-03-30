@@ -433,7 +433,8 @@ def cleanup_for_iface(iface_type, params):
             libvirt_network.create_or_del_network(network_dict, is_del=True)
 
 
-def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type):
+def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type,
+                     netserver_cmd='netserver', netperf_cmd='netperf'):
     """
     Check actual thoughput of network using netperf
 
@@ -442,12 +443,15 @@ def check_throughput(serv_runner, cli_runner, ip_addr, bw, th_type):
     :param ip_addr: ip address
     :param bw: bandwidth setting
     :param th_type: inbound or outbound
+    :param netserver_cmd: netserver command with path (default: 'netserver')
+    :param netperf_cmd: netperf command with path (default: 'netperf')
     """
 
-    serv_runner('netserver')
-    netperf_out = cli_runner(f'netperf -H {ip_addr}')
+    serv_runner(netserver_cmd)
+    netperf_out = cli_runner(f'{netperf_cmd} -H {ip_addr}')
     LOG.debug(netperf_out)
-    serv_runner('pkill netserver')
+    netserver_bin = os.path.basename(netserver_cmd.split()[0])
+    serv_runner(f'pkill {netserver_bin}')
 
     actual_throu = float(netperf_out.strip().splitlines()[-1].split()[-1])
     expect_throu = int(bw) * 8 / 1024
@@ -757,7 +761,7 @@ def cancel_if_ovs_bridge(params, test):
     :param params: Test parameters dict
     :param test: Test object
     """
-    bridge_name = params.get('netdst', '').split(',')[0]
+    bridge_name = params.get('netdst', '')
 
     try:
         br_backend = utils_net.find_bridge_manager(bridge_name)
@@ -775,14 +779,14 @@ def setup_ovs_bridge_attrs(params, iface_attrs):
     :param iface_attrs: Interface attributes dictionary to modify
     :return: True if OVS configuration applied, False otherwise
     """
-    bridge_name = params.get('netdst', '').split(',')[0]
-    is_ovs_bridge = not isinstance(utils_net.find_bridge_manager(bridge_name), utils_net.Bridge)
-
-    if is_ovs_bridge:
-        # Configure for OVS bridge
+    netdst = params.get('netdst', '')
+    br_obj = utils_net.find_bridge_manager(netdst)
+    if br_obj is None:
+        raise exceptions.TestError(f"Bridge '{netdst}' does not exist")
+    if "OpenVSwitch" in br_obj.__class__.__name__:
         iface_attrs['type_name'] = 'bridge'
-        iface_attrs['source'] = {'bridge': bridge_name}
+        iface_attrs['source'] = {'bridge': netdst}
         iface_attrs['virtualport'] = {'type': 'openvswitch'}
-        LOG.debug(f"Configured OVS bridge: {bridge_name}")
+        LOG.debug(f"Configured OVS bridge: {netdst}")
         return True
     return False

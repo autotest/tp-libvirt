@@ -1,7 +1,10 @@
 import logging
+import re
 import os
 
 from virttest import data_dir, error_context, remote, utils_misc
+from avocado.core import exceptions
+from avocado.utils import process
 
 LOG_JOB = logging.getLogger("avocado.test")
 
@@ -147,3 +150,103 @@ def netperf_record(results, filter_list, header=False, base="17", fbase="2"):
         record += "%s|" % format_result(results[key], base=base, fbase=fbase)
     record = record.rstrip("|")
     return record, key_list
+
+
+def compile_netperf_pkg(params, env, address):
+    """
+    Compile netperf source package
+
+    :param params: Test parameters dictionary
+    :param env: Test environment object
+    :param address: localhost, vm name, or ip address
+    :return: netserver_path, netperf_path
+    """
+    netperf_link = params.get("netperf_link", "netperf-2.7.1.tar.bz2")
+    netperf_src = os.path.join(data_dir.get_deps_dir("netperf"), netperf_link)
+    guest_netperf_path = params.get("guest_netperf_path", "/var/tmp/")
+
+    if address == "localhost":
+        session, install_path = None, params.get("server_path", "/var/tmp")
+    elif address in params.get('vms', '').split():
+        vm = env.get_vm(address)
+        session, install_path = vm.wait_for_login(), guest_netperf_path
+        target_ip, user, pwd = vm.get_address(), params.get("username"), params.get("password")
+    elif re.match(r"^(?:\d{1,3}\.){3}\d{1,3}$", address):
+        if params.get_boolean("remote_server", False):
+            session = remote.remote_login(
+                          "ssh",
+                          address,
+                          "22",
+                          params.get("server_user"),
+                          params.get("server_pwd"),
+                          r'[$#%]'
+                      )
+        else:
+            raise exceptions.TestError(
+                f"IP address '{address}' provided but 'remote_server' param is not set. "
+                "Set remote_server=yes to compile on remote server, or use 'localhost'."
+            )
+        install_path = params.get("server_path", "/var/tmp")
+        target_ip, user, pwd = address, params.get("server_user"), params.get("server_pwd")
+    else:
+        raise exceptions.TestError(f"Unsupported address for compilation: {address}")
+
+    if netperf_link.endswith(".tar.bz2"):
+        pack_suffix, decomp_tool = ".tar.bz2", "tar jxf"
+    elif netperf_link.endswith(".tar.gz"):
+        pack_suffix, decomp_tool = ".tar.gz", "tar zxf"
+    else:
+        raise exceptions.TestError(f"Unsupported compression format for netperf package: {netperf_link}")
+
+    full_netperf_dir = os.path.join(install_path, netperf_link[:-len(pack_suffix)])
+    nserver_path = os.path.join(full_netperf_dir, "src", "netserver")
+    nperf_path = os.path.join(full_netperf_dir, "src", "netperf")
+
+    try:
+        if session:
+            if session.cmd_status(f"test -f {nperf_path}") == 0:
+                LOG_JOB.info(f"Netperf already compiled on {address}, skipping.")
+                return nserver_path, nperf_path
+        elif os.path.exists(nperf_path):
+            LOG_JOB.info("Netperf already compiled on localhost, skipping.")
+            return nserver_path, nperf_path
+
+        if session:
+            arch = session.cmd_output("arch", timeout=10).strip()
+            decomp_cmd = f"cd {install_path} && {decomp_tool} {netperf_link}"
+        else:
+            arch = process.run("arch").stdout_text.strip()
+            decomp_cmd = f"{decomp_tool} {netperf_src} -C {install_path}"
+
+        build_type_map = {
+            "aarch64": "aarch64-unknown-linux-gnu",
+            "x86_64": "x86_64-unknown-linux-gnu",
+        }
+        build_type = build_type_map.get(arch, arch)
+        compile_cmd = (f"cd {full_netperf_dir} && ./autogen.sh && "
+                       f"CFLAGS='-Wno-implicit-function-declaration' ./configure "
+                       f"--build={build_type} --prefix={install_path} && make")
+
+        LOG_JOB.info(f"Compiling netperf from source on {address}...")
+        if session:
+            remote.copy_files_to(
+                target_ip,
+                params.get("cp_client", "scp"),
+                user,
+                pwd,
+                params.get("cp_port", "22"),
+                netperf_src,
+                install_path,
+                600
+            )
+            session.cmd(decomp_cmd, timeout=60)
+            session.cmd(compile_cmd, timeout=600)
+        else:
+            process.run(decomp_cmd, shell=True, timeout=60)
+            process.run(compile_cmd, shell=True, timeout=600)
+
+        LOG_JOB.info(f"Netperf compilation completed on {address}")
+    finally:
+        if session:
+            session.close()
+    return nserver_path, nperf_path
