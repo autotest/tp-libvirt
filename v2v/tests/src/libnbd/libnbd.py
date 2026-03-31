@@ -1,11 +1,15 @@
 import nbd
 
+from avocado.utils import process
+from virttest.utils_v2v import multiple_versions_compare
+
 
 def run(test, params, env):
     """
     Basic libnbd tests
     """
     checkpoint = params.get('checkpoint')
+    version_required = params.get('version_required')
 
     def test_get_size():
         """
@@ -75,9 +79,31 @@ def run(test, params, env):
         if buf.is_zero(offset=6, size=2):
             test.fail('is_zero test failed: %s' % msg)
 
+    def test_unsanitized_hostname():
+        expected_err_msg = params.get('expected_err_msg')
+        # Commands
+        cmd_list = [
+            "nbdinfo nbd+ssh://-oProxyCommand=glxgears",
+            "nbdinfo nbd+ssh://-oProxyCommand=xeyes",
+            "nbdinfo nbd+ssh://-oProxyCommand=gnome-calculator"
+        ]
+
+        # Execute commands
+        for cmd in cmd_list:
+            result = process.run(cmd, shell=True, ignore_status=True)
+            cmd_output = result.stderr_text
+            if expected_err_msg not in cmd_output:
+                test.fail(f"Unsanitized hostname validation failed. Expected error message - {expected_err_msg!r}, got {cmd_output!r}")
+
+    if version_required and not multiple_versions_compare(
+            version_required):
+        test.cancel("Testing requires version: %s" % version_required)
+
     if checkpoint == 'get_size':
         test_get_size()
     elif checkpoint == 'is_zero':
         test_is_zero()
+    elif checkpoint == 'check_unsanitized_hostname':
+        test_unsanitized_hostname()
     else:
         test.error('Not found testcase: %s' % checkpoint)
