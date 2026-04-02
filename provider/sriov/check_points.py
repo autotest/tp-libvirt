@@ -126,7 +126,7 @@ def check_vlan(dev_name, iface_dict, status_error=False):
 
 def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
                               tcpdump_iface=None, tcpdump_status_error=False,
-                              ping_dest=None):
+                              ping_dest=None, ping_self=False, self_ip="192.168.1.251"):
     """
     Test VM's network accessibility
 
@@ -137,13 +137,15 @@ def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
     :param tcpdump_status_error: Whether the tcpdump's output should include
         the string "ICMP echo request"
     :param ping_dest: Ping destination address
+    :param ping_self: Set the interface ip as 'self_ip' if failed to get dhcp ip
+    :param self_ip: Interface static ip addr to set
     :raise: test.fail when ping fails.
     :return: Output of ping command
     """
     if platform.machine() != "x86_64":
         return
     if not ping_dest:
-        ping_dest = sriov_base.get_ping_dest(vm_session)
+        ping_dest = sriov_base.get_ping_dest(vm_session, ping_self=ping_self, self_ip=self_ip)
     if tcpdump_iface:
         cmd = "tcpdump  -i %s icmp" % tcpdump_iface
         tcpdump_session = aexpect.ShellSession('bash')
