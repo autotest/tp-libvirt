@@ -129,13 +129,38 @@ def verify_numa_for_auto_replacement(test, params, vmxml, node_list, qemu_cpu, v
     vcpu_placement = params.get("vcpu_placement")
     numa_memory = vmxml.numa_memory
     numad_cmd_opt = "-w %s:%s" % (vmxml.vcpu, vmxml.max_mem // 1024)
-    utils_test.libvirt.check_logfile('.*numad\s*%s' % numad_cmd_opt, log_file)
-    cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
-    cmdRes = process.run(cmd, shell=True, ignore_status=False)
-    # Sample: Nodeset returned from numad: 0-1
-    match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
-    numad_ret = match_obj.group(1)
-    logging.debug("Nodeset returned from numad: %s", numad_ret)
+    
+    # Check if numad is installed 
+    try:
+        process.run("which numad", shell=True, ignore_status=False)
+        numad_installed = True
+    except process.CmdError:
+        numad_installed = False
+        logging.warning("numad is not installed, skipping numad verification")
+    
+    if numad_installed:
+        try:
+            utils_test.libvirt.check_logfile(r'.*numad\s*%s' % numad_cmd_opt, log_file)
+            cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
+            cmdRes = process.run(cmd, shell=True, ignore_status=False)
+            # Sample: Nodeset returned from numad: 0-1
+            match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
+            if not match_obj:
+                test.fail("Failed to parse numad output from daemon.log")
+            numad_ret = match_obj.group(1)
+            logging.debug("Nodeset returned from numad: %s", numad_ret)
+        except (process.CmdError, test.TestFail) as e:
+            logging.error("numad is installed but failed to execute properly: %s", str(e))
+            logging.info("Falling back to using all available nodes")
+            if not node_list:
+                test.cancel("No NUMA nodes available on the system")
+            numad_ret = '-'.join(map(str, node_list))
+    else:
+        # Use all available nodes if numad is not installed
+        if not node_list:
+            test.cancel("No NUMA nodes available on the system")
+        numad_ret = '-'.join(map(str, node_list))
+        logging.info("Using all nodes as numad is not available: %s", numad_ret)
 
     numad_node = cpu.cpus_parser(numad_ret)
     left_node = [node_list.index(i) for i in node_list if i not in numad_node]
@@ -145,7 +170,7 @@ def verify_numa_for_auto_replacement(test, params, vmxml, node_list, qemu_cpu, v
         if numa_memory.get('mode') == 'strict':
             mem_compare(test, numad_node_seq, left_node, memory_status=memory_status)
         elif numa_memory.get('mode') == 'preferred':
-            mode_nodeset = 'prefer\s*.*:' + numad_ret
+            mode_nodeset = r'prefer\s*.*:' + numad_ret
             numa_mode_check(test, vm, mode_nodeset)
         else:
             mode_nodeset = numa_memory.get('mode') + ':' + numad_ret
@@ -316,7 +341,7 @@ def run(test, params, env):
                 used_node = [online_node_list.index(i) for i in used_node]
                 mem_compare(test, used_node, left_node, memory_status=memory_status)
             elif numa_memory.get('mode') == 'preferred':
-                mode_nodeset = 'prefer\s*.*:' + numa_memory.get('nodeset')
+                mode_nodeset = r'prefer\s*.*:' + numa_memory.get('nodeset')
                 numa_mode_check(test, vm, mode_nodeset)
             else:
                 mode_nodeset = numa_memory.get('mode') + ':' + numa_memory.get('nodeset')
