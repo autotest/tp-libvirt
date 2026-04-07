@@ -1,7 +1,7 @@
 import logging
 import os
 
-from virttest import data_dir, error_context, remote, utils_misc
+from virttest import data_dir, error_context, remote, utils_misc, utils_net, utils_netperf
 
 LOG_JOB = logging.getLogger("avocado.test")
 
@@ -147,3 +147,56 @@ def netperf_record(results, filter_list, header=False, base="17", fbase="2"):
         record += "%s|" % format_result(results[key], base=base, fbase=fbase)
     record = record.rstrip("|")
     return record, key_list
+
+
+def compile_netperf_pkg(params, env, address):
+    """
+    Prepare and compile netperf binaries on the target system
+
+    :param params: Test parameters dictionary configs
+    :param env: Test environment object
+    :param address: localhost, vm name, or ip address
+    :return: netserver_path, netperf_path
+    """
+    if address in ("localhost", "127.0.0.1",):
+        target_ip = utils_net.get_host_ip_address(params)
+        install_path = params.get("server_path", "/var/tmp")
+        user = params.get("hostusername", "root")
+        pwd = params.get("hostpassword", "")
+    elif address in params.get('vms', '').split():
+        vm = env.get_vm(address)
+        vm.verify_alive()
+        target_ip = vm.get_address()
+        install_path = params.get("client_path", "/var/tmp")
+        user = params.get("username", "")
+        pwd = params.get("password", "")
+    else:
+        target_ip = address
+        install_path = params.get("server_path", "/var/tmp")
+        user = params.get("remote_username", "")
+        pwd = params.get("remote_password", "")
+
+    netperf_link = params.get("netperf_link")
+    netperf_src = os.path.join(data_dir.get_deps_dir("netperf"), netperf_link)
+
+    LOG_JOB.info(f"Instantiating NetperfServer on {address} (IP: {target_ip})...")
+    n_server = utils_netperf.NetperfServer(
+        address=target_ip,
+        netperf_path=install_path,
+        md5sum=params.get("pkg_md5sum", ""),
+        netperf_source=netperf_src,
+        username=user,
+        password=pwd,
+        compile_option="--enable-demo=yes",
+        install=True
+    )
+
+    nserver_path = n_server.netserver_path
+    nperf_path = n_server.netperf_path
+
+    if n_server.session:
+        n_server.session.close()
+    if n_server.package and hasattr(n_server.package, "_release_session"):
+        n_server.package._release_session()
+
+    return nserver_path, nperf_path
