@@ -39,7 +39,7 @@ def run(test, params, env):
         if 'vlan' in iface_dict:
             check_points.check_vlan(sriov_test_obj.pf_name, iface_dict)
         else:
-            check_points.check_vm_network_accessed(vm_session)
+            check_points.check_vm_network_accessed(vm_session, ping_self=True)
 
         test.log.info("TEST_STEP5: Detach the hostdev interface/device.")
         vm_hostdev = vm_xml.VMXML.new_from_dumpxml(vm.name)\

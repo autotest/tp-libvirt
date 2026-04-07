@@ -1,3 +1,5 @@
+import ipaddress
+import logging
 import os
 import re
 import time
@@ -22,6 +24,7 @@ from virttest.utils_libvirt import libvirt_network
 from provider.interface import interface_base
 
 SKIP_CHECKS = False
+LOG = logging.getLogger('avocado.' + __name__)
 
 
 def setup_vf(pf_pci, params, session=None):
@@ -66,13 +69,16 @@ def recover_vf(pf_pci, params, default_vf=0, timeout=60, session=None):
                            timeout=timeout)
 
 
-def get_ping_dest(vm_session, mac_addr="", restart_network=False):
+def get_ping_dest(vm_session, mac_addr="", restart_network=False,
+                  ping_self=False, self_ip="192.168.1.251"):
     """
     Get an ip address to ping
 
     :param vm_session: The session object to the guest
     :param mac_addr: mac address of given interface
     :param restart_network:  Whether to restart guest's network
+    :param ping_self: set the interface ip as 'self_ip' if failed to get dhcp ip
+    :param self_ip: interface static ip addr to set
     :return: ip address
     """
     if restart_network:
@@ -90,14 +96,39 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
         iface_name = vm_iface
     utils_misc.wait_for(
          lambda: utils_net.get_net_if_addrs(
-            iface_name, vm_session.cmd_output).get('ipv4'), 20)
+            iface_name, vm_session.cmd_output, "-c=never").get('ipv4'), 20)
     cmd = ("ip route |awk -F '/' '/^[0-9]/, /dev %s/ {print $1}'" % iface_name)
     status, output = utils_misc.cmd_status_output(cmd, shell=True,
                                                   session=vm_session)
-    if status or not output:
-        raise exceptions.TestError("Unable to get VM ip address! status - {}, "
-                                   "output - {}.".format(status, output))
-    return re.sub('\d+$', '1', output.strip().splitlines()[-1])
+    if status == 0 and output:
+        ip_addr = re.sub('\d+$', '1', output.strip().splitlines()[-1])
+        try:
+            ipaddress.ip_address(ip_addr)
+            return ip_addr
+        except ValueError:
+            LOG.debug("Unable to extract the ip address from:%s", output.strip())
+
+    if ping_self:
+        mac_list = utils_net.get_net_if_addrs(
+            iface_name, vm_session.cmd_output, "-c=never").get("mac")
+        if mac_list:
+            utils_net.set_guest_ip_addr(vm_session, mac_list[0], self_ip)
+            if utils_misc.wait_for(
+                lambda: self_ip in (utils_net.get_net_if_addrs(
+                    iface_name, vm_session.cmd_output, "-c=never"
+                ).get("ipv4")),
+                timeout=10
+            ):
+                return self_ip
+
+        raise exceptions.TestError(
+            "Unable to set VM static ip {} for interface:{}".format(self_ip, iface_name)
+        )
+
+    raise exceptions.TestError(
+        "Unable to get VM ip address! status - {}, "
+        "output - {}.".format(status, output)
+    )
 
 
 class SRIOVTest(object):
