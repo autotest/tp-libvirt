@@ -1,7 +1,5 @@
 import logging
 
-from avocado.utils import process
-from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -41,9 +39,9 @@ def run(test, params, env):
     """
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
-    rand_id = utils_misc.generate_random_string(3)
     br_type = params.get('br_type', '')
-    br_name = br_type + '_' + rand_id
+    netdst = params.get('netdst', 'virbr0')
+    br_name = netdst.split(',')[0]
     mac = utils_net.generate_mac_address_simple()
     iface_attrs = eval(params.get('iface_attrs', '{}'))
     host_iface = params.get('host_iface')
@@ -53,17 +51,19 @@ def run(test, params, env):
     updated_rx_frames = params.get('updated_rx_frames', '0')
     updated_coalesce = eval(params.get('updated_coalesce', '{}'))
 
+    if br_type == 'linux_br':
+        network_base.cancel_if_ovs_bridge(params, test)
+    elif br_type == 'ovs_br':
+        br_backend = utils_net.find_bridge_manager(br_name)
+        if isinstance(br_backend, utils_net.Bridge):
+            test.cancel("Skip OVS bridge test as the host uses Linux bridge")
+        # Setup OVS bridge configuration only for the OVS bridge variant
+        network_base.setup_ovs_bridge_attrs(params, iface_attrs)
+
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
 
     try:
-        LOG.info('Create bridge for test.')
-        if br_type == 'linux_br':
-            utils_net.create_linux_bridge_tmux(br_name, host_iface)
-            process.run(f'ip l show type bridge {br_name}', shell=True)
-        elif br_type == 'ovs_br':
-            utils_net.create_ovs_bridge(br_name)
-
         LOG.info('Setup interface on vm.')
         mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
         vmxml.del_device('interface', by_tag=True)
@@ -106,9 +106,3 @@ def run(test, params, env):
         if 'session' in locals():
             session.close()
         bkxml.sync()
-        if br_type == 'linux_br':
-            LOG.debug(f'Delete linux bridge: {br_name}')
-            utils_net.delete_linux_bridge_tmux(br_name, host_iface)
-        if br_type == 'ovs_br':
-            LOG.debug(f'Delete ovs bridge: {br_name}')
-            utils_net.delete_ovs_bridge(br_name)
