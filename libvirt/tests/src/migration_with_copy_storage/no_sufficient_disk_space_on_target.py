@@ -45,9 +45,9 @@ def run(test, params, env):
                                  size=disk_size, disk_format="qcow2",
                                  extra="-o preallocation=falloc",
                                  session=remote_session)
-        remote_session.cmd(f"losetup /dev/loop0 {block_path}")
-        remote_session.cmd("mkfs.ext3 /dev/loop0")
-        remote_session.cmd(f"mount /dev/loop0 {disk_path}")
+        loop_dev = remote_session.cmd_output(f"losetup -f --show {block_path}").strip()
+        remote_session.cmd(f"mkfs.ext3 {loop_dev}")
+        remote_session.cmd(f"mount {loop_dev} {disk_path}")
 
         _, file_size = vm.get_device_size(first_disk["target"])
         libvirt_disk.create_disk(first_disk["type"], path=disk_name,
@@ -67,7 +67,11 @@ def run(test, params, env):
                                              server_user, server_pwd,
                                              r'[$#%]')
         remote_session.cmd(f"umount {disk_path}")
-        remote_session.cmd("losetup -d /dev/loop0")
+        loop_output = remote_session.cmd_output(f"losetup -a | grep {block_path}").strip()
+        if loop_output:
+            loop_dev = loop_output.split(":")[0]
+            remote_session.cmd(f"losetup -d {loop_dev}")
+
         remote_session.cmd(f"rm -rf {block_path}")
         remote_session.close()
 
