@@ -103,7 +103,12 @@ def run(test, params, env):
         del iface.source
         source = iface_source
         if source:
-            net_ifs = utils_net.get_net_if(state="UP")
+            preferred_state = params.get("preferred_iface_state", "UP")
+            net_ifs = utils_net.get_net_if(state=preferred_state)
+            # if no interfaces are available in preferred state,
+            # cancel the test
+            if len(net_ifs) == 0:
+                test.cancel("No active network interface available on host")
             # Check source device is valid or not,
             # if it's not in host interface list, try to set
             # source device to first active interface of host
