@@ -18,6 +18,7 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
+from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.utils_test.__init__ import ping
 from virttest.utils_libvirt import libvirt_network
@@ -57,15 +58,31 @@ def run(test, params, env):
         # Try to install required packages
         if not utils_package.package_install(pkg_list):
             test.error("Failed to install required packages")
-        boot_initrd = params.get("boot_initrd", "EXAMPLE_INITRD")
-        boot_vmlinuz = params.get("boot_vmlinuz", "EXAMPLE_VMLINUZ")
-        if boot_initrd.count("EXAMPLE") or boot_vmlinuz.count("EXAMPLE"):
-            test.cancel("Please provide initrd/vmlinuz URL")
-        # Download pxe boot images
-        process.system("wget %s -O %s/initrd.img" % (boot_initrd, tftp_root))
-        process.system("wget %s -O %s/vmlinuz" % (boot_vmlinuz, tftp_root))
-        process.system("cp -f /usr/share/syslinux/pxelinux.0 {0};"
-                       " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root), shell=True)
+
+        if not os.path.isdir(tftp_root):
+            process.system("mkdir -p %s" % tftp_root)
+
+        pxe_file_name = params.get("bootp_file", "pxelinux.0")
+        if params.get("netdst"):
+            root_dir = data_dir.get_data_dir()
+            # Directly use root_dir/images/guest_name, removing export_dir support
+            img_dir = os.path.join(root_dir, "images", params.get("guest_name", ""))
+
+            kernel = os.path.join(img_dir, params.get("kernel", ""))
+            initrd = os.path.join(img_dir, params.get("initrd", ""))
+            process.run("cp -f %s %s/vmlinuz" % (kernel, tftp_root), shell=True, verbose=True)
+            process.run("cp -f %s %s/initrd.img" % (initrd, tftp_root), shell=True, verbose=True)
+        else:
+            boot_initrd = params.get("boot_initrd", "EXAMPLE_INITRD")
+            boot_vmlinuz = params.get("boot_vmlinuz", "EXAMPLE_VMLINUZ")
+            if boot_initrd.count("EXAMPLE") or boot_vmlinuz.count("EXAMPLE"):
+                test.cancel("Please provide initrd/vmlinuz URL")
+            # Download pxe boot images
+            process.system("wget %s -O %s/initrd.img" % (boot_initrd, tftp_root))
+            process.system("wget %s -O %s/vmlinuz" % (boot_vmlinuz, tftp_root))
+
+        process.system("cp -f /usr/share/syslinux/{0} {1}".format(pxe_file_name, tftp_root), shell=True)
+        process.system("mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root), shell=True)
         ldlinux_file = "/usr/share/syslinux/ldlinux.c32"
         if os.path.exists(ldlinux_file):
             process.system("cp -f {0} {1}".format(ldlinux_file, tftp_root), shell=True)
@@ -80,6 +97,18 @@ PROMPT 1
 TIMEOUT 3"""
         with open(pxe_file, 'w') as p_file:
             p_file.write(boot_txt)
+        # Ensure everything in tftp_root is accessible by dnsmasq
+        process.run("chmod -R a+rX %s" % tftp_root, shell=True)
+        if params.get("netdst"):
+            process.run("chown -R nobody: %s" % tftp_root, shell=True, ignore_status=True)
+            for ref in ["/usr/sbin/dnsmasq", "/usr/libexec/libvirt_leaseshelper"]:
+                if os.path.exists(ref):
+                    process.run("chcon -R --reference %s %s" % (ref, tftp_root),
+                                shell=True, ignore_status=True)
+                    break
+        else:
+            # For non-netdst, ensure simple permissions are at least set
+            process.run("chmod -R 777 %s" % tftp_root, shell=True, ignore_status=True)
 
     def modify_iface_xml(sync=True):
         """
