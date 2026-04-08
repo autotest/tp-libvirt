@@ -5,6 +5,7 @@ from virttest import utils_disk
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_disk
 
 from provider.backingchain import blockcommand_base
 from provider.virtual_disk import disk_base
@@ -37,6 +38,9 @@ def run(test, params, env):
         check_domstats_threshold(domstats_option, actual_threshold)
 
         test.log.info("TEST_STEP3-4:Write file and check event")
+        session = vm.wait_for_login()
+        target_disk = libvirt_disk.get_non_root_disk_name(session)
+        session.close()
         expected_event = event % (vm_name, target_disk, domblk_index,
                                   actual_threshold)
         event_session = virsh.EventTracker.start_get_event(vm_name)
