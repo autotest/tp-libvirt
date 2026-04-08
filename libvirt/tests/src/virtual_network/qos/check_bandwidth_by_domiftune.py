@@ -26,11 +26,15 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     br_type = params.get('br_type', '')
     rand_id = utils_misc.generate_random_string(3)
-    br_name = br_type + '_' + rand_id
+    netdst = params.get('netdst')
+    br_name = netdst if netdst else br_type + '_' + rand_id
     host_iface = params.get('host_iface')
-    host_iface = host_iface if host_iface else utils_net.get_default_gateway(
-        iface_name=True, force_dhcp=True, json=True)
+    if not host_iface and not netdst:
+        host_iface = utils_net.get_default_gateway(
+            iface_name=True, force_dhcp=True, json=True)
     iface_attrs = eval(params.get('iface_attrs', '{}'))
+    if netdst and iface_attrs.get('type_name') == 'bridge':
+        network_base.setup_ovs_bridge_attrs(params, iface_attrs)
     net_attrs = eval(params.get('net_attrs', '{}'))
     update_bw = eval(params.get('update_bw', '{}'))
 
@@ -40,7 +44,7 @@ def run(test, params, env):
     bk_net_xml = net_xml.copy()
 
     try:
-        if br_type == 'linux_br':
+        if br_type == 'linux_br' and not netdst:
             utils_net.create_linux_bridge_tmux(br_name, host_iface)
             process.run(f'ip l show type bridge {br_name}', shell=True)
 
@@ -140,5 +144,5 @@ def run(test, params, env):
             session.close()
         bkxml.sync()
         bk_net_xml.sync()
-        if br_type == 'linux_br':
+        if br_type == 'linux_br' and not netdst:
             utils_net.delete_linux_bridge_tmux(br_name, host_iface)
