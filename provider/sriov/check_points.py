@@ -124,6 +124,24 @@ def check_vlan(dev_name, iface_dict, status_error=False):
                                       "Actual: %s." % (exp_value, act_value))
 
 
+def check_network_access(test, session, need_sriov, ping_dest):
+    """
+    Verify network connectivity in the VM.
+
+    :param test: Test object for logging and assertions
+    :param session: Active session to the VM
+    :param need_sriov: Boolean indicating if SRIOV network testing is required
+    :param ping_dest: Destination IP address to ping for connectivity test
+    :raises: TestFail if network connectivity fails
+    """
+    if need_sriov:
+        check_vm_network_accessed(session, ping_dest=ping_dest)
+    else:
+        s, o = utils_net.ping(ping_dest, count=5, timeout=10, session=session)
+        if s:
+            test.fail(f"Failed to ping {ping_dest}! status: {s}, output: {o}")
+
+
 def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5,
                               tcpdump_iface=None, tcpdump_status_error=False,
                               ping_dest=None):
