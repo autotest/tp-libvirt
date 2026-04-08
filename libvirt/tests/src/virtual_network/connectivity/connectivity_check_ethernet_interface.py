@@ -59,6 +59,7 @@ def run(test, params, env):
     iface_attrs = eval(params.get('iface_attrs'))
     iface_attrs_2 = eval(params.get('iface_attrs_2', '{}'))
     iface_amount = params.get('iface_amount')
+    login_timeout = params.get_numeric("timeout", 360)
     outside_ip = params.get('outside_ip')
     host_iface = params.get('host_iface')
     host_iface = host_iface if host_iface else utils_net.get_default_gateway(
@@ -123,7 +124,7 @@ def run(test, params, env):
             return
 
         vm.create_serial_console()
-        session = vm.wait_for_serial_login(60)
+        session = vm.wait_for_serial_login(timeout=login_timeout)
 
         ips = {
             'outside_ip': outside_ip,
