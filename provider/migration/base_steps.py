@@ -53,6 +53,7 @@ class MigrationBase(object):
         self.check_cont_ping = "yes" == self.params.get("check_cont_ping", "no")
         self.check_cont_ping_log = self.params.get("check_cont_ping_log", "/tmp/log_file")
         self.remote_libvirtd_log = None
+        self.file_md5sum_in_vm = None
 
         migration_test = migration.MigrationTest()
         migration_test.check_parameters(params)
@@ -99,6 +100,7 @@ class MigrationBase(object):
                 self.vm.wait_for_serial_login().close()
             else:
                 self.vm.wait_for_login().close()
+            self.prepare_data_integrity_check()
         if self.check_cont_ping:
             self.test.log.debug("Starting ping command to check network during migration...")
             vm_session = self.vm.wait_for_login()
@@ -325,6 +327,7 @@ class MigrationBase(object):
             self.migration_test.post_migration_check([self.vm], self.params,
                                                      dest_uri=dest_uri, src_uri=self.src_uri)
             self.check_vm_cont_ping(check_on_dest=True)
+            self.verify_data_integrity_check()
         self.check_local_and_remote_log()
 
     def cleanup_default(self):
@@ -483,6 +486,42 @@ class MigrationBase(object):
         # Wait for 2 seconds to make the firewall take effect
         time.sleep(2)
         remote_session.close()
+
+    def prepare_data_integrity_check(self):
+        """
+        Before migration, create a file in the VM and get its md5sum value
+
+        """
+        file_md5sum_path = self.params.get("file_md5sum_path", "/var/check_file_md5sum")
+
+        self.vm.cleanup_serial_console()
+        self.vm.create_serial_console()
+        vm_session = self.vm.wait_for_serial_login(timeout=120)
+        vm_session.cmd(f"dd if=/dev/urandom of={file_md5sum_path} bs=1M count=600")
+        self.file_md5sum_in_vm = vm_session.cmd_output(f"md5sum {file_md5sum_path}").strip()
+        self.test.log.debug(f"File md5sum: {self.file_md5sum_in_vm}")
+        vm_session.close()
+
+    def verify_data_integrity_check(self):
+        """
+        After migration, verify the file md5sum value
+
+        """
+        file_md5sum_path = self.params.get("file_md5sum_path", "/var/check_file_md5sum")
+        dest_uri = self.params.get("virsh_migrate_desturi")
+
+        backup_uri, self.vm.connect_uri = self.vm.connect_uri, dest_uri
+        self.vm.cleanup_serial_console()
+        self.vm.create_serial_console()
+        vm_session = self.vm.wait_for_serial_login(timeout=120)
+        o = vm_session.cmd_output(f"md5sum {file_md5sum_path}").strip()
+        self.test.log.debug(f"File md5sum: {o}")
+        vm_session.close()
+        self.vm.connect_uri = backup_uri
+        if o != self.file_md5sum_in_vm:
+            self.test.fail(f"Expected md5sum {self.file_md5sum_in_vm}, but got {o}")
+        else:
+            self.test.log.info(f"Data integrity check passed.")
 
 
 def setup_network_data_transport(params):
