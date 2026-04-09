@@ -1,4 +1,5 @@
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import snapshot_xml
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
@@ -15,6 +16,7 @@ def run(test, params, env):
     - cache and discard
     - detect_zeroes
     - metadata_cache ->max_size
+    - latency_histogram with statistics
     2) Do blockcommit/blockpull and check dumpxml.
     """
 
@@ -82,6 +84,7 @@ def run(test, params, env):
             test.log.debug("Can get the expected attributes '%s'" % cur_dict)
 
     # Process cartesian parameters
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get("main_vm")
     target_disk = params.get('target_disk')
     disk_type = params.get("disk_type")
