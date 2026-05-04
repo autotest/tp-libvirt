@@ -1,5 +1,6 @@
 import copy
 import os
+import platform
 
 from virttest import data_dir
 from virttest import remote
@@ -33,7 +34,7 @@ def parse_disks_attrs(vmxml, test, params):
     if disk1_img:
         disk1_img_path = os.path.join(data_dir.get_data_dir(), "images", disk1_img)
         if download_disk1_img:
-            if firmware_type == "ovmf":
+            if firmware_type == "ovmf" and platform.machine() == "x86_64":
                 disk1_img_url = disk1_img_url.removesuffix('.qcow2') + '-ovmf.qcow2'
             if not disk1_img_url or not utils_misc.wait_for(
                 lambda: guest_os.test_file_download(disk1_img_url, disk1_img_path), 60
