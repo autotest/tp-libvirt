@@ -54,7 +54,11 @@ def update_vm_xml(vm, params, cdrom_attrs_list):
     os_attrs = {}
     if os_attrs_boots:
         os_attrs = {'boots': os_attrs_boots}
+        vmxml.remove_all_boots()
         vmxml.setup_attrs(os=os_attrs)
+        for _attrs in cdrom_attrs_list:
+            _attrs.pop('boot', None)
+            _attrs.pop('loadparm', None)
     else:
         vmxml.remove_all_boots()
     if "yes" == params.get("check_bootable_iso", "no"):
