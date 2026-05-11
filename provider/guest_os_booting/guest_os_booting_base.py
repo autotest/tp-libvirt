@@ -67,6 +67,9 @@ def prepare_os_xml(vm_name, os_dict, firmware_type=None):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if firmware_type == "ovmf":
         vmxml.os = libvirt_bios.remove_bootconfig_items_from_vmos(vmxml.os)
+    # Libvirt rejects mixing <os>/boot with per-device <disk>/boot in domain XML.
+    if isinstance(os_dict, dict) and os_dict.get("boots"):
+        vmxml.remove_all_boots()
     LOG.debug("Set the os xml")
     vmxml.setup_attrs(os=os_dict)
     vmxml.sync()
