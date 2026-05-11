@@ -65,7 +65,11 @@ def update_vm_xml(vm, params, disk_attrs_list):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     if os_attrs_boots:
         os_attrs = {"boots": os_attrs_boots}
+        vmxml.remove_all_boots()
         vmxml.setup_attrs(os=os_attrs)
+        for _attrs in disk_attrs_list:
+            _attrs.pop("boot", None)
+            _attrs.pop("loadparm", None)
     else:
         vm_os = vmxml.os
         vm_os.del_boots()
