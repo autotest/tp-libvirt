@@ -1,5 +1,6 @@
 import copy
 import os
+import platform
 
 from virttest import data_dir
 from virttest import remote
@@ -33,12 +34,53 @@ def parse_disks_attrs(vmxml, test, params):
     if disk1_img:
         disk1_img_path = os.path.join(data_dir.get_data_dir(), "images", disk1_img)
         if download_disk1_img:
-            if firmware_type == "ovmf":
-                disk1_img_url = disk1_img_url.removesuffix('.qcow2') + '-ovmf.qcow2'
-            if not disk1_img_url or not utils_misc.wait_for(
-                lambda: guest_os.test_file_download(disk1_img_url, disk1_img_path), 60
-            ):
-                test.fail("Unable to download boot image")
+            urls = []
+            if firmware_type == "ovmf" and disk1_img_url.endswith('.qcow2'):
+                ovmf_url = disk1_img_url.removesuffix('.qcow2') + '-ovmf.qcow2'
+                base = disk1_img_url.removesuffix(".qcow2")
+                aarch64_variants = [
+                    base + "-aarch64.qcow2",
+                    base + "-aarch64-ovmf.qcow2",
+                    base + "aarch64.qcow2",
+                ]
+                if platform.machine() == "aarch64":
+                    # Prefer arch-named images first: generic URL may be x86-only
+                    # and still HTTP-200, then guest never reaches login.
+                    urls = aarch64_variants + [disk1_img_url, ovmf_url]
+                else:
+                    urls = [ovmf_url, disk1_img_url] + aarch64_variants
+            else:
+                urls = [disk1_img_url]
+            extra = params.get("disk1_img_url_extra", "")
+            if extra.strip():
+                urls.extend(u.strip() for u in extra.split() if u.strip())
+            seen = set()
+            deduped = []
+            for u in urls:
+                if u and u not in seen:
+                    seen.add(u)
+                    deduped.append(u)
+            urls = deduped
+            dl_timeout = int(params.get("disk1_img_download_timeout", "120"))
+            last_err = None
+            ok = False
+            for url in urls:
+                if not url:
+                    continue
+                if utils_misc.wait_for(
+                    lambda u=url: guest_os.test_file_download(u, disk1_img_path),
+                    dl_timeout,
+                ):
+                    ok = True
+                    test.log.info("Downloaded disk1 image from %s", url)
+                    break
+                last_err = url
+            if not ok:
+                test.fail(
+                    "Unable to download boot image (tried %d URLs, timeout=%ss; "
+                    "last=%r; set disk1_img_url_extra in cfg if needed)"
+                    % (len(urls), dl_timeout, last_err)
+                )
         else:
             libvirt_disk.create_disk("file", disk1_img_path, disk_format="qcow2")
         disk1_attrs = copy.deepcopy(disk_org_attrs)
@@ -65,7 +107,11 @@ def update_vm_xml(vm, params, disk_attrs_list):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     if os_attrs_boots:
         os_attrs = {"boots": os_attrs_boots}
+        vmxml.remove_all_boots()
         vmxml.setup_attrs(os=os_attrs)
+        for _attrs in disk_attrs_list:
+            _attrs.pop("boot", None)
+            _attrs.pop("loadparm", None)
     else:
         vm_os = vmxml.os
         vm_os.del_boots()
@@ -103,7 +149,9 @@ def run(test, params, env):
 
         vm.start()
         try:
-            vm.wait_for_serial_login().close()
+            _def = "480" if platform.machine() == "aarch64" else "360"
+            login_timeout = int(params.get("serial_login_timeout", _def))
+            vm.wait_for_serial_login(timeout=login_timeout).close()
         except remote.LoginTimeoutError as detail:
             if status_error:
                 test.log.debug("Found the expected error: %s", detail)
