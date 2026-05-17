@@ -997,7 +997,7 @@ def run(test, params, env):
                     os.remove(local_file)
         if output_mode == "libvirt":
             if "qemu:///session" in v2v_options or no_root:
-                cmd = su_cmd + "'virsh undefine %s'" % vm_name
+                cmd = su_cmd + "'virsh undefine %s --nvram'" % vm_name
                 try:
                     process.system(cmd)
                 except Exception:
@@ -1006,7 +1006,7 @@ def run(test, params, env):
                     cleanup_pool(user_pool=True, pool_name='src_pool',
                                  pool_target='v2v_src_pool')
             else:
-                virsh.remove_domain(vm_name)
+                virsh.remove_domain(vm_name, options="--nvram")
             cleanup_pool()
         if output_mode is None:
             pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)

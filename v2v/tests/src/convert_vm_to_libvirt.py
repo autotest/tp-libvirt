@@ -194,7 +194,7 @@ def run(test, params, env):
             utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")
         # Clean libvirt VM
-        virsh.remove_domain(vm_name)
+        virsh.remove_domain(vm_name, options="--nvram")
         # Clean libvirt pool
         if libvirt_pool:
             libvirt_pool.cleanup_pool(pool_name, pool_type, pool_target, '')

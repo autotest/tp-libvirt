@@ -459,7 +459,7 @@ def run(test, params, env):
             libvirtd.restart()
             LOG.info('Start network "default"')
             virsh.net_start('default')
-            virsh.undefine(vm_name)
+            virsh.undefine(vm_name, options="--nvram")
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
