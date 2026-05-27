@@ -323,7 +323,7 @@ def run(test, params, env):
         elif res == '0':
             LOG.info('VMware Tools was uninstalled successfully')
         elif os_version in ['win2025', 'win2019'] and res == '1603':
-            LOG.info('%s guest fail to uninstall VMware tools with exit code 1603 which is known issue' % os_version)
+            LOG.info('%s guest failed to uninstall VMware Tools with exit code 1603, which is a known issue' % os_version)
         else:
             test.fail("Fail to uninstall VMware-tools with exit code %s" % res)
 
