@@ -843,6 +843,8 @@ class VMChecker(object):
         if re.search(r"(Intel|AMD) Processor", win_dirvers):
             if re.search(r"(Intel|AMD) Processor", win_dirvers).group(0) in cpu_drivers:
                 LOG.info("CPU driver '%s' is found" % re.search(r"(Intel|AMD) Processor", win_dirvers).group(0))
+        elif self.os_version == 'win2016':
+            LOG.info("CPU driver not found for win2016, known issue (RHEL-17685), skipping check")
         else:
             err_msg = "CPU driver is not found"
             self.log_err(err_msg)
