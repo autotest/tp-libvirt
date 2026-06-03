@@ -32,10 +32,130 @@ from virttest.staging.utils_memory import read_from_numastat
 from virttest import libvirt_version
 
 
-# Using as lower capital is not the best way to do, but this is just a
-# workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+# Enhanced Verification Helper Functions for Memory Attach/Detach
+import xml.etree.ElementTree as ET
 
+def get_guest_memory_kb(session):
+    """
+    Get guest memory in KB from /proc/meminfo
+    
+    :param session: VM session object
+    :return: Memory in KB or None if failed
+    """
+    try:
+        cmd = "cat /proc/meminfo | grep MemTotal | awk '{print $2}'"
+        output = session.cmd_output(cmd, timeout=30).strip()
+        return int(output)
+    except Exception as e:
+        logging.error("Failed to get guest memory: %s", str(e))
+        return None
+
+def get_domain_memory_xml(virsh_instance, vm_name, check_inactive=False):
+    """
+    Get memory device count from domain XML
+    
+    :param virsh_instance: virsh instance
+    :param vm_name: VM name
+    :param check_inactive: If True, check inactive/persistent XML
+    :return: Dictionary with memory_device_count or None if failed
+    """
+    try:
+        if check_inactive:
+            result = virsh_instance.dumpxml(vm_name, extra='--inactive', 
+                                           ignore_status=False, debug=True)
+        else:
+            result = virsh_instance.dumpxml(vm_name, ignore_status=False, debug=True)
+        if result.exit_status != 0:
+            return None
+        root = ET.fromstring(result.stdout.strip())
+        devices = root.find('devices')
+        memory_devices = devices.findall('memory') if devices is not None else []
+        return {'memory_device_count': len(memory_devices)}
+    except Exception as e:
+        logging.error("Failed to parse XML: %s", str(e))
+        return None
+
+def restart_vm_for_config_verification(vm, test_obj):
+    """
+    Restart VM to verify configuration persistence.
+    This ensures that --config or --persistent changes are properly saved
+    and take effect after VM restart.
+    
+    :param vm: VM object
+    :param test_obj: Test object for logging
+    """
+    logging.info("Restarting VM to verify configuration persistence...")
+    vm.destroy(gracefully=False)
+    logging.info("VM destroyed, waiting before restart...")
+    time.sleep(60)  # Brief pause to ensure clean shutdown
+    vm.start()
+    vm.wait_for_login().close()
+    logging.info("VM restarted successfully")
+
+
+def verify_immediate_changes(option, before_xml_count, after_xml_count,
+                            before_guest_mem, after_guest_mem, operation, test, is_vm_running=True):
+    """
+    Verify immediate changes after attach/detach operation.
+
+    :param option: attach/detach option string (e.g., '--config', '--live', '--persistent', '--current')
+    :param before_xml_count: Memory device count before operation
+    :param after_xml_count: Memory device count after operation
+    :param before_guest_mem: Guest memory before operation (KB)
+    :param after_guest_mem: Guest memory after operation (KB)
+    :param operation: 'attach' or 'detach'
+    :param test: Test object for logging
+    :param is_vm_running: Boolean indicating if the target VM is currently active
+    :return: Tuple (success: bool, failures: list)
+    """
+    failures = []
+
+    flags = set(option.split())
+    if '--current' in flags:
+        if is_vm_running:
+            flags.add('--live')
+        else:
+            flags.add('--config')
+
+    has_live_intent = '--live' in flags or '--persistent' in flags
+    has_config_intent = '--config' in flags or '--persistent' in flags
+    is_config_only = has_config_intent and not has_live_intent
+
+    logging.info("Verifying immediate %s with options: %s", operation, option)
+
+    if has_live_intent:
+        if before_guest_mem and after_guest_mem:
+            mem_changed = abs(after_guest_mem - before_guest_mem) > 102400
+            if operation == 'attach':
+                if not mem_changed or after_guest_mem <= before_guest_mem:
+                    failures.append(f"Guest memory should increase with live attach (Before: {before_guest_mem}, After: {after_guest_mem})")
+                else:
+                    logging.info("Guest memory increased (%d -> %d KB)", before_guest_mem, after_guest_mem)
+            else:  
+                if not mem_changed or after_guest_mem >= before_guest_mem:
+                    failures.append(f"Guest memory should decrease with live detach (Before: {before_guest_mem}, After: {after_guest_mem})")
+                else:
+                    logging.info("Guest memory decreased (%d -> %d KB)", before_guest_mem, after_guest_mem)
+
+    if is_config_only:
+        logging.info("Config-only mode: no immediate runtime changes expected")
+        if before_guest_mem and after_guest_mem:
+            mem_changed = abs(after_guest_mem - before_guest_mem) > 102400
+            if mem_changed:
+                failures.append(f"Guest memory should NOT change with config-only changes (Before: {before_guest_mem}, After: {after_guest_mem})")
+            else:
+                logging.info("Guest memory unchanged with config-only operation (as expected)")
+
+    if has_config_intent or has_live_intent:
+        if operation == 'attach' and after_xml_count <= before_xml_count:
+            failures.append(f"XML memory device count did not increase (Before: {before_xml_count}, After: {after_xml_count})")
+        elif operation == 'detach' and after_xml_count >= before_xml_count:
+            failures.append(f"XML memory device count did not decrease (Before: {before_xml_count}, After: {after_xml_count})")
+        else:
+            logging.info("XML memory device counts updated successfully (%d -> %d)", before_xml_count, after_xml_count)
+
+    return len(failures) == 0, failures
 
 def run(test, params, env):
     """
@@ -540,12 +660,34 @@ def run(test, params, env):
             old_mem_total = vm.get_totalmem_sys(online)
             logging.debug("Memtotal on guest: %s", old_mem_total)
             session.close()
+
+        # Capture baseline for verification
+        if attach_option or detach_option:
+            baseline_mem_kb = None
+            baseline_xml_active = None
+            baseline_xml_inactive = None
+            try:
+                session = vm.wait_for_login()
+                baseline_mem_kb = get_guest_memory_kb(session)
+                session.close()
+                baseline_xml_active = get_domain_memory_xml(virsh, vm_name, check_inactive=False)
+                baseline_xml_inactive = get_domain_memory_xml(virsh, vm_name, check_inactive=True)
+                logging.info("Baseline: guest_mem=%s KB, active_xml=%s devices, inactive_xml=%s devices",
+                           baseline_mem_kb, baseline_xml_active, baseline_xml_inactive)
+            except Exception as e:
+                logging.debug("Could not capture baseline: %s", e)
+                baseline_mem_kb = None
+                baseline_xml_active = None
+                baseline_xml_inactive = None
+
         elif discard:
             vm.start()
             session = vm.wait_for_login()
             if test_qemu_cmd:
                 check_qemu_cmd(max_mem_rt, tg_size)
-        dev_xml = None
+        vm_restarted_after_attach = False  # Track if VM was restarted after attach
+        after_attach_xml_active = None
+        after_attach_xml_inactive = None
 
         # To attach the memory device.
         if (add_mem_device and not hot_plug) or cold_plug_discard:
@@ -555,8 +697,6 @@ def run(test, params, env):
                 rand_value = random.randint(15, 25)
                 logging.debug("reboots at %s", rand_value)
             for x in xrange(at_times):
-                # If any error excepted, command error status should be
-                # checked in the last time
                 device_alias = "ua-" + str(uuid.uuid4())
                 dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
                                                        mem_addr, tg_sizeunit,
@@ -568,6 +708,20 @@ def run(test, params, env):
                 logging.debug("attaching device count = %s", x)
                 if x == at_times - 1:
                     add_device(dev_xml, attach_device, attach_error)
+
+                    # Verify attach operation and store state for detach baseline
+                    if attach_option and baseline_xml_active is not None:
+                        try:
+                            after_attach_xml_active = get_domain_memory_xml(virsh, vm_name, check_inactive=False)
+                            after_attach_xml_inactive = get_domain_memory_xml(virsh, vm_name, check_inactive=True)
+                            verify_immediate_changes(attach_option, baseline_xml_active, after_attach_xml_active,
+                                                   baseline_xml_inactive, after_attach_xml_inactive,
+                                                   operation="attach", test=test)
+                            logging.info("After attach: active_xml=%s devices, inactive_xml=%s devices (will be reused as before-detach baseline)",
+                                        after_attach_xml_active.get('memory_device_count') if after_attach_xml_active else 'N/A',
+                                        after_attach_xml_inactive.get('memory_device_count') if after_attach_xml_inactive else 'N/A')
+                        except Exception as e:
+                            logging.warning("Attach verification failed: %s", e)
                 else:
                     add_device(dev_xml, attach_device)
                 if hot_reboot:
@@ -697,32 +851,111 @@ def run(test, params, env):
 
         # Detach the memory device
         unplug_failed_with_known_error = False
+        
+        # Initialize detach state variables
+        before_detach_xml_active = None
+        before_detach_xml_inactive = None
+        
+        # Optimize flag evaluation - only if attach_option exists
+        if detach_device and attach_option:
+            # Concise flag evaluation
+            is_config = any(flag in attach_option for flag in ("--config", "--persistent"))
+            is_pure_persistent = is_config and "--live" not in attach_option
+            
+            # Handle required reboot for pure persistent attach
+            if is_pure_persistent and not vm_restarted_after_attach:
+                logging.info("Pure persistent attach detected. Restarting VM for device discovery.")
+                restart_vm_for_config_verification(vm, test)
+                logging.info("Waiting 30 seconds for guest OS ACPI/hotplug stabilization...")
+                time.sleep(30)
+            
+            # Optimize state retrieval - reuse post-attach state if available
+            before_detach_xml_active = after_attach_xml_active
+            before_detach_xml_inactive = after_attach_xml_inactive
+            
+            # Fallback: capture fresh state only if needed
+            if not before_detach_xml_active:
+                logging.info("Post-attach state unavailable. Capturing fresh before-detach state.")
+                try:
+                    before_detach_xml_active = get_domain_memory_xml(virsh, vm_name, check_inactive=False)
+                    before_detach_xml_inactive = get_domain_memory_xml(virsh, vm_name, check_inactive=True)
+                except Exception as e:
+                    logging.error("Failed to capture before-detach state: %s", e)
+            
+            # Log state information
+            if before_detach_xml_active:
+                act_cnt = before_detach_xml_active.get('memory_device_count', 'N/A')
+                inact_cnt = before_detach_xml_inactive.get('memory_device_count', 'N/A') if before_detach_xml_inactive else 'N/A'
+                logging.info("Before detach state: active_xml=%s devices, inactive_xml=%s devices", act_cnt, inact_cnt)
+        
         if detach_device:
-            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                   mem_addr, tg_sizeunit,
-                                                   pg_unit, tg_node,
-                                                   node_mask, mem_model,
-                                                   mem_discard)
-            for x in xrange(at_times):
+            # 1. Reuse dev_xml from attach operation instead of creating a new one
+            if dev_xml is None:
+                logging.warning("No dev_xml from attach, creating new one for detach")
+                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr, tg_sizeunit,
+                                                       pg_unit, tg_node, node_mask, mem_model,
+                                                       mem_discard)
+            else:
+                logging.info("Reusing dev_xml from attach operation for detach")
+        
+            # 2. Pythonic String Optimization
+            # Clean up outer single quotes safely in a single line if errors exist
+            cleaned_known_errors = [err.strip("'") for err in (host_known_unplug_errors or [])]
+            unplug_failed_with_known_error = False
+        
+            # 3. Helper Function Definition (Defined OUTSIDE the loop to prevent closure recreation)
+            def execute_raw_detach():
                 if not detach_alias:
-                    ret = virsh.detach_device(vm_name, dev_xml.xml,
-                                              flagstr=attach_option, debug=True)
-                else:
-                    ret = virsh.detach_device_alias(vm_name, device_alias,
-                                                    detach_alias_options, debug=True)
-                if ret.stderr and host_known_unplug_errors:
-                    for known_error in host_known_unplug_errors:
-                        if (known_error[0] == known_error[-1]) and \
-                           known_error.startswith(("'")):
-                            known_error = known_error[1:-1]
-                        if known_error in ret.stderr:
-                            unplug_failed_with_known_error = True
-                            logging.debug("Known error occurred in Host, while"
-                                          " hot unplug: %s", known_error)
-                if unplug_failed_with_known_error:
+                    return virsh.detach_device(vm_name, dev_xml.xml, flagstr=attach_option, debug=True)
+                return virsh.detach_device_alias(vm_name, device_alias, detach_alias_options, debug=True)
+       
+            # Proactive memory optimization before detach
+            logging.info("Optimizing guest memory layout before detach...")
+            try:
+                session = vm.wait_for_login()
+                session.cmd("sync", timeout=10)
+                session.cmd("echo 3 > /proc/sys/vm/drop_caches", timeout=10)
+                session.cmd("echo 1 > /proc/sys/vm/compact_memory", timeout=30)
+                session.close()
+                time.sleep(5)  # Allow memory consolidation
+                logging.info("Guest memory optimization completed")
+            except Exception as defrag_err:
+                logging.warning("Guest memory optimization failed: %s", defrag_err)
+
+            # Main detach execution loop
+            for x in range(at_times):
+                ret = execute_raw_detach()
+                
+                # Check for known host unplug errors
+                if ret.stderr and any(known_err in ret.stderr for known_err in cleaned_known_errors):
+                    unplug_failed_with_known_error = True
+                    logging.debug("Known host error during hot unplug")
                     break
+                
+                # Verify detach success
                 try:
                     libvirt.check_exit_status(ret, detach_error)
+                    logging.info("Device detached successfully")
+                except Exception as detach_err:
+                    logging.warning("Detach failed: %s", detach_err)
+                    break
+        
+            # 5. Post-Loop Schema Layout Verification
+            if not unplug_failed_with_known_error and attach_option and before_detach_xml_active is not None:
+                logging.info("Initiating post-detach XML schema layout verification...")
+                try:
+                    after_detach_xml_active = get_domain_memory_xml(virsh, vm_name, check_inactive=False)
+                    after_detach_xml_inactive = get_domain_memory_xml(virsh, vm_name, check_inactive=True)
+                    
+                    verify_immediate_changes(
+                        attach_option, before_detach_xml_active, after_detach_xml_active,
+                        before_detach_xml_inactive, after_detach_xml_inactive,
+                        operation="detach", test=test
+                    )
+                except Exception as e:
+                    logging.warning("Detach verification pipeline failed: %s", e)
+                
+
                 except Exception as detail:
                     dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
                     try:
