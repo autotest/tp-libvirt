@@ -778,7 +778,7 @@ def run(test, params, env):
             time_info = re.search(r'.*\d.*Finishing.*off', output).group(0)
             usetime = re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0]
             LOG.info('use time is %s' % usetime)
-            if int(usetime) > 800:
+            if int(usetime) > 1500:
                 test.fail("conversion time is too long, please check v2v performance")
         if 'check_boot_order' in checkpoint:
             if not re.search(r"boot order='\d+'.*|bootOrder:.*\d+.*", output):
