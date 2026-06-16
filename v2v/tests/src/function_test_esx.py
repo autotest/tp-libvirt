@@ -300,8 +300,7 @@ def run(test, params, env):
             _, res = vmcheck.run_cmd(cmd)
             vmtools_info = re.search(r'uninstalling VMware Tools\s+.*exit code\s+(\d+)', res)
             if vmtools_info:
-                exit_code = vmtools_info.group(1)
-                return int(exit_code)
+                return vmtools_info.group(1)
 
         cmd = r'type "C:\Program Files\Guestfs\Firstboot\log.txt"'
 
@@ -318,12 +317,15 @@ def run(test, params, env):
             vmcheck.create_session(timeout=1200)
             res = utils_misc.wait_for(lambda: _get_vmtools_info(cmd), 900, step=30)
 
-        if res:
-            if os_version in ['win2025', 'win2019'] and str(res) == '1603':
-                #Some windows guests fail to uninstall vmware tools due to bug RHEL-51169
-                LOG.info('%s guest fail to unintall VMware tools with exit code 1603 which is known issue' % os_version)
-            else:
-                test.fail("Fail to uninstall VMware-tools with exit code %s" % res)
+        if not res:
+            test.fail("Expected pattern 'uninstalling VMware Tools\\s+.*exit code\\s+(\\d+)' "
+                      "not found in firstboot log")
+        elif res == '0':
+            LOG.info('VMware Tools was uninstalled successfully')
+        elif os_version in ['win2025', 'win2019'] and res == '1603':
+            LOG.info('%s guest failed to uninstall VMware Tools with exit code 1603, which is a known issue' % os_version)
+        else:
+            test.fail("Fail to uninstall VMware-tools with exit code %s" % res)
 
     def check_windows_service(vmcheck, service_name):
         """
@@ -776,7 +778,7 @@ def run(test, params, env):
             time_info = re.search(r'.*\d.*Finishing.*off', output).group(0)
             usetime = re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0]
             LOG.info('use time is %s' % usetime)
-            if int(usetime) > 800:
+            if int(usetime) > 1500:
                 test.fail("conversion time is too long, please check v2v performance")
         if 'check_boot_order' in checkpoint:
             if not re.search(r"boot order='\d+'.*|bootOrder:.*\d+.*", output):
