@@ -481,7 +481,8 @@ def run(test, params, env):
                     v for v in re.findall(
                         eth_adapter_ptn,
                         output,
-                        re.S) if mac_addr in v][0]
+                        re.S) if re.search(
+                            r'Physical Address.*?:\s*' + mac_addr, v)][0]
             except IndexError:
                 return False
 
