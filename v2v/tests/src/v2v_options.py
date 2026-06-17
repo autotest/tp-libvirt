@@ -689,7 +689,7 @@ def run(test, params, env):
             if checkpoint == 'rhv':
                 output_option = output_option.replace('rhev', 'rhv')
             if checkpoint in ['with_ic', 'without_ic']:
-                output_option = output_option.replace('v2v_dir', 'src_pool')
+                output_option = output_option.replace(output_storage, 'src_pool')
         output_format = params.get("output_format")
         if output_format and output_format != input_format:
             output_option += " -of %s" % output_format
