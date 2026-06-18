@@ -835,6 +835,15 @@ def run(test, params, env):
                     pool_target='v2v_src_pool'),
                 timeout=30,
                 step=3)
+            ova_dir = params.get('ova_dir')
+            if not os.path.isdir(ova_dir):
+                os.mkdir(ova_dir)
+            nfs_ova_source = params.get('nfs_ova_source')
+            if nfs_ova_source:
+                if not utils_misc.mount(nfs_ova_source, ova_dir, 'nfs', verbose=True):
+                    test.error('Mount nfs for ova images failed')
+            else:
+                LOG.warning('nfs_ova_source not configured, expecting local OVA files')
 
         if checkpoint == 'vmx':
             mount_point = params.get('mount_point')
@@ -1024,6 +1033,10 @@ def run(test, params, env):
         if checkpoint == 'vmx':
             utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
             os.rmdir(params['mount_point'])
+        if checkpoint in ['with_ic', 'without_ic']:
+            if params.get('nfs_ova_source'):
+                utils_misc.umount(params['nfs_ova_source'], params['ova_dir'], 'nfs')
+                os.rmdir(params['ova_dir'])
         if checkpoint == 'simulate_nfs':
             process.run('rm -rf /tmp/rhv/')
         if os.path.exists(estimate_file):
