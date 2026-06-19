@@ -805,12 +805,15 @@ def run(test, params, env):
                     vddk_thumbprint = utils_v2v.get_vddk_thumbprint(esx_ip, source_pwd, 'esx')
                 else:
                     vddk_thumbprint = utils_v2v.get_vddk_thumbprint(remote_host, source_pwd, 'vpx')
-                with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
-                    utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
-                    process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
-                                shell=True, ignore_status=True)
-                    utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
-                v2v_options += ' -it vddk  -io vddk-libdir=/home/vddk_libdir -io vddk-thumbprint=%s' % vddk_thumbprint
+                vddk_libdir_local = vddk_libdir or '/home/vddk_libdir'
+                if vddk_libdir_src:
+                    with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_tmpdir:
+                        utils_misc.mount(vddk_libdir_src, vddk_tmpdir, 'nfs')
+                        process.run('mkdir -p /home/vddk_libdir;cp -R %s/* %s' % (vddk_tmpdir, '/home/vddk_libdir'),
+                                    shell=True, ignore_status=True)
+                        utils_misc.umount(vddk_libdir_src, vddk_tmpdir, 'nfs')
+                    vddk_libdir_local = '/home/vddk_libdir'
+                v2v_options += ' -it vddk  -io vddk-libdir=%s -io vddk-thumbprint=%s' % (vddk_libdir_local, vddk_thumbprint)
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
         if output_mode is None:
