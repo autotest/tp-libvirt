@@ -45,7 +45,8 @@ def run(test, params, env):
             """
             boot_time = None
             try:
-                boot_time = session.cmd_output("uptime --since")
+                boot_time = \
+                session.cmd_output("grep btime /proc/stat | awk '{print $2}'")
             except (aexpect.ShellStatusError, aexpect.ShellProcessTerminatedError) as e:
                 logging.error("Get boot_time error:%s" % e)
             return boot_time
