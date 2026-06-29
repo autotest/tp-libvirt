@@ -1656,7 +1656,7 @@ def get_authorized_keys_file(server_type=None):
     return authorized_keys
 
 
-def v2v_mount(src, dst="v2v_mount_point", fstype="nfs", options="nolock"):
+def v2v_mount(src, dst="v2v_mount_point", fstype="nfs", options="ro,nolock"):
     """
     Mount nfs src to dst
 
