@@ -1035,7 +1035,13 @@ def run(test, params, env):
             v2v_sasl.close_session()
         if checkpoint == 'vmx':
             utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
-            os.rmdir(params['mount_point'])
+            if utils_misc.is_mounted(params['nfs_vmx'], params['mount_point'], 'nfs'):
+                process.run('umount -l %s' % params['mount_point'],
+                            ignore_status=True)
+            try:
+                os.rmdir(params['mount_point'])
+            except OSError:
+                pass
         if checkpoint in ['with_ic', 'without_ic']:
             if params.get('nfs_ova_source'):
                 utils_misc.umount(params['nfs_ova_source'], params['ova_dir'], 'nfs')
