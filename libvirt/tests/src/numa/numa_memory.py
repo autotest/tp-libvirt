@@ -2,6 +2,7 @@ import logging as log
 import random
 import re
 
+from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import virt_vm
@@ -79,14 +80,13 @@ def numa_mode_check(test, vm, mode_nodeset):
     """
     vm_pid = vm.get_pid()
     numa_map = '/proc/%s/numa_maps' % vm_pid
-    # Open a file
     with open(numa_map) as file:
-        for line in file.readlines():
-            if not re.search(mode_nodeset, line):
-                test.fail("numa mode and nodeset is expected "
-                          "to be matched with '%s' "
-                          "in '%s', but not found" % (mode_nodeset,
-                                                      line))
+        content = file.read()
+    logging.debug("numa_maps content for pid %s:\n%s", vm_pid, content)
+    if not re.search(mode_nodeset, content):
+        test.fail("numa mode and nodeset is expected "
+                  "to be matched with '%s' "
+                  "in numa_maps, but not found" % mode_nodeset)
 
 
 def mem_compare(test, used_node, left_node, memory_status):
@@ -139,27 +139,20 @@ def verify_numa_for_auto_replacement(test, params, vmxml, node_list, qemu_cpu, v
         logging.warning("numad is not installed, skipping numad verification")
     
     if numad_installed:
-        try:
-            utils_test.libvirt.check_logfile(r'.*numad\s*%s' % numad_cmd_opt, log_file)
-            cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
-            cmdRes = process.run(cmd, shell=True, ignore_status=False)
-            # Sample: Nodeset returned from numad: 0-1
-            match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
-            if not match_obj:
-                test.fail("Failed to parse numad output from daemon.log")
-            numad_ret = match_obj.group(1)
-            logging.debug("Nodeset returned from numad: %s", numad_ret)
-        except (process.CmdError, test.TestFail) as e:
-            logging.error("numad is installed but failed to execute properly: %s", str(e))
-            logging.info("Falling back to using all available nodes")
-            if not node_list:
-                test.cancel("No NUMA nodes available on the system")
-            numad_ret = '-'.join(map(str, node_list))
+        utils_test.libvirt.check_logfile(r'.*numad\s*%s' % numad_cmd_opt, log_file)
+        cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
+        cmdRes = process.run(cmd, shell=True, ignore_status=False)
+        # Sample: Nodeset returned from numad: 0-1
+        match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
+        if not match_obj:
+            test.fail("Failed to parse numad output from daemon.log")
+        numad_ret = match_obj.group(1)
+        logging.debug("Nodeset returned from numad: %s", numad_ret)
     else:
         # Use all available nodes if numad is not installed
         if not node_list:
-            test.cancel("No NUMA nodes available on the system")
-        numad_ret = '-'.join(map(str, node_list))
+            raise exceptions.TestSkipError("No NUMA nodes available on the system")
+        numad_ret = libvirt_numa.convert_all_nodes_to_string(node_list)
         logging.info("Using all nodes as numad is not available: %s", numad_ret)
 
     numad_node = cpu.cpus_parser(numad_ret)
