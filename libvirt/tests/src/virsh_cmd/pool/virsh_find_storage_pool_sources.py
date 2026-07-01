@@ -70,18 +70,22 @@ def run(test, params, env):
         try:
             polkit.setup()
             logging.info("Polkit setup completed successfully")
-            
+
             # Explicitly restart virtstoraged for storage driver ACL tests
             # The libvirtd.restart() in polkit.setup() doesn't always restart virtstoraged
-            from virttest.staging import service
-            try:
-                virtstoraged = service.Factory.create_service("virtstoraged")
-                logging.info("Restarting virtstoraged to apply polkit rules")
-                virtstoraged.restart()
-                logging.info("virtstoraged restarted successfully")
-            except Exception as svc_err:
-                logging.warning("Failed to restart virtstoraged: %s", svc_err)
-                logging.warning("This may cause ACL test failures for storage operations")
+            if utils_split_daemons.is_modular_daemon():
+                from virttest.staging import service
+                try:
+                    virtstoraged = service.Factory.create_service("virtstoraged")
+                    logging.info("Restarting virtstoraged to apply polkit rules")
+                    virtstoraged.restart()
+                    logging.info("virtstoraged restarted successfully")
+                except Exception as svc_err:
+                    raise exceptions.TestError(
+                        "Failed to restart virtstoraged after polkit setup: %s" % svc_err
+                    ) from svc_err
+        except exceptions.TestError:
+            raise
         except Exception as e:
             logging.error("Failed to setup polkit: %s", e)
             raise exceptions.TestError("Polkit setup failed: %s" % e)
@@ -157,5 +161,10 @@ def run(test, params, env):
             logging.info("Cleaning up polkit configuration")
             try:
                 polkit.cleanup()
+                if utils_split_daemons.is_modular_daemon():
+                    from virttest.staging import service
+                    virtstoraged = service.Factory.create_service("virtstoraged")
+                    logging.info("Restarting virtstoraged after polkit cleanup")
+                    virtstoraged.restart()
             except Exception as e:
                 logging.warning("Failed to cleanup polkit: %s", e)
