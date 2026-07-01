@@ -8,7 +8,6 @@ from virttest import libvirt_storage
 from virttest import data_dir
 from virttest import utils_split_daemons
 from virttest import virsh
-from virttest import test_setup
 from virttest.staging import lv_utils
 from virttest.utils_test import libvirt as utlv
 
