@@ -524,9 +524,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'virt-inspector --format=raw -a "$uri"'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
-        process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4096 "
+        process.run("nbdkit file %s --filter=cow cow-block-size=4096 "
                     "--run '%s'" % (image_path, cmd_run), shell=True)
-        process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4K "
+        process.run("nbdkit file %s --filter=cow cow-block-size=4K "
                     "--run '%s'" % (image_path, cmd_run), shell=True)
 
     def reduce_verbosity_debugging():
@@ -566,10 +566,10 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'virt-inspector --format=raw -a "$uri"'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
-        process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+        process.run("nbdkit file %s --filter=cache cache-on-read=true "
                     "cache-min-block-size=4k --run '%s'" %
                     (image_path, cmd_run), shell=True)
-        process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+        process.run("nbdkit file %s --filter=cache cache-on-read=true "
                     "cache-min-block-size=64K --run '%s'" %
                     (image_path, cmd_run), shell=True)
 
