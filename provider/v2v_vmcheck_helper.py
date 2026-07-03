@@ -745,9 +745,7 @@ class VMChecker(object):
         Check windows guest after v2v convert.
         """
         try:
-            # Sometimes windows guests needs >10mins to finish drivers
-            # installation
-            self.checker.create_session(timeout=900)
+            self.checker.create_session()
         except Exception as detail:
             raise exceptions.TestError(
                 'Failed to connect to windows guest: %s' %
@@ -821,7 +819,7 @@ class VMChecker(object):
             # session should be created to avoid using invalid session.
             self.checker.session.close()
             self.checker.session = None
-            self.checker.create_session(timeout=900)
+            self.checker.create_session()
             win_dirvers = self.checker.get_driver_info()
             for driver in expect_drivers:
                 if driver in win_dirvers:
