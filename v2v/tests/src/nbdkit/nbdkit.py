@@ -508,9 +508,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
         time_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-on-read=%s "
                              "--run '%s' > %s/time1.log" % (image_path, tmp_path, cmd_run, tmp_path),
-                             shell=True, ignore_status=True)
+                             shell=True)
         time_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms --run '%s' > %s/time2.log"
-                             % (image_path, cmd_run, tmp_path), shell=True, ignore_status=True)
+                             % (image_path, cmd_run, tmp_path), shell=True)
         match_1 = re.search(r'real\s+(\d+)m([\d.]+)s', time_1.stderr_text)
         match_2 = re.search(r'real\s+(\d+)m([\d.]+)s', time_2.stderr_text)
         if not (int(match_1.group(1))*60+float(match_1.group(2))) < (int(match_2.group(1))*60+float(match_2.group(2))):
@@ -524,13 +524,10 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'virt-inspector --format=raw -a "$uri"'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
-        output_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4096 "
-                               "--run '%s'" % (image_path, cmd_run), shell=True, ignore_status=True)
-        output_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4K "
-                               "--run '%s'" % (image_path, cmd_run), shell=True, ignore_status=True)
-        for output in [output_1.stderr_text, output_2.stderr_text]:
-            if re.search('nbdkit: error: cow-block-size is out of range.*not a power of 2', output):
-                test.fail('fail to test cow-block-size option')
+        process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4096 "
+                    "--run '%s'" % (image_path, cmd_run), shell=True)
+        process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4K "
+                    "--run '%s'" % (image_path, cmd_run), shell=True)
 
     def reduce_verbosity_debugging():
         cmd_nbdsh = 'nbdsh -u $uri -c "h.pwrite(bytearray(1024), 0)"'
@@ -550,12 +547,12 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
         time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
                              "--run '%s' > %s/time1.log" % (image_path, cmd_run, tmp_path),
-                             shell=True, ignore_status=True)
+                             shell=True)
         time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms "
                              "cache-on-read=%s --run '%s' > %s/time2.log" %
-                             (image_path, tmp_path, cmd_run, tmp_path), shell=True, ignore_status=True)
+                             (image_path, tmp_path, cmd_run, tmp_path), shell=True)
         time_3 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms --run '%s' > %s/time3.log"
-                             % (image_path, cmd_run, tmp_path), shell=True, ignore_status=True)
+                             % (image_path, cmd_run, tmp_path), shell=True)
         for time in [int(''.join(filter(str.isdigit, re.search(r'real.*m', time_1.stderr_text).group(0)))),
                      int(''.join(filter(str.isdigit, re.search(r'real.*m', time_2.stderr_text).group(0))))]:
             if time > int(''.join(filter(str.isdigit, re.search(r'real.*m', time_3.stderr_text).group(0)))):
@@ -569,15 +566,12 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'virt-inspector --format=raw -a "$uri"'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
-        output_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
-                               "cache-min-block-size=4k --run '%s'" %
-                               (image_path, cmd_run), shell=True, ignore_status=True)
-        output_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
-                               "cache-min-block-size=64K --run '%s'" %
-                               (image_path, cmd_run), shell=True, ignore_status=True)
-        for output in [output_1.stderr_text, output_2.stderr_text]:
-            if re.search('nbdkit: error: cache-min-block-size.*is too small or too large', output):
-                test.fail('fail to test cache-min-block-size option')
+        process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+                    "cache-min-block-size=4k --run '%s'" %
+                    (image_path, cmd_run), shell=True)
+        process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+                    "cache-min-block-size=64K --run '%s'" %
+                    (image_path, cmd_run), shell=True)
 
     def cve_starttls():
         tmp_path = data_dir.get_tmp_dir()
