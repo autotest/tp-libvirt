@@ -506,10 +506,10 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
-        time_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-on-read=%s "
+        time_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=5ms cow-on-read=%s "
                              "--run '%s' > %s/time1.log" % (image_path, tmp_path, cmd_run, tmp_path),
                              shell=True)
-        time_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms --run '%s' > %s/time2.log"
+        time_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=5ms --run '%s' > %s/time2.log"
                              % (image_path, cmd_run, tmp_path), shell=True)
         match_1 = re.search(r'real\s+(\d+)m([\d.]+)s', time_1.stderr_text)
         match_2 = re.search(r'real\s+(\d+)m([\d.]+)s', time_2.stderr_text)
@@ -545,13 +545,13 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
         cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
-        time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
+        time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=5ms cache-on-read=true "
                              "--run '%s' > %s/time1.log" % (image_path, cmd_run, tmp_path),
                              shell=True)
-        time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms "
+        time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=5ms "
                              "cache-on-read=%s --run '%s' > %s/time2.log" %
                              (image_path, tmp_path, cmd_run, tmp_path), shell=True)
-        time_3 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms --run '%s' > %s/time3.log"
+        time_3 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=5ms --run '%s' > %s/time3.log"
                              % (image_path, cmd_run, tmp_path), shell=True)
         for time in [int(''.join(filter(str.isdigit, re.search(r'real.*m', time_1.stderr_text).group(0)))),
                      int(''.join(filter(str.isdigit, re.search(r'real.*m', time_2.stderr_text).group(0))))]:
