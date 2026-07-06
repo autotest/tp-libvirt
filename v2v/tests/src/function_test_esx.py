@@ -1071,6 +1071,18 @@ dnf -y install libvirt
         remote_virsh = virsh.VirshPersistent(**virsh_dargs)
         raw_dumpxml = remote_virsh.dumpxml(vm_name)
         remote_virsh.close_session()
+        if 'special_name' in checkpoint:
+            from urllib.parse import quote
+            if ' ' not in vm_name:
+                test.error("VM name %r missing space character" % vm_name)
+            if '%' not in vm_name:
+                test.error("VM name %r missing percent character" % vm_name)
+            encoded = quote(vm_name, safe='')
+            if len(encoded) < 80:
+                test.error("VM name %r percent-encoded length is %d, "
+                           "expected >= 80" % (vm_name, len(encoded)))
+            LOG.info("VM name %r percent-encoded length: %d",
+                     vm_name, len(encoded))
         if 'cpu_topology' in checkpoint:
             res_cpu_topology = ET.fromstring(raw_dumpxml.stdout_text).find(".//cpu/topology")
             if res_cpu_topology is None:
