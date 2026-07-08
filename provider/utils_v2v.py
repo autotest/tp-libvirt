@@ -265,10 +265,8 @@ class Target(object):
                         self._vmx_filename = re.search(ptn, self._nfspath).group(1)
                         break
 
-                if "%" in self._nfspath:
-                    self._nfspath = self._nfspath.replace("%", "%25")
-                if " " in self._nfspath:
-                    self._nfspath = self._nfspath.replace(" ", "%20")
+                from urllib.parse import quote as urlquote
+                self._nfspath = urlquote(self._nfspath, safe="/")
 
                 if not self._vmx_filename:
                     self._vmx_filename = self._nfspath
