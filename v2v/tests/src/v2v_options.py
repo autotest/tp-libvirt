@@ -610,6 +610,7 @@ def run(test, params, env):
 
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
+    mount_nfs_ova_source = None
     try:
         if version_required and not utils_v2v.multiple_versions_compare(
                 version_required):
@@ -838,13 +839,14 @@ def run(test, params, env):
                     pool_target='v2v_src_pool'),
                 timeout=30,
                 step=3)
-            ova_dir = params.get('ova_dir')
-            if not os.path.isdir(ova_dir):
-                os.mkdir(ova_dir)
             nfs_ova_source = params.get('nfs_ova_source')
             if nfs_ova_source:
-                if not utils_misc.mount(nfs_ova_source, ova_dir, 'nfs', verbose=True):
-                    test.error('Mount nfs for ova images failed')
+                mount_nfs_ova_source = utils_v2v.v2v_mount(
+                    nfs_ova_source, 'nfs_ova_source')
+                ova_file = params.get('ova_file')
+                if ova_file:
+                    input_file = os.path.join(mount_nfs_ova_source, ova_file)
+                    LOG.info('OVA input_file: %s', input_file)
             else:
                 LOG.warning('nfs_ova_source not configured, expecting local OVA files')
 
@@ -1042,10 +1044,9 @@ def run(test, params, env):
                 os.rmdir(params['mount_point'])
             except OSError:
                 pass
-        if checkpoint in ['with_ic', 'without_ic']:
-            if params.get('nfs_ova_source'):
-                utils_misc.umount(params['nfs_ova_source'], params['ova_dir'], 'nfs')
-                os.rmdir(params['ova_dir'])
+        if mount_nfs_ova_source:
+            utils_misc.umount(
+                params.get('nfs_ova_source'), mount_nfs_ova_source, None)
         if checkpoint == 'simulate_nfs':
             process.run('rm -rf /tmp/rhv/')
         if os.path.exists(estimate_file):
