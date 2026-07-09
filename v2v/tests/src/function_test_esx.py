@@ -583,10 +583,12 @@ def run(test, params, env):
     def verify_certificate(certs_src_dir, certs_dest_dir):
         process.run('yum install ca-certificates -y | update-ca-trust',  shell=True)
         mount_cert_dir = utils_v2v.v2v_mount(certs_src_dir, 'certs_src_dir')
-        if not os.path.exists(certs_dest_dir):
-            os.makedirs(certs_dest_dir)
-        process.run('scp -r %s/* %s' % (mount_cert_dir, certs_dest_dir), shell=True)
-        process.run('umount %s' % mount_cert_dir, shell=True)
+        try:
+            if not os.path.exists(certs_dest_dir):
+                os.makedirs(certs_dest_dir)
+            process.run('scp -r %s/* %s' % (mount_cert_dir, certs_dest_dir), shell=True)
+        finally:
+            utils_misc.umount(certs_src_dir, mount_cert_dir, None)
         process.run('update-ca-trust extract', shell=True)
 
     def check_online_disks(vmcheck):
