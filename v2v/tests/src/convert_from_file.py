@@ -3,6 +3,7 @@ import os
 import pwd
 import logging
 import shutil
+import tempfile
 import time
 import re
 
@@ -43,7 +44,6 @@ def run(test, params, env):
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     target = params.get('target')
     input_mode = params.get('input_mode')
-    input_file = params.get('input_file')
     output_mode = params.get('output_mode')
     output_format = params.get('output_format')
     os_pool = output_storage = params.get('output_storage', 'default')
@@ -184,6 +184,10 @@ def run(test, params, env):
                 '%d checkpoints failed: %s' %
                 (len(error_list), error_list))
 
+    mount_vmx_nfs_src = None
+    mount_nfs_ova_source = None
+    ova_tmpdir = None
+    input_file = params.get('input_file')
     try:
         if enable_legacy_policy:
             update_crypto_policy("LEGACY")
@@ -235,8 +239,8 @@ def run(test, params, env):
             if checkpoint == 'regular_user_sudo':
                 v2v_params.update({'pub_key': pub_key})
             if checkpoint == 'cpu_topology':
-                mount_point = utils_v2v.v2v_mount(vmx_nfs_src, 'v2v_tmp_mp')
-                vmxfile = glob.glob(os.path.join(mount_point, vm_name, '*.vmx'))[0]
+                mount_vmx_nfs_src = utils_v2v.v2v_mount(vmx_nfs_src, 'vmx_nfs_src')
+                vmxfile = glob.glob(os.path.join(mount_vmx_nfs_src, vm_name, '*.vmx'))[0]
                 with open(vmxfile) as fd:
                     buf = fd.read()
                 res = re.search('numvcpus = "(\d+)"', buf)
@@ -253,25 +257,27 @@ def run(test, params, env):
                 LOG.info('msg_content_yes is %s', params['msg_content_yes'])
             if checkpoint == 'character_slash':
                 v2v_params['new_name'] = re.sub(r'/', '_', v2v_params['new_name'])
-        # copy ova from nfs storage before v2v conversion
         if input_mode == 'ova':
-            src_dir = params.get('ova_dir')
-            dest_dir = params.get('ova_copy_dir')
-            if os.path.isfile(src_dir) and not os.path.exists(dest_dir):
-                os.makedirs(dest_dir, exist_ok=True)
-            if os.path.isdir(src_dir) and os.path.exists(dest_dir):
-                shutil.rmtree(dest_dir)
+            nfs_ova_source = params.get('nfs_ova_source')
+            ova_file = params.get('ova_file')
+            ova_file_is_dir = params.get('ova_file_is_dir') == 'yes'
+            ova_file_trailing_slash = params.get('ova_file_trailing_slash') == 'yes'
 
-            if os.path.isdir(src_dir):
-                shutil.copytree(src_dir, dest_dir)
-            else:
-                shutil.copy(src_dir, dest_dir)
-            LOG.info('Copy ova from %s to %s', src_dir, dest_dir)
+            mount_nfs_ova_source = utils_v2v.v2v_mount(nfs_ova_source, 'nfs_ova_source')
+
+            input_file = os.path.join(mount_nfs_ova_source, ova_file)
+            if ova_file_trailing_slash:
+                input_file += '/'
+            v2v_params['input_file'] = input_file
+            LOG.info('OVA input_file: %s', input_file)
+
             if checkpoint == 'cpu_topology':
-                ova_file = params.get('ova_file_name')
-                dest_ova = os.path.join(dest_dir, ova_file)
-                process.run('tar xvf %s -C %s' % (input_file, dest_dir), shell=True)
-                with open(dest_ova[:-1] + 'f') as fd:
+                ova_tmpdir = tempfile.mkdtemp(dir='/var/tmp')
+                process.run('tar xvf %s -C %s' % (input_file, ova_tmpdir), shell=True)
+                ovf_files = glob.glob(os.path.join(ova_tmpdir, '*.ovf'))
+                if not ovf_files:
+                    test.error('No OVF file found in OVA')
+                with open(ovf_files[0]) as fd:
                     buf = fd.read()
                 res = re.search('<rasd:ElementName>(\d+) virtual CPU', buf)
                 if not res:
@@ -285,6 +291,13 @@ def run(test, params, env):
                 params['msg_content_yes'] += "cores='%s'.*" % corespersocket
                 params['msg_content_yes'] += "threads='1'.*"
                 LOG.info('msg_content_yes is %s', params['msg_content_yes'])
+
+            if checkpoint == 'win2008r2_ostk':
+                image_to_match_file = params.get('image_to_match_file')
+                if image_to_match_file:
+                    params['image_to_match'] = os.path.join(
+                        mount_nfs_ova_source, image_to_match_file)
+
         if input_mode == 'disk':
             tmp_path = data_dir.get_tmp_dir()
             image_path = 'cd %s ; curl -O %s --insecure' % (tmp_path, params.get('image_url'))
@@ -315,11 +328,10 @@ def run(test, params, env):
         if output_mode == 'local':
             v2v_params['os_directory'] = data_dir.get_tmp_dir()
 
-        if checkpoint == 'ova_relative_path':
+        if checkpoint == 'ova_relative_path' and mount_nfs_ova_source:
             LOG.debug('Current dir: %s', os.getcwd())
-            ova_dir = params.get('ova_dir')
-            LOG.info('Change to dir: %s', ova_dir)
-            os.chdir(ova_dir)
+            LOG.info('Change to dir: %s', mount_nfs_ova_source)
+            os.chdir(mount_nfs_ova_source)
 
         # Set libguestfs environment variable
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -349,10 +361,15 @@ def run(test, params, env):
         if checkpoint != 'virt_v2v_in_place':
             check_result(v2v_result, status_error)
     finally:
+        if mount_vmx_nfs_src:
+            utils_misc.umount(vmx_nfs_src, mount_vmx_nfs_src, None)
+        if mount_nfs_ova_source:
+            utils_misc.umount(
+                params.get('nfs_ova_source'), mount_nfs_ova_source, None)
+        if ova_tmpdir and os.path.exists(ova_tmpdir):
+            shutil.rmtree(ova_tmpdir)
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
-        if input_mode == 'ova' and os.path.exists(dest_dir):
-            shutil.rmtree(dest_dir)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'rhev' and v2v_sasl:
