@@ -5,6 +5,7 @@ import os
 import re
 import string
 import tempfile
+import threading
 import time
 import xml.etree.ElementTree as ET
 from distutils.version import LooseVersion  # pylint: disable=E0611
@@ -62,6 +63,47 @@ def compare_version(compare_version, real_version=None, cmd=None):
     if LooseVersion(real_version) >= LooseVersion(compare_version):
         return True
     return False
+
+
+class _RebootWatcher(object):
+    """Watch for libvirt domain reboot events via 'virsh event'."""
+
+    def __init__(self, vm_name):
+        self.vm_name = vm_name
+        self.reboot_count = 0
+        self._proc = None
+        self._thread = threading.Thread(
+            target=self._watch, name='reboot-watcher', daemon=True)
+        self._thread.start()
+
+    def _watch(self):
+        import subprocess
+        cmd = ['virsh', 'event', '--domain', self.vm_name,
+               '--event', 'reboot', '--loop']
+        LOG.info("Starting reboot watcher: %s", ' '.join(cmd))
+        try:
+            self._proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            for line in self._proc.stdout:
+                line = line.decode('utf-8', errors='replace').strip()
+                if line:
+                    self.reboot_count += 1
+                    LOG.warning("Guest reboot detected (#%d): %s",
+                                self.reboot_count, line)
+        except Exception as e:
+            LOG.debug("Reboot watcher ended: %s", e)
+
+    def stop(self):
+        if self._proc:
+            try:
+                self._proc.kill()
+                self._proc.wait(timeout=5)
+            except Exception:
+                pass
+        self._thread.join(timeout=5)
+        if self.reboot_count:
+            LOG.info("Reboot watcher saw %d reboot(s) total",
+                     self.reboot_count)
 
 
 class VMChecker(object):
@@ -123,8 +165,10 @@ class VMChecker(object):
         self.init_vmxml(raise_exception=False)
         # Save NFS mount records like {0:(src, dst, fstype)}
         self.mount_records = {}
+        self._reboot_watcher = _RebootWatcher(self.vm_name)
 
     def cleanup(self):
+        self._reboot_watcher.stop()
         self.close_virsh_session()
         try:
             self.checker.cleanup()
