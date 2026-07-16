@@ -18,7 +18,7 @@ except ImportError:
 
 from avocado.core import exceptions
 from avocado.utils import process
-from aexpect.exceptions import ShellStatusError
+from aexpect.exceptions import ShellError
 
 from virttest import utils_v2v
 from virttest import utils_sasl
@@ -261,7 +261,7 @@ class VMChecker(object):
         elif self.os_type == 'windows':
             try:
                 self.check_windows_vm()
-            except ShellStatusError:
+            except ShellError:
                 LOG.debug('Windows guest may be rebooting, try again!')
                 self.checker.session.close()
                 self.checker.session = None
