@@ -32,10 +32,20 @@ def run(test, params, env):
     """
     def test_boot_order():
         pre_vm_state = params.get('pre_vm_state', '')
+
+        # aarch64/EFI guests often ship with per-device <boot order=.../> on
+        # disk and no <os>/<boot>. Prepare the precondition explicitly so the
+        # negative attach check hits the intended libvirt error.
+        if scenario == 'with_os_boot':
+            prep_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            prep_xml.remove_all_boots()
+            prep_xml.setup_attrs(os={'boots': ['hd']})
+            prep_xml.sync()
+        elif scenario == 'with_boot_disk':
+            libvirt.change_boot_order(vm_name, 'disk', '1')
+
         iface_pre_at = modify_iface(vm_name, **iface_attrs)
 
-        if scenario == 'with_boot_disk':
-            libvirt.change_boot_order(vm_name, 'disk', '1')
         if pre_vm_state == 'hot':
             vm.start()
 
