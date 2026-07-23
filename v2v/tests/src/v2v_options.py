@@ -610,6 +610,7 @@ def run(test, params, env):
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     mount_nfs_ova_source = None
+    mount_nfs_vmx = None
     try:
         if version_required and not utils_v2v.multiple_versions_compare(
                 version_required):
@@ -848,15 +849,14 @@ def run(test, params, env):
                 LOG.warning('nfs_ova_source not configured, expecting local OVA files')
 
         if checkpoint == 'vmx':
-            mount_point = params.get('mount_point')
-            if not os.path.isdir(mount_point):
-                os.mkdir(mount_point)
             nfs_vmx = params.get('nfs_vmx')
-            if not utils_misc.mount(nfs_vmx, mount_point, 'nfs', verbose=True):
-                test.error('Mount nfs for vmx failed')
-            vmx = params.get('vmx')
+            mount_nfs_vmx = utils_v2v.v2v_mount(nfs_vmx, 'nfs_vmx')
+            vmx = os.path.join(mount_nfs_vmx, vm_name, '%s.vmx' % vm_name)
             if not os.path.exists(vmx):
-                test.error('VMX file not found: %s' % vmx)
+                test.error('VMX file not found: %s\n'
+                           'Available in %s: %s' %
+                           (vmx, mount_nfs_vmx,
+                            os.listdir(mount_nfs_vmx)))
             input_option = '-i vmx %s' % vmx
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
@@ -1032,15 +1032,9 @@ def run(test, params, env):
             v2v_sasl.cleanup()
             LOG.debug('SASL session %s is closing', v2v_sasl)
             v2v_sasl.close_session()
-        if checkpoint == 'vmx':
-            utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
-            if utils_misc.is_mounted(params['nfs_vmx'], params['mount_point'], 'nfs'):
-                process.run('umount -l %s' % params['mount_point'],
-                            ignore_status=True)
-            try:
-                os.rmdir(params['mount_point'])
-            except OSError:
-                pass
+        if mount_nfs_vmx:
+            utils_misc.umount(
+                params.get('nfs_vmx'), mount_nfs_vmx, None)
         if mount_nfs_ova_source:
             utils_misc.umount(
                 params.get('nfs_ova_source'), mount_nfs_ova_source, None)
