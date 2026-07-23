@@ -644,6 +644,8 @@ def run(test, params, env):
             pass
         elif input_mode == "libvirt":
             uri_obj = utils_v2v.Uri(hypervisor)
+            if hypervisor == 'esx' and src_uri_type == 'esx':
+                vpx_dc = None
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
             # Remote libvirt connection is not officially supported by
             # v2v and may fail. Just use localhost to simulate a remote
