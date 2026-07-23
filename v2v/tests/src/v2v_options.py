@@ -986,8 +986,6 @@ def run(test, params, env):
             params['main_vm'] = new_vm_name
         check_result(cmd, cmd_result, status_error)
     finally:
-        if hypervisor == "esx":
-            process.run("rm -rf %s" % source_passwd_file, ignore_status=True)
         if checkpoint == "weak_dendency":
             utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
