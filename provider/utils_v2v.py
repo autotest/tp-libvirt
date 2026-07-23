@@ -292,68 +292,8 @@ class Target(object):
                             "VDDK library directory or NFS mount point must be set"
                         )
 
-                    vddk_lib_prefix = "vddklib_"
-                    # General vddk directory
-                    if self.unprivileged_user:
-                        home = pwd.getpwnam(self.unprivileged_user).pw_dir
-                        vddk_lib_rootdir = os.path.join(home, "vddk_libdir")
-                    else:
-                        vddk_lib_rootdir = os.path.expanduser("~/vddk_libdir")
-                    vddk_libdir = "%s/latest" % vddk_lib_rootdir
-                    check_list = [
-                        "FILES",
-                        "lib64/libgvmomi.so",
-                        "bin64/vmware-vdiskmanager",
-                    ]
-
-                    mount_point = v2v_mount(self.vddk_libdir_src, "vddk_libdir")
-
-                    LOG.info("Preparing vddklib on local server")
-                    if os.path.exists(vddk_lib_rootdir):
-                        if os.path.exists(vddk_libdir):
-                            os.unlink(vddk_libdir)
-
-                        vddklib_count = len(
-                            glob.glob("%s/%s*" % (vddk_lib_rootdir, vddk_lib_prefix))
-                        )
-                        for i in range(1, vddklib_count + 1):
-                            is_same = True
-                            vddk_lib = "%s/%s" % (
-                                vddk_lib_rootdir,
-                                vddk_lib_prefix + str(i),
-                            )
-                            for file_i in check_list:
-                                src_file = os.path.join(mount_point, file_i)
-                                dst_file = os.path.join(vddk_lib, file_i)
-                                # skip the check if both don't have the file.
-                                if not os.path.exists(src_file) and not os.path.exists(
-                                    dst_file
-                                ):
-                                    LOG.debug("Skip comparing file %s" % dst_file)
-                                    continue
-                                if not compare_md5(src_file, dst_file):
-                                    is_same = False
-                                    break
-
-                            if is_same:
-                                os.symlink(vddk_lib, vddk_libdir, True)
-                                break
-
-                        if not os.path.exists(vddk_libdir):
-                            vddk_lib = "%s/%s" % (
-                                vddk_lib_rootdir,
-                                vddk_lib_prefix + str(vddklib_count + 1),
-                            )
-                            shutil.copytree(mount_point, vddk_lib)
-                            os.symlink(vddk_lib, vddk_libdir, True)
-                    else:
-                        vddk_lib = "%s/%s" % (vddk_lib_rootdir, vddk_lib_prefix + "1")
-                        shutil.copytree(mount_point, vddk_lib)
-                        os.symlink(vddk_lib, vddk_libdir, True)
-
-                    LOG.info("vddklib on local server is %s", vddk_lib)
-                    self.vddk_libdir = vddk_libdir
-                    utils_misc.umount(self.vddk_libdir_src, mount_point, None)
+                    self.vddk_libdir = prepare_vddk_libdir(
+                        self.vddk_libdir_src, self.unprivileged_user)
 
                 # Invalid vddk thumbprint if no ':'
                 if self.vddk_thumbprint is None or ":" not in self.vddk_thumbprint:
@@ -1654,6 +1594,83 @@ def get_authorized_keys_file(server_type=None):
     else:
         authorized_keys = os.path.expanduser("~/.ssh/authorized_keys")
     return authorized_keys
+
+
+def prepare_vddk_libdir(vddk_libdir_src, unprivileged_user=None):
+    """
+    Prepare a local copy of the VDDK library from an NFS source.
+
+    Mounts the NFS source, copies the VDDK library locally if needed
+    (with md5 comparison to avoid redundant copies), creates a 'latest'
+    symlink, and unmounts.
+
+    :param vddk_libdir_src: NFS source for VDDK library (e.g. host:/path)
+    :param unprivileged_user: Optional user whose home dir to use
+    :return: Path to the VDDK library directory (the 'latest' symlink)
+    """
+    vddk_lib_prefix = "vddklib_"
+    if unprivileged_user:
+        home = pwd.getpwnam(unprivileged_user).pw_dir
+        vddk_lib_rootdir = os.path.join(home, "vddk_libdir")
+    else:
+        vddk_lib_rootdir = os.path.expanduser("~/vddk_libdir")
+    vddk_libdir = "%s/latest" % vddk_lib_rootdir
+    check_list = [
+        "FILES",
+        "lib64/libgvmomi.so",
+        "bin64/vmware-vdiskmanager",
+    ]
+
+    mount_point = v2v_mount(vddk_libdir_src, "vddk_libdir")
+
+    try:
+        LOG.info("Preparing vddklib on local server")
+        if os.path.exists(vddk_lib_rootdir):
+            if os.path.exists(vddk_libdir):
+                os.unlink(vddk_libdir)
+
+            vddklib_count = len(
+                glob.glob("%s/%s*" % (vddk_lib_rootdir, vddk_lib_prefix))
+            )
+            for i in range(1, vddklib_count + 1):
+                is_same = True
+                vddk_lib = "%s/%s" % (
+                    vddk_lib_rootdir,
+                    vddk_lib_prefix + str(i),
+                )
+                for file_i in check_list:
+                    src_file = os.path.join(mount_point, file_i)
+                    dst_file = os.path.join(vddk_lib, file_i)
+                    if not os.path.exists(src_file) and not os.path.exists(
+                        dst_file
+                    ):
+                        LOG.debug("Skip comparing file %s" % dst_file)
+                        continue
+                    if not compare_md5(src_file, dst_file):
+                        is_same = False
+                        break
+
+                if is_same:
+                    os.symlink(vddk_lib, vddk_libdir, True)
+                    break
+
+            if not os.path.exists(vddk_libdir):
+                vddk_lib = "%s/%s" % (
+                    vddk_lib_rootdir,
+                    vddk_lib_prefix + str(vddklib_count + 1),
+                )
+                shutil.copytree(mount_point, vddk_lib)
+                os.symlink(vddk_lib, vddk_libdir, True)
+        else:
+            vddk_lib = "%s/%s" % (vddk_lib_rootdir, vddk_lib_prefix + "1")
+            shutil.copytree(mount_point, vddk_lib)
+            os.symlink(vddk_lib, vddk_libdir, True)
+
+        LOG.info("vddklib on local server is %s", vddk_lib)
+    finally:
+        utils_misc.umount(vddk_libdir_src, mount_point, None)
+
+    return vddk_libdir
 
 
 def v2v_mount(src, dst="v2v_mount_point", fstype="nfs", options="ro,nolock"):

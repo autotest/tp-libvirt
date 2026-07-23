@@ -7,8 +7,6 @@ import pwd
 import logging
 import shutil
 
-import tempfile
-
 from avocado.core import exceptions
 from avocado.utils import process
 from avocado.utils.astring import to_text
@@ -806,14 +804,10 @@ def run(test, params, env):
                     vddk_thumbprint = utils_v2v.get_vddk_thumbprint(esx_ip, source_pwd, 'esx')
                 else:
                     vddk_thumbprint = utils_v2v.get_vddk_thumbprint(remote_host, source_pwd, 'vpx')
-                vddk_libdir_local = vddk_libdir or '/home/vddk_libdir'
-                if vddk_libdir_src:
-                    with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_tmpdir:
-                        utils_misc.mount(vddk_libdir_src, vddk_tmpdir, 'nfs')
-                        process.run('mkdir -p /home/vddk_libdir;cp -R %s/* %s' % (vddk_tmpdir, '/home/vddk_libdir'),
-                                    shell=True, ignore_status=True)
-                        utils_misc.umount(vddk_libdir_src, vddk_tmpdir, 'nfs')
-                    vddk_libdir_local = '/home/vddk_libdir'
+                vddk_libdir_local = vddk_libdir
+                if not vddk_libdir_local and vddk_libdir_src:
+                    vddk_libdir_local = utils_v2v.prepare_vddk_libdir(
+                        vddk_libdir_src)
                 v2v_options += ' -it vddk  -io vddk-libdir=%s -io vddk-thumbprint=%s' % (vddk_libdir_local, vddk_thumbprint)
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
