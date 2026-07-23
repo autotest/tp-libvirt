@@ -236,7 +236,15 @@ def run(test, params, env):
 
         # Operations before updating vm's iface xml
         disk_boot = params.get('disk_boot')
-        if disk_boot:
+        if expect_err_msg and 'os/boot' in expect_err_msg:
+            # aarch64/EFI guests often already use per-device disk boot and
+            # lack <os>/<boot>; set the os/boot precondition explicitly.
+            # (Do not rely on a cfg flag — avocado may drop unknown keys.)
+            prep_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            prep_xml.remove_all_boots()
+            prep_xml.setup_attrs(os={'boots': ['hd']})
+            prep_xml.sync()
+        elif disk_boot:
             update_vm_boot_order(vm_name, disk_boot)
 
         if case == 'update_driver_iommu_ast':
