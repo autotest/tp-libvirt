@@ -76,8 +76,11 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
     :return: ip address
     """
     if restart_network:
-        if not utils_package.package_install('dhcp-client', session=vm_session):
-            raise exceptions.TestFail("Failed to install dhcp-client on guest.")
+        # RHEL <= 9: dhcp-client; RHEL 10+: dhcpcd
+        if not (utils_package.package_install('dhcpcd', session=vm_session) or
+                utils_package.package_install('dhcp-client', session=vm_session)):
+            raise exceptions.TestFail(
+                "Failed to install dhcp client (dhcpcd/dhcp-client) on guest.")
         utils_net.restart_guest_network(vm_session)
     vm_iface = utils_misc.wait_for(
         lambda: utils_net.get_linux_ifname(vm_session, mac_addr),
