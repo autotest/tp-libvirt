@@ -314,6 +314,7 @@ def run(test, params, env):
                            'remote_pwd': source_pwd,
                            'auto_close': True,
                            'debug': True}
+            LOG.debug("creating virsh persistent session with args: %s" % virsh_dargs)
             v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
             LOG.debug('a new virsh session %s was created', v2v_virsh)
             close_virsh = True
