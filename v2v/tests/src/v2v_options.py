@@ -855,6 +855,8 @@ def run(test, params, env):
             if not utils_misc.mount(nfs_vmx, mount_point, 'nfs', verbose=True):
                 test.error('Mount nfs for vmx failed')
             vmx = params.get('vmx')
+            if not os.path.exists(vmx):
+                test.error('VMX file not found: %s' % vmx)
             input_option = '-i vmx %s' % vmx
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
