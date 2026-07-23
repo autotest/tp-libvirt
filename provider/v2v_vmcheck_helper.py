@@ -20,7 +20,7 @@ from avocado.core import exceptions
 from avocado.utils import process
 from aexpect.exceptions import ShellError
 
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
 from virttest import utils_misc
