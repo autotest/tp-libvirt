@@ -845,6 +845,11 @@ def run(test, params, env):
                 if ova_file:
                     input_file = os.path.join(mount_nfs_ova_source, ova_file)
                     LOG.info('OVA input_file: %s', input_file)
+                    if not os.path.exists(input_file):
+                        test.error('OVA not found: %s\n'
+                                   'Available: %s' %
+                                   (input_file,
+                                    os.listdir(mount_nfs_ova_source)))
             else:
                 LOG.warning('nfs_ova_source not configured, expecting local OVA files')
 
