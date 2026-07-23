@@ -624,6 +624,15 @@ def run(test, params, env):
                 ignore_status=True,
                 shell=True)
 
+        if not input_file and params.get('nfs_ova_source') and params.get('ova_file'):
+            mount_nfs_ova_source = utils_v2v.v2v_mount(
+                params.get('nfs_ova_source'), 'nfs_ova_source')
+            input_file = os.path.join(mount_nfs_ova_source, params.get('ova_file'))
+            if not os.path.exists(input_file):
+                test.error('OVA not found: %s\nAvailable: %s' %
+                           (input_file, os.listdir(mount_nfs_ova_source)))
+            LOG.info('OVA input_file: %s', input_file)
+
         if checkpoint.startswith('empty_nic_source'):
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             iface = xml.get_devices('interface')[0]
@@ -837,21 +846,6 @@ def run(test, params, env):
                     pool_target='v2v_src_pool'),
                 timeout=30,
                 step=3)
-            nfs_ova_source = params.get('nfs_ova_source')
-            if nfs_ova_source:
-                mount_nfs_ova_source = utils_v2v.v2v_mount(
-                    nfs_ova_source, 'nfs_ova_source')
-                ova_file = params.get('ova_file')
-                if ova_file:
-                    input_file = os.path.join(mount_nfs_ova_source, ova_file)
-                    LOG.info('OVA input_file: %s', input_file)
-                    if not os.path.exists(input_file):
-                        test.error('OVA not found: %s\n'
-                                   'Available: %s' %
-                                   (input_file,
-                                    os.listdir(mount_nfs_ova_source)))
-            else:
-                LOG.warning('nfs_ova_source not configured, expecting local OVA files')
 
         if checkpoint == 'vmx':
             nfs_vmx = params.get('nfs_vmx')
