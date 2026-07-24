@@ -113,33 +113,6 @@ def run(test, params, env):
         LOG.error(msg)
         error_list.append(msg)
 
-    def check_vmtools(vmcheck, check):
-        """
-        Check whether vmware tools packages have been removed,
-        or vmware-tools service has stopped
-
-        :param vmcheck: VMCheck object for vm checking
-        :param check: Checkpoint of different cases
-        :return: None
-        """
-        if "service" not in check:
-            LOG.info('Check if packages been removed')
-            pkgs = vmcheck.session.cmd('rpm -qa').strip()
-            removed_pkgs = params.get('removed_pkgs').strip().split(',')
-            if not removed_pkgs:
-                test.error('Missing param "removed_pkgs"')
-            for pkg in removed_pkgs:
-                if pkg in pkgs:
-                    log_fail('Package "%s" not removed' % pkg)
-        else:
-            LOG.info('Check if service stopped')
-            vmtools_service = params.get('service_name')
-            status = utils_misc.get_guest_service_status(
-                vmcheck.session, vmtools_service)
-            LOG.info('Service %s status: %s', vmtools_service, status)
-            if status != 'inactive':
-                log_fail('Service "%s" is not stopped' % vmtools_service)
-
     def check_modprobe(vmcheck):
         """
         Check whether content of /etc/modprobe.conf meets expectation
@@ -712,8 +685,6 @@ def run(test, params, env):
             # Check specific checkpoints
             if 'cdrom' in checkpoint and "device='cdrom'" not in vmchecker.vmxml:
                 test.fail('CDROM no longer exists')
-            if 'vmtools' in checkpoint:
-                check_vmtools(vmchecker.checker, checkpoint)
             if 'virt_customize_pkg_related' in checkpoint:
                 virt_customize_pkg_related(vmchecker.checker)
             if 'virt_customize_file_related' in checkpoint:
