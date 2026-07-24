@@ -610,6 +610,7 @@ def run(test, params, env):
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     mount_nfs_ova_source = None
+    mount_nfs_kvm_images = None
     mount_nfs_vmx = None
     try:
         if version_required and not utils_v2v.multiple_versions_compare(
@@ -632,6 +633,31 @@ def run(test, params, env):
                 test.error('OVA not found: %s\nAvailable: %s' %
                            (input_file, os.listdir(mount_nfs_ova_source)))
             LOG.info('OVA input_file: %s', input_file)
+
+        nfs_kvm_images = params.get('nfs_kvm_images')
+        if nfs_kvm_images:
+            mount_nfs_kvm_images = utils_v2v.v2v_mount(
+                nfs_kvm_images, 'nfs_kvm_images')
+            if disk_img and not os.path.isabs(disk_img):
+                disk_img = os.path.join(mount_nfs_kvm_images, disk_img)
+            input_xml = params.get('input_xml')
+            if input_xml and not os.path.isabs(input_xml):
+                params['input_xml'] = os.path.join(
+                    mount_nfs_kvm_images, input_xml)
+            example_file = params.get('example_file')
+            if example_file and not os.path.isabs(example_file):
+                params['example_file'] = os.path.join(
+                    mount_nfs_kvm_images, example_file)
+            win_image = params.get('win_image')
+            if win_image and not os.path.isabs(win_image):
+                params['win_image'] = os.path.join(
+                    mount_nfs_kvm_images, win_image)
+            if '-i disk ' in v2v_options:
+                raw_disk_img = params.get('input_disk_image', '')
+                if raw_disk_img and not os.path.isabs(raw_disk_img):
+                    v2v_options = v2v_options.replace(
+                        '-i disk %s' % raw_disk_img,
+                        '-i disk %s' % disk_img)
 
         if checkpoint.startswith('empty_nic_source'):
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -1034,6 +1060,9 @@ def run(test, params, env):
         if mount_nfs_vmx:
             utils_misc.umount(
                 params.get('nfs_vmx'), mount_nfs_vmx, None)
+        if mount_nfs_kvm_images:
+            utils_misc.umount(
+                params.get('nfs_kvm_images'), mount_nfs_kvm_images, None)
         if mount_nfs_ova_source:
             utils_misc.umount(
                 params.get('nfs_ova_source'), mount_nfs_ova_source, None)
