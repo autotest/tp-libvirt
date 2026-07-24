@@ -640,10 +640,6 @@ def run(test, params, env):
                 nfs_kvm_images, 'nfs_kvm_images')
             if disk_img and not os.path.isabs(disk_img):
                 disk_img = os.path.join(mount_nfs_kvm_images, disk_img)
-            input_xml = params.get('input_xml')
-            if input_xml and not os.path.isabs(input_xml):
-                params['input_xml'] = os.path.join(
-                    mount_nfs_kvm_images, input_xml)
             example_file = params.get('example_file')
             if example_file and not os.path.isabs(example_file):
                 params['example_file'] = os.path.join(
