@@ -679,11 +679,6 @@ def run(test, params, env):
             if hypervisor == 'esx' and src_uri_type == 'esx':
                 vpx_dc = None
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
-            # Remote libvirt connection is not officially supported by
-            # v2v and may fail. Just use localhost to simulate a remote
-            # connection to test the warnings.
-            if checkpoint == 'remote_libvirt_conn':
-                ic_uri = 'qemu+ssh://localhost/system'
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
             if checkpoint == 'with_ic':
                 ic_uri = 'qemu:///session'
@@ -895,15 +890,6 @@ def run(test, params, env):
                 'v2v_print_estimate')
             v2v_options += " --machine-readable=file:%s" % estimate_file
 
-        if checkpoint == 'remote_libvirt_conn':
-            # Add localhost to known_hosts
-            cmd = 'ssh-keyscan -t ecdsa localhost >> ~/.ssh/known_hosts'
-            process.run(cmd, shell=True)
-            # Setup remote login without password
-            public_key = ssh_key.get_public_key().rstrip()
-            cmd = 'echo "%s" >> ~/.ssh/authorized_keys' % public_key
-            process.run(cmd, shell=True)
-
         if checkpoint == 'length_of_error' and utils_v2v.v2v_supported_option('--wrap'):
             v2v_options += ' --wrap'
 
@@ -1076,10 +1062,3 @@ def run(test, params, env):
                 shell=True)
             utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")
-        if checkpoint == 'remote_libvirt_conn':
-            cmd = r"sed -i '/localhost/d' ~/.ssh/known_hosts"
-            process.run(cmd, shell=True, ignore_status=True)
-            if locals().get('public_key'):
-                key = public_key.rstrip().split()[1].split('/')[0]
-                cmd = r"sed -i '/%s/d' ~/.ssh/authorized_keys" % key
-                process.run(cmd, shell=True, ignore_status=True)
