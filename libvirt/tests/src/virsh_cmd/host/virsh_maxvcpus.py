@@ -31,6 +31,11 @@ def run(test, params, env):
     status_error = params.get("status_error")
     connect_arg = params.get("connect_arg", "")
 
+    # Checking libvirt version before running maxvcpus with kqemu
+    if libvirt_version.version_compare(2, 19, 2):
+        if "kqemu" in option:
+            test.cancel("kqemu support was removed starting from libvirt 2.19.2 and QEMU 0.12")
+
     # params for transport connect.
     local_ip = params.get("local_ip", "ENTER.YOUR.LOCAL.IP")
     local_pwd = params.get("local_pwd", "ENTER.YOUR.LOCAL.ROOT.PASSWORD")
