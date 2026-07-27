@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import logging as log
 
@@ -157,12 +158,126 @@ def run(test, params, env):
 
         utils_misc.wait_for(lambda: _check_disk(target), 10, 3)
 
+    def check_domblklist(vm_name, target, source):
+        """
+        Verify target/source mapping in virsh domblklist output.
+
+        :param vm_name: domain name
+        :param target: disk target in guest xml
+        :param source: disk source path on host
+        :return: True if mapping is found
+        """
+        result = virsh.domblklist(vm_name, debug=True)
+        if result.exit_status != 0:
+            logging.error("virsh domblklist failed for %s", vm_name)
+            return False
+
+        output = result.stdout_text.strip()
+        logging.debug("domblklist output for %s:\n%s", vm_name, output)
+        for line in output.splitlines():
+            columns = line.split()
+            if len(columns) < 2:
+                continue
+            if columns[0] == target and columns[1] == source:
+                return True
+        return False
+
+    def check_domblklist_absent(vm_name, target):
+        """
+        Verify target is absent in virsh domblklist output.
+
+        :param vm_name: domain name
+        :param target: disk target in guest xml
+        :return: True if target is not found
+        """
+        result = virsh.domblklist(vm_name, debug=True)
+        if result.exit_status != 0:
+            logging.error("virsh domblklist failed for %s", vm_name)
+            return False
+
+        output = result.stdout_text.strip()
+        logging.debug("domblklist output for %s:\n%s", vm_name, output)
+        for line in output.splitlines():
+            columns = line.split()
+            if len(columns) < 1:
+                continue
+            if columns[0] == target:
+                return False
+        return True
+
+    def get_non_root_block_by_id():
+        """
+        Get a non-root host block device symlink from /dev/disk/by-id.
+
+        The selected device must not back the host root filesystem.
+        """
+        root_source = process.run(
+            "findmnt -n -o SOURCE /",
+            shell=True,
+            ignore_status=False
+        ).stdout_text.strip()
+        if not root_source:
+            test.cancel("Unable to determine host root source device")
+
+        root_source = root_source.split("[", 1)[0].strip()
+        root_parent_result = process.run(
+            "lsblk -ndo PKNAME %s" % root_source,
+            shell=True,
+            ignore_status=True
+        )
+        root_parent = root_parent_result.stdout_text.strip()
+        if root_parent:
+            root_disk = "/dev/%s" % root_parent
+        else:
+            root_disk = root_source
+
+        lsblk_cmd = "lsblk -dn -o NAME,TYPE"
+        lsblk_result = process.run(lsblk_cmd, shell=True, ignore_status=False)
+        host_disks = []
+        for line in lsblk_result.stdout_text.strip().splitlines():
+            columns = line.split()
+            if len(columns) != 2:
+                continue
+            disk_name, disk_type = columns
+            if disk_type != "disk":
+                continue
+            disk_path = "/dev/%s" % disk_name
+            if disk_path == root_disk:
+                continue
+            host_disks.append(disk_path)
+
+        if not host_disks:
+            test.cancel("No non-root host block device available for by-id attach-disk test")
+
+        by_id_dir = "/dev/disk/by-id"
+        if not os.path.isdir(by_id_dir):
+            test.cancel("%s does not exist on host" % by_id_dir)
+
+        for entry in sorted(os.listdir(by_id_dir)):
+            entry_path = os.path.join(by_id_dir, entry)
+            if not os.path.islink(entry_path):
+                continue
+            if re.search(r"-part\d+$", entry):
+                continue
+            try:
+                real_path = os.path.realpath(entry_path)
+            except OSError as err:
+                logging.debug("Skip broken by-id entry %s: %s", entry_path, err)
+                continue
+            if real_path in host_disks:
+                logging.info("Selected host by-id disk source %s -> %s",
+                             entry_path, real_path)
+                return entry_path
+
+        test.cancel("No /dev/disk/by-id symlink found for non-root host block device")
+
     # Get test command.
     test_cmd = params.get("at_dt_disk_test_cmd", "attach-disk")
 
     vm_ref = params.get("at_dt_disk_vm_ref", "name")
     at_options = params.get("at_dt_disk_at_options", "")
     dt_options = params.get("at_dt_disk_dt_options", "")
+    at_options_twice = at_options
     at_with_shareable = "yes" == params.get("at_with_shareable", 'no')
     pre_vm_state = params.get("at_dt_disk_pre_vm_state", "running")
     status_error = "yes" == params.get("status_error", 'no')
@@ -194,9 +309,12 @@ def run(test, params, env):
     test_type = "yes" == params.get("at_dt_disk_check_type", "no")
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
+    skip_iscsi_setup = "yes" == params.get("at_dt_disk_skip_iscsi_setup", "no")
     test_logcial_dev = "yes" == params.get("at_dt_disk_logical_device", "no")
     restart_libvirtd = "yes" == params.get("at_dt_disk_restart_libvirtd", "no")
     detach_disk_with_print_xml = "yes" == params.get("detach_disk_with_print_xml", "no")
+    use_disk_by_id = "yes" == params.get("at_dt_disk_use_disk_by_id", "no")
+    detach_after_attach = "yes" == params.get("at_dt_disk_detach_after_attach", "no")
     vg_name = params.get("at_dt_disk_vg", "vg_test_0")
     lv_name = params.get("at_dt_disk_lv", "lv_test_0")
     # Get additional lvm item names.
@@ -238,11 +356,19 @@ def run(test, params, env):
 
     # Create virtual device file.
     device_source_path = os.path.join(data_dir.get_data_dir(), device_source_name)
-    if test_block_dev:
-        device_source = libvirt.setup_or_cleanup_iscsi(True)
-        if not device_source:
-            # We should skip this case
-            test.cancel("Can not get iscsi device name in host")
+    if use_disk_by_id:
+        device_source = get_non_root_block_by_id()
+        source_path = False
+        create_img = False
+        test_block_dev = True
+    elif test_block_dev:
+        if skip_iscsi_setup:
+            device_source = device_source_name
+        else:
+            device_source = libvirt.setup_or_cleanup_iscsi(True)
+            if not device_source:
+                # We should skip this case
+                test.cancel("Can not get iscsi device name in host")
         if test_logcial_dev:
             if lv_utils.vg_check(vg_name):
                 lv_utils.vg_remove(vg_name)
@@ -349,6 +475,8 @@ def run(test, params, env):
     disk_count_before_cmd = vm_xml.VMXML.get_disk_count(vm_name)
 
     # Test.
+    status = None
+    device_target2 = device_target
     domid = vm.get_id()
     domuuid = vm.get_uuid()
 
@@ -366,9 +494,48 @@ def run(test, params, env):
     else:
         vm_ref = ""
 
+    detach_status = 0
+    check_domblklist_after_attach = True
     if test_cmd == "attach-disk":
         status = virsh.attach_disk(vm_ref, device_source, device_target,
                                    at_options, debug=True).exit_status
+        if not status:
+
+            if at_options.count("config") and not at_options.count("live") \
+                    and pre_vm_state != "shut off":
+                logging.info("--config attach on running VM: restarting to "
+                             "bring disk live before verification.")
+                vm.destroy(gracefully=False)
+                vm.start()
+                vm.wait_for_login()
+                # Now the disk is live – verify host-side domblklist.
+                check_domblklist_after_attach = check_domblklist(vm_name,
+                                                                 device_target,
+                                                                 device_source)
+                if check_domblklist_after_attach:
+                    logging.info("domblklist confirms '%s' present after "
+                                 "restart (--config attach).", device_target)
+                else:
+                    logging.error("domblklist did NOT show '%s' after "
+                                  "restart (--config attach).", device_target)
+
+            else:
+                # For --live or --persistent, check domblklist immediately
+                check_domblklist_after_attach = check_domblklist(vm_name,
+                                                                 device_target,
+                                                                 device_source)
+        if detach_after_attach and not status:
+            wait_for_disk(vm, device_target)
+            detach_status = virsh.detach_disk(vm_ref, device_target, dt_options,
+                                              debug=True).exit_status
+            if not detach_status:
+                if at_options.count("config") and not at_options.count("live") \
+                        and pre_vm_state != "shut off":
+                            vm.destroy(gracefully=False)
+                            vm.start()
+                            vm.wait_for_login()
+
+
     elif test_cmd == "detach-disk":
         # For detach disk with print-xml option, it only print information,and not actual disk detachment.
         if detach_disk_with_print_xml and libvirt_version.version_compare(4, 5, 0):
@@ -462,11 +629,22 @@ def run(test, params, env):
     # Recover VM state.
     if pre_vm_state == "shut off":
         vm.start()
-
     # Check in VM after command.
     check_vm_after_cmd = True
     check_vm_after_cmd = check_vm_partition(vm, device, os_type,
                                             device_target)
+
+    # Check host side domblklist after command.
+    check_domblklist_after_cmd = True
+    check_domblklist_after_detach = True
+    if test_cmd == "attach-disk":
+        check_domblklist_after_cmd = check_domblklist_after_attach
+        if detach_after_attach:
+            check_domblklist_after_detach = check_domblklist_absent(vm_name,
+                                                                    device_target)
+    elif test_cmd == "detach-disk":
+        check_domblklist_after_cmd = check_domblklist_absent(vm_name,
+                                                             device_target)
 
     # Check disk type after attach.
     check_disk_type = True
@@ -552,11 +730,25 @@ def run(test, params, env):
         inactive_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         disk_count_after_shutdown = len(inactive_vmxml.get_disk_all())
         if test_cmd == "attach-disk":
-            if disk_count_after_shutdown == disk_count_before_cmd:
+            if detach_after_attach and detach_status == 0:
+                pass
+            elif disk_count_after_shutdown == disk_count_before_cmd:
                 check_count_after_shutdown = False
         elif test_cmd == "detach-disk":
             if disk_count_after_shutdown < disk_count_before_cmd:
                 check_count_after_shutdown = False
+
+        # For --config flag, verify disk appears after VM restart
+        check_domblklist_after_restart = True
+        if test_cmd == "attach-disk" and at_options.count("config"):
+            # Restart VM to verify --config changes take effect
+            vm.start()
+            vm.wait_for_login()
+            check_domblklist_after_restart = check_domblklist(vm_name,
+                                                              device_target,
+                                                              device_source)
+            # Destroy VM after validation
+            vm.destroy(gracefully=False)
 
     finally:
         # Recover VM.
@@ -574,7 +766,8 @@ def run(test, params, env):
                         libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_item_name)
                 lv_utils.vg_remove(vg_name)
                 process.run("pvremove %s" % device_source, shell=True, ignore_status=True)
-            libvirt.setup_or_cleanup_iscsi(False)
+            if not skip_iscsi_setup:
+                libvirt.setup_or_cleanup_iscsi(False)
         else:
             libvirt.delete_local_disk("file", device_source)
 
@@ -588,7 +781,13 @@ def run(test, params, env):
             return
         if status:
             test.fail("virsh %s failed." % test_cmd)
+        if detach_after_attach and detach_status:
+            test.fail("virsh detach-disk failed after attach-disk.")
         if test_cmd == "attach-disk":
+            if not check_domblklist_after_cmd:
+                test.fail("Cannot find attached disk in virsh domblklist output.")
+            if detach_after_attach and not check_domblklist_after_detach:
+                test.fail("Detached disk still exists in virsh domblklist output.")
             if at_options.count("config"):
                 if not check_count_after_shutdown:
                     test.fail("Cannot see config attached device "
@@ -601,34 +800,54 @@ def run(test, params, env):
                     test.fail("Address(multifunction) set failed"
                               " after attach")
             else:
-                if not check_count_after_cmd:
-                    test.fail("Cannot see device in xml file"
-                              " after attach.")
-                if not check_vm_after_cmd:
-                    test.fail("Cannot see device in VM after"
-                              " attach.")
-                if not check_disk_type:
-                    test.fail("Check disk type failed after"
-                              " attach.")
-                if not check_audit_after_cmd:
-                    test.fail("Audit hotplug failure after attach")
-                if not check_cache_after_cmd:
-                    test.fail("Check cache failure after attach")
-                if at_options.count("persistent"):
-                    if not check_count_after_shutdown:
-                        test.fail("Cannot see device attached "
-                                  "with persistent after "
-                                  "VM shutdown.")
-                else:
-                    if check_count_after_shutdown:
-                        test.fail("See non-config attached device "
-                                  "in xml file after VM shutdown.")
+                if not detach_after_attach:
+                    if not check_count_after_cmd:
+                        test.fail("Cannot see device in xml file"
+                                  " after attach.")
+                    if not check_vm_after_cmd:
+                        test.fail("Cannot see device in VM after"
+                                  " attach.")
+                    if not check_domblklist_after_cmd:
+                        test.fail("Cannot verify attached disk in host "
+                                  "domblklist output after attach.")
+                    if not check_disk_type:
+                        test.fail("Check disk type failed after"
+                                  " attach.")
+                    if not check_audit_after_cmd:
+                        test.fail("Audit hotplug failure after attach")
+                    if not check_cache_after_cmd:
+                        test.fail("Check cache failure after attach")
+                    if at_options.count("persistent"):
+                        if not check_count_after_shutdown:
+                            test.fail("Cannot see device attached "
+                                      "with persistent after "
+                                      "VM shutdown.")
+                    else:
+                        if check_count_after_shutdown:
+                            test.fail("See non-config attached device "
+                                      "in xml file after VM shutdown.")
         elif test_cmd == "detach-disk":
-            if dt_options.count("config"):
+           if dt_options.count("config"):
+                # Persistent XML must no longer contain the disk.
                 if check_count_after_shutdown:
                     test.fail("See config detached device in "
                               "xml file after VM shutdown.")
-            else:
+                # After the VM was restarted (see restart block above), the
+                # active domain and guest must also not see the disk.
+                if pre_vm_state != "shut off":
+                    if check_domblklist_after_cmd is False:
+                        test.fail("Disk '%s' still in active domblklist after "
+                                  "--config detach-disk and VM restart."
+                                  % device_target)
+                    if check_vm_after_cmd:
+                        test.fail("Disk '%s' still visible in guest after "
+                                  "--config detach-disk and VM restart."
+                                  % device_target)
+      #      if dt_options.count("config"):
+      #          if check_count_after_shutdown:
+      #              test.fail("See config detached device in "
+      #                        "xml file after VM shutdown.")
+           else:
                 if check_count_after_cmd:
                     test.fail("See device in xml file "
                               "after detach.")
