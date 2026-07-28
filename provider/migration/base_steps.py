@@ -561,6 +561,12 @@ def sync_cpu_for_mig(params):
 
     :param params: Dictionary with the test parameters
     """
+    # aarch64 only supports migration tests between hosts with the same CPU, so
+    # no need to sync the CPU. hypervisor-cpu-baseline --migratable is also
+    # not supported on aarch64.
+    if platform.machine() == "aarch64":
+        return
+
     dest_uri = params.get("virsh_migrate_desturi")
     vm_name = params.get("main_vm")
 
