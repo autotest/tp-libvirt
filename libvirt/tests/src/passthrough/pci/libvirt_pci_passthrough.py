@@ -207,6 +207,36 @@ def run(test, params, env):
             # ping to server from each function
             for val in bus_info:
                 nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
+
+                # If get_interface_from_pci_id returns None, use uevent file
+                if nic_name == "None" or not nic_name:
+                    logging.warning("get_interface_from_pci_id returned None for %s, trying uevent method", val)
+                    try:
+                        # Get all network interfaces using modern 'ip' command instead of deprecated 'ifconfig'
+                        ifaces_output = session.cmd_output("ip -o link show | awk -F': ' '{print $2}'")
+                        interfaces = [iface.strip() for iface in ifaces_output.strip().split("\n") if iface.strip()]
+
+                        # Find interface matching PCI address using uevent file
+                        for iface in interfaces:
+                            if iface in ["lo", "sit0"]:  # Skip loopback
+                                continue
+                            # Read PCI address from uevent file
+                            pci_cmd = "cat /sys/class/net/{}/device/uevent 2>/dev/null | grep PCI_SLOT_NAME | cut -d= -f2".format(iface)
+                            status, pci_addr = session.cmd_status_output(pci_cmd)
+                            if status == 0 and pci_addr.strip():
+                                # Normalize for comparison (case-insensitive)
+                                pci_normalized = pci_addr.strip().lower()
+                                val_normalized = val.lower()
+                                if pci_normalized == val_normalized:
+                                    nic_name = iface
+                                    logging.info("Found interface %s for PCI %s using uevent method", nic_name, val)
+                                    break
+                    except Exception as e:
+                        logging.error("Failed to find interface for PCI %s: %s", val, str(e))
+
+                if nic_name == "None" or not nic_name:
+                    test.error("Could not determine interface name for PCI device {}".format(val))
+                    continue
                 session.cmd("ip addr flush dev %s" % nic_name)
                 session.cmd("ip addr add %s/%s dev %s"
                             % (net_ip, netmask, nic_name))
