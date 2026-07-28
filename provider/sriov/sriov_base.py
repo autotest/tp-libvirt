@@ -120,7 +120,10 @@ class SRIOVTest(object):
                                        'unprivileged_user': None,
                                        'ssh_remote_auth': True}
         libvirt_version.is_libvirt_feature_supported(self.params)
-        self.pf_pci = utils_sriov.get_pf_pci(session=self.session)
+        if self.params.get("allow_unlink_pf") == "yes":
+            self.pf_pci = utils_sriov.get_suitable_pf_pci(session=self.session)
+        else:
+            self.pf_pci = utils_sriov.get_pf_pci(session=self.session)
         if not self.pf_pci:
             test.cancel("NO available pf found.")
         self.pf_pci_path = utils_misc.get_pci_path(self.pf_pci,
@@ -150,7 +153,6 @@ class SRIOVTest(object):
 
         iface_attrs = self.params.get('iface_dict') if self.params.get(
             'iface_dict') else self.params.get('hostdev_dict')
-
         if self.pf_name not in self.host_linked_ifaces:
             test.log.debug("skip connection check on this host")
             global SKIP_CHECKS
