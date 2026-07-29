@@ -209,7 +209,7 @@ class Target(object):
         self.has_genid = self.params.get("has_genid")
         # --mac arguments with format as v2v, multiple macs can be
         # separated by ';'.
-        self.iface_macs = self.params.get("iface_macs")
+        self.iface_macs = params_get(params, "iface_macs")
         # '_iface_list' is set automatically, Users should not use it.
         self._iface_list = self.params.get("_iface_list")
         self.net_vm_opts = ""
@@ -344,9 +344,10 @@ class Target(object):
         supported_mac = v2v_supported_option(r"--mac <mac:network\|bridge(\|ip)?:out>")
         if supported_mac:
             if self.iface_macs:
+                LOG.info("set --mac option self.iface_macs %s" % self.iface_macs)
                 for mac_i in self.iface_macs.split(";"):
                     # [mac, net_type, net], e.x. ['xx:xx:xx:xx:xx:xx', 'bridge', 'virbr0']
-                    mac_i_list = mac_i.rsplit(":", 2)
+                    mac_i_list = mac_i.rsplit(",", 2)
                     # Just warning invalid values in case for negative testing
                     if len(mac_i_list) != 3 or mac_i_list[1] not in [
                         "bridge",
