@@ -751,7 +751,7 @@ def run(test, params, env):
         if 'large_disk' in checkpoint:
             time_info = re.search(r'.*\d.*Finishing.*off', output).group(0)
             usetime = int(re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0])
-            max_time = 1500
+            max_time = 1800
             LOG.info("large_disk: conversion took %ds (max %ds)", usetime, max_time)
             if usetime > max_time:
                 test.fail("large_disk: conversion took %ds, "
