@@ -545,17 +545,17 @@ def run(test, params, env):
             if checkpoint == 'print_source':
                 check_source(output_stdout)
             if checkpoint == 'machine_readable':
-                if os.path.exists(params.get('example_file', '')):
-                    # Checking items in example_file exist in latest
-                    # output regardless of the orders and new items.
-                    with open(params['example_file']) as f:
-                        for line in f:
-                            if line.strip() not in output_stdout.strip():
-                                if utils_v2v.multiple_versions_compare(
-                                        V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
-                                    continue
-                else:
-                    test.error('No content to compare with')
+                example_file = params.get('example_file', '')
+                if not os.path.exists(example_file):
+                    test.error("example_file not found: %s" % example_file)
+                # Checking items in example_file exist in latest
+                # output regardless of the orders and new items.
+                with open(example_file) as f:
+                    for line in f:
+                        if line.strip() not in output_stdout.strip():
+                            if utils_v2v.multiple_versions_compare(
+                                    V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
+                                continue
             if checkpoint == 'compress':
                 img_path = get_img_path(output)
                 LOG.info('Image path: %s', img_path)
