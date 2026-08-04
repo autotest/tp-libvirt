@@ -1042,6 +1042,9 @@ dnf -y install libvirt
                        'auto_close': True,
                        'debug': True}
         remote_virsh = virsh.VirshPersistent(**virsh_dargs)
+        if not remote_virsh.domain_exists(vm_name):
+            remote_virsh.close_session()
+            test.error("VM '%s' not found on remote host" % vm_name)
         raw_dumpxml = remote_virsh.dumpxml(vm_name)
         remote_virsh.close_session()
         if 'special_name' in checkpoint:
