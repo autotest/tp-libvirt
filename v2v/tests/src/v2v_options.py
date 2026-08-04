@@ -655,6 +655,9 @@ def run(test, params, env):
                         '-i disk %s' % raw_disk_img,
                         '-i disk %s' % disk_img)
 
+        if disk_img and not os.path.exists(disk_img):
+            test.error("Disk image not found: %s" % disk_img)
+
         if checkpoint.startswith('empty_nic_source'):
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             iface = xml.get_devices('interface')[0]
