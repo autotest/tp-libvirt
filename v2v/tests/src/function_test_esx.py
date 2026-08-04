@@ -750,10 +750,12 @@ def run(test, params, env):
                 params.update({'expect_msg': None})
         if 'large_disk' in checkpoint:
             time_info = re.search(r'.*\d.*Finishing.*off', output).group(0)
-            usetime = re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0]
-            LOG.info('use time is %s' % usetime)
-            if int(usetime) > 1500:
-                test.fail("conversion time is too long, please check v2v performance")
+            usetime = int(re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0])
+            max_time = 1500
+            LOG.info("large_disk: conversion took %ds (max %ds)", usetime, max_time)
+            if usetime > max_time:
+                test.fail("large_disk: conversion took %ds, "
+                          "expected <= %ds" % (usetime, max_time))
         if 'check_boot_order' in checkpoint:
             if not re.search(r"boot order='\d+'.*|bootOrder:.*\d+.*", output):
                 test.fail("Not found boot order info in guest libvirtxml")
