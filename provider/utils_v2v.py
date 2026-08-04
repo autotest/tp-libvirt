@@ -1417,7 +1417,26 @@ def check_exit_status(result, expect_error=False, error_flag="strict"):
     """
     if not expect_error:
         if result.exit_status != 0:
-            raise exceptions.TestFail(to_text(result.stderr, errors=error_flag))
+            stderr = result.stderr_text
+            LOG.error("virt-v2v command failed (exit status %s).\n"
+                      "Command: %s\nFull output:\n%s",
+                      result.exit_status, result.command, stderr)
+            all_lines = stderr.splitlines()
+            if len(all_lines) <= 10:
+                summary = ("virt-v2v command failed unexpectedly:\n\n"
+                           + stderr)
+            else:
+                binname = os.path.basename(
+                    result.command.split()[0]) if result.command else ''
+                error_lines = [l for l in all_lines
+                               if l.startswith('%s: error' % binname)]
+                tail = error_lines[-10:]
+                summary = "virt-v2v command failed unexpectedly"
+                if tail:
+                    summary += (", last %d possible error line(s):\n\n"
+                                % len(tail) + "\n".join(tail))
+                summary += "\n\nSee log for full output"
+            raise exceptions.TestFail(summary)
     elif expect_error and result.exit_status == 0:
         raise exceptions.TestFail(
             "Run '%s' expect fail, but run " "successfully." % result.command
