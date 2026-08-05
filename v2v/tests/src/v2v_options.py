@@ -646,8 +646,13 @@ def run(test, params, env):
                     mount_nfs_kvm_images, example_file)
             win_image = params.get('win_image')
             if win_image and not os.path.isabs(win_image):
-                params['win_image'] = os.path.join(
+                full_win_image = os.path.join(
                     mount_nfs_kvm_images, win_image)
+                params['win_image'] = full_win_image
+                check_cmd = params.get('check_command', '')
+                if win_image in check_cmd:
+                    params['check_command'] = check_cmd.replace(
+                        win_image, full_win_image)
             if '-i disk ' in v2v_options:
                 raw_disk_img = params.get('input_disk_image', '')
                 if raw_disk_img and not os.path.isabs(raw_disk_img):
