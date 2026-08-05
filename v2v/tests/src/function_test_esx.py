@@ -45,6 +45,7 @@ def run(test, params, env):
     implementation_change_ver = params_get(params, 'implementation_change_ver')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
+    version_required_error = params.get("version_required_error")
     unprivileged_user = params_get(params, 'unprivileged_user')
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")
@@ -771,6 +772,10 @@ def run(test, params, env):
         if version_required and not utils_v2v.multiple_versions_compare(
                 version_required):
             test.cancel("Testing requires version: %s" % version_required)
+
+        if version_required_error and not utils_v2v.multiple_versions_compare(
+                version_required_error):
+            test.error("Required package not installed: %s" % version_required_error)
 
         # See man virt-v2v-input-xen(1)
         if enable_legacy_policy:
