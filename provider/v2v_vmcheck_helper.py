@@ -37,6 +37,29 @@ V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
 V2V_VSOCK_SUPPORT_LINUX_VER = "[virt-v2v-2.0.2-1,)"
 
 
+def detect_source_efi(source_xml):
+    """
+    Detect UEFI and secure boot from source VM libvirt XML.
+
+    :return: (is_uefi, is_secure_boot) or (None, None) on parse error
+    """
+    try:
+        root = ET.fromstring(source_xml)
+    except ET.ParseError:
+        LOG.warning("Failed to parse source VM XML for EFI detection")
+        return None, None
+
+    is_uefi = (root.find("./os[@firmware='efi']") is not None or
+               root.find("./os/loader[@type='pflash']") is not None)
+
+    is_secure = (root.find("./features/smm[@state='on']") is not None or
+                 root.find("./os/loader[@secure='yes']") is not None or
+                 root.find("./os/firmware/feature[@name='secure-boot']"
+                           "[@enabled='yes']") is not None)
+
+    return is_uefi, is_secure
+
+
 class _RebootWatcher(object):
     """Watch for libvirt domain reboot events via 'virsh event'."""
 
@@ -109,6 +132,9 @@ class VMChecker(object):
         self.os_type = params.get('os_type')
         self.os_version = params.get('os_version', '')
         self.original_vmxml = params.get('original_vmxml')
+
+        if not params.get("boottype") and self.original_vmxml:
+            self._detect_boottype_from_source()
         self.vmx_nfs_src = params.get('vmx_nfs_src')
         self.virsh_session = params.get('virsh_session')
         self.virsh_session_id = self.virsh_session.get_id(
@@ -528,6 +554,23 @@ class VMChecker(object):
             LOG.debug('Unknown RedHat virtio device: %s' % devname)
             return []
         return virtio_name_id_mapping[devname]
+
+    def _detect_boottype_from_source(self):
+        """
+        Auto-detect boottype from source VM XML when not explicitly set.
+        """
+        is_uefi, is_secure = detect_source_efi(self.original_vmxml)
+        if is_uefi is None:
+            return
+        if not is_uefi:
+            LOG.debug("Source VM is BIOS, keeping default boottype=%d",
+                      self.boottype)
+            return
+
+        self.boottype = 3 if is_secure else 2
+        LOG.info("Auto-detected boottype=%d from source VM XML "
+                 "(UEFI=%s, secure_boot=%s)", self.boottype, is_uefi,
+                 is_secure)
 
     def get_expected_boottype(self, boottype):
         """

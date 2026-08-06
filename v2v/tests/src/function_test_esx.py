@@ -881,6 +881,7 @@ dnf -y install libvirt
             test.error("VM '%s' not found on remote host" % vm_name)
         raw_dumpxml = remote_virsh.dumpxml(vm_name)
         remote_virsh.close_session()
+        params['original_vmxml'] = raw_dumpxml.stdout_text
         if 'special_name' in checkpoint:
             from urllib.parse import quote
             if ' ' not in vm_name:

@@ -24,6 +24,7 @@ from provider.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_local_output
+from provider.v2v_vmcheck_helper import detect_source_efi
 from provider.v2v_vmcheck_helper import V2V_ADAPTE_SPICE_REMOVAL_VER
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
@@ -388,41 +389,21 @@ def run(test, params, env):
             log_fail('/usr partition not mounted')
         LOG.info('/usr partition is mounted')
 
-    def source_xml_reports_secure_boot(root):
-        """
-        VMware vpx XML exposes secure boot via os/firmware features;
-        KVM uses features/smm or loader secure='yes'.
-        """
-        return (root.find("./features/smm[@state='on']") is not None or
-                root.find("./os/loader[@secure='yes']") is not None or
-                root.find("./os/firmware/feature[@name='secure-boot']"
-                          "[@enabled='yes']") is not None)
-
     def check_source_efi_xml(source_xml, secure_boot=False):
         """
         Validate UEFI firmware (and secure boot when required) in the
         source VM libvirt XML from VMware before conversion.
         """
-        try:
-            root = ET.fromstring(source_xml)
-        except ET.ParseError:
+        is_uefi, is_secure = detect_source_efi(source_xml)
+        if is_uefi is None:
             test.fail('Failed to parse source VM XML for EFI validation')
-
-        is_uefi = (root.find("./os[@firmware='efi']") is not None or
-                   root.find("./os/loader[@type='pflash']") is not None)
         if not is_uefi:
             test.fail('Source VM XML does not report UEFI firmware')
-
-        is_secure = source_xml_reports_secure_boot(root)
-        if secure_boot:
-            if not is_secure:
-                test.fail('Source VM XML does not report secure boot '
-                          '(expected features/smm state=on, loader '
-                          "secure='yes', or os/firmware secure-boot feature)")
-        elif is_secure:
+        if secure_boot and not is_secure:
+            test.fail('Source VM XML does not report secure boot')
+        elif not secure_boot and is_secure:
             test.fail('Source VM XML reports secure boot but plain UEFI '
                       'was expected')
-
         LOG.info('Source VM XML EFI validation passed (secure_boot=%s)',
                  secure_boot)
 
