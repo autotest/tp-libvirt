@@ -80,6 +80,8 @@ def run(test, params, env):
     try:
         if not remote_virsh.domain_exists(vm_name):
             raise exceptions.TestError("VM '%s' not exist" % vm_name)
+        raw_dumpxml = remote_virsh.dumpxml(vm_name)
+        params['original_vmxml'] = raw_dumpxml.stdout_text
     finally:
         remote_virsh.close_session()
 
