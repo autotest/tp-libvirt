@@ -187,6 +187,7 @@ def run(test, params, env):
     mount_vmx_nfs_src = None
     mount_nfs_ova_source = None
     ova_tmpdir = None
+    original_dir = os.getcwd()
     input_file = params.get('input_file')
     try:
         if enable_legacy_policy:
@@ -332,6 +333,7 @@ def run(test, params, env):
             LOG.debug('Current dir: %s', os.getcwd())
             LOG.info('Change to dir: %s', mount_nfs_ova_source)
             os.chdir(mount_nfs_ova_source)
+            v2v_params['input_file'] = ova_file
 
         # Set libguestfs environment variable
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -361,6 +363,12 @@ def run(test, params, env):
         if checkpoint != 'virt_v2v_in_place':
             check_result(v2v_result, status_error)
     finally:
+        if checkpoint == 'ova_relative_path':
+            os.chdir(original_dir)
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)
+        if params.get('vmchecker'):
+            params['vmchecker'].cleanup()
         if mount_vmx_nfs_src:
             utils_misc.umount(vmx_nfs_src, mount_vmx_nfs_src, None)
         if mount_nfs_ova_source:
@@ -368,10 +376,6 @@ def run(test, params, env):
                 params.get('nfs_ova_source'), mount_nfs_ova_source, None)
         if ova_tmpdir and os.path.exists(ova_tmpdir):
             shutil.rmtree(ova_tmpdir)
-        # Cleanup constant files
-        utils_v2v.cleanup_constant_files(params)
-        if params.get('vmchecker'):
-            params['vmchecker'].cleanup()
         if output_mode == 'rhev' and v2v_sasl:
             v2v_sasl.cleanup()
             v2v_sasl.close_session()
