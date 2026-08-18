@@ -188,13 +188,14 @@ def run(test, params, env):
     vmxml_backup_list = []
     for vm_i in vm_list:
         vmxml_backup_list.append(vm_xml.VMXML.new_from_inactive_dumpxml(vm_i.name))
-        # On some specific arch guest e.g s390x, dhcp-client package may not be installed by
-        # default, enforce this logic here
+        # On some guests dhcp client is not installed by default. RHEL <= 9
+        # provides dhcp-client (dhclient); RHEL 10+ provides dhcpcd instead.
         if vm_i.is_dead():
             vm_i.start()
         session = vm_i.wait_for_login()
-        if not utils_package.package_install('dhcp-client', session):
-            test.error("Failed to install dhcp-client on guest.")
+        if not (utils_package.package_install('dhcpcd', session) or
+                utils_package.package_install('dhcp-client', session)):
+            test.error("Failed to install dhcp client (dhcpcd/dhcp-client) on guest.")
         session.close()
         vm_i.destroy(gracefully=False)
     try:
