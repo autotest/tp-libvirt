@@ -72,10 +72,12 @@ def run(test, params, env):
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
-    backup_list = ['fstab_cdrom', 'sata_disk', 'network_rtl8139', 'network_e1000',
+    backup_list = ['fstab_cdrom', 'fstab_label', 'fstab_uuid', 'sata_disk',
+                   'network_rtl8139', 'network_e1000',
                    'spice', 'spice_encrypt', 'spice_qxl',
                    'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
-                   'listen_none', 'listen_socket', 'only_net', 'only_br']
+                   'listen_none', 'listen_socket', 'only_net', 'only_br',
+                   'ubuntu_usr_partition']
     error_list = []
 
     # For construct rhv-upload option in v2v cmd
@@ -338,6 +340,121 @@ def run(test, params, env):
         for mac in iflist:
             if iflist[mac].find('model').get('type') != 'virtio':
                 log_fail('Network not convert to virtio')
+
+    def check_fstab_label(checker):
+        """
+        Check if LABEL= entries in fstab are preserved or converted to UUID=
+        """
+        session = checker.session
+        fstab_content = session.cmd_output('cat /etc/fstab')
+        LOG.info('fstab content after conversion:\n%s', fstab_content)
+
+        # Check that fstab entries with LABEL= still work (either preserved or converted to UUID=)
+        # Verify all filesystems mentioned in fstab are mounted
+        mount_output = session.cmd_output('mount')
+        LOG.info('mount output:\n%s', mount_output)
+
+        # Parse fstab for entries (skip comments and empty lines)
+        fstab_mounts = []
+        for line in fstab_content.split('\n'):
+            line = line.strip()
+            if line and not line.startswith('#'):
+                parts = line.split()
+                if len(parts) >= 2:
+                    mount_point = parts[1]
+                    if mount_point not in ['none', 'swap']:
+                        fstab_mounts.append(mount_point)
+
+        LOG.info('Expected mount points from fstab: %s', fstab_mounts)
+
+        # Verify each mount point is actually mounted
+        for mount_point in fstab_mounts:
+            if mount_point not in mount_output:
+                log_fail('Mount point %s from fstab not mounted after conversion' % mount_point)
+
+        LOG.info('All fstab LABEL entries verified successfully')
+
+    def check_fstab_uuid(checker):
+        """
+        Check if UUID= entries in fstab are preserved
+        """
+        session = checker.session
+        fstab_content = session.cmd_output('cat /etc/fstab')
+        LOG.info('fstab content after conversion:\n%s', fstab_content)
+
+        # Check that UUID= entries are present and filesystems are mounted
+        uuid_entries = []
+        for line in fstab_content.split('\n'):
+            line = line.strip()
+            if line and not line.startswith('#') and 'UUID=' in line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    uuid_entries.append((parts[0], parts[1]))
+
+        if not uuid_entries:
+            log_fail('No UUID= entries found in fstab after conversion')
+
+        LOG.info('Found UUID entries in fstab: %s', uuid_entries)
+
+        # Verify filesystems with UUID are mounted
+        mount_output = session.cmd_output('mount')
+        for uuid, mount_point in uuid_entries:
+            if mount_point not in ['none', 'swap'] and mount_point not in mount_output:
+                log_fail('Mount point %s (UUID=%s) not mounted after conversion' % (mount_point, uuid))
+
+        LOG.info('All fstab UUID entries verified successfully')
+
+    def check_network_virtio(vmxml):
+        """
+        Check if network devices are converted to virtio-net
+        """
+        xmltree = xml_utils.XMLTreeFile(vmxml)
+        iface_nodes = xmltree.find('devices').findall('interface')
+
+        if not iface_nodes:
+            log_fail('No network interfaces found in VM XML')
+
+        for node in iface_nodes:
+            model_node = node.find('model')
+            if model_node is None:
+                log_fail('Network interface missing model specification')
+
+            model_type = model_node.get('type')
+            LOG.info('Network interface model type: %s', model_type)
+
+            if model_type != 'virtio':
+                log_fail('Network interface not converted to virtio, found: %s' % model_type)
+
+        LOG.info('All network interfaces verified as virtio')
+
+    def check_usr_partition(checker):
+        """
+        Check if /usr partition is preserved and mounted
+        """
+        session = checker.session
+
+        # Check if /usr is in fstab
+        fstab_content = session.cmd_output('cat /etc/fstab')
+        if '/usr' not in fstab_content:
+            log_fail('/usr partition not found in fstab')
+
+        LOG.info('/usr found in fstab')
+
+        # Check if /usr is mounted
+        mount_output = session.cmd_output('mount')
+        if ' /usr ' not in mount_output and ' on /usr ' not in mount_output:
+            log_fail('/usr partition not mounted')
+
+        LOG.info('/usr partition is mounted')
+
+        # Verify /usr is accessible and contains expected directories
+        usr_ls = session.cmd_output('ls /usr')
+        expected_dirs = ['bin', 'lib']
+        for dir_name in expected_dirs:
+            if dir_name not in usr_ls:
+                log_fail('/usr partition missing expected directory: %s' % dir_name)
+
+        LOG.info('/usr partition verified successfully with expected contents')
 
     def make_label(session):
         """
@@ -682,6 +799,14 @@ def run(test, params, env):
                 check_firewalld_status(vmchecker.checker, params[checkpoint])
             if checkpoint in ['ntpd_on', 'sync_ntp']:
                 check_time_keep(vmchecker.checker)
+            if checkpoint == 'fstab_label':
+                check_fstab_label(vmchecker.checker)
+            if checkpoint == 'fstab_uuid':
+                check_fstab_uuid(vmchecker.checker)
+            if checkpoint in ['network_rtl8139', 'network_e1000']:
+                check_network_virtio(vmchecker.vmxml)
+            if checkpoint == 'ubuntu_usr_partition':
+                check_usr_partition(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
