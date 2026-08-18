@@ -116,6 +116,60 @@ def run(test, params, env):
         config.restore()
         utils_libvirtd.libvirtd_restart()
 
+    def setup_vhost_max_mem_regions():
+        """
+        Configure vhost max_mem_regions for SLES systems.
+        SLES has lower default values compared to other distros.
+        This is required for memory hotplug tests with max_slots.
+        Must be called when no VM is using vhost modules.
+        This function applies runtime configuration only.
+        For persistent configuration across reboots, manually create:
+        /etc/modprobe.d/vhost.conf with content: options vhost max_mem_regions=512
+        """
+        try:
+            # Check if running on SLES
+            distro_check = process.run("cat /etc/os-release | grep -i sles",
+                                      shell=True, ignore_status=True)
+            if distro_check.exit_status == 0:
+                logging.info("SLES detected, configuring vhost max_mem_regions=512")
+                vm_check = process.run("virsh list --state-running --name",
+                                       shell=True, ignore_status=True)
+                if vm_check.exit_status != 0:
+                    logging.warning("Unable to determine running VMs; skipping vhost configuration")
+                    return
+                running_vms = [name for name in vm_check.stdout_text.splitlines() if name.strip()]
+                if running_vms:
+                    logging.warning("Running VMs detected, skipping vhost configuration for safety:")
+                    logging.warning("%s", "\n".join(running_vms))
+                    return
+
+                logging.info("No running VMs detected, proceeding with vhost configuration")
+                process.run("modprobe -r vhost_net vhost_scsi vhost_vsock vhost",
+                           shell=True, ignore_status=True)
+                result = process.run("modprobe vhost max_mem_regions=512",
+                                    shell=True, ignore_status=True)
+
+                if result.exit_status == 0:
+                    logging.info("Successfully configured vhost max_mem_regions=512 at runtime")
+                    verify_cmd = "cat /sys/module/vhost/parameters/max_mem_regions"
+                    verify_result = process.run(verify_cmd, shell=True, ignore_status=True)
+                    if verify_result.exit_status == 0:
+                        current_value = verify_result.stdout_text.strip()
+                        logging.info("Verified vhost max_mem_regions is set to: %s", current_value)
+                        if current_value != "512":
+                            test.cancel("vhost max_mem_regions verification failed: expected 512, got %s"
+                                        % current_value)
+                    else:
+                        logging.debug("Could not verify vhost max_mem_regions setting")
+                else:
+                    test.cancel("Failed to configure vhost at runtime: %s" % result.stderr_text)
+            else:
+                logging.debug("Non-SLES system detected, skipping vhost configuration")
+
+        except Exception as e:
+            test.cancel("Error setting up vhost max_mem_regions: %s" % str(e))
+
+
     def check_qemu_cmd(max_mem_rt, tg_size):
         """
         Check qemu command line options.
@@ -528,6 +582,8 @@ def run(test, params, env):
         # Destroy domain first
         if vm.is_alive():
             vm.destroy(gracefully=False)
+        # Configure vhost max_mem_regions for SLES (VM is now stopped)
+        setup_vhost_max_mem_regions()
         modify_domain_xml()
         numa_info = utils_misc.NumaInfo()
         logging.debug(numa_info.get_all_node_meminfo())
