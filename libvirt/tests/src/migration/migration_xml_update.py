@@ -99,6 +99,13 @@ def run(test, params, env):
     prepare_vm(vm, vm_name, vmxml, params)
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
+    # Ensure the guest CPU is compatible with the destination host before
+    # migration (no-op when the CPUs already match and on aarch64). The guest
+    # is off here (prepare_vm destroyed it) and is (re)started by
+    # setup_connection below.
+    if not base_steps.check_cpu_for_mig(params):
+        base_steps.sync_cpu_for_mig(params)
+
     try:
         migration_obj.setup_connection()
         create_migration_xml(test, vm_name, params)
