@@ -41,6 +41,11 @@ def run(test, params, env):
         vmxml.on_crash = crash_action
         vmxml.sync()
         test.log.info("Guest xml now is: %s", vmxml)
+        # Ensure the guest CPU is compatible with the destination host before
+        # migration (no-op when the CPUs already match and on aarch64). The
+        # guest is off here and is started below.
+        if not base_steps.check_cpu_for_mig(params):
+            base_steps.sync_cpu_for_mig(params)
         vm.start()
         vm.wait_for_login().close()
 

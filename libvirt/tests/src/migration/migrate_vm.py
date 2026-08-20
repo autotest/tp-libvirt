@@ -47,6 +47,8 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_config
 from virttest import libvirt_version
 
+from provider.migration import base_steps
+
 MIGRATE_RET = False
 
 
@@ -1567,6 +1569,15 @@ def run(test, params, env):
         if cpu_model and cpu_vendor:
             custom_cpu(vm_name, cpu_model, cpu_vendor, cpu_model_fallback,
                        cpu_feature_dict, cpu_mode, cpu_match)
+        elif not diff_cpu_vendor and not vm.is_alive():
+            # For generic migration scenarios the guest inherits the source
+            # host CPU, which may be incompatible with the destination host.
+            # Compute a migratable baseline CPU from both hosts when they
+            # differ. Skipped when the CPU model/vendor is under test
+            # (cpu_model/diff_cpu_vendor) and when the guest is already running.
+            test_dict["virsh_migrate_desturi"] = dest_uri
+            if not base_steps.check_cpu_for_mig(test_dict):
+                base_steps.sync_cpu_for_mig(test_dict)
 
         # Update VM disk source to NFS sharing directory
         logging.debug("Migration mounting point: %s", nfs_mount_dir)

@@ -25,6 +25,8 @@ from virttest.utils_test import libvirt
 
 from virttest import libvirt_version
 
+from provider.migration import base_steps
+
 MIGRATE_RET = False
 
 
@@ -564,6 +566,16 @@ def run(test, params, env):
 
             vm_xml_cxt = process.run("virsh dumpxml %s" % vm_name, shell=True).stdout_text
             logging.debug("The VM XML with ceph disk source: \n%s", vm_xml_cxt)
+            # Ensure the guest CPU is compatible with the destination host
+            # before migration. When the source and destination CPUs differ,
+            # compute a migratable baseline and apply it; the guest must be off
+            # to rewrite its CPU, so it is (re)started below. No-op when the
+            # CPUs already match and on aarch64.
+            params["virsh_migrate_desturi"] = test_dict["desuri"]
+            if not base_steps.check_cpu_for_mig(params):
+                if vm.is_alive():
+                    vm.destroy()
+                base_steps.sync_cpu_for_mig(params)
             try:
                 if vm.is_dead():
                     vm.start()

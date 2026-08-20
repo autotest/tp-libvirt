@@ -15,6 +15,8 @@ from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt_domjobinfo
 from virttest.utils_libvirt import libvirt_config
 
+from provider.migration import base_steps
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -190,6 +192,16 @@ def run(test, params, env):
                 vm.destroy()
             virsh.migrate_setspeed(vm_name, set_precopy_speed_before_vm_start,
                                    **virsh_args)
+
+        # Ensure the guest CPU is compatible with the destination host before
+        # migration. When the source and destination CPUs differ, compute a
+        # migratable baseline and apply it; the guest must be off to rewrite
+        # its CPU, so it is (re)started below. No-op when the CPUs already
+        # match and on aarch64.
+        if not base_steps.check_cpu_for_mig(params):
+            if vm.is_alive():
+                vm.destroy()
+            base_steps.sync_cpu_for_mig(params)
 
         if not vm.is_alive():
             vm.start()

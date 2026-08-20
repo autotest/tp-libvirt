@@ -129,6 +129,17 @@ def run(test, params, env):
 
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
+
+    # Ensure the guest CPU is compatible with the destination host before
+    # migration. When the source and destination CPUs differ, compute a
+    # migratable baseline and apply it; the guest must be off to rewrite its
+    # CPU, so it is (re)started by the setup step below. No-op when the CPUs
+    # already match and on aarch64.
+    if not base_steps.check_cpu_for_mig(params):
+        if vm.is_alive():
+            vm.destroy()
+        base_steps.sync_cpu_for_mig(params)
+
     setup_test = eval("setup_%s" % test_case) if "setup_%s" % test_case in \
         globals() else migration_obj.setup_connection
     verify_test = eval("verify_%s" % test_case) if "verify_%s" % test_case in \

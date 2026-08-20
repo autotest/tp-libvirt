@@ -20,6 +20,8 @@ from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
 from virttest.utils_libvirt import libvirt_pcicontr
 
+from provider.migration import base_steps
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -221,6 +223,16 @@ def run(test, params, env):
         unix_obj.auto_recover = True
 
         local_image_list, remote_image_list = update_disk(vm, params)
+
+        # Ensure the guest CPU is compatible with the destination host before
+        # migration. When the source and destination CPUs differ, compute a
+        # migratable baseline and apply it; the guest must be off to rewrite
+        # its CPU, so it is (re)started below. No-op when the CPUs already
+        # match and on aarch64.
+        if not base_steps.check_cpu_for_mig(params):
+            if vm.is_alive():
+                vm.destroy()
+            base_steps.sync_cpu_for_mig(params)
 
         if not vm.is_alive():
             vm.start()
