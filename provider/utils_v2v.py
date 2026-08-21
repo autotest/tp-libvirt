@@ -1313,15 +1313,12 @@ def check_exit_status(result, expect_error=False, error_flag="strict"):
 def cleanup_constant_files(params):
     """
     Cleanup some constant files which generated for v2v commands.
-    For example, rhv_upload_passwd_file, local_ca_file_path,
-    vpx_passwd_file, etc.
+    For example, vpx_passwd_file, etc.
 
     :param params: A dict containing all cfg params
     """
     # Please Add new constant files into below list.
     tmpfiles = [
-        params.get("rhv_upload_passwd_file"),
-        params.get("local_ca_file_path"),
         params.get("vpx_passwd_file"),
     ]
 
