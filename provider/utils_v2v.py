@@ -1900,6 +1900,9 @@ def check_version(version, interval):
     return version in verison_interval
 
 
+_rpm_version_cache = {}
+
+
 def compare_version(interval, version=None, cmd=None):
     """
     Compare version against given interval string.
@@ -1913,13 +1916,37 @@ def compare_version(interval, version=None, cmd=None):
     if not version:
         if not cmd:
             cmd = "rpm -q --qf '%{RPMTAG_VERSION} %{RPMTAG_RELEASE}\n' virt-v2v"
-        res = process.run(cmd, shell=True, ignore_status=True)
-        if res.exit_status != 0:
+        if cmd not in _rpm_version_cache:
+            res = process.run(cmd, shell=True, ignore_status=True)
+            if res.exit_status != 0:
+                _rpm_version_cache[cmd] = None
+            else:
+                v, r = res.stdout_text.split()
+                _rpm_version_cache[cmd] = "-".join((v, r.split(".")[0]))
+        version = _rpm_version_cache[cmd]
+        if version is None:
             return False
-        v, r = res.stdout_text.split()
-        version = "-".join((v, r.split(".")[0]))
 
     return check_version(version, interval)
+
+
+def prime_rpm_cache(packages):
+    """
+    Query rpm versions for the given packages and cache the results.
+
+    Call at the start of a test to avoid rpm queries during validation.
+    """
+    for pkg in packages:
+        cmd = 'rpm -q --qf "%{{RPMTAG_VERSION}} %{{RPMTAG_RELEASE}}\\n" {}'.format(
+            pkg
+        )
+        if cmd not in _rpm_version_cache:
+            res = process.run(cmd, shell=True, ignore_status=True)
+            if res.exit_status != 0:
+                _rpm_version_cache[cmd] = None
+            else:
+                v, r = res.stdout_text.split()
+                _rpm_version_cache[cmd] = "-".join((v, r.split(".")[0]))
 
 
 def multiple_versions_compare(interval):
