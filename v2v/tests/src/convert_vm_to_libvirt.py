@@ -1,13 +1,10 @@
 import re
-import os
 import logging
 
 from avocado.core import exceptions
-from avocado.utils import process
 
 from provider import utils_v2v
 from virttest import virsh
-from virttest import utils_misc
 
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
@@ -30,8 +27,6 @@ def run(test, params, env):
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     vm_name = params.get("main_vm")
     source_user = params.get("username", "root")
-    xen_ip = params.get("xen_hostname")
-    xen_pwd = params.get("xen_pwd")
     vpx_ip = params.get("vpx_hostname")
     vpx_pwd = params.get("vpx_pwd")
     vpx_pwd_file = params.get("vpx_passwd_file")
@@ -64,17 +59,6 @@ def run(test, params, env):
         # Create password file to access ESX hypervisor
         with open(vpx_pwd_file, 'w') as f:
             f.write(source_pwd)
-    elif hypervisor == "xen":
-        source_ip = xen_ip
-        source_pwd = xen_pwd
-        # Set up ssh access using ssh-agent and authorized_keys
-        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
-            source_ip, source_user, source_pwd, auto_close=False)
-        try:
-            utils_misc.add_identities_into_ssh_agent()
-        except Exception:
-            process.run("ssh-agent -k")
-            raise exceptions.TestError("Fail to setup ssh-agent")
     else:
         raise exceptions.TestSkipError(
             "Unsupported hypervisor: %s" %
@@ -139,9 +123,6 @@ def run(test, params, env):
     if v2v_opts:
         v2v_params.update({"v2v_opts": v2v_opts})
 
-    # Set libguestfs environment
-    if hypervisor == 'xen':
-        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
     try:
         # Execute virt-v2v command
         ret = utils_v2v.v2v_cmd(v2v_params)
@@ -190,9 +171,6 @@ def run(test, params, env):
         utils_v2v.cleanup_constant_files(params)
         if enable_legacy_policy:
             update_crypto_policy()
-        if hypervisor == "xen":
-            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
-            process.run("ssh-agent -k")
         # Clean libvirt VM
         virsh.remove_domain(vm_name, options="--nvram")
         # Clean libvirt pool

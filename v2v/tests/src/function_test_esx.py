@@ -1,7 +1,6 @@
 import os
 import logging
 import re
-import uuid
 import shutil
 import tempfile
 import time
@@ -10,10 +9,8 @@ import xml.etree.ElementTree as ET
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_package
-from virttest import utils_sasl
 from provider import utils_v2v
 from virttest import virsh
-from virttest import remote
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
 from provider.utils_v2v import params_get
@@ -34,8 +31,6 @@ def run(test, params, env):
     """
     Convert specific esx guest
     """
-    V2V_UNSUPPORT_RHEV_APT_VER = "[virt-v2v-1.43.3-4.el9,)"
-
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
@@ -81,19 +76,7 @@ def run(test, params, env):
     src_uri_type = params.get('src_uri_type')
     esxi_password = params.get('esxi_password')
     json_disk_pattern = params.get('json_disk_pattern')
-    # For construct rhv-upload option in v2v cmd
-    output_method = params.get("output_method")
-    rhv_upload_opts = params.get("rhv_upload_opts")
-    storage_name = params.get('storage_name')
     os_pool = os_storage = params.get('output_storage', 'default')
-    # for get ca.crt file from ovirt engine
-    rhv_passwd = params.get("rhv_upload_passwd")
-    rhv_passwd_file = params.get("rhv_upload_passwd_file")
-    ovirt_engine_passwd = params.get("ovirt_engine_password")
-    ovirt_hostname = params.get("ovirt_engine_url").split(
-        '/')[2] if params.get("ovirt_engine_url") else None
-    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
-    local_ca_file_path = params.get("local_ca_file_path")
     os_version = params.get('os_version')
     os_type = params.get('os_type')
     virtio_win_path = params.get('virtio_win_path')
@@ -101,7 +84,6 @@ def run(test, params, env):
     qa_path = params.get('qa_path')
     # download url of qemu-guest-agent
     qa_url = params.get('qa_url')
-    v2v_sasl = None
     # default values for v2v_cmd
     auto_clean = True
     cmd_only = False
@@ -234,19 +216,6 @@ def run(test, params, env):
         LOG.debug('Content of /proc/cmdline:\n%s', content)
         if 'resume=/dev/vd' not in content:
             log_fail('Content of /proc/cmdline is not correct')
-
-    def check_rhev_file_exist(vmcheck):
-        """
-        Check if rhev files exist
-        """
-        file_path = {
-            'rhsrvany.exe': r'"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"'}
-        for key in file_path:
-            status = vmcheck.session.cmd_status('dir %s' % file_path[key])
-            if status == 0:
-                LOG.info('%s exists' % key)
-            else:
-                log_fail('%s does not exist after convert to rhv' % key)
 
     def check_file_architecture(vmcheck):
         """
@@ -381,65 +350,6 @@ def run(test, params, env):
                 LOG.info('ubuntu-server has not been removed.')
             else:
                 log_fail('ubuntu-server has been removed')
-
-    def global_pem_setup(f_pem):
-        """
-        Setup global rhv server ca
-
-        :param f_pem: ca file path
-        """
-        ca_anchors_dir = '/etc/pki/ca-trust/source/anchors'
-        shutil.copy(f_pem, ca_anchors_dir)
-        process.run('update-ca-trust extract', shell=True)
-        os.unlink(os.path.join(ca_anchors_dir, os.path.basename(f_pem)))
-
-    def global_pem_cleanup():
-        """
-        Cleanup global rhv server ca
-        """
-        process.run('update-ca-trust extract', shell=True)
-
-    def find_net(bridge_name):
-        """
-        Find which network use specified bridge
-
-       :param bridge_name: bridge name you want to find
-        """
-        net_list = virsh.net_state_dict(only_names=True)
-        net_name = ''
-        if len(net_list):
-            for net in net_list:
-                net_info = virsh.net_info(net).stdout.strip()
-                search = re.search(r'Bridge:\s+(\S+)', net_info)
-                if search:
-                    if bridge_name == search.group(1):
-                        net_name = net
-        else:
-            LOG.info('Conversion server has no network')
-        return net_name
-
-    def destroy_net(net_name):
-        """
-        destroy network in conversion server
-        """
-        if virsh.net_state_dict()[net_name]['active']:
-            LOG.info("Remove network %s in conversion server", net_name)
-            virsh.net_destroy(net_name)
-            if virsh.net_state_dict()[net_name]['autostart']:
-                virsh.net_autostart(net_name, "--disable")
-        output = virsh.net_list("--all").stdout.strip()
-        LOG.info(output)
-
-    def start_net(net_name):
-        """
-        start network in conversion server
-        """
-        LOG.info("Recover network %s in conversion server", net_name)
-        virsh.net_autostart(net_name)
-        if not virsh.net_state_dict()[net_name]['active']:
-            virsh.net_start(net_name)
-        output = virsh.net_list("--all").stdout.strip()
-        LOG.info(output)
 
     def check_static_ip_conf(ip_config_list, mac_addr, vmcheck):
         """
@@ -641,11 +551,7 @@ def run(test, params, env):
                     skip_reason)
                 return
 
-            if output_mode == 'rhev':
-                if not utils_v2v.import_vm_to_ovirt(params, address_cache,
-                                                    timeout=v2v_timeout):
-                    test.fail('Import VM failed')
-            elif output_mode == 'libvirt':
+            if output_mode == 'libvirt':
                 virsh.start(params["main_vm"], debug=True)
 
             # Check guest following the checkpoint document after conversion
@@ -699,8 +605,6 @@ def run(test, params, env):
                 check_device_map(vmchecker.checker)
             if 'resume_swap' in checkpoint:
                 check_resume_swap(vmchecker.checker)
-            if 'rhev_file' in checkpoint:
-                check_rhev_file_exist(vmchecker.checker)
             if 'file_architecture' in checkpoint:
                 check_file_architecture(vmchecker.checker)
             if 'ubuntu_tools' in checkpoint:
@@ -709,9 +613,6 @@ def run(test, params, env):
                 check_windows_vmware_tools(vmchecker.checker)
             if 'check_online_disks' in checkpoint:
                 check_online_disks(vmchecker.checker)
-            if 'without_default_net' in checkpoint:
-                if virsh.net_state_dict()[net_name]['active']:
-                    log_fail("Bridge virbr0 already started during conversion")
             if 'rhsrvany_checksum' in checkpoint:
                 check_rhsrvany_checksums(vmchecker.checker)
             if 'block_dev' in checkpoint and not os.path.exists(blk_dev_link):
@@ -802,9 +703,6 @@ def run(test, params, env):
             'src_uri_type': src_uri_type,
             'esxi_password': esxi_password,
             'esxi_host': esxi_host,
-            'output_method': output_method,
-            'os_storage_name': storage_name,
-            'rhv_upload_opts': rhv_upload_opts,
             'oo_json_disk_pattern': json_disk_pattern,
             'cmd_has_ip': cmd_has_ip,
             'params': params
@@ -826,37 +724,9 @@ def run(test, params, env):
 
         if params.get('output_format'):
             v2v_params.update({'of_format': params['output_format']})
-        # Rename guest with special name while converting to rhev
-        if '#' in vm_name and output_mode == 'rhev':
-            v2v_params['new_name'] = v2v_params['new_name'].replace('#', '_')
 
         if output_mode == 'kubevirt':
             v2v_params['new_name'] = re.sub('[^a-z-.0-9]', '', v2v_params['new_name'].lower())
-
-        # Create SASL user on the ovirt host
-        if output_mode == 'rhev':
-            # create different sasl_user name for different job
-            params.update({'sasl_user': params.get("sasl_user") +
-                           utils_misc.generate_random_string(3)})
-            LOG.info('sals user name is %s' % params.get("sasl_user"))
-
-            user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
-                                           params.get("sasl_pwd"))
-            v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
-            v2v_sasl.server_ip = params.get("remote_ip")
-            v2v_sasl.server_user = params.get('remote_user')
-            v2v_sasl.server_pwd = params.get('remote_pwd')
-            v2v_sasl.setup(remote=True)
-            LOG.debug('A SASL session %s was created', v2v_sasl)
-            if output_method == 'rhv_upload':
-                # Create password file for '-o rhv_upload' to connect to ovirt
-                with open(rhv_passwd_file, 'w') as f:
-                    f.write(rhv_passwd)
-                # Copy ca file from ovirt to local
-                remote.scp_from_remote(ovirt_hostname, 22, 'root',
-                                       ovirt_engine_passwd,
-                                       ovirt_ca_file_path,
-                                       local_ca_file_path)
 
         # Create libvirt dir pool
         if output_mode == 'libvirt':
@@ -878,11 +748,6 @@ def run(test, params, env):
             LOG.info('Set http_proxy=%s, https_proxy=%s', http_proxy, https_proxy)
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
-        if 'ovirtsdk4_pkg' in checkpoint:
-            import ovirtsdk4
-            ovirt4_path = os.path.dirname(ovirtsdk4.__file__)
-            dst_ovirt4_path = ovirt4_path + '.bak'
-            os.rename(ovirt4_path, dst_ovirt4_path)
         if 'vddk_error' in checkpoint:
             fqdn_record = params_get(params, 'fqdn_record')
             with open('/etc/hosts', 'r+') as fd:
@@ -927,24 +792,6 @@ def run(test, params, env):
             blk_dev_link = '%s/%s' % (os_directory.name, disk_name)
             cmd = 'ln -s %s %s' % (free_loop_dev, blk_dev_link)
             process.run(cmd, shell=True)
-
-        if 'invalid_pem' in checkpoint:
-            # simply change the 2nd line to lowercase to get an invalid pem
-            with open(local_ca_file_path, 'r+') as fd:
-                for i in range(2):
-                    pos = fd.tell()
-                    res = fd.readline()
-                fd.seek(pos)
-                fd.write(res.lower())
-                fd.flush()
-
-        if 'invalid_os_storage' in checkpoint:
-            v2v_params['os_storage_name'] = v2v_params['os_storage_name'].replace('_', '*')
-
-        if 'without_default_net' in checkpoint:
-            net_name = find_net('virbr0')
-            if net_name:
-                destroy_net(net_name)
 
         if 'bandwidth' in checkpoint:
             dynamic_speeds = params_get(params, 'dynamic_speeds')
@@ -1083,11 +930,8 @@ dnf -y install libvirt
                 'verify_certificate',
                 'verify_custom_path_cert',
                 'verify_esxi_certificate',
-                'mismatched_uuid',
-                'no_uuid',
                 'invalid_source',
-                'char_slash',
-                    'system_rhv_pem']:
+                'char_slash']:
                 cmd_only = True
                 auto_clean = False
             v2v_result = utils_v2v.v2v_cmd(
@@ -1095,32 +939,6 @@ dnf -y install libvirt
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
 
-        if 'system_rhv_pem' in checkpoint:
-            if 'set' in checkpoint:
-                global_pem_setup(local_ca_file_path)
-            rhv_cafile = r'-oo rhv-cafile=\S+\s*'
-            new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_cafile)
-            LOG.debug('New v2v command:\n%s', new_cmd)
-        if 'mismatched_uuid' in checkpoint:
-            # append more uuid
-            new_cmd = v2v_result + ' -oo rhv-disk-uuid=%s' % str(uuid.uuid4())
-        if 'no_uuid' in checkpoint:
-            rhv_disk_uuid = r'-oo rhv-disk-uuid=\S+\s*'
-            new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_disk_uuid)
-            LOG.debug('New v2v command:\n%s', new_cmd)
-        if 'exist_uuid' in checkpoint:
-            # Use to cleanup the VM because it will not be run in check_result
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
-            # Update name to avoid conflict
-            new_vm_name = v2v_params['new_name'] + '_exist_uuid'
-            new_cmd = v2v_result.command.replace(
-                '-on %s' %
-                vm_name,
-                '-on %s' %
-                new_vm_name)
-            new_cmd += ' --no-copy'
-            LOG.debug('re-run v2v command:\n%s', new_cmd)
         if 'invalid_source' in checkpoint:
             if params.get('invalid_vpx_hostname'):
                 new_cmd = v2v_result.replace(
@@ -1152,12 +970,8 @@ dnf -y install libvirt
             'verify_certificate',
             'verify_custom_path_cert',
             'verify_esxi_certificate',
-            'mismatched_uuid',
-            'no_uuid',
             'invalid_source',
-            'exist_uuid',
-            'char_slash',
-                'system_rhv_pem']:
+            'char_slash']:
             v2v_result = utils_v2v.cmd_run(
                 new_cmd, params.get('v2v_dirty_resources'))
 
@@ -1176,19 +990,8 @@ dnf -y install libvirt
         if 'virtio_iso_blk' in checkpoint:
             process.run('losetup -d %s' % free_loop_dev, shell=True)
             os.environ.pop('VIRTIO_WIN')
-        if 'system_rhv_pem' in checkpoint and 'set' in checkpoint:
-            global_pem_cleanup()
-        if 'without_default_net' in checkpoint:
-            if net_name:
-                start_net(net_name)
-        if 'ovirtsdk4_pkg' in checkpoint:
-            os.rename(dst_ovirt4_path, ovirt4_path)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
-        if output_mode == 'rhev' and v2v_sasl:
-            v2v_sasl.cleanup()
-            LOG.debug('SASL session %s is closing', v2v_sasl)
-            v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         if 'with_proxy' in checkpoint:

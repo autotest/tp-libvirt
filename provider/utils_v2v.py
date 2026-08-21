@@ -15,7 +15,6 @@ import re
 import shutil
 import tempfile
 import time
-import uuid
 
 import aexpect
 from aexpect import remote
@@ -26,10 +25,6 @@ from avocado.utils.astring import to_text
 from virttest import data_dir
 from virttest import libvirt_vm as lvirt
 
-try:
-    from virttest import ovirt
-except ModuleNotFoundError:
-    ovirt = None
 from virttest import remote as remote_old
 from virttest import ssh_key, utils_misc, virsh
 from virttest.libvirt_xml import vm_xml
@@ -92,13 +87,6 @@ class Uri(object):
         Return kvm uri.
         """
         uri = "qemu:///system"
-        return uri
-
-    def _get_xen_uri(self):
-        """
-        Return xen uri.
-        """
-        uri = "xen+ssh://root@" + self.host + "/"
         return uri
 
     def _get_esx_uri(self):
@@ -184,7 +172,6 @@ class Target(object):
         self.pub_key = params_get(params, "pub_key")
         self.unprivileged_user = params_get(params, "unprivileged_user")
         self.os_directory = params_get(params, "os_directory")
-        self.output_method = self.params.get("output_method", "rhv")
         self.input_mode = self.params.get("input_mode")
         self.esxi_host = self.params.get("esxi_host", self.params.get("esx_ip"))
         self.datastore = self.params.get("datastore")
@@ -435,35 +422,6 @@ class Target(object):
 
         return options
 
-    def _get_ovirt_options(self):
-        """
-        Construct output options for -o ovirt
-
-        'os_storage' corresponds to '-o rhv -os [esd:/path|/path'.
-        'os_storage_name' corresponds to '-o rhv -os STORAGE'.
-        'rhv_upload_opts' includes all '-oo xxx' options.
-        """
-        os_storage = self.params.get("os_storage")
-        os_storage_name = self.params.get("os_storage_name")
-        rhv_upload_opts = self.params.get("rhv_upload_opts")
-        output_method = self.output_method
-        options = " -os %s" % (
-            os_storage if output_method != "rhv_upload" else os_storage_name
-        )
-        if rhv_upload_opts:
-            options += " %s" % rhv_upload_opts
-
-        has_rhv_proxy_ver = "[virt-v2v-1.45.99-1,)"
-        # Remove rhv-proxy option from cmd
-        if (
-            not multiple_versions_compare(has_rhv_proxy_ver)
-            and "-oo rhv-proxy" in options
-        ):
-            rhv_proxy_option = "(-oo rhv-proxy=(\S+))\s*|(-oo rhv-proxy)(?!=)"
-            options = re.sub(rhv_proxy_option, "", options)
-
-        return options
-
     def _get_local_options(self):
         """
         Construct output options for -o local
@@ -521,9 +479,6 @@ class Target(object):
         o_fmt = self.of_format
         _get_target_specific_options = getattr(self, "_get_%s_options" % self.target)
 
-        if target == "ovirt":
-            target = self.output_method.replace("_", "-")
-
         options = " -ic %s -o %s -of %s" % (uri, target, o_fmt)
         options += _get_target_specific_options() + self.net_vm_opts
 
@@ -560,7 +515,6 @@ class VMCheck(object):
         self.vpx_no_username = params.get("vpx_no_username")
         self.password = params.get("vm_pwd")
         self.nic_index = params.get("nic_index", 0)
-        self.export_name = params.get("export_name")
         self.delete_vm = "yes" == params.get("vm_cleanup", "yes")
         self.virsh_session = params.get("virsh_session")
         self.virsh_session_id = (
@@ -569,7 +523,6 @@ class VMCheck(object):
             else params.get("virsh_session_id")
         )
         self.windows_root = params.get("windows_root", r"C:\WINDOWS")
-        self.output_method = params.get("output_method")
         # Need create session after create the instance
         self.session = None
 
@@ -582,10 +535,6 @@ class VMCheck(object):
                 self.name, self.params, self.test.bindir, self.env.get("address_cache")
             )
             self.pv = libvirt.PoolVolumeTest(test, params)
-        elif self.target == "ovirt":
-            self.vm = ovirt.VMManager(
-                self.name, self.params, self.test.bindir, self.env.get("address_cache")
-            )
         else:
             raise ValueError("Doesn't support %s target now" % self.target)
 
@@ -612,9 +561,6 @@ class VMCheck(object):
             self.session.close()
             self.session = None
 
-        # If VMChecker is instantiated before import_vm_to_ovirt and
-        # the VMChecker.run is skipped, self.vm.instance will be NULL.
-        # The update_instance should be ran before cleaning up.
         if hasattr(self.vm, "update_instance"):
             self.vm.update_instance()
         if self.vm.instance and self.vm.is_alive():
@@ -624,16 +570,6 @@ class VMCheck(object):
         if self.target == "libvirt":
             if self.vm.exists() and self.vm.is_persistent():
                 self.vm.undefine()
-
-        if self.target == "ovirt":
-            LOG.debug("Deleting VM %s in Ovirt", self.name)
-            self.vm.delete()
-            # When vm is deleted, the disk will also be removed from
-            # data domain, so it's not necessary to delete disk from
-            # export domain for rhv_upload.
-            if self.output_method != "rhv_upload":
-                self.vm.delete_from_export_domain(self.export_name)
-            ovirt.disconnect()
 
     def storage_cleanup(self):
         """
@@ -1163,8 +1099,6 @@ def v2v_cmd(params, auto_clean=True, cmd_only=False, interaction=False, shell=Fa
     skip_virsh_pre_conn = "yes" == params.get("skip_virsh_pre_conn")
     # virsh instance of remote hypervisor
     params.update({"_v2v_virsh": None})
-    # if 'has_rhv_disk_uuid' is 'yes', will append rhv-disk-uuid automatically.
-    has_rhv_disk_uuid = params_get(params, "has_rhv_disk_uuid")
     vpx_username = params_get(params, "vpx_username")
 
     uri_obj = Uri(hypervisor)
@@ -1188,14 +1122,6 @@ def v2v_cmd(params, auto_clean=True, cmd_only=False, interaction=False, shell=Fa
 
         if opts_extra:
             options = options + " " + opts_extra
-        # Add -oo rhv-disk-uuid
-        if (
-            "-o rhv-upload" in options
-            and has_rhv_disk_uuid == "yes"
-            and "-oo rhv-disk-uuid" not in options
-        ):
-            for i in range(int(params.get("_disk_count", 0))):
-                options += " -oo rhv-disk-uuid=%s" % str(uuid.uuid4())
 
         # Protect the blanks in original guest name
         safe_vm_name = ""
@@ -1222,8 +1148,7 @@ def v2v_cmd(params, auto_clean=True, cmd_only=False, interaction=False, shell=Fa
             cmd = env_settings + " " + cmd
         if unprivileged_user:
             cmd = "su - %s -c '%s'" % (unprivileged_user, cmd)
-        # Save v2v command to params, then it can be passed to
-        # import_vm_to_ovirt
+        # Save v2v command to params
         global_params.update({"v2v_command": cmd})
 
         if not cmd_only:
@@ -1284,64 +1209,6 @@ def cmd_run(cmd, obj_be_cleaned=None, auto_clean=True, timeout=18000):
                 obj_be_cleaned.cleanup()
 
     return cmd_result
-
-
-def import_vm_to_ovirt(params, address_cache, timeout=600):
-    """
-    Import VM from export domain to oVirt Data Center
-    """
-    v2v_cmd = params.get("v2v_command")
-    vm_name = params.get("main_vm")
-    os_type = params.get("os_type")
-    export_name = params.get("export_name")
-    storage_name = params.get("storage_name")
-    cluster_name = params.get("cluster_name")
-    output_method = params.get("output_method")
-    # Check oVirt status
-    dc = ovirt.DataCenterManager(params)
-    LOG.info("Current data centers list: %s", dc.list())
-    cm = ovirt.ClusterManager(params)
-    LOG.info("Current cluster list: %s", cm.list())
-    hm = ovirt.HostManager(params)
-    LOG.info("Current host list: %s", hm.list())
-    sdm = ovirt.StorageDomainManager(params)
-    LOG.info("Current storage domain list: %s", sdm.list())
-    vm = ovirt.VMManager(vm_name, params, address_cache=address_cache)
-    LOG.info("Current VM list: %s", vm.list())
-    if vm_name in vm.list() and output_method != "rhv_upload":
-        LOG.error("%s already exist", vm_name)
-        return False
-    wait_for_up = True
-    if os_type == "windows":
-        wait_for_up = False
-
-    # If output_method is None or "" or is not 'rhv_upload', treat it as
-    # old way.
-    if output_method != "rhv_upload":
-        try:
-            # Import VM
-            vm.import_from_export_domain(
-                export_name, storage_name, cluster_name, timeout=timeout
-            )
-            LOG.info("The latest VM list: %s", vm.list())
-        except Exception as e:
-            # Try to delete the vm from export domain
-            vm.delete_from_export_domain(export_name)
-            LOG.error("Import %s failed: %s", vm.name, e)
-            return False
-    try:
-        if not is_option_in_v2v_cmd(v2v_cmd, "--no-copy"):
-            # Start VM
-            vm.start(wait_for_up=wait_for_up)
-        else:
-            LOG.debug("Skip starting VM: --no-copy is in cmdline:\n%s", v2v_cmd)
-    except Exception as e:
-        LOG.error("Start %s failed: %s", vm.name, e)
-        vm.delete()
-        if output_method != "rhv_upload":
-            vm.delete_from_export_domain(export_name)
-        return False
-    return True
 
 
 def check_log(params, log):
@@ -1520,7 +1387,7 @@ def v2v_setup_ssh_key(
     session = None
     LOG.debug("Performing SSH key setup on %s:%d as %s." % (hostname, port, username))
     try:
-        # Both Xen and ESX can work with following settings.
+        # ESX can work with following settings.
         if not preferred_authentication:
             preferred_authentication = "password,keyboard-interactive"
         if not user_known_hosts_file:
@@ -1714,7 +1581,7 @@ def create_virsh_instance(
     hypervisor, uri, remote_ip, remote_user, remote_pwd, debug=True
 ):
     """
-    Create a virsh instance for all hypervisors(VMWARE, XEN, KVM)
+    Create a virsh instance for all hypervisors(VMWARE, KVM)
 
     :param hypervisor: a hypervisor type
     :param uri: uri of libvirt instance to connect to
@@ -1761,7 +1628,7 @@ def get_all_ifaces_info(vm_name, virsh_instance):
     :param vm_name: vm's name
     :param v2v_virsh_instance: a virsh instance
     """
-    # virsh can't find guest every time on old XEN server.
+    # virsh can't find guest every time on some servers.
     vmxml = wait_for(
         vm_xml.VMXML.new_from_dumpxml, vm_name=vm_name, virsh_instance=virsh_instance
     )
@@ -2036,15 +1903,7 @@ def set_libguestfs_backend(params):
 
     :param params: A dictionary includes all of required parameters.
     """
-    cmd = "rpm -q virt-v2v"
     libguestfs_backend = params_get(params, "libguestfs_backend")
-    hypervisor = params_get(params, "hypervisor")
-
-    if (
-        "el8" in process.run(cmd, verbose=True, ignore_status=True).stdout_text
-        and hypervisor == "xen"
-    ):
-        libguestfs_backend = "direct"
     if not libguestfs_backend:
         libguestfs_backend = "libvirt"
 
