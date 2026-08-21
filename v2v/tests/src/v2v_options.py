@@ -40,6 +40,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
 
     version_required = params.get("version_required")
+    utils_v2v.prime_rpm_cache(['virt-v2v'])
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
     input_mode = params.get("input_mode")

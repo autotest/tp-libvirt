@@ -43,6 +43,7 @@ def run(test, params, env):
         raise ValueError('Missing command: virt-v2v')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
+    utils_v2v.prime_rpm_cache(['virt-v2v'])
     hypervisor = params.get("hypervisor")
     vm_name = params.get('main_vm', 'EXAMPLE')
     target = params.get('target')
