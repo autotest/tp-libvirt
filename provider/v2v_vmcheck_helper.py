@@ -8,8 +8,6 @@ import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
-from distutils.version import LooseVersion  # pylint: disable=E0611
-
 from yaml import load
 try:
     from yaml import CLoader as Loader
@@ -30,39 +28,15 @@ from virttest.libvirt_xml import vm_xml
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 RETRY_TIMES = 10
-# Temporary workaround <Fix in future with a better solution>
-# Deprecated struct, Don't use it.
 FEATURE_SUPPORT = {
-    'genid': 'virt-v2v-1.40.1-1',
-    'libosinfo': 'virt-v2v-1.40.2-2',
-    'virtio_rng': '2.6.26',
-    'cache_none': 'virt-v2v-1.42.0-4',
-    'q35': 'virt-v2v-1.43.3-2',
-    'virtio_model': 'virt-v2v-1.45.97-4',
-    'virtio_skip': 'virt-v2v-2.0.0-1'}
-# bz#1961107
+    'genid': '[virt-v2v-1.40.1-1,)',
+    'libosinfo': '[virt-v2v-1.40.2-2,)',
+    'cache_none': '[virt-v2v-1.42.0-4,)',
+    'q35': '[virt-v2v-1.43.3-2,)',
+    'virtio_model': '[virt-v2v-1.45.97-4,)',
+    'virtio_skip': '[virt-v2v-2.0.0-1,)'}
 V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
 V2V_VSOCK_SUPPORT_LINUX_VER = "[virt-v2v-2.0.2-1,)"
-
-
-def compare_version(compare_version, real_version=None, cmd=None):
-    """
-    Compare version against given version.
-
-    :param compare_version: The minimum version to be compared
-    :param real_version: The real version to compare
-    :param cmd: the command to get the real version
-
-    :return: If the real_version is greater equal than minimum version,
-            return True, others return False
-    """
-    if not real_version:
-        if not cmd:
-            cmd = 'rpm -q virt-v2v|grep virt-v2v'
-        real_version = process.run(cmd, shell=True).stdout_text.strip()
-    if LooseVersion(real_version) >= LooseVersion(compare_version):
-        return True
-    return False
 
 
 class _RebootWatcher(object):
@@ -143,7 +117,7 @@ class VMChecker(object):
             self.boottype = int(params.get("boottype", 1))
             if self.hypervisor == 'kvm' and self.input_mode != 'ova':
                 self.boottype = int(params.get("boottype", 0))
-        if compare_version(FEATURE_SUPPORT['q35']):
+        if utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['q35']):
             self.boottype = int(params.get("boottype", 1))
 
         self.os_type = params.get('os_type')
@@ -485,7 +459,7 @@ class VMChecker(object):
             return
 
         # Checking if the feature is supported
-        if not compare_version(FEATURE_SUPPORT['libosinfo']):
+        if not utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['libosinfo']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['libosinfo']
             LOG.info(
                 'Skip Checking metadata libosinfo parameters: %s' %
@@ -659,7 +633,7 @@ class VMChecker(object):
         root = ET.fromstring(self.vmxml)
 
         LOG.info("Checking cache='none' not existing in VM XML")
-        if self.target == 'libvirt' and compare_version(
+        if self.target == 'libvirt' and utils_v2v.multiple_versions_compare(
                 FEATURE_SUPPORT['cache_none']):
             err_msg = "Checking cache='none' not existing failed"
             for disk in root.findall("./devices/disk/driver[@cache]"):
@@ -667,7 +641,7 @@ class VMChecker(object):
                     self.log_err(err_msg)
 
         LOG.info("Checking model='virtio-transitional' not existing in VM XML")
-        if self.os_type == 'windows' and self.target == 'libvirt' and compare_version(
+        if self.os_type == 'windows' and self.target == 'libvirt' and utils_v2v.multiple_versions_compare(
                 FEATURE_SUPPORT['virtio_model']):
             err_msg = "Checking model='virtio-transitional' not existing failed"
             if root.findall(
@@ -732,10 +706,8 @@ class VMChecker(object):
         virtio_devs = ["Virtio network device",
                        "Virtio block device",
                        "Virtio (memory|1.0) balloon"]
-        # Virtio RNG supports from kernel-2.6.26
-        # https://wiki.qemu.org/Features/VirtIORNG
-        if compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
-            virtio_devs.append("Virtio RNG")
+        # Virtio RNG supports from kernel-2.6.26 — all test kernels qualify
+        virtio_devs.append("Virtio RNG")
         if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
             virtio_devs.append("Virtio socket")
         LOG.info("Virtio devices checking list: %s", virtio_devs)
@@ -826,7 +798,7 @@ class VMChecker(object):
             self.log_err(err_msg)
 
         # Check Red Hat VirtIO drivers and display adapter
-        if not compare_version(FEATURE_SUPPORT['virtio_skip']):
+        if not utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['virtio_skip']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['virtio_skip']
             LOG.info('Skip Checking VirtIO drivers: %s' % reason)
             return
@@ -951,7 +923,7 @@ class VMChecker(object):
             return
 
         # Checking if the feature is supported
-        if not compare_version(FEATURE_SUPPORT['genid']):
+        if not utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['genid']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['genid']
             LOG.info('Skip Checking genid: %s' % reason)
             return
@@ -1052,7 +1024,7 @@ def check_local_output(params):
     if not os.path.exists(xml_file):
         LOG.error('Not found %s' % xml_file)
         result = False
-    elif compare_version(FEATURE_SUPPORT['cache_none']):
+    elif utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['cache_none']):
         # Check 'cache_none' in xml file
         LOG.info("Checking cache='none' not exist in %s" % xml_file)
         root = ET.parse(xml_file).getroot()
