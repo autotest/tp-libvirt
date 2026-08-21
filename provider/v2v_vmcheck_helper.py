@@ -19,7 +19,6 @@ from avocado.utils import process
 from aexpect.exceptions import ShellError
 
 from provider import utils_v2v
-from virttest import utils_sasl
 from virttest import virsh
 from virttest import utils_misc
 from virttest import xml_utils
@@ -103,22 +102,9 @@ class VMChecker(object):
         # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
         # q35+secure_uefi
         self.boottype = int(params.get("boottype", 0))
-        # Due to changes in v2v and rhv, the current logic is:
-        # 1) boottype value set by users takes the hignest precedence.
-        # 2) if bootype is not set and '-o rhv_upload' is used, if ovirt
-        # is >= 4.4, then set boottype to 1, else keep the default 0.
-        # 3) if v2v version is newer enough to support q35 by default, then all latest
-        # guests will be converted to q35 by default.
-        if self.target == 'ovirt' and self.output_method == 'rhv_upload':
-            from virttest.ovirt import connect
-            _, self.ovirt_server_version = connect(params)
-            LOG.info(
-                "rhv server version is: %s",
-                self.ovirt_server_version.full_version)
-            self.boottype = int(params.get("boottype", 1))
-            if self.hypervisor == 'kvm' and self.input_mode != 'ova':
-                self.boottype = int(params.get("boottype", 0))
-        if utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['q35']):
+        # If v2v version is new enough to support q35 by default, then all
+        # latest guests will be converted to q35 by default.
+        if compare_version(FEATURE_SUPPORT['q35']):
             self.boottype = int(params.get("boottype", 1))
 
         self.os_type = params.get('os_type')
@@ -159,10 +145,7 @@ class VMChecker(object):
         LOG.debug('virsh session %s is closing', self.virsh_session)
         if not self.virsh_session:
             return
-        if self.target == "ovirt":
-            self.virsh_session.close()
-        else:
-            self.virsh_session.close_session()
+        self.virsh_session.close_session()
 
     def setup_session(self):
         if self.virsh_session and self.virsh_session_id:
@@ -174,13 +157,8 @@ class VMChecker(object):
         for index in range(RETRY_TIMES):
             LOG.info('Trying %d times', index + 1)
             try:
-                if self.target == "ovirt":
-                    self.virsh_session = utils_sasl.VirshSessionSASL(
-                        self.params)
-                    self.virsh_session_id = self.virsh_session.get_id()
-                else:
-                    self.virsh_session = virsh.VirshPersistent(auto_close=True)
-                    self.virsh_session_id = self.virsh_session.session_id
+                self.virsh_session = virsh.VirshPersistent(auto_close=True)
+                self.virsh_session_id = self.virsh_session.session_id
             except Exception as detail:
                 LOG.error(detail)
             else:
@@ -254,8 +232,6 @@ class VMChecker(object):
         graphic_type = self.params.get('ori_graphic', 'vnc')
         if utils_v2v.multiple_versions_compare(V2V_ADAPTE_SPICE_REMOVAL_VER):
             graphic_type = 'vnc'
-        elif self.target == 'ovirt':
-            graphic_type = 'spice'
         return graphic_type
 
     def get_virtio_win_config(self):
@@ -331,16 +307,9 @@ class VMChecker(object):
 
             return video_model
 
-        def _when_target_ovirt():
-            # Video model will change to QXL if convert target is ovirt/RHEVM
-            return 'qxl'
-
         # Default value
         video_model = 'cirrus'
         has_virtio_win, has_qxldod = self.get_virtio_win_config()
-        # Video model will change to QXL if convert target is ovirt/RHEVM
-        if self.target == 'ovirt':
-            video_model = _when_target_ovirt()
         # Video model will change to QXL for Windows2008r2 and windows7
         if self.target == 'libvirt':
             video_model = _when_target_libvirt(has_qxldod)
@@ -874,18 +843,10 @@ class VMChecker(object):
         Check if graphics attributes value in vm xml match with given param.
         """
         LOG.info('Check graphics parameters')
-        if self.target == 'ovirt':
-            xml = virsh.dumpxml(
-                self.vm_name,
-                extra='--security-info',
-                session_id=self.virsh_session_id).stdout
-            vmxml = xml_utils.XMLTreeFile(xml)
-            graphic = vmxml.find('devices').find('graphics')
-        else:
-            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                self.vm_name, options='--security-info',
-                virsh_instance=self.virsh_session)
-            graphic = vmxml.xmltreefile.find('devices').find('graphics')
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+            self.vm_name, options='--security-info',
+            virsh_instance=self.virsh_session)
+        graphic = vmxml.xmltreefile.find('devices').find('graphics')
         status = True
         for key in param:
             LOG.debug('%s = %s' % (key, graphic.get(key)))

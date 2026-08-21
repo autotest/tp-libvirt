@@ -12,7 +12,6 @@ from provider.utils_v2v import multiple_versions_compare
 from provider.utils_v2v import params_get
 from provider.utils_v2v import prime_rpm_cache
 from provider import utils_v2v
-from virttest.utils_conn import update_crypto_policy
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -397,33 +396,6 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                           "--run 'nbdinfo $uri'", shell=True, ignore_status=True)
         if re.search('error', cmd.stdout_text):
             test.fail('fail to test rate filter')
-
-    def enable_legacy_cryptography(hostname):
-        """
-        Enable the legacy sha1 algorithm.
-        """
-        ssh_config = ("Host %s\n"
-                      "  KexAlgorithms            +diffie-hellman-group14-sha1\n"
-                      "  MACs                     +hmac-sha1\n"
-                      "  HostKeyAlgorithms        +ssh-rsa\n"
-                      "  PubkeyAcceptedKeyTypes   +ssh-rsa\n"
-                      "  PubkeyAcceptedAlgorithms +ssh-rsa") % hostname
-
-        openssl_cnf = (".include /etc/ssl/openssl.cnf\n"
-                       "[openssl_init]\n"
-                       "alg_section = evp_properties\n"
-                       "[evp_properties]\n"
-                       "rh-allow-sha1-signatures = yes")
-
-        with open(os.path.expanduser('~/.ssh/config'), 'w') as fd:
-            fd.write(ssh_config)
-
-        with open(os.path.expanduser('~/openssl-sha1.cnf'), 'w') as fd:
-            fd.write(openssl_cnf)
-
-        # export the environment variable
-        os.environ['OPENSSL_CONF'] = os.path.expanduser('~/openssl-sha1.cnf')
-        LOG.debug('OPENSSL_CONF is %s' % os.getenv('OPENSSL_CONF'))
 
     def delay_close_delay_open_options():
         #Check options when clients use NBD_CMD_DISC (libnbd nbd_shutdown) or clients which drop the connection
