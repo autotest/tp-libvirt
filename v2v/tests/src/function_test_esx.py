@@ -46,6 +46,7 @@ def run(test, params, env):
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
     version_required_error = params.get("version_required_error")
+    utils_v2v.prime_rpm_cache(['virt-v2v', 'qemu-kvm'])
     unprivileged_user = params_get(params, 'unprivileged_user')
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")

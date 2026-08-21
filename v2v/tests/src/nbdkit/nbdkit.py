@@ -10,6 +10,7 @@ from virttest import utils_misc
 from virttest.utils_conn import build_server_key, build_CA
 from provider.utils_v2v import multiple_versions_compare
 from provider.utils_v2v import params_get
+from provider.utils_v2v import prime_rpm_cache
 from provider import utils_v2v
 from virttest.utils_conn import update_crypto_policy
 
@@ -22,6 +23,7 @@ def run(test, params, env):
     """
     checkpoint = params.get('checkpoint')
     version_required = params.get('version_required')
+    prime_rpm_cache(['virt-v2v', 'nbdkit', 'nbdkit-server'])
 
     def test_filter_stats_fd_leak():
         """

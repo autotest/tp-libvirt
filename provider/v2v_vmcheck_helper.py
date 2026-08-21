@@ -87,6 +87,7 @@ class VMChecker(object):
     """
 
     def __init__(self, test, params, env):
+        utils_v2v.prime_rpm_cache(['virt-v2v'])
         self.errors = []
         self.params = params
         self.vmxml = ''
