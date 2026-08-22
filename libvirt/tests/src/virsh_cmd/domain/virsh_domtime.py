@@ -2,6 +2,7 @@ import datetime
 import logging as log
 import re
 import time
+import platform
 
 from avocado.utils import process
 
@@ -426,11 +427,16 @@ def run(test, params, env):
             utils_time.sync_timezone_linux(vm)
             # Sync guest time with host
             if channel and agent and not shutdown:
-                res = virsh.domtime(vm_name, now=restore_time)
-                if res.exit_status:
-                    session.close()
-                    test.error("Failed to recover guest time:\n%s"
-                               % res)
+                # Skip time recovery on Power architecture - RTC reinjection not supported
+                if platform.machine() in ['ppc64', 'ppc64le']:
+                    logging.warning("Skipping time recovery on Power architecture - "
+                                    "RTC interrupt reinjection not available")
+                else:
+                    res = virsh.domtime(vm_name, now=restore_time)
+                    if res.exit_status:
+                        session.close()
+                        test.error("Failed to recover guest time:\n%s"
+                                   % res)
             session.close()
     finally:
         # Restore VM XML
