@@ -317,8 +317,10 @@ def run(test, params, env):
             vm.cleanup_serial_console()
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(timeout=240)
-        if not utils_package.package_install('dhcp-client', session=vm_session):
-            test.error("Failed to install dhcp-client on guest.")
+        # RHEL <= 9: dhcp-client; RHEL 10+: dhcpcd
+        if not (utils_package.package_install('dhcpcd', session=vm_session) or
+                utils_package.package_install('dhcp-client', session=vm_session)):
+            test.error("Failed to install dhcp client (dhcpcd/dhcp-client) on guest.")
         utils_net.restart_guest_network(vm_session)
         vm_ip = network_base.get_vm_ip(vm_session, mac)
         logging.debug("VM IP Addr: %s", vm_ip)

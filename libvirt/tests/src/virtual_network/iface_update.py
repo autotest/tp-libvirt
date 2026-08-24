@@ -210,7 +210,7 @@ def run(test, params, env):
         # Collect need update items in 2 dicts for both start vm before and after
         update_list_bef = [
             "driver", 'driver_host', 'driver_guest', "model", "mtu", "rom",
-            "filter", 'boot', 'coalesce', 'source'
+            "filter", 'boot', 'coalesce', 'source', 'type',
         ]
         for update_item_bef in update_list_bef:
             if names.get('iface_'+update_item_bef):
@@ -236,7 +236,15 @@ def run(test, params, env):
 
         # Operations before updating vm's iface xml
         disk_boot = params.get('disk_boot')
-        if disk_boot:
+        if expect_err_msg and 'os/boot' in expect_err_msg:
+            # aarch64/EFI guests often already use per-device disk boot and
+            # lack <os>/<boot>; set the os/boot precondition explicitly.
+            # (Do not rely on a cfg flag — avocado may drop unknown keys.)
+            prep_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            prep_xml.remove_all_boots()
+            prep_xml.setup_attrs(os={'boots': ['hd']})
+            prep_xml.sync()
+        elif disk_boot:
             update_vm_boot_order(vm_name, disk_boot)
 
         if case == 'update_driver_iommu_ast':
@@ -244,6 +252,14 @@ def run(test, params, env):
             libvirt_virtio.add_iommu_dev(vm, iommu_attrs)
 
         # Update vm interface with items in iface_dict_bef and start it
+        if direct_net:
+            # Guests are often created as type='bridge' (e.g. virbr0). For
+            # update_link_diff_type the domain must already be type='network'
+            # on direct_net before start; otherwise update-device tries to
+            # change the interface type and fails.
+            iface_dict_bef['type'] = 'network'
+            if 'source' not in iface_dict_bef:
+                iface_dict_bef['source'] = "{'network': '%s'}" % new_network_name
         if iface_dict_bef:
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_dict_bef)
         logging.info("vm xml is %s", vm.get_xml())
