@@ -795,6 +795,290 @@ class VirtualDiskBasic(AttachDeviceBase):
             else:
                 return True
 
+class VirtualDiskQcow2Raw(VirtualDiskBasic):
+    """
+    File-backed virtio/usb/scsi disk device with qcow2 or raw format
+    
+    Extends VirtualDiskBasic to support both qcow2 and raw disk formats
+    using qemu-img for proper disk image creation.
+    
+    Consumes Cartesian object parameters:
+        count - number of devices to make
+        meg - size of device in megabytes
+        devidx - device index to start at
+        targetbus - bus type (virtio, scsi, usb, etc.)
+        diskformat - disk format (qcow2 or raw), defaults to raw
+        testdetach - if 'yes', test detach operation after attach (default: 'no')
+    """
+    
+    identifier = None
+    diskformat = 'raw'  # Default format, can be overridden by config
+    testdetach = 'no'  # Default: don't test detach, can be overridden by config
+    
+    def make_image_file_path(self, index):
+        """Override to use diskformat as the file extension."""
+        return os.path.join(data_dir.get_data_dir(),
+                            'disk_%s_%s_%d.%s'
+                            % (self.__class__.__name__,
+                               self.identifier,
+                               index,
+                               self.diskformat))
+
+    def make_image_file(self, index):
+        """Override to create a properly formatted image via create_local_disk."""
+        from virttest.utils_test import libvirt as utlv
+        utlv.create_local_disk("file",
+                               path=self.make_image_file_path(index),
+                               size=str(self.meg / 1024.0),
+                               disk_format=self.diskformat)
+    
+    def init_device(self, index):
+        """
+        Initialize and return instance of device xml for index
+        """
+        self.make_image_file(index)
+        disk_class = self.test_params.vmxml.get_device_class('disk')
+        disk_device = disk_class(type_name=self.devtype,
+                                 virsh_instance=self.test_params.virsh)
+        
+        disk_device.driver = {'name': 'qemu', 'type': self.diskformat}
+        source_properties = {'attrs':
+                             {'file': self.make_image_file_path(index)}}
+        source = disk_device.new_disk_source(**source_properties)
+        disk_device.source = source
+        dev_name = self.devname(index)
+        disk_device.target = {'dev': dev_name, 'bus': self.targetbus}
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            disk_device.alias = {'name': self.alias + str(index)}
+        logging.info("Created %s format disk device: %s (target: %s)",
+                     self.diskformat, self.make_image_file_path(index), dev_name)
+        
+        return disk_device
+    
+    def function(self, index):
+        """
+        Override function() to verify disk functionality then perform detach
+        
+        This method:
+        1. Verifies disk in domblklist (for storage tests)
+        2. Calls parent's function() to verify disk is accessible in guest
+        3. Only performs detach AFTER post-boot tests (when self.booted=True)
+        4. Returns True if all verifications and detach succeed
+        
+        Test flow:
+        - Pre-boot: booted=False, verify disk in domblklist and works, skip detach
+        - Post-boot: booted=True, verify disk in domblklist and works, then detach if enabled
+        """
+        # Verify disk appears in domblklist (storage-specific validation)
+        dev_name = self.devname(index)
+        vm_name = self.test_params.main_vm.name
+        
+        logging.info("Verifying device %s in domblklist (booted=%s)", dev_name, self.booted)
+        domblklist_result = virsh.domblklist(vm_name, debug=True)
+        
+        if domblklist_result.exit_status != 0:
+            logging.error("Failed to get domblklist for %s", vm_name)
+            return False
+        
+        output = domblklist_result.stdout_text.strip()
+        logging.debug("domblklist output:\n%s", output)
+        
+        device_found = False
+        for line in output.splitlines():
+            columns = line.split()
+            if len(columns) < 1:
+                continue
+            if columns[0] == dev_name:
+                device_found = True
+                break
+        
+        if not device_found:
+            logging.error("Device %s NOT found in domblklist", dev_name)
+            return False
+        
+        logging.info("Device %s found in domblklist", dev_name)
+        
+        # Now verify the disk functionality using parent class method
+        function_result = super(VirtualDiskQcow2Raw, self).function(index)
+        
+        if not function_result:
+            logging.error("Disk functionality verification failed for %s format disk",
+                          self.diskformat)
+            return False
+        
+        logging.info("Disk functionality verified successfully (booted=%s)", self.booted)
+        
+        # Check if detach testing is enabled for this test variant
+        testdetach = getattr(self, 'testdetach', 'no')
+        if testdetach != 'yes':
+            logging.info("Detach testing disabled for this variant, skipping detach")
+            return True
+        
+        # Only perform detach after post-boot tests (when booted=True)
+        # This ensures disk is available for both pre-boot and post-boot functionality tests
+        if not self.booted:
+            logging.info("Pre-boot phase: skipping detach, will detach after post-boot tests")
+            return True
+        
+        logging.info("Post-boot phase: functionality verified, now testing detach operation")
+        
+        # Now perform detach operation with same flags as attach
+        vadu_dargs = make_vadu_dargs(self.test_params,
+                                     self.device_xmls[index].xml,
+                                     self.test)
+        
+        self.test_params.virsh['debug'] = True
+        vadu_dargs.update(self.test_params.virsh)
+        
+        logging.info("Detaching %s format disk device: %s",
+                     self.diskformat, self.make_image_file_path(index))
+        
+        # Call virsh detach-device with same flags as attach
+        cmdresult = self.test_params.virsh.detach_device(**vadu_dargs)
+        self.test_params.virsh['debug'] = False
+        
+        # Verify detach command was successful
+        if cmdresult.exit_status != 0:
+            if self.test_params.status_error:
+                return True
+            else:
+                logging.error("Failed to detach disk device: %s", cmdresult.stderr)
+                return False
+        
+        # libvirt outputs "Device detached successfully"; exit 0 is the real
+        # signal but warn if the expected message is unexpectedly absent.
+        combined = cmdresult.stdout_text + cmdresult.stderr_text
+        if 'detached successfully' not in combined:
+            logging.warning("detach-device exited 0 but success message absent; "
+                            "stdout=%s stderr=%s",
+                            cmdresult.stdout_text.strip(),
+                            cmdresult.stderr_text.strip())
+
+        logging.info("Successfully detached %s format disk device",
+                     self.diskformat)
+        time.sleep(2)
+
+        # Bug fix: test_params.extra returns None when vadu_extra is unset;
+        # guard against TypeError before doing '--live' not in None.
+        extra = self.test_params.extra  # str or None
+        # Check if --config flag is used (without --live)
+        # For --config, device removal only takes effect after VM restart
+        config_only = (self.test_params.mmconfig and
+                       (extra is None or '--live' not in extra))
+
+        dev_name = self.devname(index)
+        vm_name = self.test_params.main_vm.name
+
+        if config_only:
+            logging.info("--config flag used for detach: device will be removed after VM restart")
+
+            # For --config, device should still be present in running VM
+            logging.info("Verifying device %s still present in running VM", dev_name)
+            domblklist_result = virsh.domblklist(vm_name, debug=True)
+
+            if domblklist_result.exit_status != 0:
+                logging.error("Failed to get domblklist for %s", vm_name)
+                return False
+
+            output = domblklist_result.stdout_text.strip()
+            logging.debug("domblklist output before restart:\n%s", output)
+
+            device_found = False
+            for line in output.splitlines():
+                columns = line.split()
+                if len(columns) < 1:
+                    continue
+                if columns[0] == dev_name:
+                    device_found = True
+                    break
+
+            if not device_found:
+                logging.error("Device %s not found in running VM (should still be present with --config)",
+                              dev_name)
+                return False
+
+            logging.info("Confirmed: Device %s still present in running VM before restart", dev_name)
+
+            # Now restart the VM to apply --config changes
+            logging.info("Restarting VM to apply --config detach changes")
+            try:
+                vm = self.test_params.main_vm
+                vm.destroy(gracefully=True)
+                time.sleep(2)
+                vm.start()
+                vm.wait_for_login()
+                logging.info("VM restarted successfully")
+            except Exception as e:
+                logging.error("Failed to restart VM: %s", str(e))
+                return False
+
+            time.sleep(2)
+
+        # Verify device is removed from domblklist (after restart for --config)
+        logging.info("Verifying device %s is removed from domblklist", dev_name)
+        domblklist_result = virsh.domblklist(vm_name, debug=True)
+
+        if domblklist_result.exit_status != 0:
+            logging.error("Failed to get domblklist for %s", vm_name)
+            return False
+
+        output = domblklist_result.stdout_text.strip()
+        logging.debug("domblklist output after detach%s:\n%s",
+                      " and restart" if config_only else "", output)
+
+        device_found = False
+        for line in output.splitlines():
+            columns = line.split()
+            if len(columns) < 1:
+                continue
+            if columns[0] == dev_name:
+                device_found = True
+                break
+
+        if device_found:
+            logging.error("Device %s still present in domblklist after detach%s",
+                          dev_name, " and restart" if config_only else "")
+            return False
+
+        logging.info("Verified: Device %s successfully removed from domblklist%s",
+                     dev_name, " after restart" if config_only else "")
+
+        # Guest-side lsblk: confirm the kernel no longer lists the block device.
+        # Mirror the same pattern used after attach (parent function()) —
+        # open a session, wait for /dev/<name> to disappear, then run lsblk
+        # and assert the device name is absent from its NAME column.
+        guest_dev = '/dev/' + dev_name
+        logging.info("Verifying %s absent on guest via lsblk", guest_dev)
+        session = None
+        try:
+            session = self.test_params.main_vm.login()
+            # Wait up to 10 s for udev to remove the node (mirrors the 5 s
+            # wait-for-appear used after attach in VirtualDiskBasic.function())
+            utils_misc.wait_for(
+                lambda: session.cmd_status('ls %s' % guest_dev) != 0, 10)
+            lsblk_out = session.cmd_output(
+                'lsblk -o NAME,SIZE,TYPE,MOUNTPOINT 2>/dev/null')
+            session.close()
+            logging.info("Guest lsblk output after detach:\n%s", lsblk_out)
+            # lsblk NAME column contains bare names (e.g. "vdb"), not /dev/ paths
+            if dev_name in lsblk_out.split():
+                logging.error("Guest lsblk still lists %s after detach", dev_name)
+                return False
+            logging.info("Guest lsblk confirms %s absent after detach", dev_name)
+        except (virt_vm.VMAddressError, remote.LoginError,
+                aexpect.ExpectError, aexpect.ShellError):
+            try:
+                session.close()
+            except AttributeError:
+                pass  # session == None
+            # Non-fatal: host-side domblklist already confirmed removal
+            logging.warning("Could not verify lsblk on guest (non-fatal); "
+                            "host domblklist already confirmed removal of %s",
+                            dev_name)
+
+        return True
+
+
 
 def operational_action(test_params, test_devices, operational_results):
     """
@@ -956,7 +1240,9 @@ def update_controllers_ppc(vm_name, vmxml):
         device_bus = 'scsi'
         if not vmxml.get_controllers(device_bus, 'virtio-scsi'):
             vmxml.del_controller(device_bus)
-            ppc_controller = Controller('controller')
+            # Use vmxml.get_device_class to create controller device properly
+            controller_class = vmxml.get_device_class('controller')
+            ppc_controller = controller_class(type_name='controller')
             ppc_controller.type = device_bus
             ppc_controller.index = '0'
             ppc_controller.model = 'virtio-scsi'
