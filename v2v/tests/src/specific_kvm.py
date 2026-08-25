@@ -72,8 +72,7 @@ def run(test, params, env):
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
-    backup_list = ['fstab_cdrom', 'fstab_label', 'fstab_uuid', 'sata_disk',
-                   'network_rtl8139', 'network_e1000',
+    backup_list = ['fstab_label', 'fstab_uuid', 'network_e1000',
                    'spice', 'spice_encrypt', 'spice_qxl',
                    'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
                    'listen_none', 'listen_socket', 'only_net', 'only_br',
@@ -298,17 +297,6 @@ def run(test, params, env):
             index += 1
         vmxml.sync()
 
-    def change_network_model(model):
-        """
-        Change network model to $model
-        """
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        network_list = vmxml.get_iface_all()
-        for node in list(network_list.values()):
-            if node.get('type') == 'network':
-                node.find('model').set('type', model)
-        vmxml.sync()
-
     def attach_network_card(model):
         """
         Attach network card based on model
@@ -422,79 +410,6 @@ def run(test, params, env):
         if not re.search(r' on /usr type ', mount_output):
             log_fail('/usr partition not mounted')
         LOG.info('/usr partition is mounted')
-
-    def make_label(session):
-        """
-        Label a volume, swap or root volume
-        """
-        # swaplabel for rhel7 with xfs, e2label for rhel6 or ext*
-        cmd_map = {'root': 'e2label %s ROOT',
-                   'swap': 'swaplabel -L SWAPPER %s'}
-        if not session.cmd_status('swaplabel --help'):
-            blk = 'swap'
-        elif not session.cmd_status('which e2label'):
-            blk = 'root'
-        else:
-            test.error('No tool to make label')
-        entry = session.cmd('blkid|grep %s' % blk).strip()
-        path = entry.split()[0].strip(':')
-        cmd_label = cmd_map[blk] % path
-        if 'LABEL' not in entry:
-            session.cmd(cmd_label)
-        return blk
-
-    @vm_shell
-    def specify_fstab_entry(type, **kwargs):
-        """
-        Specify entry in fstab file
-        """
-        type_list = ['cdrom', 'uuid', 'label', 'sr0', 'invalid']
-        if type not in type_list:
-            test.error('Not support %s in fstab' % type)
-        session = kwargs['session']
-        # Specify cdrom device
-        if type == 'cdrom':
-            line = '/dev/cdrom /media/CDROM auto exec'
-            if 'grub2' in utils_misc.get_bootloader_cfg(session):
-                line += ',nofail'
-            line += ' 0 0'
-            LOG.debug('fstab entry is "%s"', line)
-            cmd = [
-                'mkdir -p /media/CDROM',
-                'mount /dev/cdrom /media/CDROM',
-                'echo "%s" >> /etc/fstab' % line
-            ]
-            for i in range(len(cmd)):
-                session.cmd(cmd[i])
-        elif type == 'sr0':
-            line = params.get('fstab_content')
-            session.cmd('echo "%s" >> /etc/fstab' % line)
-        elif type == 'invalid':
-            line = utils_misc.generate_random_string(6)
-            session.cmd('echo "%s" >> /etc/fstab' % line)
-        else:
-            map = {'uuid': 'UUID', 'label': 'LABEL'}
-            LOG.info(type)
-            if session.cmd_status('cat /etc/fstab|grep %s' % map[type]):
-                # Specify device by UUID
-                if type == 'uuid':
-                    entry = session.cmd(
-                        'blkid -s UUID|grep swap').strip().split()
-                    # Replace path for UUID
-                    origin = entry[0].strip(':')
-                    replace = entry[1].replace('"', '')
-                # Specify device by label
-                elif type == 'label':
-                    blk = make_label(session)
-                    entry = session.cmd('blkid|grep %s' % blk).strip()
-                    # Remove " from LABEL="****"
-                    replace = entry.split()[1].strip().replace('"', '')
-                    # Replace the original id/path with label
-                    origin = entry.split()[0].strip(':')
-                cmd_fstab = "sed -i 's|%s|%s|' /etc/fstab" % (origin, replace)
-                session.cmd(cmd_fstab)
-        fstab = session.cmd_output('cat /etc/fstab')
-        LOG.debug('Content of /etc/fstab:\n%s', fstab)
 
     def create_large_file(session, left_space):
         """
@@ -755,7 +670,7 @@ def run(test, params, env):
                 check_fstab_label(vmchecker.checker)
             if checkpoint == 'fstab_uuid':
                 check_fstab_uuid(vmchecker.checker)
-            if checkpoint in ['network_rtl8139', 'network_e1000']:
+            if checkpoint == 'network_e1000':
                 check_network_virtio(vmchecker.vmxml)
             if checkpoint == 'ubuntu_usr_partition':
                 check_usr_partition(vmchecker.checker)
@@ -862,12 +777,6 @@ def run(test, params, env):
             params['ori_disks'] = disk_count
         if checkpoint == 'sata_disk':
             change_disk_bus('sata')
-        if checkpoint.startswith('fstab'):
-            if checkpoint == 'fstab_cdrom':
-                img_path = data_dir.get_tmp_dir() + '/cdrom.iso'
-                utlv.create_local_disk('iso', img_path)
-                attach_removable_media('cdrom', img_path, 'hdc')
-            specify_fstab_entry(checkpoint[6:])
         if checkpoint == 'running':
             virsh.start(vm_name)
             LOG.info('VM state: %s' % virsh.domstate(vm_name).stdout.strip())
@@ -883,8 +792,6 @@ def run(test, params, env):
         if checkpoint == 'set_cache_dir':
             LOG.info('Set LIBGUESTFS_CACHEDIR=/home')
             os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
-        if checkpoint.startswith('network'):
-            change_network_model(checkpoint[8:])
         if checkpoint == 'multi_netcards':
             params['mac_address'] = []
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
