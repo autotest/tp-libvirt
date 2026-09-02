@@ -89,10 +89,10 @@ EOF
         # vddk_libdir
         vddk_libdir_src = params_get(params, "vddk_libdir_src")
         with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
-            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs4')
             process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
                         shell=True, ignore_status=True)
-            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs4')
             vddk_thumbprint = '11'
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
@@ -119,8 +119,8 @@ nbdkit -rfv -U - --exportname / \
                 LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
             if checkpoint == 'scan_readahead_blocksize':
                 nbdkit_cmd = nbdkit_cmd.replace('--filter=retry', '--filter=scan  --filter=blocksize '
-                                                                  '--filter=readahead') + \
-                             ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
+                                                                    '--filter=readahead') + \
+                                ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
                 LOG.info('nbdkit command with scan, readahead and blocksize filters:\n%s' % nbdkit_cmd)
             if checkpoint == 'vddk_with_delay_close_open_option':
                 nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=400ms delay-open=400ms'
@@ -348,7 +348,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         create_hwversions = params.get('create_hwversions')
         vddk_libdir_src = params_get(params, "vddk_libdir_src")
         with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
-            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs4')
             for create_type in list(create_types.split(' ')):
                 for create_adapter_type in list(create_adapter_types.split(' ')):
                     for create_hwversion in list(create_hwversions.split(' ')):
@@ -362,7 +362,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                         if re.search('error', cmd_result.stdout_text) or re.search('error', cmd_result.stderr_text):
                             test.fail('fail to create vmdk with vddk create option %s, %s, %s' %
                                       (create_type, create_adapter_type, create_hwversion))
-            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs4')
 
     def annocheck_test_nbdkit():
         tmp_path = data_dir.get_tmp_dir()
@@ -630,9 +630,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         sector_size = params_get(params, "sector_size")
         guest_images = params_get(params, "guest_images")
         with tempfile.TemporaryDirectory(prefix='guestimages_') as images_dir:
-            utils_misc.mount(guest_images, images_dir, 'nfs')
+            utils_misc.mount(guest_images, images_dir, 'nfs4')
             process.run('cp -R %s/* %s' % (images_dir, '/home'), shell=True, ignore_status=True)
-            utils_misc.umount(guest_images, images_dir, 'nfs')
+            utils_misc.umount(guest_images, images_dir, 'nfs4')
         image_list = process.run('ls %s/rhel*sector*' % '/home', shell=True).stdout_text.strip(' ').split('\n')[:-1]
         for image in image_list:
             for size in list(sector_size.split(' ')):
