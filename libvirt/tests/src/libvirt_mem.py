@@ -116,6 +116,61 @@ def run(test, params, env):
         config.restore()
         utils_libvirtd.libvirtd_restart()
 
+    def setup_vhost_max_mem_regions():
+        """
+        Configure vhost max_mem_regions if the current value is lower than needed.
+        Distro detection and the decision whether to call this function at all
+        are handled externally via the cfg (Host_SuSE block) and the
+        set_vhost_max_mem_regions parameter — this function contains no OS
+        detection itself.
+        """
+        needed = int(params.get("vhost_max_mem_regions", 512))
+        verify_cmd = "cat /sys/module/vhost/parameters/max_mem_regions"
+
+        vm_check = process.run("virsh list --state-running --name",
+                               shell=True, ignore_status=True)
+        if vm_check.exit_status != 0:
+            test.cancel("Unable to determine running VMs; "
+                        "cannot safely configure vhost max_mem_regions")
+        running_vms = [name for name in vm_check.stdout_text.splitlines()
+                       if name.strip()]
+        if running_vms:
+            test.cancel("Running VMs detected, cannot safely configure "
+                        "vhost max_mem_regions: %s" % "\n".join(running_vms))
+
+        verify_result = process.run(verify_cmd, shell=True, ignore_status=True)
+        if verify_result.exit_status != 0:
+            test.cancel("Could not read current vhost max_mem_regions value")
+
+        original = int(verify_result.stdout_text.strip())
+        logging.info("Current vhost max_mem_regions: %d", original)
+
+        if original >= needed:
+            logging.info("vhost max_mem_regions=%d already sufficient "
+                         "(needed %d), no change required", original, needed)
+            return original
+
+        logging.info("Configuring vhost max_mem_regions from %d to %d",
+                     original, needed)
+        process.run("modprobe -r vhost_net vhost_scsi vhost_vsock vhost",
+                    shell=True, ignore_status=True)
+        result = process.run("modprobe vhost max_mem_regions=%d" % needed,
+                             shell=True, ignore_status=True)
+        if result.exit_status != 0:
+            test.cancel("Failed to configure vhost max_mem_regions=%d: %s"
+                        % (needed, result.stderr_text))
+
+        verify_result = process.run(verify_cmd, shell=True, ignore_status=True)
+        if verify_result.exit_status != 0 or \
+                int(verify_result.stdout_text.strip()) != needed:
+            test.cancel("vhost max_mem_regions verification failed: "
+                        "expected %d, got %s"
+                        % (needed, verify_result.stdout_text.strip()))
+
+        logging.info("Successfully configured vhost max_mem_regions=%d", needed)
+        return original
+
+
     def check_qemu_cmd(max_mem_rt, tg_size):
         """
         Check qemu command line options.
@@ -528,6 +583,10 @@ def run(test, params, env):
         # Destroy domain first
         if vm.is_alive():
             vm.destroy(gracefully=False)
+        # set_vhost_max_mem_regions is activated only for Host_SuSE in max_slots
+        max_mem_regions_backup = None
+        if params.get("set_vhost_max_mem_regions") == "yes":
+            max_mem_regions_backup = setup_vhost_max_mem_regions()
         modify_domain_xml()
         numa_info = utils_misc.NumaInfo()
         logging.debug(numa_info.get_all_node_meminfo())
@@ -793,3 +852,12 @@ def run(test, params, env):
         if (setup_hugepages_flag == "yes"):
             restore_hugepages()
         vmxml_backup.sync()
+        # Restore vhost max_mem_regions to original value if it was changed
+        if max_mem_regions_backup is not None:
+            logging.info("Restoring vhost max_mem_regions to original "
+                         "value: %d", max_mem_regions_backup)
+            process.run("modprobe -r vhost_net vhost_scsi vhost_vsock vhost",
+                        shell=True, ignore_status=True)
+            process.run("modprobe vhost max_mem_regions=%d"
+                        % max_mem_regions_backup,
+                        shell=True, ignore_status=True)
