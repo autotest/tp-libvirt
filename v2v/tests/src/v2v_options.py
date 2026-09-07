@@ -396,7 +396,7 @@ def run(test, params, env):
                 if not utils_misc.wait_for(
                         check_alloc, timeout=600, step=10.0):
                     test.fail('Allocation check failed.')
-            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and checkpoint != 'quiet' and not no_root:
+            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and not no_root:
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
                 check_image(img_path, "format", expected_format)
@@ -418,9 +418,6 @@ def run(test, params, env):
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     LOG.info("All common checkpoints passed")
-            if checkpoint == 'quiet':
-                if len(output.strip().splitlines()) > 10:
-                    test.fail('Output is not empty in quiet mode')
             if checkpoint == 'dependency':
                 if 'libguestfs-winsupport' not in output:
                     test.fail('libguestfs-winsupport not in dependency')
@@ -648,9 +645,6 @@ def run(test, params, env):
             os.makedirs(vdsm_image_dir)
             os.makedirs(vdsm_vm_dir)
 
-        # Output more messages except quiet mode
-        if checkpoint == 'quiet':
-            v2v_options += ' -q'
         if checkpoint in ['vddk_compression_zlib', 'vddk_compression_skipz', 'vddk_compression_fastlz']:
             v2v_options += " -v -x"
         if checkpoint == 'vddk_compression_zlib':
@@ -817,9 +811,6 @@ def run(test, params, env):
                 get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
                 cmd = cmd % to_text(get_v2v_version.stdout, errors=error_flag)
 
-        # Set timeout to kill v2v process before conversion succeed
-        if checkpoint == 'disk_not_exist':
-            v2v_timeout = 30
         if checkpoint == 'in_place':
             cmd = re.sub(r".*/bin/virt-v2v", '/usr/libexec/virt-v2v-in-place', cmd)
         if checkpoint == 'virt_v2v_open':
