@@ -154,6 +154,9 @@ def run(test, params, env):
     if not v2v_virsh.domain_exists(vm_name):
         test.error("VM '%s' not exist" % vm_name)
 
+    if hypervisor == 'esx':
+        params['original_vmxml'] = v2v_virsh.dumpxml(vm_name).stdout_text
+
     def log_fail(msg):
         """
         Log error and update error list
@@ -410,6 +413,44 @@ def run(test, params, env):
         if not re.search(r' on /usr type ', mount_output):
             log_fail('/usr partition not mounted')
         LOG.info('/usr partition is mounted')
+
+    def source_xml_reports_secure_boot(root):
+        """
+        VMware vpx XML exposes secure boot via os/firmware features;
+        KVM uses features/smm or loader secure='yes'.
+        """
+        return (root.find("./features/smm[@state='on']") is not None or
+                root.find("./os/loader[@secure='yes']") is not None or
+                root.find("./os/firmware/feature[@name='secure-boot']"
+                          "[@enabled='yes']") is not None)
+
+    def check_source_efi_xml(source_xml, secure_boot=False):
+        """
+        Validate UEFI firmware (and secure boot when required) in the
+        source VM libvirt XML from VMware before conversion.
+        """
+        try:
+            root = ET.fromstring(source_xml)
+        except ET.ParseError:
+            test.fail('Failed to parse source VM XML for EFI validation')
+
+        is_uefi = (root.find("./os[@firmware='efi']") is not None or
+                   root.find("./os/loader[@type='pflash']") is not None)
+        if not is_uefi:
+            test.fail('Source VM XML does not report UEFI firmware')
+
+        is_secure = source_xml_reports_secure_boot(root)
+        if secure_boot:
+            if not is_secure:
+                test.fail('Source VM XML does not report secure boot '
+                          '(expected features/smm state=on, loader '
+                          "secure='yes', or os/firmware secure-boot feature)")
+        elif is_secure:
+            test.fail('Source VM XML reports secure boot but plain UEFI '
+                      'was expected')
+
+        LOG.info('Source VM XML EFI validation passed (secure_boot=%s)',
+                 secure_boot)
 
     def create_large_file(session, left_space):
         """
@@ -896,6 +937,10 @@ def run(test, params, env):
             LOG.info('Disk type is %s', disk['type'])
             if disk['type'] != 'file':
                 test.error('Guest is not with file image')
+        if checkpoint == 'debian_efi_os_ver_12':
+            check_source_efi_xml(params['original_vmxml'], secure_boot=False)
+        if checkpoint == 'debian_efi_os_ver_13':
+            check_source_efi_xml(params['original_vmxml'], secure_boot=True)
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
         if v2v_params.get('new_name'):
             vm_name = params['main_vm'] = v2v_params['new_name']
