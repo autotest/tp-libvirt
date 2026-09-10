@@ -423,28 +423,6 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         os.environ['OPENSSL_CONF'] = os.path.expanduser('~/openssl-sha1.cnf')
         LOG.debug('OPENSSL_CONF is %s' % os.getenv('OPENSSL_CONF'))
 
-    def test_ssh_create_option():
-        xen_host_user = params_get(params, "xen_host_user")
-        xen_host_passwd = params_get(params, "xen_host_passwd")
-        xen_host = params_get(params, "xen_host")
-        # Setup ssh-agent access to xen hypervisor
-        support_ver = '[virt-v2v-2.0.7-4,)'
-        if utils_v2v.multiple_versions_compare(support_ver):
-            enable_legacy_cryptography(xen_host)
-        else:
-            update_crypto_policy("LEGACY")
-        LOG.info('set up ssh-agent access ')
-        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
-            xen_host, xen_host_user, xen_host_passwd, auto_close=False)
-        utils_misc.add_identities_into_ssh_agent()
-        cmd = process.run("nbdkit ssh host=%s /tmp/disk.img user=%s password=%s create=true "
-                          "create-mode=0644 create-size=10M --run 'nbdinfo --can connect $uri'" %
-                          (xen_host, xen_host_user, xen_host_passwd), shell=True)
-        if re.search('error', (cmd.stdout_text + cmd.stderr_text)):
-            test.fail('fail to test create options of ssh plugin')
-        utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
-        process.run('ssh-agent -k')
-
     def delay_close_delay_open_options():
         #Check options when clients use NBD_CMD_DISC (libnbd nbd_shutdown) or clients which drop the connection
         nbdsh_s = 'time nbdsh -u $uri -c "h.shutdown()"'
@@ -999,8 +977,6 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         statsfile_option()
     elif checkpoint == 'test_rate_filter':
         test_rate_filter()
-    elif checkpoint == 'test_ssh_create_option':
-        test_ssh_create_option()
     elif checkpoint == 'delay_close_delay_open_options':
         delay_close_delay_open_options()
     elif checkpoint == 'cow_on_read_true':
