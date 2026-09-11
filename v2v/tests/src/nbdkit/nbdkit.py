@@ -555,8 +555,25 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         tmp_path = data_dir.get_tmp_dir()
         rpm_path = process.run('rpm --eval "%{_topdir}"', shell=True).stdout_text.strip()
         process.run("yum install libtool rpm-build 'dnf-command(download)' -y", shell=True, ignore_status=True)
-        process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
-                    ignore_status=True)
+
+        source_repo = os.path.join(tmp_path, "nbdkit-source.repo")
+        try:
+            base_url = process.run(
+                "dnf repoinfo beaker-AppStream 2>/dev/null | grep Repo-baseurl | awk '{print $NF}'",
+                shell=True).stdout_text.strip()
+            source_url = re.sub(r'AppStream/x86_64/os', 'AppStream/source/tree', base_url)
+            with open(source_repo, 'w') as f:
+                f.write("[nbdkit-source]\n"
+                        "name=nbdkit-source\n"
+                        "baseurl=%s\n"
+                        "enabled=1\ngpgcheck=0\nskip_if_unavailable=1\n" % source_url)
+            process.run('cp %s /etc/yum.repos.d/' % source_repo, shell=True)
+            process.run('yum download --source nbdkit --destdir=%s --disablerepo=libvirt_ci' % tmp_path,
+                        shell=True, ignore_status=True)
+        finally:
+            if os.path.exists('/etc/yum.repos.d/nbdkit-source.repo'):
+                os.remove('/etc/yum.repos.d/nbdkit-source.repo')
+
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
         check_file = process.run('ls %s/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c' % rpm_path,
