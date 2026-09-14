@@ -719,6 +719,46 @@ def run(test, params, env):
                             unplug_failed_with_known_error = True
                             logging.debug("Known error occurred in Host, while"
                                           " hot unplug: %s", known_error)
+           
+                unplug_failed_with_known_error = True
+           
+               # Add an extra retry attempt if a known error is encountered
+                if ret.stderr and host_known_unplug_errors:
+                    for known_error in host_known_unplug_errors:
+                        if (known_error[0] == known_error[-1]) and \
+                           known_error.startswith(("'")):
+                            known_error = known_error[1:-1]
+                        if known_error in ret.stderr:
+                            unplug_failed_with_known_error = True
+                            logging.debug("Known error occurred in Host, while hot unplug: %s", known_error)
+                            # Add an extra retry if a known error is found
+                            for retry_attempt in range(1):  # Only one additional retry
+                                if not unplug_failed_with_known_error:
+                                    try:
+                                        ret = virsh.detach_device(vm_name, dev_xml.xml,
+                                                                  flagstr=attach_option, debug=True)
+                                        libvirt.check_exit_status(ret, detach_error)
+                                        break  # Exit the loop if the detach is successful
+                                    except Exception as detail:
+                                        # Retry with systemctl restart if detach fails
+                                        try:
+                                            subprocess.run(["systemctl", "restart", "qemu-guest-agent"])
+                                            ret = virsh.detach_device(vm_name, dev_xml.xml,
+                                                                      flagstr=attach_option, debug=True)
+                                            libvirt.check_exit_status(ret, detach_error)
+                                            break  # Exit the loop if the detach is successful
+                                        except Exception as detail2:
+                                            dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
+                                            try:
+                                                session = vm.wait_for_login()
+                                                utils_misc.verify_dmesg(dmesg_log_file=dmesg_file,
+                                                                        ignore_result=True,
+                                                                        session=session, level_check=5)
+                                            except Exception:
+                                                session.close()
+                                                test.fail("After memory unplug Unable to connect to VM"
+                                                          " or unable to collect dmesg")
+
                 if unplug_failed_with_known_error:
                     break
                 try:
