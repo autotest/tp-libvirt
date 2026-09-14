@@ -111,7 +111,7 @@ def vm_clock_source(test, vm, target, value=''):
     return result
 
 
-def get_time(test, vm=None, time_type=None, windows=False):
+def get_time(test, vm, time_type=None, windows=False):
     """
     Return epoch time. Windows will return timezone only.
 
@@ -120,45 +120,60 @@ def get_time(test, vm=None, time_type=None, windows=False):
     :param windows: If the vm is a windows guest
     :return: Epoch time or timezone
     """
-    if vm:
-        session = vm.wait_for_serial_login()
-        if time_type == "utc":
-            cmd = "date -u +%Y/%m/%d/%H/%M/%S"
-            status, timestr = session.cmd_status_output(cmd)
-            logging.debug("VM UTC time is %s", timestr)
-        elif windows is True:
-            # Date in this format: Sun 09/14/2014 or 2014/09/14 Sun
-            # So deal with it after getting date
-            date_cmd = (r"echo %date%")
-            time_cmd = (r"echo %time:~0,2%/%time:~3,2%/%time:~6,2%")
-            status_date_cmd, output_date_cmd = session.cmd_status_output(date_cmd)
-            status_time_cmd, output_time_cmd = session.cmd_status_output(time_cmd)
-            status = status_date_cmd or status_time_cmd
-            if output_date_cmd.split()[0].split('/') == 3:
-                datestr = output_date_cmd.split()[0]
-            else:
-                datestr = output_date_cmd.split()[1]
-            date_elems = datestr.split('/')
-            if int(date_elems[-1]) > 30:   # This is mm/dd/yyyy
-                timestr = "%s/%s/%s" % (date_elems[-1], date_elems[0],
-                                        date_elems[1])
-            else:
-                timestr = datestr
-            timestr += "/%s" % output_time_cmd
+    session = vm.wait_for_serial_login()
+    if time_type == "utc":
+        cmd = "date -u +%Y/%m/%d/%H/%M/%S"
+        status, timestr = session.cmd_status_output(cmd)
+        logging.debug("VM UTC time is %s", timestr)
+    elif windows is True:
+        # Date in this format: Sun 09/14/2014 or 2014/09/14 Sun
+        # So deal with it after getting date
+        date_cmd = (r"echo %date%")
+        time_cmd = (r"echo %time:~0,2%/%time:~3,2%/%time:~6,2%")
+        status_date_cmd, output_date_cmd = session.cmd_status_output(date_cmd)
+        status_time_cmd, output_time_cmd = session.cmd_status_output(time_cmd)
+        status = status_date_cmd or status_time_cmd
+        if output_date_cmd.split()[0].split('/') == 3:
+            datestr = output_date_cmd.split()[0]
         else:
-            cmd = "date +%Y/%m/%d/%H/%M/%S"
-            status, timestr = session.cmd_status_output(cmd)
-        session.close()
-        if status:
-            test.fail("Get time in vm failed: %s" % timestr)
-        # To avoid some unexpected space, strip it manually
-        timestr = timestr.replace(" ", "").strip()
-        struct_time = time.strptime(timestr, "%Y/%m/%d/%H/%M/%S")
+            datestr = output_date_cmd.split()[1]
+        date_elems = datestr.split('/')
+        if int(date_elems[-1]) > 30:   # This is mm/dd/yyyy
+            timestr = "%s/%s/%s" % (date_elems[-1], date_elems[0],
+                                    date_elems[1])
+        else:
+            timestr = datestr
+        timestr += "/%s" % output_time_cmd
     else:
-        if time_type == 'utc':
-            struct_time = time.gmtime()
-        else:
-            struct_time = time.localtime()
+        cmd = "date +%Y/%m/%d/%H/%M/%S"
+        status, timestr = session.cmd_status_output(cmd)
+    session.close()
+    if status:
+        test.fail("Get time in vm failed: %s" % timestr)
+    # To avoid some unexpected space, strip it manually
+    timestr = timestr.replace(" ", "").strip()
+    struct_time = time.strptime(timestr, "%Y/%m/%d/%H/%M/%S")
+
+    try:
+        return int(time.mktime(struct_time))
+    except TypeError as e:
+        test.error("Translate time to seconds error: %s" % e)
+
+
+def get_host_time(test, time_type=None, windows=False):
+    """
+    Return epoch time. Windows will return timezone only.
+
+    :param test: Test object
+    :param time_type: UTC or timezone time
+    :param windows: If the vm is a windows guest
+    :return: Epoch time or timezone
+    """
+    if time_type == 'utc':
+        struct_time = time.gmtime()
+    else:
+        struct_time = time.localtime()
+
     try:
         return int(time.mktime(struct_time))
     except TypeError as e:
@@ -399,15 +414,15 @@ def test_timers_in_vm(test, vm, params):
     expect_tz_gap = abs(vm_tz_span)
     logging.debug("Expected vm timezone time gap: %s", expect_tz_gap)
 
-    host_utc_time = get_time(test, time_type='utc')
-    logging.debug("UTC time on host: %s", host_utc_time)
     if windows_test:
         # Get windows vm's time(timezone)
         vm_tz_time = get_time(test, vm, "tz", windows=True)
-        logging.debug("TimeZone time in vm: %s", vm_tz_time)
-        # Gap between vm timezone time and host utc time
+        host_utc_time = get_host_time(test, time_type='utc')
         actual_tz_gap = abs(vm_tz_time - host_utc_time)
-        logging.debug("Actual vm timezone time gap: %s", actual_tz_gap)
+
+        logging.debug("VMtime(tz): %s, HOSTtime(utc): %s, timegap(tz): %s"
+                      % (vm_tz_time, host_utc_time, actual_tz_gap))
+
         if abs(actual_tz_gap - expect_utc_gap) > delta:
             test.fail("Timezone time of %s is not expected" % vm.name)
     else:
@@ -431,24 +446,20 @@ def test_timers_in_vm(test, vm, params):
                 test.fail("New clock source is not expected")
 
             vm_utc_time = get_time(test, vm, "utc")
-            logging.debug("UTC time in vm: %s", vm_utc_time)
             vm_tz_time = get_time(test, vm, "tz")
-            logging.debug("TimeZone time in vm: %s", vm_tz_time)
-
-            # Gap between vm utc time and host utc time
+            host_utc_time = get_host_time(test, time_type='utc')
             actual_utc_gap = abs(vm_utc_time - host_utc_time)
-            logging.debug("Actual UTC time gap between vm and host: %s",
-                          actual_utc_gap)
-            if abs(actual_utc_gap - expect_utc_gap) > delta:
-                test.fail("UTC time between host and %s do not match"
-                          % vm.name)
-            # Gap between timezone and utc time in vm
             actual_tz_gap = abs(vm_tz_time - vm_utc_time)
-            logging.debug("Actual time gap between timezone and UTC time in"
-                          " vm: %s", actual_tz_gap)
+
+            logging.debug("VMtime(utc): %s, VMtime(tz): %s, HOSTtime(utc): %s, timegap(utc): %s, timegap(tz): %s"
+                          % (vm_utc_time, vm_tz_time, host_utc_time, actual_utc_gap, actual_tz_gap))
+
+            if abs(actual_utc_gap - expect_utc_gap) > delta:
+                test.fail("UTC time between host and %s do not match by %s"
+                          % (vm.name, actual_utc_gap - expect_utc_gap))
             if abs(actual_tz_gap - expect_tz_gap) > delta:
-                test.fail("Timezone time of %s is not expected"
-                          % vm.name)
+                test.fail("Timezone time of %s differs by %s"
+                          % (vm.name, actual_tz_gap - expect_tz_gap))
 
 
 def test_specific_timer(test, vm, params):
