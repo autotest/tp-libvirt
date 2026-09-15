@@ -62,6 +62,17 @@ def run(test, params, env):
         locals() else migration_obj.setup_connection
 
     try:
+        # Ensure the guest CPU is compatible with the destination host before
+        # migration. When the source and destination CPUs differ, compute a
+        # migratable baseline and apply it; the guest must be off to rewrite
+        # its CPU, so it is (re)started below. No-op when the CPUs already
+        # match and on aarch64. It is done before monitoring events, so that
+        # restarting the guest does not show up in the monitored events.
+        if not base_steps.check_cpu_for_mig(params):
+            if vm.is_alive():
+                vm.destroy()
+            base_steps.sync_cpu_for_mig(params)
+
         virsh_session, _ = migration_base.monitor_event(params)
         setup_test()
         migration_obj.run_migration()
