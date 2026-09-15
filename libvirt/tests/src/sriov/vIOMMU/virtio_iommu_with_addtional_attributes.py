@@ -1,3 +1,5 @@
+import re
+
 from provider.viommu import viommu_base
 
 from virttest.libvirt_xml import xcepts
@@ -19,10 +21,10 @@ def run(test, params, env):
         libvirt_virtio.add_iommu_dev(vm, iommu_dict)
     except xcepts.LibvirtXMLError as details:
         if err_msg:
-            test.log.debug("Check '%s' in %s.", err_msg, details)
-            if not str(details).count(err_msg):
-                test.fail("Incorrect error message, it should be '{}', but "
-                          "got '{}'.".format(err_msg, details))
+            test.log.debug(f"Check '{err_msg}' in {details}.")
+            if not re.search(err_msg, str(details)):
+                test.fail(f"Incorrect error message, expected pattern '{err_msg}', "
+                          f"but got '{details}'.")
     else:
         test.fail("Defining the VM should fail, but run successfully!")
     finally:
