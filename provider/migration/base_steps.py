@@ -616,3 +616,23 @@ def check_cpu_for_mig(params):
         return True
     else:
         return False
+
+
+def prepare_cpu_for_mig(vm, params):
+    """
+    Ensure the guest cpu is compatible with the target host before migration
+
+    When the cpus on the source and target hosts differ, compute a migratable
+    baseline cpu and apply it to the guest. Rewriting the cpu requires the
+    guest to be off, so a running guest is destroyed; the caller is
+    responsible for (re)starting it. No-op when the cpus already match and on
+    aarch64.
+
+    :param vm: vm object
+    :param params: Dictionary with the test parameters
+    """
+    if check_cpu_for_mig(params):
+        return
+    if vm.is_alive():
+        vm.destroy()
+    sync_cpu_for_mig(params)
