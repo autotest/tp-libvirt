@@ -104,7 +104,7 @@ class VMChecker(object):
         self.boottype = int(params.get("boottype", 0))
         # If v2v version is new enough to support q35 by default, then all
         # latest guests will be converted to q35 by default.
-        if compare_version(FEATURE_SUPPORT['q35']):
+        if utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['q35']):
             self.boottype = int(params.get("boottype", 1))
 
         self.os_type = params.get('os_type')
