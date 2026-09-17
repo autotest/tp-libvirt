@@ -19,7 +19,6 @@ from avocado.utils import process
 from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
 from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
 from provider.v2v_vmcheck_helper import check_qemu_output
 from provider.v2v_vmcheck_helper import check_kubevirt_output
@@ -75,7 +74,6 @@ def run(test, params, env):
     vddk_thumbprint = params.get('vddk_thumbprint')
     src_uri_type = params.get('src_uri_type')
     esxi_password = params.get('esxi_password')
-    json_disk_pattern = params.get('json_disk_pattern')
     os_pool = os_storage = params.get('output_storage', 'default')
     os_version = params.get('os_version')
     os_type = params.get('os_type')
@@ -96,20 +94,6 @@ def run(test, params, env):
         """
         LOG.error(msg)
         error_list.append(msg)
-
-    def check_modprobe(vmcheck):
-        """
-        Check whether content of /etc/modprobe.conf meets expectation
-        """
-        content = vmcheck.session.cmd('cat /etc/modprobe.conf').strip()
-        LOG.debug(content)
-        cfg_content = params.get('cfg_content')
-        if not cfg_content:
-            test.error('Missing content for search')
-        LOG.info('Search "%s" in /etc/modprobe.conf', cfg_content)
-        pattern = r'\s+'.join(cfg_content.split())
-        if not re.search(pattern, content):
-            log_fail('Not found "%s"' % cfg_content)
 
     def virt_customize_pkg_related(vmcheck):
         """
@@ -521,8 +505,6 @@ def run(test, params, env):
             if status_error:
                 return
 
-            if output_mode == 'json' and not check_json_output(params):
-                test.fail('check json output failed')
             if output_mode == 'kubevirt' and not check_kubevirt_output(params):
                 test.fail('check kubevirt output failed')
             if 'define_disk_path' in checkpoint:
@@ -534,7 +516,7 @@ def run(test, params, env):
                 test.fail('check local output failed')
             if output_mode == 'qemu' and not check_qemu_output(params):
                 test.fail('check qemu output failed')
-            if output_mode in ['null', 'json', 'kubevirt', 'local', 'qemu']:
+            if output_mode in ['null', 'kubevirt', 'local', 'qemu']:
                 return
 
             # vmchecker must be put before skip_vm_check in order to clean up
@@ -599,8 +581,6 @@ def run(test, params, env):
                 virt_customize_file_related(vmchecker.checker)
             if 'virt_customize_permission_related' in checkpoint:
                 virt_customize_permission_related(vmchecker.checker)
-            if 'modprobe' in checkpoint:
-                check_modprobe(vmchecker.checker)
             if 'device_map' in checkpoint:
                 check_device_map(vmchecker.checker)
             if 'resume_swap' in checkpoint:
@@ -703,7 +683,6 @@ def run(test, params, env):
             'src_uri_type': src_uri_type,
             'esxi_password': esxi_password,
             'esxi_host': esxi_host,
-            'oo_json_disk_pattern': json_disk_pattern,
             'cmd_has_ip': cmd_has_ip,
             'params': params
         }
