@@ -20,7 +20,6 @@ from virttest.utils_test import libvirt
 from provider.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
@@ -111,11 +110,9 @@ def run(test, params, env):
             """
             Checking the VM
             """
-            if output_mode == 'json' and not check_json_output(params):
-                test.fail('check json output failed')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
-            if output_mode in ['null', 'json', 'local']:
+            if output_mode in ['null', 'local']:
                 return
 
             # Create vmchecker before virsh.start so that the vm can be undefined

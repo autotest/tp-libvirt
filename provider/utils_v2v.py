@@ -405,7 +405,6 @@ class Target(object):
             self.os_directory = tempfile.mkdtemp(
                 prefix="v2v_os_directory", dir=base_image_dir
             )
-        # Pass the json directory to testcase for checking
         self.params.get("params").update({"os_directory": self.os_directory})
 
         LOG.debug("The os directory(-os DIRECTORY) is %s.", self.os_directory)
@@ -445,21 +444,6 @@ class Target(object):
         Construct output options for -o null
         """
         return ""
-
-    def _get_json_options(self):
-        """
-        Construct output options for -o json
-
-        'oo_json_disk_pattern' corresponds to '-o json [-oo json-disks-pattern=PATTERN]'
-        """
-        oo_json_disk_pattern = self.params.get("oo_json_disk_pattern")
-        os_directory = self._get_os_directory()
-
-        options = " -os %s" % os_directory
-        if oo_json_disk_pattern:
-            options += " -oo json-disks-pattern=%s" % oo_json_disk_pattern
-
-        return options
 
     def _get_kubevirt_options(self):
         """

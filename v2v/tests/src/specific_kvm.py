@@ -23,7 +23,6 @@ from virttest.utils_test import libvirt as utlv
 from provider.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
 from provider.v2v_vmcheck_helper import V2V_ADAPTE_SPICE_REMOVAL_VER
 
@@ -580,11 +579,9 @@ def run(test, params, env):
         utlv.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
-            if output_mode == 'json' and not check_json_output(params):
-                test.fail('check json output failed')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
-            if output_mode in ['null', 'json', 'local']:
+            if output_mode in ['null', 'local']:
                 return
             if checkpoint == 'check_pnp_service':
                 log_dir = data_dir.get_tmp_dir()

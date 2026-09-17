@@ -1,5 +1,4 @@
 import glob
-import json
 import logging
 import os
 import re
@@ -994,68 +993,6 @@ def check_local_output(params):
             if disk.get('cache') == 'none':
                 result = False
                 break
-
-    return result
-
-
-def check_json_output(params):
-    """
-    Check -o json result
-    """
-    LOG.info('checking json output')
-
-    os_directory = params.get('os_directory')
-    disk_count = int(params.get('vm_disk_count', 0))
-    vm_name = params.get('main_vm')
-    json_disk_pattern = params.get('json_disk_pattern')
-
-    result = True
-
-    json_disk_dict = {
-        'GuestName': vm_name,
-        'DiskDeviceName': '',
-        'DiskNo': 0}
-
-    if json_disk_pattern:
-        json_disk_pattern = json_disk_pattern.replace('%{', '{')
-        json_disk_pattern = re.sub(
-            r'%{(.*?)}', r'%%{{\g<1>}}', json_disk_pattern)
-
-    # Checking all disks
-    for i, c in enumerate(string.ascii_lowercase):
-        if i == disk_count:
-            break
-
-        json_disk_dict.update({'DiskDeviceName': 'sd%s' % c})
-        json_disk_dict.update({'DiskNo': '%d' % (i + 1)})
-
-        disk_file_name = "%s-%s" % (vm_name, 'sd%s' % c)
-        if json_disk_pattern:
-            disk_file_name = json_disk_pattern.format(**json_disk_dict)
-        disk_file = os.path.join(os_directory, disk_file_name)
-        if not os.path.exists(disk_file):
-            LOG.error('Not found %s' % disk_file)
-            result = False
-
-    # Check json file
-    json_file = os.path.join(os_directory, '%s.json' % vm_name)
-    if not os.path.exists(json_file):
-        LOG.error('Not found %s' % json_file)
-        result = False
-
-    # Check content of the json file
-    with open(json_file) as fp:
-        vm = json.load(fp)
-        if vm['name'] != vm_name or len(vm['disks']) != disk_count:
-            LOG.error('Verify content failed in %s' % json_file)
-            result = False
-
-        if utils_v2v.multiple_versions_compare(
-                V2V_ADAPTE_SPICE_REMOVAL_VER) and vm['guestcaps']['video'] != 'vga':
-            LOG.error(
-                'Verify video failed: actual value is %s' %
-                vm['guestcaps']['video'])
-            result = False
 
     return result
 
