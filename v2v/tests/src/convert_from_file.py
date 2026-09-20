@@ -31,7 +31,7 @@ def run(test, params, env):
     """
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
-            test.cancel("Please set real value for %s" % v)
+            test.error("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         test.error('Missing command: virt-v2v')
     # Guest name might be changed, we need a new variant to save the original

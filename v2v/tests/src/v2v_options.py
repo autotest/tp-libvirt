@@ -35,7 +35,7 @@ def run(test, params, env):
         raise ValueError('Missing command: virt-v2v')
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
-            test.cancel("Please set real value for %s" % v)
+            test.error("Please set real value for %s" % v)
 
     version_required = params.get("version_required")
     utils_v2v.prime_rpm_cache(['virt-v2v'])

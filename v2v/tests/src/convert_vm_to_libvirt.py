@@ -22,7 +22,7 @@ def run(test, params, env):
     """
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.error("Please set real value for %s" % v)
 
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     vm_name = params.get("main_vm")
