@@ -322,6 +322,7 @@ class Target(object):
                 "ssh": "ssh://root@{}/vmfs/volumes/{}/{}/{}".format(
                     self.esxi_host, self.datastore, self._nfspath, self._vmx_filename
                 ),
+                "nfc": "",
             }
 
             options = " -it %s " % (self.input_transport)
