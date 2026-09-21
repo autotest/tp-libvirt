@@ -338,6 +338,6 @@ def run(test, params, env):
         if unprivileged_user:
             process.system("userdel -fr %s" % unprivileged_user)
         if input_mode == 'vmx' and input_transport == 'ssh':
-            process.run("killall ssh-agent")
+            process.run("killall ssh-agent", ignore_status=True)
         if enable_legacy_policy:
             update_crypto_policy()
