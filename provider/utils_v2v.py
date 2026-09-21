@@ -1261,29 +1261,31 @@ def check_log(params, log):
 
 def check_exit_status(result, expect_error=False, error_flag="strict"):
     """
-    Check the exit status of virt-v2v/libguestfs commands
+    Check a command's exit status and summarize failures, logging full output.
 
-    :param result: Virsh command result object
+    :param result: Command result object
     :param expect_error: Boolean value, expect command success or fail
     :param error_flag: same as errors argument in str.decode
     """
     if not expect_error:
         if result.exit_status != 0:
+            binname = (os.path.basename(result.command.split()[0])
+                       if result.command and result.command.strip() else 'Command')
             stderr = result.stderr_text
-            LOG.error("virt-v2v command failed (exit status %s).\n"
-                      "Command: %s\nFull output:\n%s",
-                      result.exit_status, result.command, stderr)
+            LOG.error("%s command failed (exit status %s).\n"
+                      "Command: %s\nstdout:\n%s\nstderr:\n%s",
+                      binname, result.exit_status, result.command,
+                      result.stdout_text, stderr)
             all_lines = stderr.splitlines()
+            summary = "%s command failed unexpectedly" % binname
             if len(all_lines) <= 10:
-                summary = ("virt-v2v command failed unexpectedly:\n\n"
-                           + stderr)
+                summary += ":\n\n" + stderr
             else:
-                binname = os.path.basename(
-                    result.command.split()[0]) if result.command else ''
+                # Match both "virt-v2v: error:" and "nbdkit: vddk[1]: error:".
+                error_pattern = r"^%s:(?: [^:]+:)? error\b" % re.escape(binname)
                 error_lines = [l for l in all_lines
-                               if l.startswith('%s: error' % binname)]
+                               if re.search(error_pattern, l)]
                 tail = error_lines[-10:]
-                summary = "virt-v2v command failed unexpectedly"
                 if tail:
                     summary += (", last %d possible error line(s):\n\n"
                                 % len(tail) + "\n".join(tail))
