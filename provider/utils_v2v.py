@@ -132,7 +132,7 @@ class Target(object):
         # Save NFS mount records like {0:(src, dst, fstype)}
         self.mount_records = {}
         # Authorized_keys is a list which every element is a tuple.
-        # The value of each tuple is like (session, key, server_type).
+        # The value of each tuple is like (session, key).
         self.authorized_keys = []
 
     def cleanup(self):
@@ -149,17 +149,17 @@ class Target(object):
         Clean up authorized_keys in remote server
         """
         try:
-            for session, key, server_type in self.authorized_keys:
+            for session, key in self.authorized_keys:
                 if not session or not key:
                     continue
-                LOG.debug("session=%s key=%s server_type=%s", session, key, server_type)
+                LOG.debug("session=%s key=%s", session, key)
                 session.cmd(
-                    "sed -i '/%s/d' %s" % (key, get_authorized_keys_file(server_type))
+                    "sed -i '/%s/d' /etc/ssh/keys-root/authorized_keys" % key
                 )
         finally:
             # Close session here in case the following element use same
             # session, although it could not happen in general.
-            for session, _, _ in self.authorized_keys:
+            for session, _ in self.authorized_keys:
                 if session:
                     LOG.debug("closed session = %s", session)
                     session.close()
@@ -298,16 +298,15 @@ class Target(object):
 
             # -it ssh
             if self.input_transport == "ssh":
-                pub_key, session = v2v_setup_ssh_key(
+                pub_key, session = esx_setup_ssh_key(
                     self.esxi_host,
                     self.username,
                     self.esxi_password,
-                    server_type="esx",
                     public_key=self.pub_key,
                     auto_close=False,
                 )
                 self.authorized_keys.append(
-                    (session, pub_key.split()[1].split("/")[0], "esx")
+                    (session, pub_key.split()[1].split("/")[0])
                 )
                 utils_misc.add_identities_into_ssh_agent()
 
@@ -1341,30 +1340,28 @@ def get_vddk_thumbprint(host, password, uri_type, prompt=r"[\#\$\[\]]"):
     return vddk_thumbprint
 
 
-def v2v_setup_ssh_key(
+def esx_setup_ssh_key(
     hostname,
     username,
     password,
     port=22,
-    server_type=None,
     auto_close=True,
     preferred_authentication=None,
     user_known_hosts_file=None,
-    unprivileged_user=None,
     public_key=None,
 ):
     """
-    Setup up remote login in another server by using public key
+    Set up public key SSH login to an ESX host.
 
     :param hostname: hostname or IP address
     :param username: username
     :param password: password
     :param port: ssh port number
-    :param server_type: the type of remote server, the values could be 'esx' or 'None'.
-    :param auto_close: If it's True, the session will closed automatically,
-                       else Uses should call v2v_setup_ssh_key_cleanup to close the session
+    :param auto_close: Close the session automatically. If False, the caller must
+                       remove the installed key and close the session, as Target does.
     :param preferred_authentication: The preferred authentication of SSH connection
     :param user_known_hosts_file: one or more files to use for the user host key database
+    :param public_key: Public key to install, defaulting to ssh_key.get_public_key()
 
     :return: A tuple (public_key, session) will always be returned
     """
@@ -1400,15 +1397,9 @@ def v2v_setup_ssh_key(
         if not public_key:
             public_key = default_public_key
 
-        if server_type == "esx":
-            session.cmd(
-                "echo '%s' >> /etc/ssh/keys-root/authorized_keys; " % public_key
-            )
-        else:
-            session.cmd("mkdir -p ~/.ssh")
-            session.cmd("chmod 700 ~/.ssh")
-            session.cmd("echo '%s' >> ~/.ssh/authorized_keys; " % public_key)
-            session.cmd("chmod 600 ~/.ssh/authorized_keys")
+        session.cmd(
+            "echo '%s' >> /etc/ssh/keys-root/authorized_keys; " % public_key
+        )
 
         LOG.debug("SSH key setup complete, session is %s", session)
 
@@ -1421,50 +1412,6 @@ def v2v_setup_ssh_key(
         if auto_close and session:
             LOG.debug("cleaning session: %s", session)
             session.close()
-
-
-def v2v_setup_ssh_key_cleanup(session=None, key=None, server_type=None):
-    """
-    Close the session and delete the key from authorized_keys.
-
-    If auto_close is 'False' in v2v_setup_ssh_key, Users must call this
-    function to cleanup session and keys on remote server explicitly.
-    But if the caller of v2v_setup_ssh_key is an instance of class Target,
-    you can save the resources in self.authorized_keys to cleanup
-    automatically.
-
-    :param session: An aexpect session to remote server
-    :param key: The public_key which get by ssh_key.get_public_key().
-    :param server_type: the type of remote server, the values could be 'esx' or 'None'.
-    """
-    try:
-        if not session or not key:
-            return
-
-        # Only use a part of pub_keys as a pattern in sed
-        key = key.rstrip().split()[1].split("/")[0]
-        authorized_keys = get_authorized_keys_file(server_type)
-        cmd = r"sed -i '/%s/d' %s" % (key, authorized_keys)
-        session.cmd(cmd)
-    finally:
-        if session:
-            LOG.debug("cleaning session: %s", session)
-            session.close()
-
-
-def get_authorized_keys_file(server_type=None):
-    """
-    Get authorized_keys file path for a remote server
-
-    :param server_type: the type of remote server, the values could be 'esx' or 'None'.
-
-    :return: The path of authorized_keys file on remote server
-    """
-    if server_type == "esx":
-        authorized_keys = "/etc/ssh/keys-root/authorized_keys"
-    else:
-        authorized_keys = os.path.expanduser("~/.ssh/authorized_keys")
-    return authorized_keys
 
 
 def prepare_vddk_libdir(vddk_libdir_src, unprivileged_user=None):
