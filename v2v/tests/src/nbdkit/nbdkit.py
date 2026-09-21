@@ -127,7 +127,9 @@ nbdkit -rfv -U - --exportname / \
                 nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=400ms delay-open=400ms'
                 LOG.info('nbdkit command with delay-close and delay-open options:\n%s' % nbdkit_cmd)
             # Run the final nbdkit command
-            output = process.run(nbdkit_cmd, shell=True).stdout_text
+            cmd_result = process.run(nbdkit_cmd, shell=True, ignore_status=True)
+            utils_v2v.check_exit_status(cmd_result)
+            output = cmd_result.stdout_text
             if checkpoint == 'vddk_stats':
                 if vddk_stats == 1 and not re.search(
                         r'VDDK function stats', output):
