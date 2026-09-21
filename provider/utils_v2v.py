@@ -1387,7 +1387,7 @@ def v2v_setup_ssh_key(
             port=port,
             username=username,
             password=password,
-            prompt=r"[\#\$\[\]%]",
+            prompt=r"^\[.*@.*:.*\]\s*$",
             verbose=True,
             preferred_authentication=preferred_authentication,
             user_known_hosts_file=user_known_hosts_file,
