@@ -401,7 +401,7 @@ def run(test, params, env):
                 img_path = get_img_path(output)
                 check_image(img_path, "format", expected_format)
             if '-on' in cmd:
-                expected_name = re.findall(r"-on\s(\w+)", cmd)[0]
+                expected_name = re.findall(r"-on\s+(\S+)", cmd)[0]
                 check_new_name(output, expected_name)
             if '--no-copy' in cmd:
                 check_nocopy(output)
