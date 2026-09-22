@@ -94,21 +94,14 @@ EOF
             process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
                         shell=True, ignore_status=True)
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs4')
-            vddk_thumbprint = '11'
+            vddk_thumbprint = params.get('vddk_thumbprint')
+            if vddk_thumbprint is None:
+                vddk_thumbprint = utils_v2v.get_vddk_thumbprint(vsphere_host)
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
   --filter=retry vddk server=%s user=%s password=+%s vm=%s \
   file='%s' libdir=/home/vddk_libdir --run 'nbdinfo $uri' thumbprint=%s
 """ % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_thumbprint)
-            # get thumbprint by a trick
-            cmd_result = process.run(
-                nbdkit_cmd, shell=True, ignore_status=True)
-            output = cmd_result.stdout_text + cmd_result.stderr_text
-            vddk_thumbprint = re.search(
-                r'PeerThumbprint:\s+(.*)', output).group(1)
-
-            # replace thumbprint with correct value
-            nbdkit_cmd = nbdkit_cmd.strip()[:-2] + vddk_thumbprint
             LOG.info('nbdkit command:\n%s', nbdkit_cmd)
 
             if checkpoint == 'vddk_stats':

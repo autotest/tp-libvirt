@@ -691,10 +691,9 @@ def run(test, params, env):
                     '-ip', '--password-file', 1)
             # For VDDK
             if input_transport == 'vddk':
-                if src_uri_type == 'esx':
-                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(esx_ip, source_pwd, 'esx')
-                else:
-                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(remote_host, source_pwd, 'vpx')
+                if vddk_thumbprint is None:
+                    thumbprint_host = esx_ip if src_uri_type == 'esx' else remote_host
+                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(thumbprint_host)
                 vddk_libdir_local = vddk_libdir
                 if not vddk_libdir_local and vddk_libdir_src:
                     vddk_libdir_local = utils_v2v.prepare_vddk_libdir(

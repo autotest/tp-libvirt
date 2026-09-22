@@ -7,12 +7,15 @@ Virt-v2v test utility functions.
 from __future__ import print_function
 
 import glob
+import hashlib
 import logging
 import os
 import pwd
 import random
 import re
 import shutil
+import socket
+import ssl
 import tempfile
 import time
 
@@ -25,7 +28,6 @@ from avocado.utils.astring import to_text
 from virttest import data_dir
 from virttest import libvirt_vm as lvirt
 
-from virttest import remote as remote_old
 from virttest import ssh_key, utils_misc, virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_misc import asterisk_passwd, compare_md5
@@ -282,19 +284,10 @@ class Target(object):
                     self.vddk_libdir = prepare_vddk_libdir(
                         self.vddk_libdir_src, self.unprivileged_user)
 
-                # Invalid vddk thumbprint if no ':'
-                if self.vddk_thumbprint is None or ":" not in self.vddk_thumbprint:
-                    self.vddk_thumbprint = get_vddk_thumbprint(
-                        *(
-                            (self.esxi_host, self.esxi_password, self.src_uri_type)
-                            if self.src_uri_type == "esx"
-                            else (
-                                self.vcenter_host,
-                                self.vcenter_password,
-                                self.src_uri_type,
-                            )
-                        )
-                    )
+                if self.vddk_thumbprint is None:
+                    host = (self.esxi_host if self.src_uri_type == "esx"
+                            else self.vcenter_host)
+                    self.vddk_thumbprint = get_vddk_thumbprint(host)
 
             # -it ssh
             if self.input_transport == "ssh":
@@ -1312,32 +1305,30 @@ def cleanup_constant_files(params):
     list(map(os.remove, [x for x in tmpfiles if x and os.path.isfile(x)]))
 
 
-def get_vddk_thumbprint(host, password, uri_type, prompt=r"[\#\$\[\]]"):
+def get_vddk_thumbprint(host, port=443, timeout=30):
     """
-    Get vddk thumbprint from VMware vCenter
+    Fetch the TLS certificate and return its colon-separated SHA-1 fingerprint.
 
-    :param host: hostname or IP address
-    :param password: Password
-    :param uri_type: conversion source uri type
-    :param prompt: Shell prompt (regular expression)
+    Like virt-v2v's automatic discovery, this does not verify the certificate.
+
+    :param host: ESXi or vCenter hostname or IP address
+    :param port: TLS port
+    :param timeout: Connection and TLS handshake timeout in seconds
     """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=host) as tls:
+                certificate = tls.getpeercert(binary_form=True)
+    except OSError as err:
+        raise exceptions.TestError(
+            "Could not fetch TLS certificate from %s:%s: %s" % (host, port, err)
+        ) from err
 
-    if uri_type == "esx":
-        cmd = "openssl x509 -in /etc/vmware/ssl/rui.crt -fingerprint -sha1 -noout"
-    else:
-        cmd = "openssl x509 -in /etc/vmware-vpx/ssl/rui.crt -fingerprint -sha1 -noout"
-
-    r_runner = remote_old.RemoteRunner(
-        host=host,
-        password=password,
-        prompt=prompt,
-        preferred_authentication="password,keyboard-interactive",
-    )
-    cmdresult = r_runner.run(cmd)
-    LOG.debug("vddk thumbprint:\n%s", cmdresult.stdout)
-    vddk_thumbprint = cmdresult.stdout.strip().split("=")[1]
-
-    return vddk_thumbprint
+    digest = hashlib.sha1(certificate, usedforsecurity=False).hexdigest().upper()
+    return ":".join(digest[i:i + 2] for i in range(0, len(digest), 2))
 
 
 def esx_setup_ssh_key(
