@@ -126,8 +126,7 @@ def run(test, params, env):
     try:
         # Execute virt-v2v command
         ret = utils_v2v.v2v_cmd(v2v_params)
-        if ret.exit_status != 0:
-            raise exceptions.TestFail("Convert VM failed")
+        utils_v2v.check_exit_status(ret)
 
         LOG.debug("XML info:\n%s", virsh.dumpxml(vm_name))
         vm = env.create_vm("libvirt", "libvirt", vm_name, params, test.bindir)
