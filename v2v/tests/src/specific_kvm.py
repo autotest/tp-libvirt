@@ -576,7 +576,7 @@ def run(test, params, env):
         """
         Check virt-v2v command result
         """
-        utlv.check_exit_status(result, status_error)
+        utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
             if output_mode == 'local' and not check_local_output(params):

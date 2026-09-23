@@ -135,7 +135,7 @@ def run(test, params, env):
                 # Merge 2 error lists
                 error_list.extend(vmchecker.errors)
 
-        libvirt.check_exit_status(result, status_error)
+        utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
             vm_check()
@@ -268,6 +268,7 @@ def run(test, params, env):
             v2v_params.update({'input_file': os.path.join(tmp_path, image_name)})
             if checkpoint == 'virt_v2v_in_place':
                 output = utils_v2v.cmd_run('/usr/libexec/virt-v2v-in-place -i disk %s/%s' % (tmp_path, image_name))
+                utils_v2v.check_exit_status(output, status_error)
                 log_check = utils_v2v.check_log(params, output.stdout_text)
                 if log_check:
                     log_fail(log_check)
