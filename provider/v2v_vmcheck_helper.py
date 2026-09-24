@@ -877,6 +877,23 @@ class VMChecker(object):
         cpu_status = self.checker.get_cpu_status()
         if not re.search(r'OK', cpu_status):
             self.log_err("cpu status is abnormal")
+
+        # Check qemu-guest-agent service is installed and running
+        LOG.info("Checking qemu-guest-agent service")
+        try:
+            res = utils_misc.wait_for(
+                lambda: re.search(
+                    'running',
+                    self.checker.get_service_info('qemu-ga'),
+                    re.I),
+                300,
+                step=30)
+            if not res:
+                self.log_err("qemu-guest-agent service is not running")
+        except Exception as e:
+            LOG.debug('Error checking qemu-ga service: %s', e)
+            self.log_err("qemu-guest-agent service check failed")
+
         # Check graphic and video type in VM XML
         self.check_vm_xml()
 
