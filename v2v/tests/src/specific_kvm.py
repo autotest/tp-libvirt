@@ -5,7 +5,6 @@ import string
 import time
 
 import aexpect
-import xml.etree.ElementTree as ET
 
 from avocado.utils import service
 from avocado.utils import process
@@ -709,20 +708,14 @@ def run(test, params, env):
         # Set libguestfs environment variable
         utils_v2v.set_libguestfs_backend(params)
 
-        # Save origin graphic type for result checking if source is KVM
+        # Save source XML and settings for result checking if source is KVM
         if hypervisor == 'kvm':
             ori_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            ori_vm_xml_root = ET.parse(ori_vm_xml.xml).getroot()
+            params['original_vmxml'] = str(ori_vm_xml.xmltreefile)
             params['ori_graphic'] = ori_vm_xml.xmltreefile.find(
                 'devices').find('graphics').get('type')
             params['vm_machine'] = ori_vm_xml.xmltreefile.find(
                 './os/type').get('machine')
-            uefi_firmware = ori_vm_xml_root.find('./os[@firmware="efi"]')
-            if uefi_firmware is not None:
-                # No good way to determine whether it's secure boot or not.
-                # So the check is skipped. There is no difference between
-                # 2 and 3.
-                params['boottype'] = 2
 
         backup_xml = None
         # Only kvm guest's xml needs to be backup currently
