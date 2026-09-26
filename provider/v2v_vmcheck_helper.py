@@ -233,6 +233,10 @@ class VMChecker(object):
 
     def run(self):
         self.init_vmxml()
+        if not self.os_version:
+            detected = self._detect_os_version_from_xml()
+            if detected:
+                self.os_version = detected
         self.check_metadata_libosinfo()
         self.check_genid()
         if self.os_type == 'linux':
@@ -574,6 +578,55 @@ class VMChecker(object):
         LOG.info("Auto-detected boottype=%d from source VM XML "
                  "(UEFI=%s, secure_boot=%s)", self.boottype, is_uefi,
                  is_secure)
+
+    def _detect_os_version_from_xml(self):
+        """
+        Auto-detect os_version from libosinfo metadata in converted VM XML.
+
+        :return: os_version string (e.g. 'rhel9.6', 'win2019') or ''
+        """
+        if not self.vmxml:
+            return ''
+
+        match = re.search(r'<[^>]*:os\s+id="(https?://\S+?)"\s*/>', self.vmxml)
+        if not match:
+            LOG.debug("No libosinfo metadata found in VM XML")
+            return ''
+
+        long_id = match.group(1)
+        url_patterns = [
+            (r'redhat\.com/rhel/(\S+)', 'rhel'),
+            (r'suse\.com/sles/(\S+)', 'sles'),
+            (r'centos\.org/centos/(\S+)', 'centos'),
+            (r'opensuse\.org/opensuse/(\S+)', 'opensuse'),
+            (r'debian\.org/debian/(\S+)', 'debian'),
+            (r'ubuntu\.com/ubuntu/(\S+)', 'ubuntu'),
+            (r'fedoraproject\.org/fedora/(\S+)', 'fedora'),
+            (r'microsoft\.com/win(?:nt)?/(\S+)', 'win'),
+        ]
+
+        os_ver = ''
+        for ptn, prefix in url_patterns:
+            m = re.search(ptn, long_id)
+            if m:
+                os_ver = prefix + m.group(1)
+                break
+
+        if not os_ver:
+            LOG.warning("Cannot parse os_version from libosinfo id: %s",
+                        long_id)
+            return ''
+
+        # Normalize Windows server versions: win2k16 -> win2016, etc.
+        win_match = re.match(r'^win2k(\d+)(r2)?$', os_ver)
+        if win_match:
+            num = win_match.group(1)
+            suffix = win_match.group(2) or ''
+            os_ver = 'win20%s%s' % (num, suffix) if len(num) > 1 \
+                else 'win200%s%s' % (num, suffix)
+
+        LOG.info("Auto-detected os_version=%s from libosinfo", os_ver)
+        return os_ver
 
     def get_expected_boottype(self, boottype):
         """
