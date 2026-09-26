@@ -446,9 +446,9 @@ class VMChecker(object):
             return long_id
 
         LOG.info("Checking metadata libosinfo")
-        # 'os_short_id' must be set for libosinfo checking, you can query it by
-        # 'osinfo-query os'
-        short_id = self.params.get('os_short_id')
+        # 'expect_os_short_id' must be set for libosinfo checking, you can
+        # query it by 'osinfo-query os'
+        short_id = self.params.get('expect_os_short_id')
         if not short_id:
             reason = 'short_id is not set'
             LOG.info(
