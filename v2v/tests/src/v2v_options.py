@@ -491,7 +491,7 @@ def run(test, params, env):
                 get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
                 get_rpm_version = re.search(r'(\d+\.\d+\.\d+-\d+\.el\d+)', str(get_v2v_version.stdout))
                 rpm_version = get_rpm_version.group(1)
-                get_virt_v2v_version = re.search(r'(\d+\.\d+\.\d+).*(\d+\.el\d+)', str(output_stdout))
+                get_virt_v2v_version = re.search(r'(\d+\.\d+\.\d+).*?(\d+\.el\d+)', str(output_stdout))
                 virt_v2v_version = get_virt_v2v_version.group(1) + '-' + get_virt_v2v_version.group(2)
                 if (rpm_version != virt_v2v_version):
                     test.fail('v2v version is incorrect in v2v version option')
