@@ -238,7 +238,15 @@ class VMChecker(object):
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
-            self.check_windows_vm()
+            try:
+                self.check_windows_vm()
+            except ShellError:
+                if utils_v2v.multiple_versions_compare(
+                        FEATURE_SUPPORT['firstboot_complete']):
+                    raise
+                LOG.debug('Windows guest may be rebooting, try again!')
+                self._reconnect_session()
+                self.check_windows_vm()
         else:
             LOG.warn("Unsupported os type: %s", self.os_type)
         return self.errors
@@ -789,7 +797,7 @@ class VMChecker(object):
                 if status == 0:
                     LOG.info("Found: %s", complete_path)
                     return True
-            except BaseException:
+            except ShellError:
                 cur_reboots = self._reboot_watcher.reboot_count
                 if cur_reboots > last_reboot_count:
                     LOG.info("Reboot detected (#%d), reconnecting",
@@ -815,7 +823,7 @@ class VMChecker(object):
         log_path = r'"C:\Program Files\Guestfs\Firstboot\log.txt"'
         try:
             status, log_content = self.checker.run_cmd('type %s' % log_path)
-        except BaseException as e:
+        except Exception as e:
             LOG.warning("Could not read firstboot log.txt: %s", e)
             return
         if status != 0:
@@ -835,7 +843,7 @@ class VMChecker(object):
                         "Firstboot scripts stuck (exit 249): %s", remaining)
                 else:
                     LOG.info("No stuck scripts in firstboot scripts dir")
-        except BaseException as e:
+        except Exception as e:
             LOG.warning("Could not list firstboot scripts dir: %s", e)
 
         failed = re.findall(
@@ -872,7 +880,7 @@ class VMChecker(object):
             for retry in range(RETRY_TIMES):
                 try:
                     self.checker.run_cmd('dir')
-                except BaseException:
+                except ShellError:
                     self._reconnect_session()
                 else:
                     break
