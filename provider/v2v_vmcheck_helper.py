@@ -32,7 +32,8 @@ FEATURE_SUPPORT = {
     'cache_none': '[virt-v2v-1.42.0-4,)',
     'q35': '[virt-v2v-1.43.3-2,)',
     'virtio_model': '[virt-v2v-1.45.97-4,)',
-    'virtio_skip': '[virt-v2v-2.0.0-1,)'}
+    'virtio_skip': '[virt-v2v-2.0.0-1,)',
+    'firstboot_complete': '[virt-v2v-2.11.4-1,)'}
 V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
 V2V_VSOCK_SUPPORT_LINUX_VER = "[virt-v2v-2.0.2-1,)"
 
@@ -237,13 +238,7 @@ class VMChecker(object):
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
-            try:
-                self.check_windows_vm()
-            except ShellError:
-                LOG.debug('Windows guest may be rebooting, try again!')
-                self.checker.session.close()
-                self.checker.session = None
-                self.check_windows_vm()
+            self.check_windows_vm()
         else:
             LOG.warn("Unsupported os type: %s", self.os_type)
         return self.errors
@@ -768,6 +763,93 @@ class VMChecker(object):
             expect_video,
             self.get_device_id_by_name(expect_video))
 
+    def _reconnect_session(self):
+        if self.checker.session:
+            self.checker.session.close()
+            self.checker.session = None
+        self.checker.create_session()
+
+    def _wait_for_firstboot_complete(self):
+        """
+        Wait for the firstboot 'complete' marker file to appear.
+
+        Returns True if firstboot completed, False on timeout.
+        """
+        total_timeout = 1800
+        step = 30
+        complete_path = r'"C:\Program Files\Guestfs\Firstboot\complete"'
+        cmd = 'type %s' % complete_path
+        deadline = time.time() + total_timeout
+        last_reboot_count = self._reboot_watcher.reboot_count
+
+        LOG.info("Waiting up to %ds for %s", total_timeout, complete_path)
+        while time.time() < deadline:
+            try:
+                status, _ = self.checker.run_cmd(cmd)
+                if status == 0:
+                    LOG.info("Found: %s", complete_path)
+                    return True
+            except BaseException:
+                cur_reboots = self._reboot_watcher.reboot_count
+                if cur_reboots > last_reboot_count:
+                    LOG.info("Reboot detected (#%d), reconnecting",
+                             cur_reboots)
+                    last_reboot_count = cur_reboots
+                    time.sleep(step)
+                self._reconnect_session()
+                continue
+            time.sleep(step)
+
+        LOG.warning("Not found after %ds: %s", total_timeout, complete_path)
+        return False
+
+    def _check_firstboot_failures(self):
+        """
+        Check if any firstboot scripts failed and dump the log.
+
+        Firstboot moves scripts to scripts-done after running (unless
+        exit code 249 = retry). So remaining .bat files indicate retries
+        that never succeeded. Additionally, parse log.txt for non-zero
+        exit codes to catch scripts that ran but failed.
+        """
+        log_path = r'"C:\Program Files\Guestfs\Firstboot\log.txt"'
+        try:
+            status, log_content = self.checker.run_cmd('type %s' % log_path)
+        except BaseException as e:
+            LOG.warning("Could not read firstboot log.txt: %s", e)
+            return
+        if status != 0:
+            LOG.warning("Could not read firstboot log.txt, status=%d", status)
+            return
+
+        LOG.info("Firstboot log.txt:\n%s", log_content)
+
+        scripts_dir = r'"C:\Program Files\Guestfs\Firstboot\scripts"'
+        try:
+            status, output = self.checker.run_cmd('dir /b %s' % scripts_dir)
+            if status == 0:
+                remaining = [f.strip() for f in output.strip().splitlines()
+                             if f.strip() and f.strip().endswith('.bat')]
+                if remaining:
+                    LOG.warning(
+                        "Firstboot scripts stuck (exit 249): %s", remaining)
+                else:
+                    LOG.info("No stuck scripts in firstboot scripts dir")
+        except BaseException as e:
+            LOG.warning("Could not list firstboot scripts dir: %s", e)
+
+        failed = re.findall(
+            r'running "(.*?)".*?exit code (\d+)',
+            log_content, re.DOTALL)
+        errors = [(script, int(code)) for script, code in failed
+                  if int(code) not in (0, 250)]
+        if errors:
+            for script, code in errors:
+                LOG.warning("Firstboot script %s exited with code %d",
+                            script, code)
+        else:
+            LOG.info("All firstboot scripts completed successfully")
+
     def check_windows_vm(self):
         """
         Check windows guest after v2v convert.
@@ -776,21 +858,24 @@ class VMChecker(object):
             self.checker.create_session()
         except Exception as detail:
             raise exceptions.TestError(
-                'Failed to connect to windows guest: %s' %
-                detail)
-        LOG.info("Wait 60 seconds for installing drivers")
-        time.sleep(60)
-        # Close and re-create session in case connection reset by peer during
-        # sleeping time. Keep trying until the test command runs successfully.
-        for retry in range(RETRY_TIMES):
-            try:
-                self.checker.run_cmd('dir')
-            except BaseException:
-                self.checker.session.close()
-                self.checker.session = None
-                self.checker.create_session()
-            else:
-                break
+                'Failed to connect to windows guest: %s' % detail)
+
+        if utils_v2v.multiple_versions_compare(
+                FEATURE_SUPPORT['firstboot_complete']):
+            if not self._wait_for_firstboot_complete():
+                raise exceptions.TestFail(
+                    "Firstboot did not complete within timeout")
+            self._check_firstboot_failures()
+        else:
+            LOG.info("Wait 60 seconds for installing drivers")
+            time.sleep(60)
+            for retry in range(RETRY_TIMES):
+                try:
+                    self.checker.run_cmd('dir')
+                except BaseException:
+                    self._reconnect_session()
+                else:
+                    break
 
         # Check boottype of the guest
         self.check_vm_boottype()
