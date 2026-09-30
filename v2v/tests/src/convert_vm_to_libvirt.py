@@ -135,7 +135,7 @@ def run(test, params, env):
         # Win10 is not supported by some cpu model,
         # need to modify to 'host-model'
         unsupport_list = ['win10', 'win2016', 'win2019']
-        if params.get('os_version') in unsupport_list:
+        if params.get('vm_os_label') in unsupport_list:
             LOG.info(
                 'Set cpu mode to "host-model" for %s.',
                 unsupport_list)
