@@ -11,12 +11,12 @@ from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_package
 from virttest import utils_sasl
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import virsh
 from virttest import remote
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
-from virttest.utils_v2v import params_get
+from provider.utils_v2v import params_get
 from virttest import ssh_key
 from avocado.utils import process
 from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError

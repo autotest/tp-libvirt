@@ -16,7 +16,7 @@ from avocado.utils.astring import to_text
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_package
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
 from virttest import libvirt_storage

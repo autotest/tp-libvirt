@@ -5,7 +5,7 @@ import shutil
 from avocado.utils import process
 
 from virttest import virsh
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_package
