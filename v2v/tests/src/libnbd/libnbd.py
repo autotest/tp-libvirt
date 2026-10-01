@@ -1,7 +1,7 @@
 import nbd
 
 from avocado.utils import process
-from virttest.utils_v2v import multiple_versions_compare
+from provider.utils_v2v import multiple_versions_compare
 
 
 def run(test, params, env):

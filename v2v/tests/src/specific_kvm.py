@@ -11,7 +11,7 @@ from avocado.utils import service
 from avocado.utils import process
 
 from virttest import virsh
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import utils_misc
 from virttest import utils_sasl
 from virttest import libvirt_vm
@@ -22,7 +22,7 @@ from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
-from virttest.utils_v2v import params_get
+from provider.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output

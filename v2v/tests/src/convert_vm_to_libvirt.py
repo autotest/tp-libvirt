@@ -5,13 +5,13 @@ import logging
 from avocado.core import exceptions
 from avocado.utils import process
 
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import virsh
 from virttest import utils_misc
 
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
-from virttest.utils_v2v import params_get
+from provider.utils_v2v import params_get
 from virttest.libvirt_xml import vm_xml
 
 from provider.v2v_vmcheck_helper import VMChecker
