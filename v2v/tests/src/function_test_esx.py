@@ -911,7 +911,8 @@ dnf -y install libvirt
                 'verify_custom_path_cert',
                 'verify_esxi_certificate',
                 'invalid_source',
-                'char_slash']:
+                'char_slash'
+            ]:
                 cmd_only = True
                 auto_clean = False
             v2v_result = utils_v2v.v2v_cmd(
@@ -951,7 +952,8 @@ dnf -y install libvirt
             'verify_custom_path_cert',
             'verify_esxi_certificate',
             'invalid_source',
-            'char_slash']:
+            'char_slash'
+        ]:
             v2v_result = utils_v2v.cmd_run(
                 new_cmd, params.get('v2v_dirty_resources'))
 
