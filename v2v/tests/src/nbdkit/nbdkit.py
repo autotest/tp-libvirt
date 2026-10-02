@@ -112,9 +112,12 @@ nbdkit -rfv -U - --exportname / \
                 nbdkit_cmd = nbdkit_cmd + ' -D nbdkit.backend.datapath=0 -D nbdkit.backend.controlpath=0'
                 LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
             if checkpoint == 'scan_readahead_blocksize':
-                nbdkit_cmd = nbdkit_cmd.replace('--filter=retry', '--filter=scan  --filter=blocksize '
-                                                                    '--filter=readahead') + \
-                                ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
+                nbdkit_cmd = (
+                    nbdkit_cmd.replace(
+                        '--filter=retry',
+                        '--filter=scan  --filter=blocksize --filter=readahead')
+                    + ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
+                )
                 LOG.info('nbdkit command with scan, readahead and blocksize filters:\n%s' % nbdkit_cmd)
             if checkpoint == 'vddk_with_delay_close_open_option':
                 nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=400ms delay-open=400ms'

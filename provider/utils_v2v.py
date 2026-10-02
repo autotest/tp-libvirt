@@ -23,7 +23,6 @@ import aexpect
 from aexpect import remote
 from avocado.core import exceptions
 from avocado.utils import path, process
-from avocado.utils.astring import to_text
 
 from virttest import data_dir
 from virttest import libvirt_vm as lvirt
