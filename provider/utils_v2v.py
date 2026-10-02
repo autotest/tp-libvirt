@@ -1326,7 +1326,12 @@ def get_vddk_thumbprint(host, port=443, timeout=30):
             "Could not fetch TLS certificate from %s:%s: %s" % (host, port, err)
         ) from err
 
-    digest = hashlib.sha1(certificate, usedforsecurity=False).hexdigest().upper()
+    try:
+        checksum = hashlib.sha1(certificate, usedforsecurity=False)  # pylint: disable=unexpected-keyword-arg
+    except TypeError:
+        # Python 3.8 does not support the usedforsecurity keyword.
+        checksum = hashlib.sha1(certificate)
+    digest = checksum.hexdigest().upper()
     return ":".join(digest[i:i + 2] for i in range(0, len(digest), 2))
 
 
