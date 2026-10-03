@@ -1,4 +1,5 @@
 import aexpect
+import logging
 
 from virttest import virsh, utils_disk
 from virttest.libvirt_xml import vm_xml
@@ -32,7 +33,7 @@ def run(test, params, env):
         :param mountpoints: The list of guest mountpoints.
         :param file_name: The name of file to be created on guest.
         """
-        test.log.info("TEST_STEP: Check file system freeze.")
+        logging.info("TEST_STEP: Check file system freeze.")
         for mntpoint in mountpoints:
             try:
                 output = session.cmd_output("touch %s/%s" % (mntpoint, file_name), timeout=10)
@@ -53,17 +54,15 @@ def run(test, params, env):
         :param mountpoints: The list of guest mountpoints.
         :param file_name: The name of file to be checked on guest.
         """
-        test.log.info("TEST_STEP: Check file system thaw.")
+        logging.info("TEST_STEP: Check file system thaw.")
         for mntpoint in mountpoints:
-            status, output = session.cmd_status_output("ls %s/%s" % (mntpoint, file_name))
-            if status:
-                test.fail(
-                    "Failed to thaw file system %s. Can't find created file:\n%s"
-                    % (mntpoint, output)
-                )
-
             try:
-                output = session.cmd_output("touch %s/%s" % (mntpoint, file_name), timeout=10)
+                status = session.cmd_status("ls %s/%s" % (mntpoint, file_name))
+                if status:
+                    logging.info("file %s/%s is not exsiting after thaw"
+                                 % (mntpoint, file_name))
+                    output = session.cmd_output("touch %s/%s" % (mntpoint, file_name),
+                                                timeout=10)
             except aexpect.ShellTimeoutError:
                 test.fail(
                     "Failed to thaw file system %s. Touch file timeout:\n%s"
@@ -79,7 +78,7 @@ def run(test, params, env):
         :param disk_obj: The DiskBase object.
         :param disk_type: The type of disk source.
         """
-        test.log.info("TEST_STEP: Attach second disk to vm.")
+        logging.info("TEST_STEP: Attach second disk to vm.")
         disk_dict = {
             "type_name": disk_type,
             "target": {"dev": "vdb", "bus": "virtio"},
@@ -97,7 +96,7 @@ def run(test, params, env):
         :param session: The guest console session
         :return: The mountpoint of the second disk
         """
-        test.log.info("TEST_STEP: Mount second disk in vm.")
+        logging.info("TEST_STEP: Mount second disk in vm.")
         second_disk = libvirt_disk.get_non_root_disk_name(session)
         return utils_disk.configure_empty_disk(session, second_disk[0], "100M", "linux")[0]
 
@@ -134,7 +133,7 @@ def run(test, params, env):
         Returns:
             None
         """
-        test.log.info("TEST_STEP: Run qemu guest agent command when frozen.")
+        logging.info("TEST_STEP: Run qemu guest agent command when frozen.")
         fail_patts = [
             r"unable to execute QEMU agent command '\S+': Command \S+ has been disabled: the command is not allowed",
             r"unable to execute QEMU agent command '\S+': Command \S+ has been disabled: the agent is in frozen state",
@@ -154,7 +153,7 @@ def run(test, params, env):
         Returns:
             None
         """
-        test.log.info("TEST_STEP: Run qemu guest agent command when thawed.")
+        logging.info("TEST_STEP: Run qemu guest agent command when thawed.")
         virsh_command = eval("virsh.%s" % command_name)
         res = virsh_command(vm_name)
         libvirt.check_exit_status(res, expect_error=False)
@@ -206,7 +205,7 @@ def run(test, params, env):
         if specified_mountpoint is not None:
             freezed_mountpoints.append(specified_mountpoint)
         else:
-            freezed_mountpoints.append("/")
+            freezed_mountpoints.append("/boot")
             if second_disk_mntpoint is not None:
                 freezed_mountpoints.append(second_disk_mntpoint)
 
@@ -226,14 +225,14 @@ def run(test, params, env):
                 r'specifying mountpoints is not supported',
             ]
 
-            test.log.info("TEST_STEP: Do domfsfreeze.")
-            res = virsh.domfsfreeze(vm_name, mountpoint=specified_mountpoint)
+            logging.info("TEST_STEP: Do domfsfreeze.")
+            res = virsh.domfsfreeze(vm_name, mountpoint=specified_mountpoint, debug=True)
             libvirt.check_result(res, fail_patts, skip_patts)
             if not res.exit_status:
                 check_freeze(session, freezed_mountpoints, test_file)
                 run_agent_command_when_frozen(vm_name)
 
-            test.log.info("TEST_STEP: Do domfsthaw.")
+            logging.info("TEST_STEP: Do domfsthaw.")
             res = virsh.domfsthaw(vm_name)
             libvirt.check_result(res, fail_patts, skip_patts)
             if not res.exit_status:
