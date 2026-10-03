@@ -8,6 +8,7 @@ from virttest import utils_split_daemons
 from virttest import utils_test
 from virttest import virsh
 from virttest.staging import lv_utils
+from virttest import test_setup
 
 from virttest import libvirt_version
 
@@ -60,6 +61,30 @@ def run(test, params, env):
     cleanup_nfs = False
     cleanup_iscsi = False
     cleanup_logical = False
+    polkit = None
+
+    # Setup polkit if ACL test
+    if params.get('setup_libvirt_polkit') == 'yes':
+        logging.info("Setting up polkit for ACL test")
+        polkit = test_setup.LibvirtPolkitConfig(params)
+        try:
+            polkit.setup()
+            logging.info("Polkit setup completed successfully")
+            
+            # Explicitly restart virtstoraged for storage driver ACL tests
+            # The libvirtd.restart() in polkit.setup() doesn't always restart virtstoraged
+            from virttest.staging import service
+            try:
+                virtstoraged = service.Factory.create_service("virtstoraged")
+                logging.info("Restarting virtstoraged to apply polkit rules")
+                virtstoraged.restart()
+                logging.info("virtstoraged restarted successfully")
+            except Exception as svc_err:
+                logging.warning("Failed to restart virtstoraged: %s", svc_err)
+                logging.warning("This may cause ACL test failures for storage operations")
+        except Exception as e:
+            logging.error("Failed to setup polkit: %s", e)
+            raise exceptions.TestError("Polkit setup failed: %s" % e)
 
     # Prepare source storage
     if source_host == "127.0.0.1":
@@ -128,3 +153,9 @@ def run(test, params, env):
         if cleanup_nfs:
             utils_test.libvirt.setup_or_cleanup_nfs(
                 False, restore_selinux=selinux_bak)
+        if polkit:
+            logging.info("Cleaning up polkit configuration")
+            try:
+                polkit.cleanup()
+            except Exception as e:
+                logging.warning("Failed to cleanup polkit: %s", e)
