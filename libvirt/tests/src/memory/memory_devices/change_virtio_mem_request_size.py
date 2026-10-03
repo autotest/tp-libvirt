@@ -354,12 +354,37 @@ def run(test, params, env):
         """
         test.log.info("TEST_TEARDOWN: Clean up env.")
         utils_memory.set_num_huge_pages(0)
-        bkxml.sync()
         if kernel_params_remove:
-            if not vm.is_alive():
-                vm.start()
+            test.log.info("TEST_TEARDOWN: Removing kernel parameter '%s'",
+                          kernel_params_remove)
+            if vm.is_alive():
+                vm.destroy()
+            vm.start()
+
+            session = None
+            try:
+                test.log.debug("TEST_TEARDOWN: Trying SSH login (timeout=%ds)",
+                               login_timeout)
+                session = vm.wait_for_login(timeout=login_timeout)
+            except Exception as ssh_err:
+                test.log.warning("TEST_TEARDOWN: SSH login failed: %s", ssh_err)
+                test.log.debug("TEST_TEARDOWN: Trying serial console login")
+                try:
+                    session = vm.wait_for_serial_login(timeout=login_timeout)
+                except Exception as serial_err:
+                    test.log.error("TEST_TEARDOWN: Serial login also failed: %s",
+                                   serial_err)
+                    raise
+
             utils_test.update_boot_option(
-                vm, args_removed=kernel_params_remove, guest_arch_name=vm_arch_name)
+                vm, args_removed=kernel_params_remove,
+                guest_arch_name=vm_arch_name)
+            session.close()
+
+            if vm.is_alive():
+                vm.destroy()
+
+        bkxml.sync()
 
     vm_name = params.get("main_vm")
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -381,6 +406,7 @@ def run(test, params, env):
     requested_setting = params.get("requested_setting")
     kernel_params_add = params.get("kernel_params_add")
     kernel_params_remove = params.get("kernel_params_remove")
+    login_timeout = int(params.get("login_timeout", 360))
     params.update(
         {'normal_or_zero_request': requested_setting in [
             "normal_requested", "zero_requested"]})
