@@ -127,6 +127,7 @@ def run(test, params, env):
 
     test_case = params.get('test_case', '')
     migrate_again = "yes" == params.get("migrate_again", "no")
+    migrate_vm_back = params.get_boolean("migrate_vm_back", True)
     vm_name = params.get("migrate_main_vm")
 
     vm = env.get_vm(vm_name)
@@ -145,5 +146,7 @@ def run(test, params, env):
         if migrate_again:
             migration_obj.run_migration_again()
         migration_obj.verify_default()
+        if migrate_vm_back:
+            migration_obj.run_migration_back()
     finally:
         cleanup_test()
