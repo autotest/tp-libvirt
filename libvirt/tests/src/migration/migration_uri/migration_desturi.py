@@ -23,6 +23,7 @@ def run(test, params, env):
         migration_obj.verify_default()
 
     test_case = params.get('test_case', '')
+    migrate_vm_back = params.get_boolean("migrate_vm_back", True)
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     migration_obj = base_steps.MigrationBase(test, vm, params)
@@ -34,5 +35,7 @@ def run(test, params, env):
         migration_obj.setup_connection()
         migration_obj.run_migration()
         verify_test()
+        if migrate_vm_back:
+            migration_obj.run_migration_back()
     finally:
         migration_obj.cleanup_connection()
