@@ -1,17 +1,14 @@
 import re
-import os
 import logging
 
 from avocado.core import exceptions
-from avocado.utils import process
 
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import virsh
-from virttest import utils_misc
 
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
-from virttest.utils_v2v import params_get
+from provider.utils_v2v import params_get
 from virttest.libvirt_xml import vm_xml
 
 from provider.v2v_vmcheck_helper import VMChecker
@@ -25,13 +22,11 @@ def run(test, params, env):
     """
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.error("Please set real value for %s" % v)
 
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     vm_name = params.get("main_vm")
     source_user = params.get("username", "root")
-    xen_ip = params.get("xen_hostname")
-    xen_pwd = params.get("xen_pwd")
     vpx_ip = params.get("vpx_hostname")
     vpx_pwd = params.get("vpx_pwd")
     vpx_pwd_file = params.get("vpx_passwd_file")
@@ -64,17 +59,6 @@ def run(test, params, env):
         # Create password file to access ESX hypervisor
         with open(vpx_pwd_file, 'w') as f:
             f.write(source_pwd)
-    elif hypervisor == "xen":
-        source_ip = xen_ip
-        source_pwd = xen_pwd
-        # Set up ssh access using ssh-agent and authorized_keys
-        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
-            source_ip, source_user, source_pwd, auto_close=False)
-        try:
-            utils_misc.add_identities_into_ssh_agent()
-        except Exception:
-            process.run("ssh-agent -k")
-            raise exceptions.TestError("Fail to setup ssh-agent")
     else:
         raise exceptions.TestSkipError(
             "Unsupported hypervisor: %s" %
@@ -96,6 +80,8 @@ def run(test, params, env):
     try:
         if not remote_virsh.domain_exists(vm_name):
             raise exceptions.TestError("VM '%s' not exist" % vm_name)
+        raw_dumpxml = remote_virsh.dumpxml(vm_name)
+        params['original_vmxml'] = raw_dumpxml.stdout_text
     finally:
         remote_virsh.close_session()
 
@@ -139,21 +125,17 @@ def run(test, params, env):
     if v2v_opts:
         v2v_params.update({"v2v_opts": v2v_opts})
 
-    # Set libguestfs environment
-    if hypervisor == 'xen':
-        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
     try:
         # Execute virt-v2v command
         ret = utils_v2v.v2v_cmd(v2v_params)
-        if ret.exit_status != 0:
-            raise exceptions.TestFail("Convert VM failed")
+        utils_v2v.check_exit_status(ret)
 
         LOG.debug("XML info:\n%s", virsh.dumpxml(vm_name))
         vm = env.create_vm("libvirt", "libvirt", vm_name, params, test.bindir)
         # Win10 is not supported by some cpu model,
         # need to modify to 'host-model'
         unsupport_list = ['win10', 'win2016', 'win2019']
-        if params.get('os_version') in unsupport_list:
+        if params.get('vm_os_label') in unsupport_list:
             LOG.info(
                 'Set cpu mode to "host-model" for %s.',
                 unsupport_list)
@@ -190,11 +172,8 @@ def run(test, params, env):
         utils_v2v.cleanup_constant_files(params)
         if enable_legacy_policy:
             update_crypto_policy()
-        if hypervisor == "xen":
-            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
-            process.run("ssh-agent -k")
         # Clean libvirt VM
-        virsh.remove_domain(vm_name)
+        virsh.remove_domain(vm_name, options="--nvram")
         # Clean libvirt pool
         if libvirt_pool:
             libvirt_pool.cleanup_pool(pool_name, pool_type, pool_target, '')

@@ -3,6 +3,7 @@ import os
 import pwd
 import logging
 import shutil
+import tempfile
 import time
 import re
 
@@ -10,18 +11,15 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_misc
-from virttest import utils_v2v
-from virttest import utils_sasl
+from provider import utils_v2v
 from virttest import data_dir
 from virttest import ppm_utils
-from virttest import remote
 
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
-from virttest.utils_v2v import params_get
+from provider.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
@@ -29,11 +27,11 @@ LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 def run(test, params, env):
     """
-    convert specific kvm guest to rhev
+    convert specific kvm guest from file
     """
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
-            test.cancel("Please set real value for %s" % v)
+            test.error("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         test.error('Missing command: virt-v2v')
     # Guest name might be changed, we need a new variant to save the original
@@ -43,7 +41,6 @@ def run(test, params, env):
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     target = params.get('target')
     input_mode = params.get('input_mode')
-    input_file = params.get('input_file')
     output_mode = params.get('output_mode')
     output_format = params.get('output_format')
     os_pool = output_storage = params.get('output_storage', 'default')
@@ -65,45 +62,17 @@ def run(test, params, env):
     hypervisor = params.get("hypervisor")
     input_transport = params.get("input_transport")
     vmx_nfs_src = params.get("vmx_nfs_src")
-    # for construct rhv-upload option in v2v cmd
-    output_method = params.get("output_method")
-    rhv_upload_opts = params.get("rhv_upload_opts")
-    storage_name = params.get('storage_name')
-    # for get ca.crt file from ovirt engine
-    rhv_passwd = params.get("rhv_upload_passwd")
-    rhv_passwd_file = params.get("rhv_upload_passwd_file")
-    ovirt_engine_passwd = params.get("ovirt_engine_password")
-    ovirt_hostname = params.get("ovirt_engine_url").split(
-        '/')[2] if params.get("ovirt_engine_url") else None
-    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
-    local_ca_file_path = params.get("local_ca_file_path")
     vpx_dc = params.get("vpx_dc")
     vpx_hostname = params.get("vpx_hostname")
     vpx_password = params.get("vpx_password")
     src_uri_type = params.get('src_uri_type')
     v2v_opts = '-v -x' if params.get('v2v_debug',
                                      'on') in ['on', 'force_on'] else ''
-    v2v_sasl = ''
 
     if params.get('v2v_opts'):
         # Add a blank by force
         v2v_opts += ' ' + params.get("v2v_opts")
     error_list = []
-
-    # create different sasl_user name for different job
-    if output_mode == 'rhev':
-        params.update({'sasl_user': params.get("sasl_user") +
-                       utils_misc.generate_random_string(3)})
-        LOG.info('sals user name is %s' % params.get("sasl_user"))
-        if output_method == 'rhv_upload':
-            # Create password file for '-o rhv_upload' to connect to ovirt
-            with open(rhv_passwd_file, 'w') as f:
-                f.write(rhv_passwd)
-            # Copy ca file from ovirt to local
-            remote.scp_from_remote(ovirt_hostname, 22, 'root',
-                                   ovirt_engine_passwd,
-                                   ovirt_ca_file_path,
-                                   local_ca_file_path)
 
     def log_fail(msg):
         """
@@ -141,21 +110,15 @@ def run(test, params, env):
             """
             Checking the VM
             """
-            if output_mode == 'json' and not check_json_output(params):
-                test.fail('check json output failed')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
-            if output_mode in ['null', 'json', 'local']:
+            if output_mode in ['null', 'local']:
                 return
 
             # Create vmchecker before virsh.start so that the vm can be undefined
             # if started failed.
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            if output_mode == 'rhev':
-                if not utils_v2v.import_vm_to_ovirt(params, address_cache,
-                                                    timeout=v2v_timeout):
-                    test.fail('Import VM failed')
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
@@ -172,7 +135,7 @@ def run(test, params, env):
                 # Merge 2 error lists
                 error_list.extend(vmchecker.errors)
 
-        libvirt.check_exit_status(result, status_error)
+        utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
             vm_check()
@@ -184,6 +147,11 @@ def run(test, params, env):
                 '%d checkpoints failed: %s' %
                 (len(error_list), error_list))
 
+    mount_vmx_nfs_src = None
+    mount_nfs_ova_source = None
+    ova_tmpdir = None
+    original_dir = os.getcwd()
+    input_file = params.get('input_file')
     try:
         if enable_legacy_policy:
             update_crypto_policy("LEGACY")
@@ -218,10 +186,7 @@ def run(test, params, env):
             'esxi_password': esxi_password,
             'input_transport': input_transport,
             'vmx_nfs_src': vmx_nfs_src,
-            'output_method': output_method,
-            'os_storage_name': storage_name,
             'os_pool': os_pool,
-            'rhv_upload_opts': rhv_upload_opts,
             'params': params
         }
         if input_mode == 'vmx':
@@ -235,8 +200,8 @@ def run(test, params, env):
             if checkpoint == 'regular_user_sudo':
                 v2v_params.update({'pub_key': pub_key})
             if checkpoint == 'cpu_topology':
-                mount_point = utils_v2v.v2v_mount(vmx_nfs_src, 'v2v_tmp_mp')
-                vmxfile = glob.glob(os.path.join(mount_point, vm_name, '*.vmx'))[0]
+                mount_vmx_nfs_src = utils_v2v.v2v_mount(vmx_nfs_src, 'vmx_nfs_src')
+                vmxfile = glob.glob(os.path.join(mount_vmx_nfs_src, vm_name, '*.vmx'))[0]
                 with open(vmxfile) as fd:
                     buf = fd.read()
                 res = re.search('numvcpus = "(\d+)"', buf)
@@ -253,25 +218,27 @@ def run(test, params, env):
                 LOG.info('msg_content_yes is %s', params['msg_content_yes'])
             if checkpoint == 'character_slash':
                 v2v_params['new_name'] = re.sub(r'/', '_', v2v_params['new_name'])
-        # copy ova from nfs storage before v2v conversion
         if input_mode == 'ova':
-            src_dir = params.get('ova_dir')
-            dest_dir = params.get('ova_copy_dir')
-            if os.path.isfile(src_dir) and not os.path.exists(dest_dir):
-                os.makedirs(dest_dir, exist_ok=True)
-            if os.path.isdir(src_dir) and os.path.exists(dest_dir):
-                shutil.rmtree(dest_dir)
+            nfs_ova_source = params.get('nfs_ova_source')
+            ova_file = params.get('ova_file')
+            ova_file_is_dir = params.get('ova_file_is_dir') == 'yes'
+            ova_file_trailing_slash = params.get('ova_file_trailing_slash') == 'yes'
 
-            if os.path.isdir(src_dir):
-                shutil.copytree(src_dir, dest_dir)
-            else:
-                shutil.copy(src_dir, dest_dir)
-            LOG.info('Copy ova from %s to %s', src_dir, dest_dir)
+            mount_nfs_ova_source = utils_v2v.v2v_mount(nfs_ova_source, 'nfs_ova_source')
+
+            input_file = os.path.join(mount_nfs_ova_source, ova_file)
+            if ova_file_trailing_slash:
+                input_file += '/'
+            v2v_params['input_file'] = input_file
+            LOG.info('OVA input_file: %s', input_file)
+
             if checkpoint == 'cpu_topology':
-                ova_file = params.get('ova_file_name')
-                dest_ova = os.path.join(dest_dir, ova_file)
-                process.run('tar xvf %s -C %s' % (input_file, dest_dir), shell=True)
-                with open(dest_ova[:-1] + 'f') as fd:
+                ova_tmpdir = tempfile.mkdtemp(dir='/var/tmp')
+                process.run('tar xvf %s -C %s' % (input_file, ova_tmpdir), shell=True)
+                ovf_files = glob.glob(os.path.join(ova_tmpdir, '*.ovf'))
+                if not ovf_files:
+                    test.error('No OVF file found in OVA')
+                with open(ovf_files[0]) as fd:
                     buf = fd.read()
                 res = re.search('<rasd:ElementName>(\d+) virtual CPU', buf)
                 if not res:
@@ -285,6 +252,13 @@ def run(test, params, env):
                 params['msg_content_yes'] += "cores='%s'.*" % corespersocket
                 params['msg_content_yes'] += "threads='1'.*"
                 LOG.info('msg_content_yes is %s', params['msg_content_yes'])
+
+            if checkpoint == 'win2008r2_ostk':
+                image_to_match_file = params.get('image_to_match_file')
+                if image_to_match_file:
+                    params['image_to_match'] = os.path.join(
+                        mount_nfs_ova_source, image_to_match_file)
+
         if input_mode == 'disk':
             tmp_path = data_dir.get_tmp_dir()
             image_path = 'cd %s ; curl -O %s --insecure' % (tmp_path, params.get('image_url'))
@@ -294,6 +268,7 @@ def run(test, params, env):
             v2v_params.update({'input_file': os.path.join(tmp_path, image_name)})
             if checkpoint == 'virt_v2v_in_place':
                 output = utils_v2v.cmd_run('/usr/libexec/virt-v2v-in-place -i disk %s/%s' % (tmp_path, image_name))
+                utils_v2v.check_exit_status(output, status_error)
                 log_check = utils_v2v.check_log(params, output.stdout_text)
                 if log_check:
                     log_fail(log_check)
@@ -302,24 +277,14 @@ def run(test, params, env):
         # Create libvirt dir pool
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
-        # Build rhev related options
-        if output_mode == 'rhev':
-            # Create SASL user on the ovirt host
-            user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
-                                           params.get("sasl_pwd"))
-            v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
-            v2v_sasl.server_ip = params.get("remote_ip")
-            v2v_sasl.server_user = params.get('remote_user')
-            v2v_sasl.server_pwd = params.get('remote_pwd')
-            v2v_sasl.setup(remote=True)
         if output_mode == 'local':
             v2v_params['os_directory'] = data_dir.get_tmp_dir()
 
-        if checkpoint == 'ova_relative_path':
+        if checkpoint == 'ova_relative_path' and mount_nfs_ova_source:
             LOG.debug('Current dir: %s', os.getcwd())
-            ova_dir = params.get('ova_dir')
-            LOG.info('Change to dir: %s', ova_dir)
-            os.chdir(ova_dir)
+            LOG.info('Change to dir: %s', mount_nfs_ova_source)
+            os.chdir(mount_nfs_ova_source)
+            v2v_params['input_file'] = ova_file
 
         # Set libguestfs environment variable
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -349,15 +314,23 @@ def run(test, params, env):
         if checkpoint != 'virt_v2v_in_place':
             check_result(v2v_result, status_error)
     finally:
+        if checkpoint == 'ova_relative_path':
+            os.chdir(original_dir)
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
-        if input_mode == 'ova' and os.path.exists(dest_dir):
-            shutil.rmtree(dest_dir)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
-        if output_mode == 'rhev' and v2v_sasl:
-            v2v_sasl.cleanup()
-            v2v_sasl.close_session()
+        if mount_vmx_nfs_src:
+            utils_misc.umount(vmx_nfs_src, mount_vmx_nfs_src, None)
+        if mount_nfs_ova_source:
+            utils_misc.umount(
+                params.get('nfs_ova_source'), mount_nfs_ova_source, None)
+        if ova_tmpdir and os.path.exists(ova_tmpdir):
+            shutil.rmtree(ova_tmpdir)
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)
+        if params.get('vmchecker'):
+            params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         if checkpoint == 'regular_user_sudo' and os.path.exists(
@@ -366,6 +339,6 @@ def run(test, params, env):
         if unprivileged_user:
             process.system("userdel -fr %s" % unprivileged_user)
         if input_mode == 'vmx' and input_transport == 'ssh':
-            process.run("killall ssh-agent")
+            process.run("killall ssh-agent", ignore_status=True)
         if enable_legacy_policy:
             update_crypto_policy()

@@ -7,8 +7,6 @@ import pwd
 import logging
 import shutil
 
-import tempfile
-
 from avocado.core import exceptions
 from avocado.utils import process
 from avocado.utils.astring import to_text
@@ -16,11 +14,9 @@ from avocado.utils.astring import to_text
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_package
-from virttest import utils_v2v
-from virttest import utils_sasl
+from provider import utils_v2v
 from virttest import virsh
 from virttest import libvirt_storage
-from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -39,9 +35,10 @@ def run(test, params, env):
         raise ValueError('Missing command: virt-v2v')
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
-            test.cancel("Please set real value for %s" % v)
+            test.error("Please set real value for %s" % v)
 
     version_required = params.get("version_required")
+    utils_v2v.prime_rpm_cache(['virt-v2v'])
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
     input_mode = params.get("input_mode")
@@ -151,27 +148,6 @@ def run(test, params, env):
         targets = tmp_target[0].split('/')
         return (targets[3], targets[5], targets[6])
 
-    def get_ovf_content(output):
-        """
-        Find and read ovf file.
-        """
-        export_domain_uuid, _, vol_uuid = get_all_uuids(output)
-        export_vm_dir = os.path.join(mnt_point, export_domain_uuid,
-                                     'master/vms')
-        ovf_content = ""
-        if os.path.isdir(export_vm_dir):
-            ovf_id = "ovf:id='%s'" % vol_uuid
-            ret = to_text(process.system_output("grep -R \"%s\" %s" %
-                                                (ovf_id, export_vm_dir)))
-            ovf_file = ret.split(":")[0]
-            if os.path.isfile(ovf_file):
-                ovf_f = open(ovf_file, "r")
-                ovf_content = ovf_f.read()
-                ovf_f.close()
-        else:
-            LOG.error("Can't find ovf file to read")
-        return ovf_content
-
     def get_img_path(output):
         """
         Get the full path of the converted image.
@@ -181,28 +157,11 @@ def run(test, params, env):
             img_path = virsh.vol_path(img_name, output_storage).stdout.strip()
         elif output_mode == "local":
             img_path = os.path.join(output_storage, img_name)
-        elif output_mode in ["rhev", "vdsm"]:
+        elif output_mode == "vdsm":
             export_domain_uuid, image_uuid, vol_uuid = get_all_uuids(output)
             img_path = os.path.join(mnt_point, export_domain_uuid, 'images',
                                     image_uuid, vol_uuid)
         return img_path
-
-    def check_vmtype(ovf, expected_vmtype):
-        """
-        Verify vmtype in ovf file.
-        """
-        if output_mode != "rhev":
-            return
-        if expected_vmtype == "server":
-            vmtype_int = 1
-        elif expected_vmtype == "desktop":
-            vmtype_int = 0
-        else:
-            return
-        if "<VmType>%s</VmType>" % vmtype_int in ovf:
-            LOG.info("Find VmType=%s in ovf file", expected_vmtype)
-        else:
-            test.fail("VmType check failed")
 
     def check_image(img_path, check_point, expected_value):
         """
@@ -236,12 +195,9 @@ def run(test, params, env):
         found = False
         if output_mode == "libvirt":
             found = virsh.domain_exists(expected_name)
-        if output_mode == "local":
+        elif output_mode == "local":
             found = os.path.isfile(os.path.join(output_storage,
                                                 expected_name + "-sda"))
-        if output_mode in ["rhev", "vdsm"]:
-            ovf = get_ovf_content(output)
-            found = "<Name>%s</Name>" % expected_name in ovf
         else:
             return
         if found:
@@ -269,19 +225,6 @@ def run(test, params, env):
         else:
             test.fail("Not find message: %s" % init_msg)
 
-    def check_ovf_snapshot_id(ovf_content):
-        """
-        Check if snapshot id in ovf file consists of '0's
-        """
-        search = re.search("ovf:vm_snapshot_id='(.*?)'", ovf_content)
-        if search:
-            snapshot_id = search.group(1)
-            LOG.debug('vm_snapshot_id = %s', snapshot_id)
-            if snapshot_id.count('0') >= 32:
-                test.fail('vm_snapshot_id consists with "0"')
-        else:
-            test.fail('Fail to find snapshot_id')
-
     def check_source(output):
         """
         Check if --print-source option print the correct info
@@ -299,7 +242,7 @@ def run(test, params, env):
         LOG.debug('Source info to check: %s', source_info)
         checklist = ['nr vCPUs', 'hypervisor type', 'source name', 'memory',
                      'disks', 'NICs']
-        if hypervisor in ['kvm', 'xen']:
+        if hypervisor == 'kvm':
             checklist.extend(['display', 'CPU features'])
         for key in checklist:
             if key not in source_info:
@@ -316,6 +259,7 @@ def run(test, params, env):
                            'remote_pwd': source_pwd,
                            'auto_close': True,
                            'debug': True}
+            LOG.debug("creating virsh persistent session with args: %s" % virsh_dargs)
             v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
             LOG.debug('a new virsh session %s was created', v2v_virsh)
             close_virsh = True
@@ -336,7 +280,7 @@ def run(test, params, env):
         check_map['source name'] = xml.vm_name
         check_map['memory'] = str(int(xml.max_mem) * 1024) + ' (bytes)'
 
-        if hypervisor in ['kvm', 'xen']:
+        if hypervisor == 'kvm':
             check_map['display'] = xml.get_graphics_devices()[0].type_name
 
         LOG.info('KEY:\tSOURCE<-> XML')
@@ -361,7 +305,7 @@ def run(test, params, env):
             fail.append('NICs')
 
         # Check cpu features
-        if hypervisor in ['kvm', 'xen']:
+        if hypervisor == 'kvm':
             feature_list = xml.features.get_feature_list()
             LOG.info(
                 'CPU features:%s<->%s',
@@ -438,19 +382,7 @@ def run(test, params, env):
                             test.fail(
                                 'Error log is shorter than 76 characters: %s' %
                                 line)
-            if checkpoint == 'disk_not_exist':
-                vol_list = virsh.vol_list(pool_name)
-                LOG.info(vol_list)
-                if vm_name in vol_list.stdout:
-                    test.fail('Disk exists for vm %s' % vm_name)
         else:
-            if output_mode == "rhev" and checkpoint != 'quiet':
-                ovf = get_ovf_content(output)
-                LOG.debug("ovf content: %s", ovf)
-                check_ovf_snapshot_id(ovf)
-                if '--vmtype' in cmd:
-                    expected_vmtype = re.findall(r"--vmtype\s(\w+)", cmd)[0]
-                    check_vmtype(ovf, expected_vmtype)
             if '-oa' in cmd and '--no-copy' not in cmd:
                 expected_mode = re.findall(r"-oa\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
@@ -464,25 +396,18 @@ def run(test, params, env):
                 if not utils_misc.wait_for(
                         check_alloc, timeout=600, step=10.0):
                     test.fail('Allocation check failed.')
-            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and checkpoint != 'quiet' and not no_root:
+            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and not no_root:
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
                 check_image(img_path, "format", expected_format)
             if '-on' in cmd:
-                expected_name = re.findall(r"-on\s(\w+)", cmd)[0]
+                expected_name = re.findall(r"-on\s+(\S+)", cmd)[0]
                 check_new_name(output, expected_name)
             if '--no-copy' in cmd:
                 check_nocopy(output)
             if '-oc' in cmd:
                 expected_uri = re.findall(r"-oc\s(\S+)", cmd)[0]
                 check_connection(output, expected_uri)
-            if output_mode == "rhev":
-                if not utils_v2v.import_vm_to_ovirt(params, address_cache, 1800):
-                    test.fail("Import VM failed")
-                else:
-                    vmchecker = VMChecker(test, params, env)
-                    params['vmchecker'] = vmchecker
-                    params['vmcheck_flag'] = True
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options and not no_root:
                     virsh.start(vm_name, debug=True, ignore_status=False)
@@ -493,9 +418,6 @@ def run(test, params, env):
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     LOG.info("All common checkpoints passed")
-            if checkpoint == 'quiet':
-                if len(output.strip().splitlines()) > 10:
-                    test.fail('Output is not empty in quiet mode')
             if checkpoint == 'dependency':
                 if 'libguestfs-winsupport' not in output:
                     test.fail('libguestfs-winsupport not in dependency')
@@ -527,16 +449,6 @@ def run(test, params, env):
             if checkpoint == 'check_patch':
                 if not re.search('Fix off-by-one error causing rare crash.*', output):
                     test.fail('required patch not found')
-            if checkpoint == 'debug_overlays':
-                search = re.search('Overlay saved as(.*)', output)
-                if not search:
-                    test.fail('Not find log of saving overlays')
-                overlay_path = search.group(1).strip()
-                LOG.debug('Overlay file location: %s' % overlay_path)
-                if os.path.isfile(overlay_path):
-                    LOG.info('Found overlay file: %s' % overlay_path)
-                else:
-                    test.fail('Overlay file not saved')
             if checkpoint.startswith('empty_nic_source'):
                 target_str = '%s "eth0" mac: %s' % (
                     params[checkpoint][0], params[checkpoint][1])
@@ -546,17 +458,17 @@ def run(test, params, env):
             if checkpoint == 'print_source':
                 check_source(output_stdout)
             if checkpoint == 'machine_readable':
-                if os.path.exists(params.get('example_file', '')):
-                    # Checking items in example_file exist in latest
-                    # output regardless of the orders and new items.
-                    with open(params['example_file']) as f:
-                        for line in f:
-                            if line.strip() not in output_stdout.strip():
-                                if utils_v2v.multiple_versions_compare(
-                                        V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
-                                    continue
-                else:
-                    test.error('No content to compare with')
+                example_file = params.get('example_file', '')
+                if not os.path.exists(example_file):
+                    test.error("example_file not found: %s" % example_file)
+                # Checking items in example_file exist in latest
+                # output regardless of the orders and new items.
+                with open(example_file) as f:
+                    for line in f:
+                        if line.strip() not in output_stdout.strip():
+                            if utils_v2v.multiple_versions_compare(
+                                    V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
+                                continue
             if checkpoint == 'compress':
                 img_path = get_img_path(output)
                 LOG.info('Image path: %s', img_path)
@@ -575,23 +487,11 @@ def run(test, params, env):
                     test.fail('Disk image NOT compressed')
             if checkpoint == 'print_estimate_tofile':
                 check_print_estimate(estimate_file)
-            if checkpoint == 'copy_to_local':
-                vm_disk = vm_name + '-disk1'
-                vm_xml_name = vm_name + '.xml'
-                check_result = False
-                if os.path.exists(vm_disk) and os.path.exists(vm_xml_name):
-                    check_result = True
-                for i in [vm_disk, vm_xml_name]:
-                    if os.path.isfile(i):
-                        os.remove(i)
-                if not check_result:
-                    test.fail(
-                        'Not found disk or xml created by virt-v2v-copy-to-local')
             if checkpoint == 'check_version':
                 get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
                 get_rpm_version = re.search(r'(\d+\.\d+\.\d+-\d+\.el\d+)', str(get_v2v_version.stdout))
                 rpm_version = get_rpm_version.group(1)
-                get_virt_v2v_version = re.search(r'(\d+\.\d+\.\d+).*(\d+\.el\d+)', str(output_stdout))
+                get_virt_v2v_version = re.search(r'(\d+\.\d+\.\d+).*?(\d+\.el\d+)', str(output_stdout))
                 virt_v2v_version = get_virt_v2v_version.group(1) + '-' + get_virt_v2v_version.group(2)
                 if (rpm_version != virt_v2v_version):
                     test.fail('v2v version is incorrect in v2v version option')
@@ -610,18 +510,51 @@ def run(test, params, env):
 
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
+    mount_nfs_ova_source = None
+    mount_nfs_kvm_images = None
+    mount_nfs_vmx = None
     try:
         if version_required and not utils_v2v.multiple_versions_compare(
                 version_required):
             test.cancel("Testing requires version: %s" % version_required)
 
-        if hypervisor == "xen":
-            # See man virt-v2v-input-xen(1)
-            process.run(
-                'update-crypto-policies --set LEGACY',
-                verbose=True,
-                ignore_status=True,
-                shell=True)
+        if not input_file and params.get('nfs_ova_source') and params.get('ova_file'):
+            mount_nfs_ova_source = utils_v2v.v2v_mount(
+                params.get('nfs_ova_source'), 'nfs_ova_source')
+            input_file = os.path.join(mount_nfs_ova_source, params.get('ova_file'))
+            if not os.path.exists(input_file):
+                test.error('OVA not found: %s\nAvailable: %s' %
+                           (input_file, os.listdir(mount_nfs_ova_source)))
+            LOG.info('OVA input_file: %s', input_file)
+
+        nfs_kvm_images = params.get('nfs_kvm_images')
+        if nfs_kvm_images:
+            mount_nfs_kvm_images = utils_v2v.v2v_mount(
+                nfs_kvm_images, 'nfs_kvm_images')
+            if disk_img and not os.path.isabs(disk_img):
+                disk_img = os.path.join(mount_nfs_kvm_images, disk_img)
+            example_file = params.get('example_file')
+            if example_file and not os.path.isabs(example_file):
+                params['example_file'] = os.path.join(
+                    mount_nfs_kvm_images, example_file)
+            win_image = params.get('win_image')
+            if win_image and not os.path.isabs(win_image):
+                full_win_image = os.path.join(
+                    mount_nfs_kvm_images, win_image)
+                params['win_image'] = full_win_image
+                check_cmd = params.get('check_command', '')
+                if win_image in check_cmd:
+                    params['check_command'] = check_cmd.replace(
+                        win_image, full_win_image)
+            if '-i disk ' in v2v_options:
+                raw_disk_img = params.get('input_disk_image', '')
+                if raw_disk_img and not os.path.isabs(raw_disk_img):
+                    v2v_options = v2v_options.replace(
+                        '-i disk %s' % raw_disk_img,
+                        '-i disk %s' % disk_img)
+
+        if disk_img and not os.path.exists(disk_img):
+            test.error("Disk image not found: %s" % disk_img)
 
         if checkpoint.startswith('empty_nic_source'):
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -644,12 +577,9 @@ def run(test, params, env):
             pass
         elif input_mode == "libvirt":
             uri_obj = utils_v2v.Uri(hypervisor)
+            if hypervisor == 'esx' and src_uri_type == 'esx':
+                vpx_dc = None
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
-            # Remote libvirt connection is not officially supported by
-            # v2v and may fail. Just use localhost to simulate a remote
-            # connection to test the warnings.
-            if checkpoint == 'remote_libvirt_conn':
-                ic_uri = 'qemu+ssh://localhost/system'
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
             if checkpoint == 'with_ic':
                 ic_uri = 'qemu:///session'
@@ -686,10 +616,8 @@ def run(test, params, env):
             output_option = "-o %s" % output_mode
             if output_mode != 'null':
                 output_option += " -os %s" % output_storage
-            if checkpoint == 'rhv':
-                output_option = output_option.replace('rhev', 'rhv')
             if checkpoint in ['with_ic', 'without_ic']:
-                output_option = output_option.replace('v2v_dir', 'src_pool')
+                output_option = output_option.replace(output_storage, 'src_pool')
         output_format = params.get("output_format")
         if output_format and output_format != input_format:
             output_option += " -of %s" % output_format
@@ -698,44 +626,25 @@ def run(test, params, env):
             output_option += " -oa %s" % output_allo_mode
 
         # Build vdsm related options
-        if output_mode in ['vdsm', 'rhev']:
+        if output_mode == 'vdsm':
             if not os.path.isdir(mnt_point):
                 os.mkdir(mnt_point)
             if not utils_misc.mount(nfs_storage, mnt_point, "nfs"):
                 test.error("Mount NFS Failed")
-            if output_mode == 'vdsm':
-                v2v_options += " --vdsm-image-uuid %s" % vdsm_image_uuid
-                v2v_options += " --vdsm-vol-uuid %s" % vdsm_vol_uuid
-                v2v_options += " --vdsm-vm-uuid %s" % vdsm_vm_uuid
-                v2v_options += " --vdsm-ovf-output %s" % vdsm_ovf_output
-                vdsm_domain_dir = os.path.join(mnt_point, fake_domain_uuid)
-                vdsm_image_dir = os.path.join(mnt_point, export_domain_uuid,
-                                              "images", vdsm_image_uuid)
-                vdsm_vm_dir = os.path.join(mnt_point, export_domain_uuid,
-                                           "master/vms", vdsm_vm_uuid)
-                # For vdsm_domain_dir, just create a dir to test BZ#1176591
-                os.makedirs(vdsm_domain_dir)
-                os.makedirs(vdsm_image_dir)
-                os.makedirs(vdsm_vm_dir)
+            v2v_options += " --vdsm-image-uuid %s" % vdsm_image_uuid
+            v2v_options += " --vdsm-vol-uuid %s" % vdsm_vol_uuid
+            v2v_options += " --vdsm-vm-uuid %s" % vdsm_vm_uuid
+            v2v_options += " --vdsm-ovf-output %s" % vdsm_ovf_output
+            vdsm_domain_dir = os.path.join(mnt_point, fake_domain_uuid)
+            vdsm_image_dir = os.path.join(mnt_point, export_domain_uuid,
+                                          "images", vdsm_image_uuid)
+            vdsm_vm_dir = os.path.join(mnt_point, export_domain_uuid,
+                                       "master/vms", vdsm_vm_uuid)
+            # For vdsm_domain_dir, just create a dir to test BZ#1176591
+            os.makedirs(vdsm_domain_dir)
+            os.makedirs(vdsm_image_dir)
+            os.makedirs(vdsm_vm_dir)
 
-            if output_mode == 'rhev':
-                # create different sasl_user name for different job
-                params.update({'sasl_user': params.get("sasl_user") +
-                               utils_misc.generate_random_string(3)})
-                LOG.info('sals user name is %s' % params.get("sasl_user"))
-
-                user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
-                                               params.get("sasl_pwd"))
-                v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
-                v2v_sasl.server_ip = params.get("remote_ip")
-                v2v_sasl.server_user = params.get('remote_user')
-                v2v_sasl.server_pwd = params.get('remote_pwd')
-                v2v_sasl.setup(remote=True)
-                LOG.debug('A SASL session %s was created', v2v_sasl)
-
-        # Output more messages except quiet mode
-        if checkpoint == 'quiet':
-            v2v_options += ' -q'
         if checkpoint in ['vddk_compression_zlib', 'vddk_compression_skipz', 'vddk_compression_fastlz']:
             v2v_options += " -v -x"
         if checkpoint == 'vddk_compression_zlib':
@@ -765,25 +674,6 @@ def run(test, params, env):
             elif not no_root:
                 test.cancel("Only support convert local disk")
 
-        # Setup ssh-agent access to xen hypervisor
-        if hypervisor == 'xen':
-            user = params.get("xen_host_user", "root")
-            source_pwd = passwd = params.get("xen_host_passwd", "redhat")
-            LOG.info("set up ssh-agent access ")
-            xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
-                remote_host, user, passwd, auto_close=False)
-            utils_misc.add_identities_into_ssh_agent()
-            # Check if xen guest exists
-            uri = utils_v2v.Uri(hypervisor).get_uri(remote_host)
-            if not virsh.domain_exists(vm_name, uri=uri):
-                LOG.error('VM %s not exists', vm_name)
-            # If the input format is not define, we need to either define
-            # the original format in the source metadata(xml) or use '-of'
-            # to force the output format, see BZ#1141723 for detail.
-            if '-of' not in v2v_options and checkpoint != 'xen_no_output_format':
-                v2v_options += ' -of %s' % params.get("default_output_format",
-                                                      "qcow2")
-
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
             source_pwd = vpx_passwd if src_uri_type != 'esx' else esxi_password
@@ -801,16 +691,14 @@ def run(test, params, env):
                     '-ip', '--password-file', 1)
             # For VDDK
             if input_transport == 'vddk':
-                if src_uri_type == 'esx':
-                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(esx_ip, source_pwd, 'esx')
-                else:
-                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(remote_host, source_pwd, 'vpx')
-                with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
-                    utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
-                    process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
-                                shell=True, ignore_status=True)
-                    utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
-                v2v_options += ' -it vddk  -io vddk-libdir=/home/vddk_libdir -io vddk-thumbprint=%s' % vddk_thumbprint
+                if vddk_thumbprint is None:
+                    thumbprint_host = esx_ip if src_uri_type == 'esx' else remote_host
+                    vddk_thumbprint = utils_v2v.get_vddk_thumbprint(thumbprint_host)
+                vddk_libdir_local = vddk_libdir
+                if not vddk_libdir_local and vddk_libdir_src:
+                    vddk_libdir_local = utils_v2v.prepare_vddk_libdir(
+                        vddk_libdir_src)
+                v2v_options += ' -it vddk  -io vddk-libdir=%s -io vddk-thumbprint=%s' % (vddk_libdir_local, vddk_thumbprint)
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
         if output_mode is None:
@@ -837,38 +725,21 @@ def run(test, params, env):
                 step=3)
 
         if checkpoint == 'vmx':
-            mount_point = params.get('mount_point')
-            if not os.path.isdir(mount_point):
-                os.mkdir(mount_point)
             nfs_vmx = params.get('nfs_vmx')
-            if not utils_misc.mount(nfs_vmx, mount_point, 'nfs', verbose=True):
-                test.error('Mount nfs for vmx failed')
-            vmx = params.get('vmx')
+            mount_nfs_vmx = utils_v2v.v2v_mount(nfs_vmx, 'nfs_vmx')
+            vmx = os.path.join(mount_nfs_vmx, vm_name, '%s.vmx' % vm_name)
+            if not os.path.exists(vmx):
+                test.error('VMX file not found: %s\n'
+                           'Available in %s: %s' %
+                           (vmx, mount_nfs_vmx,
+                            os.listdir(mount_nfs_vmx)))
             input_option = '-i vmx %s' % vmx
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
-        if checkpoint == 'simulate_nfs':
-            simulate_images = params.get("simu_images_path")
-            simulate_vms = params.get("simu_vms_path")
-            simulate_dom_md = params.get("simu_dom_md_path")
-            os.makedirs(simulate_images)
-            os.makedirs(simulate_vms)
-            process.run('touch %s' % simulate_dom_md)
-            process.run('chmod -R 777 /tmp/rhv/')
-
         if checkpoint == 'print_estimate_tofile':
             estimate_file = utils_misc.generate_tmp_file_name(
                 'v2v_print_estimate')
             v2v_options += " --machine-readable=file:%s" % estimate_file
-
-        if checkpoint == 'remote_libvirt_conn':
-            # Add localhost to known_hosts
-            cmd = 'ssh-keyscan -t ecdsa localhost >> ~/.ssh/known_hosts'
-            process.run(cmd, shell=True)
-            # Setup remote login without password
-            public_key = ssh_key.get_public_key().rstrip()
-            cmd = 'echo "%s" >> ~/.ssh/authorized_keys' % public_key
-            process.run(cmd, shell=True)
 
         if checkpoint == 'length_of_error' and utils_v2v.v2v_supported_option('--wrap'):
             v2v_options += ' --wrap'
@@ -939,9 +810,6 @@ def run(test, params, env):
                 get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
                 cmd = cmd % to_text(get_v2v_version.stdout, errors=error_flag)
 
-        # Set timeout to kill v2v process before conversion succeed
-        if checkpoint == 'disk_not_exist':
-            v2v_timeout = 30
         if checkpoint == 'in_place':
             cmd = re.sub(r".*/bin/virt-v2v", '/usr/libexec/virt-v2v-in-place', cmd)
         if checkpoint == 'virt_v2v_open':
@@ -978,8 +846,6 @@ def run(test, params, env):
             params['main_vm'] = new_vm_name
         check_result(cmd, cmd_result, status_error)
     finally:
-        if hypervisor == "esx":
-            process.run("rm -rf %s" % source_passwd_file, ignore_status=True)
         if checkpoint == "weak_dendency":
             utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
@@ -997,7 +863,7 @@ def run(test, params, env):
                     os.remove(local_file)
         if output_mode == "libvirt":
             if "qemu:///session" in v2v_options or no_root:
-                cmd = su_cmd + "'virsh undefine %s'" % vm_name
+                cmd = su_cmd + "'virsh undefine %s --nvram'" % vm_name
                 try:
                     process.system(cmd)
                 except Exception:
@@ -1006,7 +872,7 @@ def run(test, params, env):
                     cleanup_pool(user_pool=True, pool_name='src_pool',
                                  pool_target='v2v_src_pool')
             else:
-                virsh.remove_domain(vm_name)
+                virsh.remove_domain(vm_name, options="--nvram")
             cleanup_pool()
         if output_mode is None:
             pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
@@ -1017,31 +883,14 @@ def run(test, params, env):
             process.system("userdel -fr %s" % v2v_user)
         if backup_xml:
             backup_xml.sync()
-        if output_mode == 'rhev' and v2v_sasl:
-            v2v_sasl.cleanup()
-            LOG.debug('SASL session %s is closing', v2v_sasl)
-            v2v_sasl.close_session()
-        if checkpoint == 'vmx':
-            utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
-            os.rmdir(params['mount_point'])
-        if checkpoint == 'simulate_nfs':
-            process.run('rm -rf /tmp/rhv/')
+        if mount_nfs_vmx:
+            utils_misc.umount(
+                params.get('nfs_vmx'), mount_nfs_vmx, None)
+        if mount_nfs_kvm_images:
+            utils_misc.umount(
+                params.get('nfs_kvm_images'), mount_nfs_kvm_images, None)
+        if mount_nfs_ova_source:
+            utils_misc.umount(
+                params.get('nfs_ova_source'), mount_nfs_ova_source, None)
         if os.path.exists(estimate_file):
             os.remove(estimate_file)
-        if hypervisor == "xen":
-            # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing environment.
-            process.run(
-                'update-crypto-policies --set DEFAULT',
-                verbose=True,
-                ignore_status=True,
-                shell=True)
-            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
-            process.run("ssh-agent -k")
-        if checkpoint == 'remote_libvirt_conn':
-            cmd = r"sed -i '/localhost/d' ~/.ssh/known_hosts"
-            process.run(cmd, shell=True, ignore_status=True)
-            if locals().get('public_key'):
-                key = public_key.rstrip().split()[1].split('/')[0]
-                cmd = r"sed -i '/%s/d' ~/.ssh/authorized_keys" % key
-                process.run(cmd, shell=True, ignore_status=True)

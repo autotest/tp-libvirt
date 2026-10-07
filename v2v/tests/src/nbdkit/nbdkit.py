@@ -8,10 +8,10 @@ from avocado.utils import process
 from virttest import data_dir
 from virttest import utils_misc
 from virttest.utils_conn import build_server_key, build_CA
-from virttest.utils_v2v import multiple_versions_compare
-from virttest.utils_v2v import params_get
-from virttest import utils_v2v
-from virttest.utils_conn import update_crypto_policy
+from provider.utils_v2v import multiple_versions_compare
+from provider.utils_v2v import params_get
+from provider.utils_v2v import prime_rpm_cache
+from provider import utils_v2v
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -22,6 +22,7 @@ def run(test, params, env):
     """
     checkpoint = params.get('checkpoint')
     version_required = params.get('version_required')
+    prime_rpm_cache(['virt-v2v', 'nbdkit', 'nbdkit-server'])
 
     def test_filter_stats_fd_leak():
         """
@@ -89,25 +90,18 @@ EOF
         # vddk_libdir
         vddk_libdir_src = params_get(params, "vddk_libdir_src")
         with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
-            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs4')
             process.run('mkdir /home/vddk_libdir;cp -R %s/* %s' % (vddk_libdir, '/home/vddk_libdir'),
                         shell=True, ignore_status=True)
-            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
-            vddk_thumbprint = '11'
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs4')
+            vddk_thumbprint = params.get('vddk_thumbprint')
+            if vddk_thumbprint is None:
+                vddk_thumbprint = utils_v2v.get_vddk_thumbprint(vsphere_host)
             nbdkit_cmd = """
 nbdkit -rfv -U - --exportname / \
   --filter=retry vddk server=%s user=%s password=+%s vm=%s \
   file='%s' libdir=/home/vddk_libdir --run 'nbdinfo $uri' thumbprint=%s
 """ % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_thumbprint)
-            # get thumbprint by a trick
-            cmd_result = process.run(
-                nbdkit_cmd, shell=True, ignore_status=True)
-            output = cmd_result.stdout_text + cmd_result.stderr_text
-            vddk_thumbprint = re.search(
-                r'PeerThumbprint:\s+(.*)', output).group(1)
-
-            # replace thumbprint with correct value
-            nbdkit_cmd = nbdkit_cmd.strip()[:-2] + vddk_thumbprint
             LOG.info('nbdkit command:\n%s', nbdkit_cmd)
 
             if checkpoint == 'vddk_stats':
@@ -118,15 +112,20 @@ nbdkit -rfv -U - --exportname / \
                 nbdkit_cmd = nbdkit_cmd + ' -D nbdkit.backend.datapath=0 -D nbdkit.backend.controlpath=0'
                 LOG.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
             if checkpoint == 'scan_readahead_blocksize':
-                nbdkit_cmd = nbdkit_cmd.replace('--filter=retry', '--filter=scan  --filter=blocksize '
-                                                                  '--filter=readahead') + \
-                             ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
+                nbdkit_cmd = (
+                    nbdkit_cmd.replace(
+                        '--filter=retry',
+                        '--filter=scan  --filter=blocksize --filter=readahead')
+                    + ' scan-ahead=true scan-clock=true scan-size=2048 scan-forever=true'
+                )
                 LOG.info('nbdkit command with scan, readahead and blocksize filters:\n%s' % nbdkit_cmd)
             if checkpoint == 'vddk_with_delay_close_open_option':
                 nbdkit_cmd = nbdkit_cmd + ' --filter=delay delay-close=400ms delay-open=400ms'
                 LOG.info('nbdkit command with delay-close and delay-open options:\n%s' % nbdkit_cmd)
             # Run the final nbdkit command
-            output = process.run(nbdkit_cmd, shell=True).stdout_text
+            cmd_result = process.run(nbdkit_cmd, shell=True, ignore_status=True)
+            utils_v2v.check_exit_status(cmd_result)
+            output = cmd_result.stdout_text
             if checkpoint == 'vddk_stats':
                 if vddk_stats == 1 and not re.search(
                         r'VDDK function stats', output):
@@ -348,7 +347,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         create_hwversions = params.get('create_hwversions')
         vddk_libdir_src = params_get(params, "vddk_libdir_src")
         with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
-            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs4')
             for create_type in list(create_types.split(' ')):
                 for create_adapter_type in list(create_adapter_types.split(' ')):
                     for create_hwversion in list(create_hwversions.split(' ')):
@@ -362,7 +361,7 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                         if re.search('error', cmd_result.stdout_text) or re.search('error', cmd_result.stderr_text):
                             test.fail('fail to create vmdk with vddk create option %s, %s, %s' %
                                       (create_type, create_adapter_type, create_hwversion))
-            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs4')
 
     def annocheck_test_nbdkit():
         tmp_path = data_dir.get_tmp_dir()
@@ -395,55 +394,6 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
                           "--run 'nbdinfo $uri'", shell=True, ignore_status=True)
         if re.search('error', cmd.stdout_text):
             test.fail('fail to test rate filter')
-
-    def enable_legacy_cryptography(hostname):
-        """
-        Enable the legacy sha1 algorithm.
-        """
-        ssh_config = ("Host %s\n"
-                      "  KexAlgorithms            +diffie-hellman-group14-sha1\n"
-                      "  MACs                     +hmac-sha1\n"
-                      "  HostKeyAlgorithms        +ssh-rsa\n"
-                      "  PubkeyAcceptedKeyTypes   +ssh-rsa\n"
-                      "  PubkeyAcceptedAlgorithms +ssh-rsa") % hostname
-
-        openssl_cnf = (".include /etc/ssl/openssl.cnf\n"
-                       "[openssl_init]\n"
-                       "alg_section = evp_properties\n"
-                       "[evp_properties]\n"
-                       "rh-allow-sha1-signatures = yes")
-
-        with open(os.path.expanduser('~/.ssh/config'), 'w') as fd:
-            fd.write(ssh_config)
-
-        with open(os.path.expanduser('~/openssl-sha1.cnf'), 'w') as fd:
-            fd.write(openssl_cnf)
-
-        # export the environment variable
-        os.environ['OPENSSL_CONF'] = os.path.expanduser('~/openssl-sha1.cnf')
-        LOG.debug('OPENSSL_CONF is %s' % os.getenv('OPENSSL_CONF'))
-
-    def test_ssh_create_option():
-        xen_host_user = params_get(params, "xen_host_user")
-        xen_host_passwd = params_get(params, "xen_host_passwd")
-        xen_host = params_get(params, "xen_host")
-        # Setup ssh-agent access to xen hypervisor
-        support_ver = '[virt-v2v-2.0.7-4,)'
-        if utils_v2v.multiple_versions_compare(support_ver):
-            enable_legacy_cryptography(xen_host)
-        else:
-            update_crypto_policy("LEGACY")
-        LOG.info('set up ssh-agent access ')
-        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
-            xen_host, xen_host_user, xen_host_passwd, auto_close=False)
-        utils_misc.add_identities_into_ssh_agent()
-        cmd = process.run("nbdkit ssh host=%s /tmp/disk.img user=%s password=%s create=true "
-                          "create-mode=0644 create-size=10M --run 'nbdinfo --can connect $uri'" %
-                          (xen_host, xen_host_user, xen_host_passwd), shell=True)
-        if re.search('error', (cmd.stdout_text + cmd.stderr_text)):
-            test.fail('fail to test create options of ssh plugin')
-        utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
-        process.run('ssh-agent -k')
 
     def delay_close_delay_open_options():
         #Check options when clients use NBD_CMD_DISC (libnbd nbd_shutdown) or clients which drop the connection
@@ -503,12 +453,14 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         image_path = os.path.join(tmp_path, 'latest-rhel9.img')
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
+        cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
-        time_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-on-read=%s "
-                             "--run '%s' > %s/time1.log" % (image_path, tmp_path, cmd_inspect, tmp_path),
-                             shell=True, ignore_status=True)
-        time_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms --run '%s' > %s/time2.log"
-                             % (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
+        cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
+        time_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=5ms cow-on-read=%s "
+                             "--run '%s' > %s/time1.log" % (image_path, tmp_path, cmd_run, tmp_path),
+                             shell=True)
+        time_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=5ms --run '%s' > %s/time2.log"
+                             % (image_path, cmd_run, tmp_path), shell=True)
         match_1 = re.search(r'real\s+(\d+)m([\d.]+)s', time_1.stderr_text)
         match_2 = re.search(r'real\s+(\d+)m([\d.]+)s', time_2.stderr_text)
         if not (int(match_1.group(1))*60+float(match_1.group(2))) < (int(match_2.group(1))*60+float(match_2.group(2))):
@@ -519,14 +471,13 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         image_path = os.path.join(tmp_path, 'latest-rhel9.img')
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
+        cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'virt-inspector --format=raw -a "$uri"'
-        output_1 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4096 "
-                               "--run '%s'" % (image_path, cmd_inspect), shell=True, ignore_status=True)
-        output_2 = process.run("nbdkit file %s --filter=cow --filter=delay rdelay=200ms cow-block-size=4K "
-                               "--run '%s'" % (image_path, cmd_inspect), shell=True, ignore_status=True)
-        for output in [output_1.stderr_text, output_2.stderr_text]:
-            if re.search('nbdkit: error: cow-block-size is out of range.*not a power of 2', output):
-                test.fail('fail to test cow-block-size option')
+        cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
+        process.run("nbdkit file %s --filter=cow cow-block-size=4096 "
+                    "--run '%s'" % (image_path, cmd_run), shell=True)
+        process.run("nbdkit file %s --filter=cow cow-block-size=4K "
+                    "--run '%s'" % (image_path, cmd_run), shell=True)
 
     def reduce_verbosity_debugging():
         cmd_nbdsh = 'nbdsh -u $uri -c "h.pwrite(bytearray(1024), 0)"'
@@ -541,15 +492,17 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         image_path = os.path.join(tmp_path, 'latest-rhel9.img')
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
+        cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
         cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
-        time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
-                             "--run '%s' > %s/time1.log" % (image_path, cmd_inspect, tmp_path),
-                             shell=True, ignore_status=True)
-        time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms "
+        cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
+        time_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=5ms cache-on-read=true "
+                             "--run '%s' > %s/time1.log" % (image_path, cmd_run, tmp_path),
+                             shell=True)
+        time_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=5ms "
                              "cache-on-read=%s --run '%s' > %s/time2.log" %
-                             (image_path, tmp_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
-        time_3 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms --run '%s' > %s/time3.log"
-                             % (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
+                             (image_path, tmp_path, cmd_run, tmp_path), shell=True)
+        time_3 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=5ms --run '%s' > %s/time3.log"
+                             % (image_path, cmd_run, tmp_path), shell=True)
         for time in [int(''.join(filter(str.isdigit, re.search(r'real.*m', time_1.stderr_text).group(0)))),
                      int(''.join(filter(str.isdigit, re.search(r'real.*m', time_2.stderr_text).group(0))))]:
             if time > int(''.join(filter(str.isdigit, re.search(r'real.*m', time_3.stderr_text).group(0)))):
@@ -560,23 +513,39 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         image_path = os.path.join(tmp_path, 'latest-rhel9.img')
         process.run('qemu-img convert -f qcow2 -O raw /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
                     ' %s' % image_path, shell=True)
-        cmd_inspect = 'time virt-inspector --format=raw -a "$uri"'
-        output_1 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
-                               "cache-min-block-size=4k --run '%s' > %s/time1.log" %
-                               (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
-        output_2 = process.run("nbdkit file %s --filter=cache --filter=delay rdelay=200ms cache-on-read=true "
-                               "cache-min-block-size=64K --run '%s' > %s/time2.log" %
-                               (image_path, cmd_inspect, tmp_path), shell=True, ignore_status=True)
-        for output in [output_1.stderr_text, output_2.stderr_text]:
-            if re.search('nbdkit: error: cache-min-block-size.*is too small or too large', output):
-                test.fail('fail to test cache-min-block-size option')
+        cmd_chown = 'chown -R qemu:qemu `dirname $unixsocket`'
+        cmd_inspect = 'virt-inspector --format=raw -a "$uri"'
+        cmd_run = '%s; %s' % (cmd_chown, cmd_inspect)
+        process.run("nbdkit file %s --filter=cache cache-on-read=true "
+                    "cache-min-block-size=4k --run '%s'" %
+                    (image_path, cmd_run), shell=True)
+        process.run("nbdkit file %s --filter=cache cache-on-read=true "
+                    "cache-min-block-size=64K --run '%s'" %
+                    (image_path, cmd_run), shell=True)
 
     def cve_starttls():
         tmp_path = data_dir.get_tmp_dir()
         rpm_path = process.run('rpm --eval "%{_topdir}"', shell=True).stdout_text.strip()
         process.run("yum install libtool rpm-build 'dnf-command(download)' -y", shell=True, ignore_status=True)
-        process.run('yum download --source nbdkit --destdir=%s' % tmp_path, shell=True,
-                    ignore_status=True)
+
+        source_repo = os.path.join(tmp_path, "nbdkit-source.repo")
+        try:
+            base_url = process.run(
+                "dnf repoinfo beaker-AppStream 2>/dev/null | grep Repo-baseurl | awk '{print $NF}'",
+                shell=True).stdout_text.strip()
+            source_url = re.sub(r'AppStream/x86_64/os', 'AppStream/source/tree', base_url)
+            with open(source_repo, 'w') as f:
+                f.write("[nbdkit-source]\n"
+                        "name=nbdkit-source\n"
+                        "baseurl=%s\n"
+                        "enabled=1\ngpgcheck=0\nskip_if_unavailable=1\n" % source_url)
+            process.run('cp %s /etc/yum.repos.d/' % source_repo, shell=True)
+            process.run('yum download --source nbdkit --destdir=%s --disablerepo=libvirt_ci' % tmp_path,
+                        shell=True, ignore_status=True)
+        finally:
+            if os.path.exists('/etc/yum.repos.d/nbdkit-source.repo'):
+                os.remove('/etc/yum.repos.d/nbdkit-source.repo')
+
         process.run('cd %s ; rpmbuild -rp %s' % (tmp_path, (process.run('ls %s/nbdkit*.src.rpm' % tmp_path, shell=True).
                                                             stdout_text.split('/'))[-1].strip('\n')), shell=True)
         check_file = process.run('ls %s/BUILD/nbdkit-*/server/protocol-handshake-newstyle.c' % rpm_path,
@@ -628,9 +597,9 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         sector_size = params_get(params, "sector_size")
         guest_images = params_get(params, "guest_images")
         with tempfile.TemporaryDirectory(prefix='guestimages_') as images_dir:
-            utils_misc.mount(guest_images, images_dir, 'nfs')
+            utils_misc.mount(guest_images, images_dir, 'nfs4')
             process.run('cp -R %s/* %s' % (images_dir, '/home'), shell=True, ignore_status=True)
-            utils_misc.umount(guest_images, images_dir, 'nfs')
+            utils_misc.umount(guest_images, images_dir, 'nfs4')
         image_list = process.run('ls %s/rhel*sector*' % '/home', shell=True).stdout_text.strip(' ').split('\n')[:-1]
         for image in image_list:
             for size in list(sector_size.split(' ')):
@@ -997,8 +966,6 @@ nbdsh -u nbd+unix:///?socket=/tmp/sock -c 'h.zero (655360, 262144, 0)'
         statsfile_option()
     elif checkpoint == 'test_rate_filter':
         test_rate_filter()
-    elif checkpoint == 'test_ssh_create_option':
-        test_ssh_create_option()
     elif checkpoint == 'delay_close_delay_open_options':
         delay_close_delay_open_options()
     elif checkpoint == 'cow_on_read_true':

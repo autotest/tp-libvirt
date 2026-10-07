@@ -5,28 +5,25 @@ import string
 import time
 
 import aexpect
-import xml.etree.ElementTree as ET
 
 from avocado.utils import service
 from avocado.utils import process
 
 from virttest import virsh
-from virttest import utils_v2v
+from provider import utils_v2v
 from virttest import utils_misc
-from virttest import utils_sasl
 from virttest import libvirt_vm
 from virttest import data_dir
 from virttest import utils_selinux
-from virttest import remote
 from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
-from virttest.utils_v2v import params_get
+from provider.utils_v2v import params_get
 
 from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_json_output
 from provider.v2v_vmcheck_helper import check_local_output
+from provider.v2v_vmcheck_helper import detect_source_efi
 from provider.v2v_vmcheck_helper import V2V_ADAPTE_SPICE_REMOVAL_VER
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
@@ -34,15 +31,16 @@ LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 def run(test, params, env):
     """
-    convert specific kvm guest to rhev
+    convert specific kvm guest
     """
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
-            test.cancel("Please set real value for %s" % v)
+            test.error("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     version_required = params.get("version_required")
+    utils_v2v.prime_rpm_cache(['virt-v2v'])
     hypervisor = params.get("hypervisor")
     vm_name = params.get('main_vm', 'EXAMPLE')
     target = params.get('target')
@@ -72,24 +70,12 @@ def run(test, params, env):
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
-    backup_list = ['fstab_cdrom', 'sata_disk', 'network_rtl8139', 'network_e1000',
+    backup_list = ['fstab_label', 'fstab_uuid', 'network_e1000',
                    'spice', 'spice_encrypt', 'spice_qxl',
                    'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
-                   'listen_none', 'listen_socket', 'only_net', 'only_br']
+                   'listen_none', 'listen_socket', 'only_net', 'only_br',
+                   'ubuntu_usr_partition']
     error_list = []
-
-    # For construct rhv-upload option in v2v cmd
-    output_method = params.get("output_method")
-    rhv_upload_opts = params.get("rhv_upload_opts")
-    storage_name = params.get('storage_name')
-    # for get ca.crt file from ovirt engine
-    rhv_passwd = params.get("rhv_upload_passwd")
-    rhv_passwd_file = params.get("rhv_upload_passwd_file")
-    ovirt_engine_passwd = params.get("ovirt_engine_password")
-    ovirt_hostname = params.get("ovirt_engine_url").split(
-        '/')[2] if params.get("ovirt_engine_url") else None
-    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
-    local_ca_file_path = params.get("local_ca_file_path")
 
     # For VDDK
     input_transport = params.get("input_transport")
@@ -113,17 +99,6 @@ def run(test, params, env):
         # Create password file to access ESX hypervisor
         with open(vpx_passwd_file, 'w') as f:
             f.write(source_pwd)
-    elif hypervisor == "xen":
-        source_ip = params.get("xen_hostname")
-        source_pwd = params.get("xen_host_passwd")
-        # Set up ssh access using ssh-agent and authorized_keys
-        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
-            source_ip, source_user, source_pwd, auto_close=False)
-        try:
-            utils_misc.add_identities_into_ssh_agent()
-        except Exception as e:
-            process.run("ssh-agent -k")
-            test.error("Fail to setup ssh-agent \n %s" % str(e))
     elif hypervisor == "kvm":
         source_ip = None
         source_pwd = None
@@ -152,6 +127,9 @@ def run(test, params, env):
         close_virsh = True
     if not v2v_virsh.domain_exists(vm_name):
         test.error("VM '%s' not exist" % vm_name)
+
+    if hypervisor == 'esx':
+        params['original_vmxml'] = v2v_virsh.dumpxml(vm_name).stdout_text
 
     def log_fail(msg):
         """
@@ -296,17 +274,6 @@ def run(test, params, env):
             index += 1
         vmxml.sync()
 
-    def change_network_model(model):
-        """
-        Change network model to $model
-        """
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        network_list = vmxml.get_iface_all()
-        for node in list(network_list.values()):
-            if node.get('type') == 'network':
-                node.find('model').set('type', model)
-        vmxml.sync()
-
     def attach_network_card(model):
         """
         Attach network card based on model
@@ -339,78 +306,105 @@ def run(test, params, env):
             if iflist[mac].find('model').get('type') != 'virtio':
                 log_fail('Network not convert to virtio')
 
-    def make_label(session):
-        """
-        Label a volume, swap or root volume
-        """
-        # swaplabel for rhel7 with xfs, e2label for rhel6 or ext*
-        cmd_map = {'root': 'e2label %s ROOT',
-                   'swap': 'swaplabel -L SWAPPER %s'}
-        if not session.cmd_status('swaplabel --help'):
-            blk = 'swap'
-        elif not session.cmd_status('which e2label'):
-            blk = 'root'
-        else:
-            test.error('No tool to make label')
-        entry = session.cmd('blkid|grep %s' % blk).strip()
-        path = entry.split()[0].strip(':')
-        cmd_label = cmd_map[blk] % path
-        if 'LABEL' not in entry:
-            session.cmd(cmd_label)
-        return blk
+    def _parse_fstab(fstab_content):
+        entries = []
+        for line in fstab_content.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                entries.append((parts[0], parts[1]))
+        return entries
 
-    @vm_shell
-    def specify_fstab_entry(type, **kwargs):
+    def check_fstab_label(checker):
         """
-        Specify entry in fstab file
+        Check if LABEL= entries in fstab are preserved or converted to UUID=
         """
-        type_list = ['cdrom', 'uuid', 'label', 'sr0', 'invalid']
-        if type not in type_list:
-            test.error('Not support %s in fstab' % type)
-        session = kwargs['session']
-        # Specify cdrom device
-        if type == 'cdrom':
-            line = '/dev/cdrom /media/CDROM auto exec'
-            if 'grub2' in utils_misc.get_bootloader_cfg(session):
-                line += ',nofail'
-            line += ' 0 0'
-            LOG.debug('fstab entry is "%s"', line)
-            cmd = [
-                'mkdir -p /media/CDROM',
-                'mount /dev/cdrom /media/CDROM',
-                'echo "%s" >> /etc/fstab' % line
-            ]
-            for i in range(len(cmd)):
-                session.cmd(cmd[i])
-        elif type == 'sr0':
-            line = params.get('fstab_content')
-            session.cmd('echo "%s" >> /etc/fstab' % line)
-        elif type == 'invalid':
-            line = utils_misc.generate_random_string(6)
-            session.cmd('echo "%s" >> /etc/fstab' % line)
-        else:
-            map = {'uuid': 'UUID', 'label': 'LABEL'}
-            LOG.info(type)
-            if session.cmd_status('cat /etc/fstab|grep %s' % map[type]):
-                # Specify device by UUID
-                if type == 'uuid':
-                    entry = session.cmd(
-                        'blkid -s UUID|grep swap').strip().split()
-                    # Replace path for UUID
-                    origin = entry[0].strip(':')
-                    replace = entry[1].replace('"', '')
-                # Specify device by label
-                elif type == 'label':
-                    blk = make_label(session)
-                    entry = session.cmd('blkid|grep %s' % blk).strip()
-                    # Remove " from LABEL="****"
-                    replace = entry.split()[1].strip().replace('"', '')
-                    # Replace the original id/path with label
-                    origin = entry.split()[0].strip(':')
-                cmd_fstab = "sed -i 's|%s|%s|' /etc/fstab" % (origin, replace)
-                session.cmd(cmd_fstab)
-        fstab = session.cmd_output('cat /etc/fstab')
-        LOG.debug('Content of /etc/fstab:\n%s', fstab)
+        session = checker.session
+        fstab_content = session.cmd_output('cat /etc/fstab')
+        LOG.info('fstab content after conversion:\n%s', fstab_content)
+        mount_output = session.cmd_output('mount')
+        for device, mount_point in _parse_fstab(fstab_content):
+            if mount_point in ('none', 'swap'):
+                continue
+            if not (device.startswith('LABEL=') or device.startswith('UUID=')):
+                log_fail('Expected LABEL= or UUID= for %s, got %s' %
+                         (mount_point, device))
+            if mount_point not in mount_output:
+                log_fail('Mount point %s from fstab not mounted after conversion' %
+                         mount_point)
+        LOG.info('All fstab LABEL entries verified successfully')
+
+    def check_fstab_uuid(checker):
+        """
+        Check if UUID= entries in fstab are preserved
+        """
+        session = checker.session
+        fstab_content = session.cmd_output('cat /etc/fstab')
+        LOG.info('fstab content after conversion:\n%s', fstab_content)
+        uuid_entries = [(d, m) for d, m in _parse_fstab(fstab_content)
+                        if d.startswith('UUID=')]
+        if not uuid_entries:
+            log_fail('No UUID= entries found in fstab after conversion')
+        LOG.info('Found UUID entries in fstab: %s', uuid_entries)
+        mount_output = session.cmd_output('mount')
+        for device, mount_point in uuid_entries:
+            if mount_point not in ('none', 'swap') and mount_point not in mount_output:
+                log_fail('Mount point %s (%s) not mounted after conversion' %
+                         (mount_point, device))
+        LOG.info('All fstab UUID entries verified successfully')
+
+    def check_network_virtio(vmxml):
+        """
+        Check if network devices are converted to virtio-net in libvirt XML
+        """
+        xmltree = xml_utils.XMLTreeFile(vmxml)
+        iface_nodes = xmltree.find('devices').findall('interface')
+        if not iface_nodes:
+            log_fail('No network interfaces found in VM XML')
+        for node in iface_nodes:
+            model_node = node.find('model')
+            if model_node is None:
+                log_fail('Network interface missing model specification')
+            model_type = model_node.get('type')
+            LOG.info('Network interface model type: %s', model_type)
+            if model_type != 'virtio':
+                log_fail('Network interface not converted to virtio, found: %s' %
+                         model_type)
+        LOG.info('All network interfaces verified as virtio')
+
+    def check_usr_partition(checker):
+        """
+        Check if /usr partition is preserved and mounted
+        """
+        session = checker.session
+        fstab_content = session.cmd_output('cat /etc/fstab')
+        if not any(mount_point == '/usr' for _, mount_point in _parse_fstab(fstab_content)):
+            log_fail('/usr partition not found in fstab')
+        LOG.info('/usr found in fstab')
+        mount_output = session.cmd_output('mount')
+        if not re.search(r' on /usr type ', mount_output):
+            log_fail('/usr partition not mounted')
+        LOG.info('/usr partition is mounted')
+
+    def check_source_efi_xml(source_xml, secure_boot=False):
+        """
+        Validate UEFI firmware (and secure boot when required) in the
+        source VM libvirt XML from VMware before conversion.
+        """
+        is_uefi, is_secure = detect_source_efi(source_xml)
+        if is_uefi is None:
+            test.fail('Failed to parse source VM XML for EFI validation')
+        if not is_uefi:
+            test.fail('Source VM XML does not report UEFI firmware')
+        if secure_boot and not is_secure:
+            test.fail('Source VM XML does not report secure boot')
+        elif not secure_boot and is_secure:
+            test.fail('Source VM XML reports secure boot but plain UEFI '
+                      'was expected')
+        LOG.info('Source VM XML EFI validation passed (secure_boot=%s)',
+                 secure_boot)
 
     def create_large_file(session, left_space):
         """
@@ -558,33 +552,16 @@ def run(test, params, env):
         except Exception as e:
             test.error('Bootup guest and login failed: %s' % str(e))
 
-    def check_vmware_os_firmware():
-        """
-        Check firmware='efi' exists in xml for vmware guests
-        """
-        LOG.info("Checking firmware='efi' exists in xml for vmware")
-        boottype = params_get(params, "boottype")
-        if not boottype:
-            test.error("boottype must be set")
-        if int(boottype) < 2:
-            test.error("Wrong boottype value(must be UEFI)")
-        guest_xml = v2v_virsh.dumpxml(vm_name)
-        root = ET.fromstring(guest_xml.stdout_text)
-        if not root.findall("./os[@firmware='efi']"):
-            test.error("Checking firmware='efi' failed")
-
     def check_result(result, status_error):
         """
         Check virt-v2v command result
         """
-        utlv.check_exit_status(result, status_error)
+        utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
-            if output_mode == 'json' and not check_json_output(params):
-                test.fail('check json output failed')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
-            if output_mode in ['null', 'json', 'local']:
+            if output_mode in ['null', 'local']:
                 return
             if checkpoint == 'check_pnp_service':
                 log_dir = data_dir.get_tmp_dir()
@@ -616,10 +593,6 @@ def run(test, params, env):
 
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            if output_mode == 'rhev':
-                if not utils_v2v.import_vm_to_ovirt(params, address_cache,
-                                                    timeout=v2v_timeout):
-                    test.fail('Import VM failed')
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
@@ -682,6 +655,14 @@ def run(test, params, env):
                 check_firewalld_status(vmchecker.checker, params[checkpoint])
             if checkpoint in ['ntpd_on', 'sync_ntp']:
                 check_time_keep(vmchecker.checker)
+            if checkpoint == 'fstab_label':
+                check_fstab_label(vmchecker.checker)
+            if checkpoint == 'fstab_uuid':
+                check_fstab_uuid(vmchecker.checker)
+            if checkpoint == 'network_e1000':
+                check_network_virtio(vmchecker.vmxml)
+            if checkpoint == 'ubuntu_usr_partition':
+                check_usr_partition(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
@@ -692,8 +673,6 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
-        v2v_sasl = None
-
         v2v_params = {
             'target': target,
             'hypervisor': hypervisor,
@@ -707,9 +686,6 @@ def run(test, params, env):
             'password': source_pwd,
             'v2v_opts': v2v_opts,
             'new_name': vm_name + utils_misc.generate_random_string(3),
-            'output_method': output_method,
-            'os_storage_name': storage_name,
-            'rhv_upload_opts': rhv_upload_opts,
             'input_transport': input_transport,
             'vcenter_host': source_ip,
             'vcenter_password': source_pwd,
@@ -725,31 +701,6 @@ def run(test, params, env):
         output_format = params.get('output_format')
         if output_format:
             v2v_params.update({'of_format': output_format})
-        # Build rhev related options
-        if output_mode == 'rhev':
-            # Create different sasl_user name for different job
-            params.update({'sasl_user': params.get("sasl_user") +
-                           utils_misc.generate_random_string(3)})
-            LOG.info('sals user name is %s' % params.get("sasl_user"))
-
-            # Create SASL user on the ovirt host
-            user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
-                                           params.get("sasl_pwd"))
-            v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
-            v2v_sasl.server_ip = params.get("remote_ip")
-            v2v_sasl.server_user = params.get('remote_user')
-            v2v_sasl.server_pwd = params.get('remote_pwd')
-            v2v_sasl.setup(remote=True)
-            LOG.debug('A SASL session %s was created', v2v_sasl)
-            if output_method == 'rhv_upload':
-                # Create password file for '-o rhv_upload' to connect to ovirt
-                with open(rhv_passwd_file, 'w') as f:
-                    f.write(rhv_passwd)
-                # Copy ca file from ovirt to local
-                remote.scp_from_remote(ovirt_hostname, 22, 'root',
-                                       ovirt_engine_passwd,
-                                       ovirt_ca_file_path,
-                                       local_ca_file_path)
         if output_mode == 'local':
             v2v_params['os_directory'] = data_dir.get_tmp_dir()
         if output_mode == 'libvirt':
@@ -757,20 +708,14 @@ def run(test, params, env):
         # Set libguestfs environment variable
         utils_v2v.set_libguestfs_backend(params)
 
-        # Save origin graphic type for result checking if source is KVM
+        # Save source XML and settings for result checking if source is KVM
         if hypervisor == 'kvm':
             ori_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            ori_vm_xml_root = ET.parse(ori_vm_xml.xml).getroot()
+            params['original_vmxml'] = str(ori_vm_xml.xmltreefile)
             params['ori_graphic'] = ori_vm_xml.xmltreefile.find(
                 'devices').find('graphics').get('type')
             params['vm_machine'] = ori_vm_xml.xmltreefile.find(
                 './os/type').get('machine')
-            uefi_firmware = ori_vm_xml_root.find('./os[@firmware="efi"]')
-            if uefi_firmware is not None:
-                # No good way to determine whether it's secure boot or not.
-                # So the check is skipped. There is no difference between
-                # 2 and 3.
-                params['boottype'] = 2
 
         backup_xml = None
         # Only kvm guest's xml needs to be backup currently
@@ -785,12 +730,6 @@ def run(test, params, env):
             params['ori_disks'] = disk_count
         if checkpoint == 'sata_disk':
             change_disk_bus('sata')
-        if checkpoint.startswith('fstab'):
-            if checkpoint == 'fstab_cdrom':
-                img_path = data_dir.get_tmp_dir() + '/cdrom.iso'
-                utlv.create_local_disk('iso', img_path)
-                attach_removable_media('cdrom', img_path, 'hdc')
-            specify_fstab_entry(checkpoint[6:])
         if checkpoint == 'running':
             virsh.start(vm_name)
             LOG.info('VM state: %s' % virsh.domstate(vm_name).stdout.strip())
@@ -806,8 +745,6 @@ def run(test, params, env):
         if checkpoint == 'set_cache_dir':
             LOG.info('Set LIBGUESTFS_CACHEDIR=/home')
             os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
-        if checkpoint.startswith('network'):
-            change_network_model(checkpoint[8:])
         if checkpoint == 'multi_netcards':
             params['mac_address'] = []
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
@@ -912,13 +849,14 @@ def run(test, params, env):
             LOG.info('Disk type is %s', disk['type'])
             if disk['type'] != 'file':
                 test.error('Guest is not with file image')
-        if checkpoint == 'vmware_os_firmware':
-            check_vmware_os_firmware()
-        else:
-            v2v_result = utils_v2v.v2v_cmd(v2v_params)
-            if v2v_params.get('new_name'):
-                vm_name = params['main_vm'] = v2v_params['new_name']
-            check_result(v2v_result, status_error)
+        if checkpoint == 'debian_efi_os_ver_12':
+            check_source_efi_xml(params['original_vmxml'], secure_boot=False)
+        if checkpoint == 'debian_efi_os_ver_13':
+            check_source_efi_xml(params['original_vmxml'], secure_boot=True)
+        v2v_result = utils_v2v.v2v_cmd(v2v_params)
+        if v2v_params.get('new_name'):
+            vm_name = params['main_vm'] = v2v_params['new_name']
+        check_result(v2v_result, status_error)
     finally:
         if close_virsh and v2v_virsh:
             LOG.debug('virsh session %s is closing', v2v_virsh)
@@ -927,13 +865,6 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if enable_legacy_policy:
             update_crypto_policy()
-        if hypervisor == "xen":
-            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
-            process.run('ssh-agent -k')
-        if output_mode == 'rhev' and v2v_sasl:
-            v2v_sasl.cleanup()
-            LOG.debug('SASL session %s is closing', v2v_sasl)
-            v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         if backup_xml:
