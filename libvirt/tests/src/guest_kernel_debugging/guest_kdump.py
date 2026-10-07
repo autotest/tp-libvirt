@@ -2,11 +2,10 @@ import time
 import threading
 import logging as log
 
+from virttest import utils_kdump
 from virttest import utils_test
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-from aexpect.exceptions import ShellProcessTerminatedError
-from aexpect.exceptions import ShellTimeoutError
 
 
 # Using as lower capital is not the best way to do, but this is just a
@@ -32,84 +31,46 @@ def run(test, params, env):
     vms = env.get_all_vms()
     guest_stress = params.get("guest_stress", "no") == "yes"
     guest_upstream_kernel = params.get("guest_upstream_kernel", "no") == "yes"
+    upstream_kernel_vmlinux = params.get("upstream_kernel_vmlinux")
     crash_utility = params.get("crash_utility", "no") == "yes"
+    setup_kdump = params.get("setup_kdump", "yes") == "yes"
+    install_missing_packages = params.get("install_missing_packages", "yes") == "yes"
+    crashkernel_value = params.get("crashkernel_value", "1024M")
     stress_time = params.get("stress_time", "30")
     crash_dir = params.get("crash_dir", "/var/crash/")
     debug_dir = params.get("debug_dir", "/home/")
     dump_options = params.get("dump_options", "--memory-only --bypass-cache")
+    enable_sysrq_cmd = "echo 1 > /proc/sys/kernel/sysrq"
     trigger_crash_cmd = "echo c > /proc/sysrq-trigger"
 
     def check_kdump_service(vm):
         """
         Check if kdump.service is running
-        Current supported Distros: rhel, fedora, ubuntu
+        Current supported Distros: rhel, fedora, ubuntu, sles, suse
 
         param vm: vm object
         returns: None
         """
-        # Set command based on different distros
-        logging.info("Checking for kdump.service in guest %s" % vm.name)
         session = vm.wait_for_login(timeout=240)
-        distro_details = session.cmd("cat /etc/os-release").lower()
-        check_kdump_cmd = ""
-        if "fedora" in distro_details or "rhel" in distro_details:
-            check_kdump_cmd = "kdumpctl status"
-        elif "ubuntu" in distro_details:
-            check_kdump_cmd = "kdump-config status"
-        else:
-            test.cancel("Guest distro not supported")
-
-        # Check the kdump.service status
-        check_kdump_status, check_kdump = session.cmd_status_output(check_kdump_cmd)
-        if check_kdump_status:
-            logging.debug("Kdump service status: %s" % check_kdump)
-            test.error("Kdump service is not running in guest %s" % vm.name)
-        logging.info("Kdump service is up and running:\n%s" % check_kdump)
+        distro_info = utils_kdump.get_distro_info(session)
         session.close()
+        if distro_info["name"] == "unknown":
+            test.cancel("Guest distro not supported")
+        utils_kdump.check_kdump_service(
+            vm,
+            distro_info,
+            crashkernel_value=crashkernel_value if setup_kdump else None,
+            test=test,
+        )
 
     def get_vmcores(vm):
         """
-        Get vm-cores present in the crash directory
+        Get vmcore file paths present in the crash directory.
 
         param vm: vm object
-        returns: list of vm-cores
+        returns: list of vmcore file paths
         """
-        logging.info("Getting vmcores in the guest %s" % vm.name)
-        session = vm.wait_for_login(timeout=100)
-        get_vmcores_cmd = "ls " + crash_dir
-        vmcores = session.cmd(get_vmcores_cmd).split()
-        session.close()
-        return vmcores
-
-    def check_guest_status(vm):
-        """
-        Check guest domstate. Guest should be running at all times.
-
-        param vm: vm object
-        returns:
-        1. 0 if guest is running
-        2. 1 if guest is not running
-        """
-        logging.info("Checking domstate of guest %s" % vm.name)
-        if vm.state() != "running":
-            logging.debug("Domain is not running: %s" % vm.state())
-            return 1
-        return 0
-
-    def trigger_crash(vm, session):
-        """
-        Trigger sysrq triggered crash in guest
-
-        param vm: vm object
-        param session: session object
-        returns: None
-        """
-        logging.info("Triggering sysrq crash in guest %s" % vm.name)
-        try:
-            session.cmd(trigger_crash_cmd)
-        except ShellProcessTerminatedError:
-            time.sleep(120)
-        session.close()
+        return utils_kdump.get_vmcores(vm, crash_dir=crash_dir, test=test)
 
     def load_guest_stress(vms):
         """
@@ -152,67 +113,28 @@ def run(test, params, env):
             else:
                 logging.debug("Cannot dump %s as it is in shut off state" % vm.name)
 
-    def crash_utility_tool(vm, vmcore):
+    def crash_utility_tool(vm, vmcore_file):
         """
         Check the working of crash utility tool to analyse the guest dump
-        Current supported Distros: rhel, fedora, ubuntu
+        Current supported Distros: rhel, fedora, ubuntu, sles, suse
 
         param vm: vm object
-        param vm-core: guest vm-core file
+        param vmcore_file: guest vmcore file path
         returns: None
         """
-        logging.info("Debugging %s vmcore using crash utility" % vm.name)
-        session = vm.wait_for_login(timeout=100)
-        debug_libraries = []
-        vmcore_file = crash_dir + vmcore + "/vmcore"
-        distro_details = session.cmd("cat /etc/os-release").lower()
-        guest_kernel = session.cmd("uname -r").strip()
-
-        # Get required debug libraries based on distros
-        if "fedora" in distro_details or "rhel" in distro_details:
-            debug_libraries = ["*kexec-tools*", "*elfutils*", "*crash*", "*kdump-utils*"]
-            if not guest_upstream_kernel:
-                debug_libraries.append("*kernel-debuginfo*")
-        elif "ubuntu" in distro_details:
-            debug_libraries = ["*linux-crashdump*", "*kdump-tools*", "*crash*", "*elfutils*"]
-        else:
-            test.cancel("Guest distro not supported")
-
-        # Check if required debug libraries are installed
-        not_installed_libs = set()
-        for library in debug_libraries:
-            get_library_cmd = "rpm -qa " + library
-            output = session.cmd(get_library_cmd).split()
-            if not output:
-                not_installed_libs.add(library)
-        if not_installed_libs:
-            test.error("Debug libraries not installed in %s: %s" % (vm.name, not_installed_libs))
+        session = vm.wait_for_login(timeout=240)
+        distro_info = utils_kdump.get_distro_info(session)
         session.close()
-
-        # Get debug kernel location based on distros
-        if "fedora" in distro_details or "rhel" in distro_details:
-            vmlinux = "/usr/lib/debug/lib/modules/" + guest_kernel + "/vmlinux"
-        elif "ubuntu" in distro_details:
-            vmlinux = "/usr/lib/debug/boot/vmlinux-" + guest_kernel
-        else:
+        if distro_info["name"] == "unknown":
             test.cancel("Guest distro not supported")
-        if guest_upstream_kernel:
-            vmlinux = params.get("upstream_kernel_vmlinux", vmlinux)
-
-        # Run the crash utility tool
-        session = vm.wait_for_login(timeout=100)
-        crash_cmd = f"crash {vmlinux} {vmcore_file}"
-        crash_log = ""
-        logging.debug("Crash command: %s", crash_cmd)
-        try:
-            session.cmd(crash_cmd)
-        except ShellTimeoutError:
-            crash_log = session.get_output()
-            session.close()
-
-        logging.debug("Crash utility output: %s" % crash_log)
-        if "PID" not in crash_log or "crash>" not in crash_log:
-            test.fail("Failed to debug %s vmcore using crash utiility" % vm.name)
+        utils_kdump.analyze_vmcore_with_crash(
+            vm,
+            distro_info,
+            vmcore_file,
+            upstream_kernel=guest_upstream_kernel,
+            vmlinux_path=upstream_kernel_vmlinux,
+            test=test,
+        )
 
     # Declaring variables before starting test
     failed_vms = set()
@@ -227,6 +149,30 @@ def run(test, params, env):
         vmxml.on_crash = "restart"
         vmxml.sync()
         vm.start()
+
+    # Setup kdump packages/configuration before validation
+    if setup_kdump:
+        for vm in vms:
+            session = vm.wait_for_login(timeout=240)
+            distro_info = utils_kdump.get_distro_info(session)
+            session.close()
+            if distro_info["name"] == "unknown":
+                test.cancel("Guest distro not supported")
+            packages_installed = utils_kdump.ensure_kdump_packages(
+                vm,
+                distro_info,
+                install_missing=install_missing_packages,
+                test=test,
+            )
+            if packages_installed:
+                logging.info("Rebooting %s after kdump package installation", vm.name)
+                vm.reboot(session=None, timeout=240)
+            utils_kdump.configure_kdump(
+                vm,
+                distro_info,
+                crashkernel_value=crashkernel_value,
+                test=test,
+            )
 
     # Check for kdump service if it is operational
     for vm in vms:
@@ -246,7 +192,7 @@ def run(test, params, env):
         time.sleep(int(stress_time))
 
         for vm in vms:
-            if check_guest_status(vm):
+            if utils_kdump.check_guest_status(vm):
                 failed_vms.add(vm.name)
                 virsh_dump_vms.add(vm)
         if failed_vms:
@@ -257,7 +203,10 @@ def run(test, params, env):
     kdump_threads = []
     for vm in vms:
         kdump_threads.append(
-            threading.Thread(target=trigger_crash, args=(vm, vm.wait_for_login(timeout=100)))
+            threading.Thread(
+                target=utils_kdump.trigger_crash,
+                args=(vm, None, enable_sysrq_cmd, trigger_crash_cmd, 120, test),
+            )
         )
     time.sleep(20)
     for kdump_thread in kdump_threads:
@@ -268,7 +217,7 @@ def run(test, params, env):
     # Check guest status after crash
     for vm in vms:
         try:
-            if check_guest_status(vm):
+            if utils_kdump.check_guest_status(vm):
                 raise Exception("Guest %s not running after triggering crash" % vm.name)
             session = vm.wait_for_login(timeout=240)
             logging.info("Able to login into %s" % vm.name)
@@ -283,13 +232,17 @@ def run(test, params, env):
 
     # Check for the vm-cores in guests after crash
     post_vmcores = {}
+    new_vmcores = {}
     for vm in vms:
         post_vmcores[vm.name] = get_vmcores(vm)
         logging.info("%s vmcores after crash: %s" % (vm.name, post_vmcores[vm.name]))
+        new_vmcores[vm.name] = sorted(
+            list(set(post_vmcores[vm.name]) - set(pre_vmcores[vm.name]))
+        )
 
     # Check if vm-core got generated after crash in guests
     for vm in vms:
-        if len(post_vmcores[vm.name]) <= len(pre_vmcores[vm.name]):
+        if not new_vmcores[vm.name]:
             failed_vms.add(vm.name)
     if failed_vms:
         test.fail("vmcore not generated in %s" % failed_vms)
@@ -297,9 +250,19 @@ def run(test, params, env):
     # Debug vm-core using crash utility tool
     if crash_utility:
         for vm in vms:
-            for vmcore_file in pre_vmcores[vm.name]:
-                post_vmcores[vm.name].remove(vmcore_file)
-            crash_utility_tool(vm, post_vmcores[vm.name][-1])
+            session = vm.wait_for_login(timeout=240)
+            distro_info = utils_kdump.get_distro_info(session)
+            session.close()
+            if distro_info["name"] == "unknown":
+                test.cancel("Guest distro not supported")
+            utils_kdump.ensure_crash_utility_packages(
+                vm,
+                distro_info,
+                install_missing=install_missing_packages,
+                upstream_kernel=guest_upstream_kernel,
+                test=test,
+            )
+            crash_utility_tool(vm, new_vmcores[vm.name][-1])
 
     # Unload the stress app in guests
     if guest_stress:
