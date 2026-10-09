@@ -51,6 +51,7 @@ def run(test, params, env):
 
         vmxml.setup_attrs(**mem_attrs)
         vmxml.sync()
+        base_steps.prepare_cpu_for_mig(vm, params)
         migration_obj.setup_connection()
         vm.start()
         vm.wait_for_login().close()

@@ -59,6 +59,7 @@ def run(test, params, env):
         locals() else migration_obj.run_migration_again
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         virsh_session, remote_virsh_session = migration_base.monitor_event(params)
         migration_obj.run_migration()

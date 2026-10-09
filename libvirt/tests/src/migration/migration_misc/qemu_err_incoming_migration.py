@@ -77,6 +77,7 @@ def run(test, params, env):
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         migration_obj.run_migration()
         migration_obj.verify_default()

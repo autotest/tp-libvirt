@@ -56,6 +56,7 @@ def run(test, params, env):
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         migration_obj.setup_connection()
         src_vm_xml = virsh.dumpxml(vm_name, extra="--migratable --inactive", debug=True).stdout.strip()
         test.log.debug("src vm xml: %s", src_vm_xml)
