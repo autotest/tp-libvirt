@@ -338,8 +338,7 @@ def run(test, params, env):
 
     try:
         src_sec_uuid, dst_sec_uuid = migration_vtpm.set_secret(params)
-        if not base_steps.check_cpu_for_mig(params):
-            base_steps.sync_cpu_for_mig(params)
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         migration_obj.run_migration()
         verify_test()

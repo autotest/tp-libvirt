@@ -56,6 +56,7 @@ def run(test, params, env):
     try:
         base_steps.setup_network_data_transport(params)
         libvirt_network.change_tcp_config(tcp_config_list, params)
+        base_steps.prepare_cpu_for_mig(vm, params)
         migration_obj.setup_connection()
         # Monitor event on source/target host
         virsh_session, remote_virsh_session = migration_base.monitor_event(params)
