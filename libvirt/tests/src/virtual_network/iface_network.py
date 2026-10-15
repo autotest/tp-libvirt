@@ -352,6 +352,51 @@ TIMEOUT 3"""
         if session.cmd_status(cmd):
             test.fail("Can't resolve name %s on guest" % guest_name)
 
+    def use_nft_backend():
+        """
+        Return True if libvirt uses the nftables firewall backend
+        """
+        return process.run("nft list table ip libvirt_network", shell=True,
+                           ignore_status=True).exit_status == 0
+
+    def check_nft_rules(br_name, net_forward, net_addr, family):
+        """
+        Check nftables rules created by libvirt for the network
+
+        The nftables backend has no INPUT/OUTPUT/POSTROUTING rules (DNS, DHCP,
+        checksum-fill), only forward, reject and nat rules.
+
+        :param br_name: bridge name of the network
+        :param net_forward: forward attributes of the network
+        :param net_addr: network address with prefix
+        :param family: "ip" or "ip6"
+        """
+        nat_attrs = ast.literal_eval(params.get("nat_attrs", "{}"))
+        nft_checked.append(br_name)
+        addr = "ip6" if family == "ip6" else "ip"
+        output = process.run("nft list table %s libvirt_network" % family,
+                             shell=True).stdout_text
+        logging.debug("nft %s: %s", family, output)
+        if net_forward.get("mode") == "open":
+            if re.search(br_name, output):
+                test.fail("Find nft rule for open mode")
+            return
+        nft_rules = [
+            r'iif "{0}" oif "{0}" .*accept'.format(br_name),
+            r'iif "{0}" .*reject'.format(br_name),
+            r'oif "{0}" .*reject'.format(br_name)]
+        if net_addr and net_forward.get("mode") in ["nat", "route"]:
+            nft_rules.extend([
+                r'oif "{0}" {1} daddr {2} .*accept'.format(br_name, addr, net_addr),
+                r'{1} saddr {2} iif "{0}" .*accept'.format(br_name, addr, net_addr)])
+        if net_addr and net_forward.get("mode") == "nat" and \
+                (family == "ip" or nat_attrs.get("ipv6") == "yes"):
+            nft_rules.append(r'{0} saddr {1} {0} daddr != {1} .*masquerade'
+                             .format(addr, net_addr))
+        for rule in nft_rules:
+            if not re.search(rule, output, re.M):
+                test.fail("Can't find nft %s rule:\n%s" % (family, rule))
+
     def check_ipt_rules(check_ipv4=True, check_ipv6=False):
         """
         Check iptables for network/interface
@@ -361,6 +406,12 @@ TIMEOUT 3"""
         nat_attrs = ast.literal_eval(params.get("nat_attrs", "{}"))
         net_ipv4 = params.get("net_ipv4")
         net_ipv6 = params.get("net_ipv6")
+        if use_nft_backend():
+            if check_ipv4:
+                check_nft_rules(br_name, net_forward, net_ipv4, "ip")
+            if check_ipv6:
+                check_nft_rules(br_name, net_forward, net_ipv6, "ip6")
+            return []
         net_dev_in = ""
         net_dev_out = ""
         if "dev" in net_forward:
@@ -672,6 +723,7 @@ TIMEOUT 3"""
     boot_failure = "yes" == params.get("boot_failure", "no")
     test_netmask = "yes" == params.get("test_netmask", "no")
     ipt_rules = []
+    nft_checked = []
     ipt6_rules = []
     define_macvtap = "yes" == params.get("define_macvtap", "no")
     net_dns_forwarders = params.get("net_dns_forwarders", "").split()
@@ -1219,6 +1271,15 @@ TIMEOUT 3"""
         # Destroy created network and check iptable rules
         if net_name != "default":
             virsh.net_destroy(net_name)
+        if nft_checked and net_name != "default":
+            br_name = nft_checked[0]
+            for family in ("ip", "ip6"):
+                output_des = process.run("nft list table %s libvirt_network"
+                                         % family, shell=True,
+                                         ignore_status=True).stdout_text
+                if re.search(r'"%s"' % br_name, output_des):
+                    test.fail("Find nft %s rule for %s after net destroyed"
+                              % (family, br_name))
         if ipt_rules:
             output_des = process.run('iptables-save', shell=True).stdout_text
             for ipt in ipt_rules:
