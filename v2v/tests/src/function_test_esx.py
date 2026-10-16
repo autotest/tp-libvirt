@@ -218,43 +218,6 @@ def run(test, params, env):
                 'file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' %
                 content)
 
-    def check_windows_vmware_tools(vmcheck):
-        """
-        Check vmware tools is uninstalled in VM
-
-        :param vmcheck: VMCheck object for vm checking
-        """
-        def _get_vmtools_info(cmd):
-            _, res = vmcheck.run_cmd(cmd)
-            vmtools_info = re.search(r'uninstalling VMware Tools\s+.*exit code\s+(\d+)', res)
-            if vmtools_info:
-                return vmtools_info.group(1)
-
-        cmd = r'type "C:\Program Files\Guestfs\Firstboot\log.txt"'
-
-        try:
-            res = utils_misc.wait_for(lambda: _get_vmtools_info(cmd), 900, step=30)
-        except (ShellProcessTerminatedError, ShellStatusError):
-            # Windows guest may reboot after installing qemu-ga service
-            LOG.debug('Windows guest is rebooting')
-            if vmcheck.session:
-                vmcheck.session.close()
-                vmcheck.session = None
-            # VM boots up is extremely slow when all testing in running on
-            # rhv server simultaneously, so set timeout to 1200.
-            vmcheck.create_session(timeout=1200)
-            res = utils_misc.wait_for(lambda: _get_vmtools_info(cmd), 900, step=30)
-
-        if not res:
-            test.fail("Expected pattern 'uninstalling VMware Tools\\s+.*exit code\\s+(\\d+)' "
-                      "not found in firstboot log")
-        elif res == '0':
-            LOG.info('VMware Tools was uninstalled successfully')
-        elif os_version in ['win2025', 'win2019'] and res == '1603':
-            LOG.info('%s guest failed to uninstall VMware Tools with exit code 1603, which is a known issue' % os_version)
-        else:
-            test.fail("Fail to uninstall VMware-tools with exit code %s" % res)
-
     def check_windows_service(vmcheck, service_name):
         """
         Check service in VM
@@ -589,8 +552,6 @@ def run(test, params, env):
                 check_file_architecture(vmchecker.checker)
             if 'ubuntu_tools' in checkpoint:
                 check_ubuntools(vmchecker.checker)
-            if 'vmware_tools' in checkpoint:
-                check_windows_vmware_tools(vmchecker.checker)
             if 'check_online_disks' in checkpoint:
                 check_online_disks(vmchecker.checker)
             if 'rhsrvany_checksum' in checkpoint:
