@@ -112,6 +112,47 @@ def run(test, params, env):
                            "ENTER.YOUR.SERVER.IP")
     netmask = params.get("libvirt_pci_net_mask", "ENTER.YOUR.Mask")
 
+    def netmask_to_cidr(netmask):
+        """
+        Convert netmask like 255.255.255.0 to CIDR notation like 24.
+
+        Validates that the netmask is valid (4 octets, 0-255 range, contiguous 1-bits).
+        Raises ValueError for invalid netmasks instead of silently defaulting.
+        """
+        try:
+            # Split and validate octets
+            octets = netmask.split(".")
+            if len(octets) != 4:
+                raise ValueError("Netmask must have exactly 4 octets, got %d" % len(octets))
+
+            # Validate each octet is 0-255
+            octet_values = []
+            for octet in octets:
+                val = int(octet)
+                if val < 0 or val > 255:
+                    raise ValueError("Octet value %d out of range 0-255" % val)
+                octet_values.append(val)
+
+            # Convert to binary and count 1-bits
+            binary = "".join([bin(val)[2:].zfill(8) for val in octet_values])
+
+            # Validate contiguous 1-bits (valid netmask pattern)
+            # Valid: 11111111111111110000000000000000 (255.255.255.0 = /24)
+            # Invalid: 11111111000011110000000000000000 (non-contiguous)
+            if '01' in binary:
+                raise ValueError("Netmask has non-contiguous 1-bits: %s" % netmask)
+
+            cidr = str(binary.count("1"))
+            logging.debug("Converted netmask %s to CIDR /%s", netmask, cidr)
+            return cidr
+
+        except ValueError as e:
+            logging.error("Invalid netmask %s: %s", netmask, str(e))
+            raise
+        except Exception as e:
+            logging.error("Failed to convert netmask %s to CIDR: %s", netmask, str(e))
+            raise ValueError("Invalid netmask format: %s" % netmask)
+
     # Check the parameters from configuration file.
     if (device_type == "NIC"):
         if (pf_filter.count("ENTER")):
@@ -208,8 +249,9 @@ def run(test, params, env):
             for val in bus_info:
                 nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
                 session.cmd("ip addr flush dev %s" % nic_name)
+                cidr_mask = netmask_to_cidr(netmask)
                 session.cmd("ip addr add %s/%s dev %s"
-                            % (net_ip, netmask, nic_name))
+                            % (net_ip, cidr_mask, nic_name))
                 session.cmd("ip link set %s up" % nic_name)
                 # Pinging using nic_name is having issue,
                 # hence replaced with IPAddress
