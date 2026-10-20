@@ -56,6 +56,7 @@ def run(test, params, env):
     params.update({"migration_obj": migration_obj})
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         migration_obj.run_migration()
         migration_base.resume_migration(params)
