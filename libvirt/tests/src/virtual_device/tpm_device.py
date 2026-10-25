@@ -124,6 +124,7 @@ def run(test, params, env):
     pcrbank_change = params.get("pcrbank_change")
     test_rsaencypt = ('yes' == params.get("test_rsaencypt", "no"))
     test_sign = ('yes' == params.get("test_sign", "no"))
+    test_signedcompare = ('yes' == params.get("test_signedcompare", "no"))
     active_pcr_banks = params.get("active_pcr_banks")
     statedir = params.get("statedir")
     audit_cmd = params.get("audit_cmd")
@@ -709,6 +710,43 @@ def run(test, params, env):
                 test.fail("tpm2_sign failed with %s hash algorithm: %s" % (hash_algorithm, output))
         session.cmd("rm -f primary.ctx key.pub key.priv key.ctx msg.dat sig.rssa")
 
+    def test_signedcompare_in_guest(session):
+        """
+        Test TPM2_PolicyNV signed comparison (SignedCompareB errata fix) in guest.
+        Verifies that comparing negative two's complement values (-5 > -10)
+        passes and does not trigger error 0x126 (TPM2_RC_POLICY_FAIL).
+
+        :param session: Guest session to be tested
+        """
+        if not utils_package.package_install(["tpm2-tools"], session, 360):
+            test.error("Failed to install tpm2-tools package in guest")
+
+        nv_index = "0x01800008"
+
+        if not compare_swtpm_version(0, 10):
+            test.cancel("swtpm version is less than 0.10.x")
+
+        try:
+            session.cmd("tpm2_nvundefine %s -C o 2>/dev/null || true" % nv_index)
+            session.cmd("tpm2_nvdefine %s -C o -s 1 -a 'ownerread|ownerwrite|authread|authwrite'" % nv_index)
+            # Storing 2's compliment of 5, (i.e. 2's complement of 0000 0101 = xFB)
+            session.cmd("echo -ne '\\xFB' > /tmp/val_minus_5.bin")
+            session.cmd("tpm2_nvwrite %s -C o -i /tmp/val_minus_5.bin" % nv_index)
+            # Storing 2's compliment of 10, (i.e. 2's complement of 0000 1010 = xF6)
+            session.cmd("echo -ne '\\xF6' > /tmp/val_minus_10.bin")
+            session.cmd("tpm2_startauthsession -S /tmp/session.ctx --policy-session")
+            status, output = session.cmd_status_output(
+                "tpm2_policynv -S /tmp/session.ctx -C o -L /tmp/signed_nv.policy "
+                "-i /tmp/val_minus_10.bin %s sgt" % nv_index)
+            session.cmd("tpm2_flushcontext /tmp/session.ctx 2>/dev/null || true")
+            if status:
+                test.fail("SignedCompareB bug reproduced inside guest: tpm2_policynv failed "
+                          "with exit code %s. Output: %s" % (status, output))
+            logging.info("SignedCompareB test passed: -5 > -10 evaluated as TRUE inside guest.")
+        finally:
+            session.cmd("tpm2_nvundefine %s -C o 2>/dev/null || true" % nv_index)
+            session.cmd("rm -f /tmp/val_minus_5.bin /tmp/val_minus_10.bin /tmp/signed_nv.policy /tmp/session.ctx")
+
     def persistent_test(vm, vm_xml):
         """
         Test vtpm with persistent_state for transient vm.
@@ -1040,6 +1078,8 @@ def run(test, params, env):
                 test_rsaencypt_in_guest(session)
             elif test_sign:
                 test_sign_in_guest(session)
+            elif test_signedcompare:
+                test_signedcompare_in_guest(session)
             else:
                 test_guest_tpm(expect_version, session, expect_fail)
             session.close()
