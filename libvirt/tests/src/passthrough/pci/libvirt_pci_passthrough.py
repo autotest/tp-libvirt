@@ -193,6 +193,7 @@ def run(test, params, env):
             net_ip = ipaddress.ip_address(net_ip)
             nic_list_after = vm.get_pci_devices()
             nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
+            del bus_info[:]
             for val in range(len(nic_list)):
                 bus_info.append(str(nic_list[val]).split(' ', 1)[0])
                 nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
@@ -205,8 +206,13 @@ def run(test, params, env):
                         test.fail("Multifunction Device passthroughed but "
                                   "functions are in different iommu group")
             # ping to server from each function
+            ping_success_count = 0
             for val in bus_info:
                 nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
+                carrier = session.cmd_output("cat /sys/class/net/%s/carrier 2>/dev/null || echo 0" % nic_name).strip()
+                if carrier != "1":
+                    logging.info("Interface %s (%s) has no carrier / link down. Skipping ping.", nic_name, val)
+                    continue
                 session.cmd("ip addr flush dev %s" % nic_name)
                 session.cmd("ip addr add %s/%s dev %s"
                             % (net_ip, netmask, nic_name))
@@ -220,10 +226,13 @@ def run(test, params, env):
                 if s_ping != 0:
                     err_msg = "Ping test fails, error info: '%s'"
                     test.fail(err_msg % o_ping)
+                ping_success_count += 1
                 # Each interface should have unique IP
                 # For ppc64 arch let's test using one ip only
                 if arch != "ppc64le":
                     net_ip = net_ip + 1
+            if ping_success_count == 0:
+                test.fail("No interfaces had active link/carrier for ping validation.")
 
         elif device_type == "STORAGE":
             # Get the result of "fdisk -l" in guest, and
