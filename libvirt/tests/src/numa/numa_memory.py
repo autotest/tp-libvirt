@@ -128,14 +128,44 @@ def verify_numa_for_auto_replacement(test, params, vmxml, node_list, qemu_cpu, v
     log_file = params.get("libvirtd_debug_file")
     vcpu_placement = params.get("vcpu_placement")
     numa_memory = vmxml.numa_memory
-    numad_cmd_opt = "-w %s:%s" % (vmxml.vcpu, vmxml.max_mem // 1024)
-    utils_test.libvirt.check_logfile('.*numad\s*%s' % numad_cmd_opt, log_file)
-    cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
-    cmdRes = process.run(cmd, shell=True, ignore_status=False)
-    # Sample: Nodeset returned from numad: 0-1
-    match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
-    numad_ret = match_obj.group(1)
-    logging.debug("Nodeset returned from numad: %s", numad_ret)
+    # SLES16 replaced numad with numa-preplace. Check numad first so existing
+    # numad systems keep the original code path.
+    has_numad = process.run("which numad", shell=True,
+                            ignore_status=True).exit_status == 0
+    has_numa_preplace = process.run("which numa-preplace", shell=True,
+                                    ignore_status=True).exit_status == 0
+    if has_numad:
+        numad_cmd_opt = "-w %s:%s" % (vmxml.vcpu, vmxml.max_mem // 1024)
+        utils_test.libvirt.check_logfile('.*numad\s*%s' % numad_cmd_opt, log_file)
+        cmd = "grep -E 'Nodeset returned from numad:' %s" % log_file
+        cmdRes = process.run(cmd, shell=True, ignore_status=False)
+        # Sample: Nodeset returned from numad: 0-1
+        match_obj = re.search(r'Nodeset returned from numad:\s(.*)', cmdRes.stdout_text)
+        numad_ret = match_obj.group(1)
+        logging.debug("Nodeset returned from numad: %s", numad_ret)
+    elif has_numa_preplace:
+        numa_preplace_cmd_opt = "-w %s:%s" % (vmxml.vcpu, vmxml.max_mem // 1024)
+        # libvirt logs only the command it runs, not the result:
+        # running /usr/sbin/numa-preplace -w 32:32768 '-H 0'
+        utils_test.libvirt.check_logfile(
+            r'.*numa-preplace\s*%s' % numa_preplace_cmd_opt, log_file)
+        # The result is not logged and the live XML has no nodeset, so run
+        # numa-preplace again with the same arguments to get the advice.
+        cmd = "numa-preplace %s -H 0" % numa_preplace_cmd_opt
+        cmdRes = process.run(cmd, shell=True, ignore_status=False)
+        # Sample output:
+        # Getting NUMA pre-placement advice for 32 CPUs and 32768 MBs, HP 0
+        # Advising nodes (1)
+        # 1
+        advice = re.findall(r'^[\d,\-]+$', cmdRes.stdout_text, re.M)
+        if not advice:
+            test.error("Cannot parse nodeset from numa-preplace output: %s"
+                       % cmdRes.stdout_text)
+        numad_ret = advice[-1]
+        logging.debug("Nodeset returned from numa-preplace: %s", numad_ret)
+    else:
+        test.fail("Neither numad nor numa-preplace is available on the host, "
+                  "cannot verify placement='auto'")
 
     numad_node = cpu.cpus_parser(numad_ret)
     left_node = [node_list.index(i) for i in node_list if i not in numad_node]
@@ -145,7 +175,7 @@ def verify_numa_for_auto_replacement(test, params, vmxml, node_list, qemu_cpu, v
         if numa_memory.get('mode') == 'strict':
             mem_compare(test, numad_node_seq, left_node, memory_status=memory_status)
         elif numa_memory.get('mode') == 'preferred':
-            mode_nodeset = 'prefer\s*.*:' + numad_ret
+            mode_nodeset = r'prefer\s*.*:' + numad_ret
             numa_mode_check(test, vm, mode_nodeset)
         else:
             mode_nodeset = numa_memory.get('mode') + ':' + numad_ret
