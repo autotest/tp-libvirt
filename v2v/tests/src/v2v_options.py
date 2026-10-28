@@ -61,15 +61,7 @@ def run(test, params, env):
     output_mode = params.get("output_mode")
     output_storage = params.get("output_storage", "default")
     disk_img = params.get("input_disk_image", "")
-    nfs_storage = params.get("storage")
     no_root = 'yes' == params.get('no_root', 'no')
-    mnt_point = params.get("mnt_point")
-    export_domain_uuid = params.get("export_domain_uuid", "")
-    fake_domain_uuid = params.get("fake_domain_uuid")
-    vdsm_image_uuid = params.get("vdsm_image_uuid")
-    vdsm_vol_uuid = params.get("vdsm_vol_uuid")
-    vdsm_vm_uuid = params.get("vdsm_vm_uuid")
-    vdsm_ovf_output = params.get("vdsm_ovf_output")
     v2v_user = params.get("unprivileged_user", "")
     v2v_timeout = int(params.get("v2v_timeout", 1200))
     status_error = "yes" == params.get("status_error", "no")
@@ -136,19 +128,7 @@ def run(test, params, env):
         else:
             pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
 
-    def get_all_uuids(output):
-        """
-        Get export domain uuid, image uuid and vol uuid from command output.
-        """
-        tmp_target = re.findall(
-            r"RHV: (?:disk:|will export \S+ to) (\S+)", output)
-        if len(tmp_target) < 1:
-            test.error("Fail to find tmp target file name when converting vm"
-                       " disk image")
-        targets = tmp_target[0].split('/')
-        return (targets[3], targets[5], targets[6])
-
-    def get_img_path(output):
+    def get_img_path():
         """
         Get the full path of the converted image.
         """
@@ -157,10 +137,6 @@ def run(test, params, env):
             img_path = virsh.vol_path(img_name, output_storage).stdout.strip()
         elif output_mode == "local":
             img_path = os.path.join(output_storage, img_name)
-        elif output_mode == "vdsm":
-            export_domain_uuid, image_uuid, vol_uuid = get_all_uuids(output)
-            img_path = os.path.join(mnt_point, export_domain_uuid, 'images',
-                                    image_uuid, vol_uuid)
         return img_path
 
     def check_image(img_path, check_point, expected_value):
@@ -209,7 +185,7 @@ def run(test, params, env):
         """
         Verify no image created if convert command use --no-copy option
         """
-        img_path = get_img_path(output)
+        img_path = get_img_path()
         if not os.path.isfile(img_path):
             LOG.info("No image created with --no-copy option")
         else:
@@ -385,7 +361,7 @@ def run(test, params, env):
         else:
             if '-oa' in cmd and '--no-copy' not in cmd:
                 expected_mode = re.findall(r"-oa\s(\w+)", cmd)[0]
-                img_path = get_img_path(output)
+                img_path = get_img_path()
 
                 def check_alloc():
                     try:
@@ -398,7 +374,7 @@ def run(test, params, env):
                     test.fail('Allocation check failed.')
             if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and not no_root:
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
-                img_path = get_img_path(output)
+                img_path = get_img_path()
                 check_image(img_path, "format", expected_format)
             if '-on' in cmd:
                 expected_name = re.findall(r"-on\s+(\S+)", cmd)[0]
@@ -470,7 +446,7 @@ def run(test, params, env):
                                     V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
                                 continue
             if checkpoint == 'compress':
-                img_path = get_img_path(output)
+                img_path = get_img_path()
                 LOG.info('Image path: %s', img_path)
 
                 qemu_img_cmd = 'qemu-img check %s' % img_path
@@ -509,7 +485,6 @@ def run(test, params, env):
         check_man_page(params.get('in_man'), params.get('not_in_man'))
 
     backup_xml = None
-    vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     mount_nfs_ova_source = None
     mount_nfs_kvm_images = None
     mount_nfs_vmx = None
@@ -624,26 +599,6 @@ def run(test, params, env):
         output_allo_mode = params.get("output_allo_mode")
         if output_allo_mode:
             output_option += " -oa %s" % output_allo_mode
-
-        # Build vdsm related options
-        if output_mode == 'vdsm':
-            if not os.path.isdir(mnt_point):
-                os.mkdir(mnt_point)
-            if not utils_misc.mount(nfs_storage, mnt_point, "nfs"):
-                test.error("Mount NFS Failed")
-            v2v_options += " --vdsm-image-uuid %s" % vdsm_image_uuid
-            v2v_options += " --vdsm-vol-uuid %s" % vdsm_vol_uuid
-            v2v_options += " --vdsm-vm-uuid %s" % vdsm_vm_uuid
-            v2v_options += " --vdsm-ovf-output %s" % vdsm_ovf_output
-            vdsm_domain_dir = os.path.join(mnt_point, fake_domain_uuid)
-            vdsm_image_dir = os.path.join(mnt_point, export_domain_uuid,
-                                          "images", vdsm_image_uuid)
-            vdsm_vm_dir = os.path.join(mnt_point, export_domain_uuid,
-                                       "master/vms", vdsm_vm_uuid)
-            # For vdsm_domain_dir, just create a dir to test BZ#1176591
-            os.makedirs(vdsm_domain_dir)
-            os.makedirs(vdsm_image_dir)
-            os.makedirs(vdsm_vm_dir)
 
         if checkpoint in ['vddk_compression_zlib', 'vddk_compression_skipz', 'vddk_compression_fastlz']:
             v2v_options += " -v -x"
@@ -848,12 +803,6 @@ def run(test, params, env):
     finally:
         if checkpoint == "weak_dendency":
             utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
-        for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
-            if os.path.exists(vdsm_dir):
-                shutil.rmtree(vdsm_dir)
-        if os.path.exists(mnt_point):
-            utils_misc.umount(nfs_storage, mnt_point, "nfs")
-            os.rmdir(mnt_point)
         if output_mode == "local":
             image_name = vm_name + "-sda"
             img_file = os.path.join(output_storage, image_name)
