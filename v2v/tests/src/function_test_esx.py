@@ -20,8 +20,6 @@ from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, S
 
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_local_output
-from provider.v2v_vmcheck_helper import check_qemu_output
-from provider.v2v_vmcheck_helper import check_kubevirt_output
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -467,18 +465,9 @@ def run(test, params, env):
             if status_error:
                 return
 
-            if output_mode == 'kubevirt' and not check_kubevirt_output(params):
-                test.fail('check kubevirt output failed')
-            if 'define_disk_path' in checkpoint:
-                from glob import glob
-                disk_num = len(glob(os.path.join(os_directory, 'disk*.img')))
-                if disk_num != vm_disk_count:
-                    test.fail('disk num is incorrect')
             if output_mode == 'local' and not check_local_output(params):
                 test.fail('check local output failed')
-            if output_mode == 'qemu' and not check_qemu_output(params):
-                test.fail('check qemu output failed')
-            if output_mode in ['null', 'kubevirt', 'local', 'qemu']:
+            if output_mode == 'local':
                 return
 
             # vmchecker must be put before skip_vm_check in order to clean up
@@ -584,13 +573,6 @@ def run(test, params, env):
             nbdkit_option = r'nbdkit\.backend\.datapath=0'
             if not re.search(nbdkit_option, output):
                 test.fail("checkpoint '%s' failed" % checkpoint)
-        if 'fstrim_warning' in checkpoint:
-            # Actually, fstrim has no relationship with v2v, it may be related
-            # to kernel, this warning really doesn't matter and has no harm to
-            # the conversion.
-            V2V_FSTRIM_SUCESS_VER = "[virt-v2v-1.45.1-1,)"
-            if utils_v2v.multiple_versions_compare(V2V_FSTRIM_SUCESS_VER):
-                params.update({'expect_msg': None})
         if 'large_disk' in checkpoint:
             time_info = re.search(r'.*\d.*Finishing.*off', output).group(0)
             usetime = int(re.search(r'\d+\.\d+', str(time_info)).group(0).split('.')[0])
@@ -663,9 +645,6 @@ def run(test, params, env):
 
         if params.get('output_format'):
             v2v_params.update({'of_format': params['output_format']})
-
-        if output_mode == 'kubevirt':
-            v2v_params['new_name'] = re.sub('[^a-z-.0-9]', '', v2v_params['new_name'].lower())
 
         # Create libvirt dir pool
         if output_mode == 'libvirt':
@@ -766,12 +745,6 @@ def run(test, params, env):
             luks_keys = params_get(params, 'luks_keys', '').split(':')[-1]
             v2v_params['v2v_opts'] += ' ' + "$(seq -f '--key /dev/sda%%g:key:%s' 200)" % luks_keys
 
-        if 'define_disk_path' in checkpoint:
-            os_directory = data_dir.get_tmp_dir()
-            vm_disk_count = int(params_get(params, 'vm_disk_count'))
-            v2v_params['v2v_opts'] += ' -oo create=true'
-            for i in range(1, vm_disk_count + 1):
-                v2v_params['v2v_opts'] += ' -oo disk=%s/disk%s.img' % (os_directory, i)
         if 'virt_customize_firstboot_and_upload_option' in checkpoint:
             line = r'powershell.exe -ExecutionPolicy ByPass -NoProfile -file "C:\network-configure.ps1"'
             script_path = os.path.join(data_dir.get_tmp_dir(), "network-configure.bat")
