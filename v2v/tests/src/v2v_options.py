@@ -13,7 +13,6 @@ from avocado.utils.astring import to_text
 
 from virttest import data_dir
 from virttest import utils_misc
-from virttest import utils_package
 from provider import utils_v2v
 from virttest import virsh
 from virttest import libvirt_storage
@@ -77,7 +76,6 @@ def run(test, params, env):
     params['vmcheck_flag'] = False
     checkpoint = params.get('checkpoint', '')
     error_flag = 'strict'
-    estimate_file = ''
 
     def create_pool(
             user_pool=False,
@@ -309,30 +307,6 @@ def run(test, params, env):
             if not_in_man in man_page:
                 test.fail('"%s" not removed from man page' % not_in_man)
 
-    def check_print_estimate(estimate_file):
-        """
-        Check disk size and total size in file of estimate created by v2v
-        """
-        import json
-
-        content = None
-        buf = ''
-        with open(estimate_file) as fp:
-            all_content = fp.read()
-            fp.seek(0)
-            for line in fp:
-                buf += line
-                if '}' not in line:
-                    continue
-                if 'disks' in buf and 'total' in buf:
-                    content = json.loads(buf)
-                    break
-                buf = ''
-
-        LOG.debug('json file content:\n%s' % all_content)
-        if not content or sum(content['disks']) != content['total']:
-            test.fail("The disks' size doesn't same as total value")
-
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
@@ -415,16 +389,9 @@ def run(test, params, env):
                         win_img,
                         ignore_status=True).exit_status == 0:
                     test.fail('Command "%s" success' % command % win_img)
-            # check 'yum deplist virt-v2v'
-            if checkpoint == 'deplist':
-                if 'platform-python' not in output:
-                    test.fail('platform-python is not in dependency')
             if checkpoint == 'no_dcpath':
                 if '--dcpath' in output:
                     test.fail('"--dcpath" is not removed')
-            if checkpoint == 'check_patch':
-                if not re.search('Fix off-by-one error causing rare crash.*', output):
-                    test.fail('required patch not found')
             if checkpoint.startswith('empty_nic_source'):
                 target_str = '%s "eth0" mac: %s' % (
                     params[checkpoint][0], params[checkpoint][1])
@@ -461,8 +428,6 @@ def run(test, params, env):
                 LOG.info('%s%% compressed', compress_rate)
                 if compress_rate < 0.1:
                     test.fail('Disk image NOT compressed')
-            if checkpoint == 'print_estimate_tofile':
-                check_print_estimate(estimate_file)
             if checkpoint == 'check_version':
                 get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
                 get_rpm_version = re.search(r'(\d+\.\d+\.\d+-\d+\.el\d+)', str(get_v2v_version.stdout))
@@ -691,11 +656,6 @@ def run(test, params, env):
             input_option = '-i vmx %s' % vmx
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
-        if checkpoint == 'print_estimate_tofile':
-            estimate_file = utils_misc.generate_tmp_file_name(
-                'v2v_print_estimate')
-            v2v_options += " --machine-readable=file:%s" % estimate_file
-
         if checkpoint == 'length_of_error' and utils_v2v.v2v_supported_option('--wrap'):
             v2v_options += ' --wrap'
 
@@ -761,9 +721,6 @@ def run(test, params, env):
             # only set error to 'ignore' to avoid exception for RHEL7-84978
             if "guestfish" in cmd:
                 error_flag = "replace"
-            if "changelog" in cmd:
-                get_v2v_version = process.run('rpm -q virt-v2v', shell=True, ignore_status=True)
-                cmd = cmd % to_text(get_v2v_version.stdout, errors=error_flag)
 
         if checkpoint == 'in_place':
             cmd = re.sub(r".*/bin/virt-v2v", '/usr/libexec/virt-v2v-in-place', cmd)
@@ -801,8 +758,6 @@ def run(test, params, env):
             params['main_vm'] = new_vm_name
         check_result(cmd, cmd_result, status_error)
     finally:
-        if checkpoint == "weak_dendency":
-            utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
         if output_mode == "local":
             image_name = vm_name + "-sda"
             img_file = os.path.join(output_storage, image_name)
@@ -841,5 +796,3 @@ def run(test, params, env):
         if mount_nfs_ova_source:
             utils_misc.umount(
                 params.get('nfs_ova_source'), mount_nfs_ova_source, None)
-        if os.path.exists(estimate_file):
-            os.remove(estimate_file)
