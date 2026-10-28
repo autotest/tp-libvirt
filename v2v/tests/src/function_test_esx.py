@@ -745,10 +745,6 @@ def run(test, params, env):
             if cp.endswith('custom'):
                 LOG.info('Set env %s=%s' % (virtio_win_env, dest_dir))
                 os.environ[virtio_win_env] = dest_dir
-            if cp.endswith('iso_mount'):
-                LOG.info('Mount iso to /opt')
-                process.run('mount %s /opt' % iso_path)
-                os.environ[virtio_win_env] = '/opt'
             if cp.endswith('iso_file'):
                 LOG.info('Set env %s=%s' % (virtio_win_env, iso_path))
                 os.environ[virtio_win_env] = iso_path
@@ -912,8 +908,6 @@ dnf -y install libvirt
             update_crypto_policy()
         if checkpoint[0].startswith('virtio_win'):
             utils_package.package_install(['virtio-win'])
-        if 'virtio_win_iso_mount' in checkpoint:
-            process.run('umount /opt', ignore_status=True)
         if 'block_dev' in checkpoint and hasattr(os_directory, 'name'):
             process.run('losetup -d %s' % free_loop_dev, shell=True)
             os_directory.cleanup()
