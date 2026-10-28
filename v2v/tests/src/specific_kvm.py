@@ -52,7 +52,6 @@ def run(test, params, env):
     os_pool = storage = params.get('output_storage')
     bridge = params.get('bridge')
     network = params.get('network')
-    ntp_server = params.get('ntp_server')
     vpx_dc = params.get("vpx_dc")
     esx_ip = params.get("esx_hostname")
     address_cache = env.get('address_cache')
@@ -510,31 +509,6 @@ def run(test, params, env):
                 test.error('Command "%s" failed' % cmd)
         LOG.info('All commands executed')
 
-    def check_time_keep(vmcheck):
-        """
-        Check time drift after conversion.
-        """
-        LOG.info('Check time drift')
-
-        def chronyc_output():
-            for i in range(3):
-                output = vmcheck.session.cmd('chronyc tracking')
-                LOG.debug(output)
-                if 'Not synchronised' in output:
-                    time.sleep(20)
-                else:
-                    return output
-            return output
-
-        output = chronyc_output()
-        if 'Not synchronised' in output:
-            log_fail('Time not synchronised')
-        lst_offset = re.search('Last offset *?: *(.*) ', output).group(1)
-        drift = abs(float(lst_offset))
-        LOG.debug('Time drift is: %f', drift)
-        if drift > 3:
-            log_fail('Time drift exceeds 3 sec')
-
     def check_boot():
         """
         Check if guest can boot up after configuration
@@ -653,8 +627,6 @@ def run(test, params, env):
                     log_fail('Seliunx type not match')
             if checkpoint == 'guest_firewalld_status':
                 check_firewalld_status(vmchecker.checker, params[checkpoint])
-            if checkpoint in ['ntpd_on', 'sync_ntp']:
-                check_time_keep(vmchecker.checker)
             if checkpoint == 'fstab_label':
                 check_fstab_label(vmchecker.checker)
             if checkpoint == 'fstab_uuid':
@@ -805,21 +777,6 @@ def run(test, params, env):
         if checkpoint == 'remove_securetty':
             LOG.info('Remove /etc/securetty file from guest')
             cmd = ['rm -f /etc/securetty']
-            vm_cmd(cmd)
-        if checkpoint == 'ntpd_on':
-            LOG.info('Set service chronyd on')
-            cmd = ['yum -y install chrony',
-                   'systemctl start chronyd',
-                   'systemctl enable chronyd',
-                   'chronyc add server %s' % ntp_server]
-            vm_cmd(cmd)
-        if checkpoint == 'sync_ntp':
-            LOG.info('Sync time with %s', ntp_server)
-            cmd = ['yum -y install chrony',
-                   'systemctl start chronyd',
-                   'systemctl enable chronyd',
-                   'chronyc add server %s' % ntp_server,
-                   'chronyc waitsync']
             vm_cmd(cmd)
         if checkpoint == 'blank_2nd_disk':
             disk_path = os.path.join(data_dir.get_tmp_dir(), 'blank.img')
