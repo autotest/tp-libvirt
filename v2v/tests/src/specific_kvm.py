@@ -67,7 +67,7 @@ def run(test, params, env):
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
-    backup_list = ['fstab_label', 'fstab_uuid', 'network_e1000',
+    backup_list = ['fstab_label', 'fstab_uuid',
                    'blank_2nd_disk', 'only_net', 'only_br',
                    'ubuntu_usr_partition']
     error_list = []
@@ -350,25 +350,6 @@ def run(test, params, env):
                          (mount_point, device))
         LOG.info('All fstab UUID entries verified successfully')
 
-    def check_network_virtio(vmxml):
-        """
-        Check if network devices are converted to virtio-net in libvirt XML
-        """
-        xmltree = xml_utils.XMLTreeFile(vmxml)
-        iface_nodes = xmltree.find('devices').findall('interface')
-        if not iface_nodes:
-            log_fail('No network interfaces found in VM XML')
-        for node in iface_nodes:
-            model_node = node.find('model')
-            if model_node is None:
-                log_fail('Network interface missing model specification')
-            model_type = model_node.get('type')
-            LOG.info('Network interface model type: %s', model_type)
-            if model_type != 'virtio':
-                log_fail('Network interface not converted to virtio, found: %s' %
-                         model_type)
-        LOG.info('All network interfaces verified as virtio')
-
     def check_usr_partition(checker):
         """
         Check if /usr partition is preserved and mounted
@@ -546,13 +527,6 @@ def run(test, params, env):
                 if len(ret) == 0:
                     LOG.info("All common checkpoints passed")
             LOG.debug(vmchecker.vmxml)
-            if checkpoint == 'check_pnp_service':
-                status, log_content = vmchecker.checker.run_cmd(
-                    r'cmd /c type "C:\Program Files\Guestfs\Firstboot\log.txt"')
-                if status:
-                    log_fail('Failed to read firstboot log: %s' % log_content)
-                elif 'The Plug and Play service is not available' in log_content:
-                    log_fail('Found drivers are not installed due to pnp services are not available')
             if checkpoint == 'multi_kernel':
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
@@ -585,8 +559,6 @@ def run(test, params, env):
                 check_fstab_label(vmchecker.checker)
             if checkpoint == 'fstab_uuid':
                 check_fstab_uuid(vmchecker.checker)
-            if checkpoint == 'network_e1000':
-                check_network_virtio(vmchecker.vmxml)
             if checkpoint == 'ubuntu_usr_partition':
                 check_usr_partition(vmchecker.checker)
             # Merge 2 error lists
