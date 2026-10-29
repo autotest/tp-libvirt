@@ -77,7 +77,6 @@ def run(test, params, env):
     os_pool = os_storage = params.get('output_storage', 'default')
     os_version = params.get('os_version')
     os_type = params.get('os_type')
-    virtio_win_path = params.get('virtio_win_path')
     # qemu-guest-agent path in virtio-win or rhv-guest-tools-iso
     qa_path = params.get('qa_path')
     # download url of qemu-guest-agent
@@ -695,18 +694,6 @@ def run(test, params, env):
                     LOG.debug('Write %s to /etc/hosts', fqdn_record)
                     fd.write(fqdn_record)
 
-        if 'virtio_iso_blk' in checkpoint:
-            if not os.path.exists(virtio_win_path):
-                test.fail('%s does not exist' % virtio_win_path)
-
-            # Find a free loop device
-            free_loop_dev = process.run(
-                "losetup --find", shell=True).stdout_text.strip()
-            # Setup a loop device
-            cmd = 'losetup %s %s' % (free_loop_dev, virtio_win_path)
-            process.run(cmd, shell=True)
-            os.environ['VIRTIO_WIN'] = free_loop_dev
-
         if 'block_dev' in checkpoint:
             os_directory = params_get(params, 'os_directory')
             block_count = params_get(params, 'block_count')
@@ -758,10 +745,6 @@ def run(test, params, env):
             if cp.endswith('custom'):
                 LOG.info('Set env %s=%s' % (virtio_win_env, dest_dir))
                 os.environ[virtio_win_env] = dest_dir
-            if cp.endswith('iso_mount'):
-                LOG.info('Mount iso to /opt')
-                process.run('mount %s /opt' % iso_path)
-                os.environ[virtio_win_env] = '/opt'
             if cp.endswith('iso_file'):
                 LOG.info('Set env %s=%s' % (virtio_win_env, iso_path))
                 os.environ[virtio_win_env] = iso_path
@@ -925,14 +908,9 @@ dnf -y install libvirt
             update_crypto_policy()
         if checkpoint[0].startswith('virtio_win'):
             utils_package.package_install(['virtio-win'])
-        if 'virtio_win_iso_mount' in checkpoint:
-            process.run('umount /opt', ignore_status=True)
         if 'block_dev' in checkpoint and hasattr(os_directory, 'name'):
             process.run('losetup -d %s' % free_loop_dev, shell=True)
             os_directory.cleanup()
-        if 'virtio_iso_blk' in checkpoint:
-            process.run('losetup -d %s' % free_loop_dev, shell=True)
-            os.environ.pop('VIRTIO_WIN')
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'libvirt':

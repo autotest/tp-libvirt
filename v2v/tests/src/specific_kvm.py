@@ -24,7 +24,6 @@ from provider.utils_v2v import params_get
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_local_output
 from provider.v2v_vmcheck_helper import detect_source_efi
-from provider.v2v_vmcheck_helper import V2V_ADAPTE_SPICE_REMOVAL_VER
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -52,7 +51,6 @@ def run(test, params, env):
     os_pool = storage = params.get('output_storage')
     bridge = params.get('bridge')
     network = params.get('network')
-    ntp_server = params.get('ntp_server')
     vpx_dc = params.get("vpx_dc")
     esx_ip = params.get("esx_hostname")
     address_cache = env.get('address_cache')
@@ -71,9 +69,7 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
     backup_list = ['fstab_label', 'fstab_uuid', 'network_e1000',
-                   'spice', 'spice_encrypt', 'spice_qxl',
-                   'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
-                   'listen_none', 'listen_socket', 'only_net', 'only_br',
+                   'blank_2nd_disk', 'only_net', 'only_br',
                    'ubuntu_usr_partition']
     error_list = []
 
@@ -510,31 +506,6 @@ def run(test, params, env):
                 test.error('Command "%s" failed' % cmd)
         LOG.info('All commands executed')
 
-    def check_time_keep(vmcheck):
-        """
-        Check time drift after conversion.
-        """
-        LOG.info('Check time drift')
-
-        def chronyc_output():
-            for i in range(3):
-                output = vmcheck.session.cmd('chronyc tracking')
-                LOG.debug(output)
-                if 'Not synchronised' in output:
-                    time.sleep(20)
-                else:
-                    return output
-            return output
-
-        output = chronyc_output()
-        if 'Not synchronised' in output:
-            log_fail('Time not synchronised')
-        lst_offset = re.search('Last offset *?: *(.*) ', output).group(1)
-        drift = abs(float(lst_offset))
-        LOG.debug('Time drift is: %f', drift)
-        if drift > 3:
-            log_fail('Time drift exceeds 3 sec')
-
     def check_boot():
         """
         Check if guest can boot up after configuration
@@ -612,27 +583,6 @@ def run(test, params, env):
             if checkpoint == 'multi_netcards':
                 check_multi_netcards(params['mac_address'],
                                      vmchecker.vmxml)
-            if checkpoint.startswith(('spice', 'vnc')):
-                if checkpoint == 'spice_encrypt':
-                    vmchecker.check_graphics(params[checkpoint])
-                else:
-                    graph_type = checkpoint.split('_')[0]
-                    vmchecker.check_graphics({'type': graph_type})
-                    video_type = vmchecker.xmltree.find(
-                        './devices/video/model').get('type')
-                    if utils_v2v.multiple_versions_compare(V2V_ADAPTE_SPICE_REMOVAL_VER):
-                        expect_video_type = 'vga'
-                    else:
-                        expect_video_type = 'qxl'
-
-                    if video_type.lower() != expect_video_type:
-                        log_fail('Video expect %s, actual %s' % (expect_video_type, video_type))
-            if checkpoint.startswith('listen'):
-                listen_type = vmchecker.xmltree.find(
-                    './devices/graphics/listen').get('type')
-                LOG.info('listen type is: %s', listen_type)
-                if listen_type != checkpoint.split('_')[-1]:
-                    log_fail('listen type changed after conversion')
             if checkpoint.startswith('selinux'):
                 status = vmchecker.checker.session.cmd(
                     'getenforce').strip().lower()
@@ -653,8 +603,6 @@ def run(test, params, env):
                     log_fail('Seliunx type not match')
             if checkpoint == 'guest_firewalld_status':
                 check_firewalld_status(vmchecker.checker, params[checkpoint])
-            if checkpoint in ['ntpd_on', 'sync_ntp']:
-                check_time_keep(vmchecker.checker)
             if checkpoint == 'fstab_label':
                 check_fstab_label(vmchecker.checker)
             if checkpoint == 'fstab_uuid':
@@ -756,37 +704,6 @@ def run(test, params, env):
             if len(params['mac_address']) < 2:
                 test.error('Not enough network interface')
             LOG.debug('MAC address: %s' % params['mac_address'])
-        if checkpoint.startswith(('spice', 'vnc')):
-            if checkpoint == 'spice_encrypt':
-                spice_passwd = {'type': 'spice',
-                                'passwd': params.get('spice_passwd', 'redhat')}
-                vm_xml.VMXML.set_graphics_attr(vm_name, spice_passwd)
-                params[checkpoint] = {'type': 'spice',
-                                      'passwdValidTo': '1970-01-01T00:00:01'}
-            else:
-                graphic_video = checkpoint.split('_')
-                graphic = graphic_video[0]
-                LOG.info('Set graphic type to %s', graphic)
-                vm_xml.VMXML.set_graphics_attr(vm_name, {'type': graphic})
-                if len(graphic_video) > 1:
-                    video_type = graphic_video[1]
-                    LOG.info('Set video type to %s', video_type)
-                    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                    video = vmxml.xmltreefile.find(
-                        'devices').find('video').find('model')
-                    video.set('type', video_type)
-                    # cirrus doesn't support 'ram' and 'vgamem' attribute
-                    if video_type == 'cirrus':
-                        [video.attrib.pop(attr_i) for attr_i in [
-                            'ram', 'vgamem'] if attr_i in video.attrib]
-                    vmxml.sync()
-        if checkpoint.startswith('listen'):
-            listen_type = checkpoint.split('_')[-1]
-            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            listen = vmxml.xmltreefile.find(
-                'devices').find('graphics').find('listen')
-            listen.set('type', listen_type)
-            vmxml.sync()
         if checkpoint == 'host_selinux_on':
             params['selinux_stat'] = utils_selinux.get_status()
             utils_selinux.set_status('enforcing')
@@ -805,21 +722,6 @@ def run(test, params, env):
         if checkpoint == 'remove_securetty':
             LOG.info('Remove /etc/securetty file from guest')
             cmd = ['rm -f /etc/securetty']
-            vm_cmd(cmd)
-        if checkpoint == 'ntpd_on':
-            LOG.info('Set service chronyd on')
-            cmd = ['yum -y install chrony',
-                   'systemctl start chronyd',
-                   'systemctl enable chronyd',
-                   'chronyc add server %s' % ntp_server]
-            vm_cmd(cmd)
-        if checkpoint == 'sync_ntp':
-            LOG.info('Sync time with %s', ntp_server)
-            cmd = ['yum -y install chrony',
-                   'systemctl start chronyd',
-                   'systemctl enable chronyd',
-                   'chronyc add server %s' % ntp_server,
-                   'chronyc waitsync']
             vm_cmd(cmd)
         if checkpoint == 'blank_2nd_disk':
             disk_path = os.path.join(data_dir.get_tmp_dir(), 'blank.img')
