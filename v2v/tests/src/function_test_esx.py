@@ -38,7 +38,6 @@ def run(test, params, env):
     version_required = params.get("version_required")
     version_required_error = params.get("version_required_error")
     utils_v2v.prime_rpm_cache(['virt-v2v', 'qemu-kvm'])
-    unprivileged_user = params_get(params, 'unprivileged_user')
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")
     esxi_host = esx_ip = params.get('esx_hostname')
@@ -860,8 +859,6 @@ dnf -y install libvirt
             LOG.info('Unset http_proxy&https_proxy')
             os.environ.pop('http_proxy')
             os.environ.pop('https_proxy')
-        if unprivileged_user:
-            process.system("userdel -fr %s" % unprivileged_user)
         if params.get('os_directory') and os.path.isdir(params['os_directory']):
             shutil.rmtree(params['os_directory'], ignore_errors=True)
         # Cleanup constant files
