@@ -596,19 +596,20 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
-            source_pwd = vpx_passwd if src_uri_type != 'esx' else esxi_password
-            source_passwd_file = os.path.join(
-                data_dir.get_tmp_dir(), "source_passwd")
-            LOG.info("Building ESX no password interactive verification.")
-            pwd_f = open(source_passwd_file, 'w')
-            pwd_f.write(source_pwd)
-            pwd_f.close()
-            output_option += " -ip %s" % source_passwd_file
-            # rhel8 slow stream doesn't support option 'ip' temporarily
-            # so use option 'password-file' instead.
-            if not utils_v2v.v2v_supported_option("-ip <filename>"):
-                output_option = output_option.replace(
-                    '-ip', '--password-file', 1)
+            if params.get('cmd_has_ip', 'yes') == 'yes':
+                source_pwd = vpx_passwd if src_uri_type != 'esx' else esxi_password
+                source_passwd_file = os.path.join(
+                    data_dir.get_tmp_dir(), "source_passwd")
+                LOG.info("Building ESX no password interactive verification.")
+                pwd_f = open(source_passwd_file, 'w')
+                pwd_f.write(source_pwd)
+                pwd_f.close()
+                output_option += " -ip %s" % source_passwd_file
+                # rhel8 slow stream doesn't support option 'ip' temporarily
+                # so use option 'password-file' instead.
+                if not utils_v2v.v2v_supported_option("-ip <filename>"):
+                    output_option = output_option.replace(
+                        '-ip', '--password-file', 1)
             # For VDDK
             if input_transport == 'vddk':
                 if vddk_thumbprint is None:
