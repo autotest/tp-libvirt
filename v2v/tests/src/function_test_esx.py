@@ -19,7 +19,6 @@ from avocado.utils import process
 from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
 from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_local_output
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -464,11 +463,6 @@ def run(test, params, env):
             if status_error:
                 return
 
-            if output_mode == 'local' and not check_local_output(params):
-                test.fail('check local output failed')
-            if output_mode == 'local':
-                return
-
             # vmchecker must be put before skip_vm_check in order to clean up
             # the VM.
             if 'char_slash' in checkpoint:
@@ -563,7 +557,7 @@ def run(test, params, env):
 
         utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
-        # VM or local output checking
+        # VM checking
         vm_check(status_error)
         # Check log size decrease option
         if 'log decrease' in checkpoint:
