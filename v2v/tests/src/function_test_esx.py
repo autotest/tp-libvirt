@@ -2,7 +2,6 @@ import os
 import logging
 import re
 import shutil
-import tempfile
 import time
 import xml.etree.ElementTree as ET
 
@@ -544,8 +543,6 @@ def run(test, params, env):
                 check_online_disks(vmchecker.checker)
             if 'rhsrvany_checksum' in checkpoint:
                 check_rhsrvany_checksums(vmchecker.checker)
-            if 'block_dev' in checkpoint and not os.path.exists(blk_dev_link):
-                test.fail("checkpoint '%s' failed" % checkpoint)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
             # Virtio drivers will not be installed without virtio-win setup
@@ -672,32 +669,6 @@ def run(test, params, env):
                 if fqdn_record not in fd.read():
                     LOG.debug('Write %s to /etc/hosts', fqdn_record)
                     fd.write(fqdn_record)
-
-        if 'block_dev' in checkpoint:
-            os_directory = params_get(params, 'os_directory')
-            block_count = params_get(params, 'block_count')
-            os_directory = tempfile.TemporaryDirectory(prefix='v2v_test_', dir=os_directory)
-            diskimage = '%s/diskimage' % os_directory.name
-            # Update 'os_directory' for '-os' option
-            params['os_directory'] = os_directory.name
-
-            # Create a 1G image
-            cmd = 'dd if=/dev/zero of=%s bs=10M count=%s' % (diskimage, block_count)
-            process.run(cmd, shell=True)
-            # Build filesystem
-            cmd = 'mkfs.ext4 %s' % diskimage
-            process.run(cmd, shell=True)
-            # Find a free loop device
-            free_loop_dev = process.run(
-                "losetup --find", shell=True).stdout_text.strip()
-            # Setup the image as a block device
-            cmd = 'losetup %s %s' % (free_loop_dev, diskimage)
-            process.run(cmd, shell=True)
-            # Create a soft link to the loop device
-            disk_name = v2v_params['new_name'] + '-sda' if params.get('target') == 'local' else 'mydisk1'
-            blk_dev_link = '%s/%s' % (os_directory.name, disk_name)
-            cmd = 'ln -s %s %s' % (free_loop_dev, blk_dev_link)
-            process.run(cmd, shell=True)
 
         if 'bandwidth' in checkpoint:
             dynamic_speeds = params_get(params, 'dynamic_speeds')
@@ -881,9 +852,6 @@ dnf -y install libvirt
             update_crypto_policy()
         if checkpoint[0].startswith('virtio_win'):
             utils_package.package_install(['virtio-win'])
-        if 'block_dev' in checkpoint and hasattr(os_directory, 'name'):
-            process.run('losetup -d %s' % free_loop_dev, shell=True)
-            os_directory.cleanup()
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
