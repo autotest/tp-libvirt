@@ -11,13 +11,13 @@ from avocado.utils.astring import to_text
 
 from virttest import data_dir
 from virttest import utils_misc
-from provider import utils_v2v
+from provider.v2v import utils_v2v
 from virttest import virsh
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
-from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v.v2v_vmcheck_helper import VMChecker
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 

@@ -9,16 +9,16 @@ import xml.etree.ElementTree as ET
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_package
-from provider import utils_v2v
+from provider.v2v import utils_v2v
 from virttest import virsh
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
-from provider.utils_v2v import params_get
+from provider.v2v.utils_v2v import params_get
 from virttest import ssh_key
 from avocado.utils import process
 from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
-from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v.v2v_vmcheck_helper import VMChecker
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 

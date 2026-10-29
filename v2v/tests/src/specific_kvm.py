@@ -9,7 +9,7 @@ from avocado.utils import service
 from avocado.utils import process
 
 from virttest import virsh
-from provider import utils_v2v
+from provider.v2v import utils_v2v
 from virttest import utils_misc
 from virttest import libvirt_vm
 from virttest import data_dir
@@ -18,11 +18,11 @@ from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
-from provider.utils_v2v import params_get
+from provider.v2v.utils_v2v import params_get
 
-from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_local_output
-from provider.v2v_vmcheck_helper import detect_source_efi
+from provider.v2v.v2v_vmcheck_helper import VMChecker
+from provider.v2v.v2v_vmcheck_helper import check_local_output
+from provider.v2v.v2v_vmcheck_helper import detect_source_efi
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
