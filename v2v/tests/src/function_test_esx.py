@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import shutil
+import shlex
 import time
 import xml.etree.ElementTree as ET
 
@@ -712,8 +713,12 @@ def run(test, params, env):
             v2v_params['v2v_opts'] += ' ' + keys_options
 
         if 'cve_2022_2211' in checkpoint:
-            luks_keys = params_get(params, 'luks_keys', '').split(':')[-1]
-            v2v_params['v2v_opts'] += ' ' + "$(seq -f '--key /dev/sda%%g:key:%s' 200)" % luks_keys
+            # Exercise key-array sizing while retaining the actual mapper key.
+            luks_key = params_get(params, 'luks_keys', '').split(';')[0].split(':', 2)[2]
+            extra_keys = ' '.join(
+                '--key %s' % shlex.quote('/dev/sda%d:key:%s' % (i, luks_key))
+                for i in range(1, 201))
+            v2v_params['v2v_opts'] += ' ' + extra_keys
 
         if 'virt_customize_firstboot_and_upload_option' in checkpoint:
             line = r'powershell.exe -ExecutionPolicy ByPass -NoProfile -file "C:\network-configure.ps1"'
