@@ -1,8 +1,8 @@
 import nbd
 
 from avocado.utils import process
-from provider.utils_v2v import multiple_versions_compare
-from provider.utils_v2v import prime_rpm_cache
+from provider.v2v.utils_v2v import multiple_versions_compare
+from provider.v2v.utils_v2v import prime_rpm_cache
 
 
 def run(test, params, env):

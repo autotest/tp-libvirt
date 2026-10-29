@@ -8,10 +8,10 @@ from avocado.utils import process
 from virttest import data_dir
 from virttest import utils_misc
 from virttest.utils_conn import build_server_key, build_CA
-from provider.utils_v2v import multiple_versions_compare
-from provider.utils_v2v import params_get
-from provider.utils_v2v import prime_rpm_cache
-from provider import utils_v2v
+from provider.v2v.utils_v2v import multiple_versions_compare
+from provider.v2v.utils_v2v import params_get
+from provider.v2v.utils_v2v import prime_rpm_cache
+from provider.v2v import utils_v2v
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 

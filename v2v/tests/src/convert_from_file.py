@@ -10,16 +10,16 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_misc
-from provider import utils_v2v
+from provider.v2v import utils_v2v
 from virttest import data_dir
 from virttest import ppm_utils
 
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt
-from provider.utils_v2v import params_get
+from provider.v2v.utils_v2v import params_get
 
-from provider.v2v_vmcheck_helper import VMChecker
-from provider.v2v_vmcheck_helper import check_local_output
+from provider.v2v.v2v_vmcheck_helper import VMChecker
+from provider.v2v.v2v_vmcheck_helper import check_local_output
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
