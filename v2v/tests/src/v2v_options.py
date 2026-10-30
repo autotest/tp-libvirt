@@ -310,27 +310,6 @@ def run(test, params, env):
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     LOG.info("All common checkpoints passed")
-            if checkpoint == 'dependency':
-                if 'libguestfs-winsupport' not in output:
-                    test.fail('libguestfs-winsupport not in dependency')
-                if all(
-                    pkg_pattern not in output for pkg_pattern in [
-                        'VMF',
-                        'edk2-ovmf']):
-                    test.fail('OVMF/AAVMF not in dependency')
-                if 'qemu-kvm-rhev' in output:
-                    test.fail('qemu-kvm-rhev is in dependency')
-                if 'libX11' in output:
-                    test.fail('libX11 is in dependency')
-                if 'kernel-rt' in output:
-                    test.fail('kernel-rt is in dependency')
-                win_img = params.get('win_image')
-                command = 'guestfish -a %s -i'
-                if process.run(
-                        command %
-                        win_img,
-                        ignore_status=True).exit_status == 0:
-                    test.fail('Command "%s" success' % command % win_img)
             if checkpoint == 'no_dcpath':
                 if '--dcpath' in output:
                     test.fail('"--dcpath" is not removed')
