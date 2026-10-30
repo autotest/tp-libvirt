@@ -885,6 +885,11 @@ class VMChecker(object):
 
         LOG.info("Firstboot log.txt:\n%s", log_content)
 
+        # Keep this diagnostic non-fatal until its impact is understood.
+        if 'The Plug and Play service is not available' in log_content:
+            LOG.warning(
+                "Firstboot log.txt reports: The Plug and Play service is not available")
+
         scripts_dir = r'"C:\Program Files\Guestfs\Firstboot\scripts"'
         try:
             status, output = self.checker.run_cmd('dir /b %s' % scripts_dir)
