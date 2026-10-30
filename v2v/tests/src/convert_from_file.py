@@ -1,6 +1,5 @@
 import glob
 import os
-import pwd
 import logging
 import shutil
 import tempfile
@@ -37,7 +36,6 @@ def run(test, params, env):
     # Guest name might be changed, we need a new variant to save the original
     # name
     vm_name = params['original_vm_name'] = params.get('main_vm', 'EXAMPLE')
-    unprivileged_user = params.get('unprivileged_user')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     target = params.get('target')
     input_mode = params.get('input_mode')
@@ -155,27 +153,6 @@ def run(test, params, env):
     try:
         if enable_legacy_policy:
             update_crypto_policy("LEGACY")
-        if checkpoint == 'regular_user_sudo':
-            regular_sudo_config = '/etc/sudoers.d/v2v_test'
-            with open(regular_sudo_config, 'w') as fd:
-                fd.write('%s ALL=(ALL)  NOPASSWD: ALL' % unprivileged_user)
-
-            # create user
-            try:
-                pwd.getpwnam(unprivileged_user)
-            except KeyError:
-                process.system("useradd %s" % unprivileged_user)
-
-            # generate ssh-key
-            rsa_private_key_path = '/home/%s/.ssh/id_rsa' % unprivileged_user
-            rsa_public_key_path = '/home/%s/.ssh/id_rsa.pub' % unprivileged_user
-            process.system(
-                'su - %s -c \'ssh-keygen -t rsa -q -N "" -f %s\'' %
-                (unprivileged_user, rsa_private_key_path))
-
-            with open(rsa_public_key_path) as fd:
-                pub_key = fd.read()
-
         v2v_params = {
             'main_vm': vm_name, 'target': target, 'v2v_opts': v2v_opts,
             'os_storage': output_storage, 'network': network, 'bridge': bridge,
@@ -197,8 +174,6 @@ def run(test, params, env):
                  'password': vpx_password if src_uri_type != 'esx' else esxi_password,
                  'hostname': vpx_hostname,
                  'skip_virsh_pre_conn': skip_virsh_pre_conn})
-            if checkpoint == 'regular_user_sudo':
-                v2v_params.update({'pub_key': pub_key})
             if checkpoint == 'cpu_topology':
                 mount_vmx_nfs_src = utils_v2v.v2v_mount(vmx_nfs_src, 'vmx_nfs_src')
                 vmxfile = glob.glob(os.path.join(mount_vmx_nfs_src, vm_name, '*.vmx'))[0]
@@ -333,11 +308,6 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
-        if checkpoint == 'regular_user_sudo' and os.path.exists(
-                regular_sudo_config):
-            os.remove(regular_sudo_config)
-        if unprivileged_user:
-            process.system("userdel -fr %s" % unprivileged_user)
         if input_mode == 'vmx' and input_transport == 'ssh':
             process.run("killall ssh-agent", ignore_status=True)
         if enable_legacy_policy:

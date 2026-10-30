@@ -3,9 +3,7 @@ Test all options of command: virt-v2v
 """
 import os
 import re
-import pwd
 import logging
-import shutil
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -41,7 +39,6 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
     input_mode = params.get("input_mode")
-    input_file = params.get("input_file")
     v2v_options = params.get("v2v_options", "")
     hypervisor = params.get("hypervisor", "kvm")
     remote_host = params.get("remote_host", "EXAMPLE")
@@ -60,71 +57,17 @@ def run(test, params, env):
     output_mode = params.get("output_mode")
     output_storage = params.get("output_storage", "default")
     disk_img = params.get("input_disk_image", "")
-    no_root = 'yes' == params.get('no_root', 'no')
-    v2v_user = params.get("unprivileged_user", "")
     v2v_timeout = int(params.get("v2v_timeout", 1200))
     status_error = "yes" == params.get("status_error", "no")
-    su_cmd = "su - %s -c " % v2v_user
-    output_uri = params.get("oc_uri", "")
     pool_name = params.get("pool_name", "v2v_test")
     pool_type = params.get("pool_type", "dir")
     pool_target = params.get("pool_target", "v2v_pool")
     emulated_img = params.get("emulated_image_path", "v2v-emulated-img")
     pvt = utlv.PoolVolumeTest(test, params)
-    new_v2v_user = False
     address_cache = env.get('address_cache')
     params['vmcheck_flag'] = False
     checkpoint = params.get('checkpoint', '')
     error_flag = 'strict'
-
-    def create_pool(
-            user_pool=False,
-            pool_name=pool_name,
-            pool_target=pool_target):
-        """
-        Create libvirt pool as the output storage
-        """
-        if output_uri == "qemu:///session" or user_pool:
-            target_path = os.path.join("/home", v2v_user, pool_target)
-            cmd = su_cmd + "'mkdir -p %s'" % target_path
-            process.system(cmd, verbose=True)
-            # Sometimes pool_creat_as returns success, but the pool can
-            # not be found in user session.
-            virsh.pool_create_as(
-                pool_name,
-                'dir',
-                target_path,
-                unprivileged_user=v2v_user,
-                debug=True)
-
-            res = virsh.pool_info(
-                pool_name,
-                unprivileged_user=v2v_user,
-                debug=True)
-            if res.exit_status != 0:
-                return False
-        else:
-            pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
-
-        return True
-
-    def cleanup_pool(
-            user_pool=False,
-            pool_name=pool_name,
-            pool_target=pool_target):
-        """
-        Clean up libvirt pool
-        """
-        if output_uri == "qemu:///session" or user_pool:
-            virsh.pool_destroy(
-                pool_name,
-                unprivileged_user=v2v_user,
-                debug=True)
-            target_path = os.path.join("/home", v2v_user, pool_target)
-            cmd = su_cmd + "'rm -rf %s'" % target_path
-            process.system(cmd, verbose=True)
-        else:
-            pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
 
     def get_img_path():
         """
@@ -346,7 +289,7 @@ def run(test, params, env):
                 if not utils_misc.wait_for(
                         check_alloc, timeout=600, step=10.0):
                     test.fail('Allocation check failed.')
-            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and not no_root:
+            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd:
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path()
                 check_image(img_path, "format", expected_format)
@@ -359,8 +302,7 @@ def run(test, params, env):
                 expected_uri = re.findall(r"-oc\s(\S+)", cmd)[0]
                 check_connection(output, expected_uri)
             if output_mode == "libvirt":
-                if "qemu:///session" not in v2v_options and not no_root:
-                    virsh.start(vm_name, debug=True, ignore_status=False)
+                virsh.start(vm_name, debug=True, ignore_status=False)
             if checkpoint == 'vmx':
                 vmchecker = VMChecker(test, params, env)
                 params['vmchecker'] = vmchecker
@@ -450,22 +392,12 @@ def run(test, params, env):
         check_man_page(params.get('in_man'), params.get('not_in_man'))
 
     backup_xml = None
-    mount_nfs_ova_source = None
     mount_nfs_kvm_images = None
     mount_nfs_vmx = None
     try:
         if version_required and not utils_v2v.multiple_versions_compare(
                 version_required):
             test.cancel("Testing requires version: %s" % version_required)
-
-        if not input_file and params.get('nfs_ova_source') and params.get('ova_file'):
-            mount_nfs_ova_source = utils_v2v.v2v_mount(
-                params.get('nfs_ova_source'), 'nfs_ova_source')
-            input_file = os.path.join(mount_nfs_ova_source, params.get('ova_file'))
-            if not os.path.exists(input_file):
-                test.error('OVA not found: %s\nAvailable: %s' %
-                           (input_file, os.listdir(mount_nfs_ova_source)))
-            LOG.info('OVA input_file: %s', input_file)
 
         nfs_kvm_images = params.get('nfs_kvm_images')
         if nfs_kvm_images:
@@ -521,12 +453,6 @@ def run(test, params, env):
                 vpx_dc = None
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
-            if checkpoint == 'with_ic':
-                ic_uri = 'qemu:///session'
-                input_option = "-i ova %s -ic %s -of qcow2" % (
-                    input_file, ic_uri)
-            if checkpoint == 'without_ic':
-                input_option = "-i ova %s -of raw" % input_file
             # Build network&bridge option to avoid network error
             if checkpoint not in ['virt_v2v_open', 'virt_v2v_inspector', 'detect_gpo_av']:
                 v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
@@ -556,8 +482,6 @@ def run(test, params, env):
             output_option = "-o %s" % output_mode
             if output_mode != 'null':
                 output_option += " -os %s" % output_storage
-            if checkpoint in ['with_ic', 'without_ic']:
-                output_option = output_option.replace(output_storage, 'src_pool')
         output_format = params.get("output_format")
         if output_format and output_format != input_format:
             output_option += " -of %s" % output_format
@@ -573,27 +497,6 @@ def run(test, params, env):
             v2v_options += ' -io vddk-compression=skipz'
         if checkpoint == 'vddk_compression_fastlz':
             v2v_options += ' -io vddk-compression=fastlz'
-        # Prepare for libvirt unprivileged user session connection
-        if "qemu:///session" in v2v_options or no_root:
-            try:
-                pwd.getpwnam(v2v_user)
-            except KeyError:
-                # create new user
-                process.system("useradd %s" % v2v_user, ignore_status=True)
-            new_v2v_user = True
-            user_info = pwd.getpwnam(v2v_user)
-            LOG.info("Convert to qemu:///session by user '%s'", v2v_user)
-            if input_mode == "disk":
-                # Copy image from source and change the image owner and group
-                disk_path = os.path.join(
-                    data_dir.get_tmp_dir(), os.path.basename(disk_img))
-                LOG.info('Copy image file %s to %s', disk_img, disk_path)
-                shutil.copyfile(disk_img, disk_path)
-                input_option = input_option.replace(disk_img, disk_path)
-                os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
-            elif not no_root:
-                test.cancel("Only support convert local disk")
-
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
             if params.get('cmd_has_ip', 'yes') == 'yes':
@@ -629,21 +532,10 @@ def run(test, params, env):
 
         # Create libvirt dir pool
         if output_mode == "libvirt":
-            utils_misc.wait_for(create_pool, timeout=30, step=3)
+            pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
 
         # Work around till bug fixed
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
-
-        if checkpoint in ['with_ic', 'without_ic']:
-            new_v2v_user = True
-            v2v_options += ' -on %s' % new_vm_name
-            utils_misc.wait_for(
-                lambda: create_pool(
-                    user_pool=True,
-                    pool_name='src_pool',
-                    pool_target='v2v_src_pool'),
-                timeout=30,
-                step=3)
 
         if checkpoint == 'vmx':
             nfs_vmx = params.get('nfs_vmx')
@@ -713,10 +605,6 @@ def run(test, params, env):
                 vpx_dc = None
             remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
             cmd = re.sub(r'(vpx|esx)://\S+?\?no_verify=1', remote_uri, cmd)
-        if v2v_user:
-            cmd_export_env = 'export LIBGUESTFS_BACKEND=direct'
-            cmd = "%s '%s;%s'" % (su_cmd, cmd_export_env, cmd)
-
         if params.get('cmd_free') == 'yes':
             cmd = params.get('check_command')
             # only set error to 'ignore' to avoid exception for RHEL7-84978
@@ -767,25 +655,13 @@ def run(test, params, env):
                 if os.path.exists(local_file):
                     os.remove(local_file)
         if output_mode == "libvirt":
-            if "qemu:///session" in v2v_options or no_root:
-                cmd = su_cmd + "'virsh undefine %s --nvram'" % vm_name
-                try:
-                    process.system(cmd)
-                except Exception:
-                    LOG.error('Undefine "%s" failed', vm_name)
-                if no_root:
-                    cleanup_pool(user_pool=True, pool_name='src_pool',
-                                 pool_target='v2v_src_pool')
-            else:
-                virsh.remove_domain(vm_name, options="--nvram")
-            cleanup_pool()
+            virsh.remove_domain(vm_name, options="--nvram")
+            pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
         if output_mode is None:
             pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
         vmcheck_flag = params.get("vmcheck_flag")
         if vmcheck_flag and params.get('vmchecker'):
             params['vmchecker'].cleanup()
-        if new_v2v_user:
-            process.system("userdel -fr %s" % v2v_user)
         if backup_xml:
             backup_xml.sync()
         if mount_nfs_vmx:
@@ -794,6 +670,3 @@ def run(test, params, env):
         if mount_nfs_kvm_images:
             utils_misc.umount(
                 params.get('nfs_kvm_images'), mount_nfs_kvm_images, None)
-        if mount_nfs_ova_source:
-            utils_misc.umount(
-                params.get('nfs_ova_source'), mount_nfs_ova_source, None)
