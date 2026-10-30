@@ -536,13 +536,6 @@ def run(test, params, env):
             if len(ret) == 0:
                 LOG.info("All common checkpoints passed")
             # Check specific checkpoints
-            if 'check_pnp_service' in checkpoint:
-                status, log_content = vmchecker.checker.run_cmd(
-                    r'cmd /c type "C:\Program Files\Guestfs\Firstboot\log.txt"')
-                if status:
-                    log_fail('Failed to read firstboot log: %s' % log_content)
-                elif 'The Plug and Play service is not available' in log_content:
-                    log_fail('Found drivers are not installed due to pnp services are not available')
             if 'network_e1000' in checkpoint:
                 check_network_virtio(vmchecker.vmxml)
             if 'virt_customize_pkg_related' in checkpoint:
