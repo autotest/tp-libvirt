@@ -102,6 +102,7 @@ nbdkit -rfv -U - --exportname / \
   --filter=retry vddk server=%s user=%s password=+%s vm=%s \
   file='%s' libdir=/home/vddk_libdir --run 'nbdinfo $uri' thumbprint=%s
 """ % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_thumbprint)
+            nbdkit_cmd = nbdkit_cmd.rstrip()
             LOG.info('nbdkit command:\n%s', nbdkit_cmd)
 
             if checkpoint == 'vddk_stats':
