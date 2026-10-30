@@ -246,8 +246,7 @@ def run(test, params, env):
     image_mode = utils_sys.is_image_mode()
 
     try:
-        if not base_steps.check_cpu_for_mig(params):
-            base_steps.sync_cpu_for_mig(params)
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         migration_obj.run_migration()
         verify_test()

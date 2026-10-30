@@ -104,6 +104,7 @@ def run(test, params, env):
         locals() else migration_obj.cleanup_connection
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         # Monitor event on source/target host
         virsh_session, remote_virsh_session = migration_base.monitor_event(params)
