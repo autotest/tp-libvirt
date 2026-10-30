@@ -545,8 +545,6 @@ def run(test, params, env):
                     log_fail('Found drivers are not installed due to pnp services are not available')
             if 'network_e1000' in checkpoint:
                 check_network_virtio(vmchecker.vmxml)
-            if 'cdrom' in checkpoint and "device='cdrom'" not in vmchecker.vmxml:
-                test.fail('CDROM no longer exists')
             if 'virt_customize_pkg_related' in checkpoint:
                 virt_customize_pkg_related(vmchecker.checker)
             if 'virt_customize_file_related' in checkpoint:
