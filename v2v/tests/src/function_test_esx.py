@@ -685,12 +685,6 @@ def run(test, params, env):
             LOG.info('Set http_proxy=%s, https_proxy=%s', http_proxy, https_proxy)
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
-        if 'vddk_error' in checkpoint:
-            fqdn_record = params_get(params, 'fqdn_record')
-            with open('/etc/hosts', 'r+') as fd:
-                if fqdn_record not in fd.read():
-                    LOG.debug('Write %s to /etc/hosts', fqdn_record)
-                    fd.write(fqdn_record)
 
         if 'bandwidth' in checkpoint:
             dynamic_speeds = params_get(params, 'dynamic_speeds')
