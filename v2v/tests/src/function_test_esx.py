@@ -686,12 +686,6 @@ def run(test, params, env):
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
 
-        if 'bandwidth' in checkpoint:
-            dynamic_speeds = params_get(params, 'dynamic_speeds')
-            bandwidth_file = params_get(params, 'bandwidth_file')
-            with open(bandwidth_file, 'w') as fd:
-                fd.write(dynamic_speeds)
-
         if checkpoint[0].startswith('virtio_win'):
             cp = checkpoint[0]
             src_dir = params.get('virtio_win_dir')
