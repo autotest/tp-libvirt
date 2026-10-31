@@ -883,7 +883,10 @@ class VMChecker(object):
             LOG.warning("Could not read firstboot log.txt, status=%d", status)
             return
 
-        LOG.info("Firstboot log.txt:\n%s", log_content)
+        # CI joins continuation lines, so log each line as a separate record.
+        LOG.info("Firstboot log.txt:")
+        for line in log_content.splitlines():
+            LOG.info("%s", line)
 
         # Keep this diagnostic non-fatal until its impact is understood.
         if 'The Plug and Play service is not available' in log_content:
