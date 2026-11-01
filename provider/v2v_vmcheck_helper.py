@@ -24,8 +24,6 @@ from virttest import xml_utils
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 RETRY_TIMES = 10
-FEATURE_SUPPORT = {
-    'firstboot_complete': '[virt-v2v-2.11.4-1,)'}
 
 
 def detect_source_efi(source_xml):
@@ -230,8 +228,7 @@ class VMChecker(object):
             try:
                 self.check_windows_vm()
             except ShellError:
-                if utils_v2v.multiple_versions_compare(
-                        FEATURE_SUPPORT['firstboot_complete']):
+                if utils_v2v.supports_firstboot_sentinel():
                     raise
                 LOG.debug('Windows guest may be rebooting, try again!')
                 self._reconnect_session()
@@ -744,8 +741,7 @@ class VMChecker(object):
             raise exceptions.TestError(
                 'Failed to connect to windows guest: %s' % detail)
 
-        if utils_v2v.multiple_versions_compare(
-                FEATURE_SUPPORT['firstboot_complete']):
+        if utils_v2v.supports_firstboot_sentinel():
             if not self._wait_for_firstboot_complete():
                 raise exceptions.TestFail(
                     "Firstboot did not complete within timeout")

@@ -1657,6 +1657,11 @@ def multiple_versions_compare(interval):
     return True
 
 
+def supports_firstboot_sentinel():
+    """Return whether virt-v2v creates the Windows firstboot complete marker."""
+    return multiple_versions_compare("[virt-v2v-2.11.4-1,)")
+
+
 def to_list(value):
     """
     Convert a string to list
