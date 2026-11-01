@@ -20,7 +20,6 @@ from provider import utils_v2v
 from virttest import virsh
 from virttest import utils_misc
 from virttest import xml_utils
-from virttest.libvirt_xml import vm_xml
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -241,14 +240,6 @@ class VMChecker(object):
             LOG.warn("Unsupported os type: %s", self.os_type)
         return self.errors
 
-    def get_expect_graphic_type(self):
-        """Return the expected graphics type for virt-v2v output."""
-        return 'vnc'
-
-    def get_expect_video_model(self):
-        """Return the expected video model for virt-v2v output."""
-        return 'vga'
-
     def check_metadata_libosinfo(self):
         """
         Check if metadata libosinfo attributes value in vm xml match with given param.
@@ -389,35 +380,6 @@ class VMChecker(object):
         if not re.search(libosinfo_pattern, self.vmxml):
             self.log_err('Not find metadata libosinfo')
 
-    def check_video_model(self, video_type, dev_id):
-        """
-        Check expected video module on VM
-        :param video_type: the expected video type
-        :param dev_id: the ID of the video device
-        :return: log error will be recorded if not found, else return nothing
-        """
-        # Check by 'lspci' or 'lshw' or 'hwinfo --gfxcard'
-        cmd = ["lspci", "lshw", "hwinfo --gfxcard"]
-        if self.checker.vm_general_search(
-            cmd,
-            video_type,
-            re.IGNORECASE,
-                ignore_status=True):
-            return
-        elif len(dev_id) > 0 and any([self.checker.vm_general_search(cmd, id_i, debug=False, ignore_status=True) for id_i in dev_id]):
-            return
-
-        # Check by 'journalctl'
-        if self.checker.vm_journal_search(video_type, "--since -20m"):
-            return
-
-        # Check by xorg log
-        if self.checker.vm_xorg_search(video_type):
-            return
-
-        err_msg = "Not find %s device" % video_type
-        self.log_err(err_msg)
-
     def get_device_id_by_name(self, devname):
         """
         Return device id by device name
@@ -434,16 +396,9 @@ class VMChecker(object):
             'Virtio SCSI': ['1004', '1048'],
             'Virtio RNG': ['1005', '1044'],
             'Virtio filesystem': ['1009', '1049'],
-            'Virtio GPU': ['1050'],
             'Virtio input': ['1052'],
             'Virtio socket': ['1053'],
-            'Inter-VM shared memory': ['1110'],
-            # https://pci-ids.ucw.cz/read/PC/1234/1111
-            'vga': ['1111'],
-            # QXL paravirtual graphic card
-            'qxl': ['0100'],
-            # Cirrus Logic
-            'cirrus': ['1100']}
+            'Inter-VM shared memory': ['1110']}
 
         if devname not in virtio_name_id_mapping.keys():
             LOG.debug('Unknown RedHat virtio device: %s' % devname)
@@ -551,24 +506,6 @@ class VMChecker(object):
         Checking XML info of the VM.
         """
         LOG.debug('vmxml is:\n%s' % self.vmxml)
-
-        LOG.info("Checking graphic type in VM XML")
-        expect_graphic = self.get_expect_graphic_type()
-        LOG.info("Expect type: %s", expect_graphic)
-        pattern = r"<graphics type='(\w+)'"
-        vmxml_graphic_type = re.search(pattern, self.vmxml).group(1)
-        if vmxml_graphic_type != expect_graphic:
-            err_msg = "Not find %s type graphic in VM XML" % expect_graphic
-            self.log_err(err_msg)
-
-        LOG.info("Checking video model type in VM XML")
-        expect_video = self.get_expect_video_model()
-        LOG.info("Expect driver: %s", expect_video)
-        pattern = r"<video>\s+<model type='(\w+)'"
-        vmxml_video_type = re.search(pattern, self.vmxml).group(1)
-        if vmxml_video_type != expect_video:
-            err_msg = "Not find %s type video in VM XML" % expect_video
-            self.log_err(err_msg)
 
         LOG.info("Checking boot os info in VM XML")
         chipset, bootinfo, _ = self.get_expected_boottype(self.boottype)
@@ -699,16 +636,8 @@ class VMChecker(object):
                     # V2V doesn't modify device.map file for this scenario.
                     LOG.warning(err_msg)
 
-        # Check graphic/video
+        # Check remaining VM XML properties
         self.check_vm_xml()
-        LOG.info("Checking video device inside the VM")
-        expect_video = self.get_expect_video_model()
-        # Since RHEL7, it use 'kms' instead of 'cirrus'
-        if 'rhel7' in self.os_version and expect_video == 'cirrus':
-            expect_video = 'kms'
-        self.check_video_model(
-            expect_video,
-            self.get_device_id_by_name(expect_video))
 
     def _reconnect_session(self):
         if self.checker.session:
@@ -849,16 +778,14 @@ class VMChecker(object):
             err_msg = "Can't get all enumeration drivers"
             self.log_err(err_msg)
 
-        # Check Red Hat VirtIO drivers and display adapter
-        LOG.info("Checking VirtIO drivers and display adapter")
+        # Check Red Hat VirtIO drivers
+        LOG.info("Checking VirtIO drivers")
         cpu_drivers = ['Intel Processor', 'AMD Processor']
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte",
                           "VirtIO RNG",
                           "VirtIO Serial",
                           "VirtIO Balloon"]
-        expect_adapter = 'Microsoft Basic Display Driver'
-        expect_drivers.append(expect_adapter)
         check_drivers = expect_drivers[:]
         for check_times in range(10):
             LOG.info('Check drivers for the %dth time', check_times + 1)
@@ -913,26 +840,8 @@ class VMChecker(object):
             LOG.debug('Error checking qemu-ga service: %s', e)
             self.log_err("qemu-guest-agent service check failed")
 
-        # Check graphic and video type in VM XML
+        # Check remaining VM XML properties
         self.check_vm_xml()
-
-    def check_graphics(self, param):
-        """
-        Check if graphics attributes value in vm xml match with given param.
-        """
-        LOG.info('Check graphics parameters')
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-            self.vm_name, options='--security-info',
-            virsh_instance=self.virsh_session)
-        graphic = vmxml.xmltreefile.find('devices').find('graphics')
-        status = True
-        for key in param:
-            LOG.debug('%s = %s' % (key, graphic.get(key)))
-            if graphic.get(key) != param[key]:
-                LOG.error('Attribute "%s" match failed' % key)
-                status = False
-        if not status:
-            self.log_err('Graphic parameter check failed')
 
     def check_genid(self):
         """
