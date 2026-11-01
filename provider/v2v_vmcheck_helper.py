@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import string
-import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -27,15 +26,7 @@ LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 RETRY_TIMES = 10
 FEATURE_SUPPORT = {
-    'genid': '[virt-v2v-1.40.1-1,)',
-    'libosinfo': '[virt-v2v-1.40.2-2,)',
-    'cache_none': '[virt-v2v-1.42.0-4,)',
-    'q35': '[virt-v2v-1.43.3-2,)',
-    'virtio_model': '[virt-v2v-1.45.97-4,)',
-    'virtio_skip': '[virt-v2v-2.0.0-1,)',
     'firstboot_complete': '[virt-v2v-2.11.4-1,)'}
-V2V_ADAPTE_SPICE_REMOVAL_VER = "[virt-v2v-1.45.92,)"
-V2V_VSOCK_SUPPORT_LINUX_VER = "[virt-v2v-2.0.2-1,)"
 
 
 def detect_source_efi(source_xml):
@@ -121,14 +112,9 @@ class VMChecker(object):
         self.target = params.get('target')
         self.input_mode = params.get('input_mode')
         self.output_method = params.get('output_method')
-        # The expected boottype of guest, default 0 is 'i440fx+bios'
-        # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
-        # q35+secure_uefi
-        self.boottype = int(params.get("boottype", 0))
-        # If v2v version is new enough to support q35 by default, then all
-        # latest guests will be converted to q35 by default.
-        if utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['q35']):
-            self.boottype = int(params.get("boottype", 1))
+        # Default to q35+bios; explicit values also support i440fx+bios (0),
+        # q35+uefi (2), and q35+secure_uefi (3).
+        self.boottype = int(params.get("boottype", 1))
 
         self.os_type = params.get('os_type')
         self.os_version = params.get('os_version', '')
@@ -256,102 +242,12 @@ class VMChecker(object):
         return self.errors
 
     def get_expect_graphic_type(self):
-        """
-        The graphic type in VM XML is different for different target.
-        """
-        # 'ori_graphic' only can be set when hypervisor is KVM. For Xen and
-        # Esx, it will always be 'None' and 'vnc' will be set by default.
-        graphic_type = self.params.get('ori_graphic', 'vnc')
-        if utils_v2v.multiple_versions_compare(V2V_ADAPTE_SPICE_REMOVAL_VER):
-            graphic_type = 'vnc'
-        return graphic_type
-
-    def get_virtio_win_config(self):
-        """
-        Return a value pair (virtio_win_installed, virtio_win_support_qxldod).
-        If virtio_win_installed is true, virtio-win is installed or VIRTIO_WIN
-        is set.
-        If virtio_win_support_qxldod is true, qxldod drivers are included.
-        """
-        # see bz1902635
-        virtio_win_ver = "[virtio-win-1.9.16,)"
-        virtio_win_installed = os.path.exists(
-            '/usr/share/virtio-win/virtio-win.iso')
-        # virtio-win is not installed, but VIRTIO_WIN is set
-        virtio_win_env = os.getenv('VIRTIO_WIN')
-        virtio_win_support_qxldod = False
-
-        if not virtio_win_installed:
-            if virtio_win_env:
-                # Users should assure VIRTIO_WIN is valid
-                virtio_win_installed = True
-                if os.path.isdir(virtio_win_env):
-                    virtio_win_iso_dir = virtio_win_env
-                    qxldods = glob.glob(
-                        "%s/**/qxldod.inf" %
-                        virtio_win_iso_dir, recursive=True)
-                else:
-                    with tempfile.TemporaryDirectory(prefix='v2v_helper_') as virtio_win_iso_dir:
-                        process.run(
-                            'mount %s %s' %
-                            (virtio_win_env, virtio_win_iso_dir), shell=True)
-                        qxldods = glob.glob(
-                            "%s/**/qxldod.inf" %
-                            virtio_win_iso_dir, recursive=True)
-                        process.run(
-                            'umount %s' %
-                            (virtio_win_iso_dir),
-                            shell=True)
-                LOG.debug('Found qxldods: %s', qxldods)
-                if qxldods:
-                    virtio_win_support_qxldod = True
-        else:
-            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
-                virtio_win_ver)
-
-        return virtio_win_installed, virtio_win_support_qxldod
+        """Return the expected graphics type for virt-v2v output."""
+        return 'vnc'
 
     def get_expect_video_model(self):
-        """
-        The video model in VM XML is different in different situation.
-        """
-        def _when_target_libvirt(has_qxldod):
-            # Since RHEL7.3(virt-v2v-1.32.1-1.el7), video model will change to
-            # QXL for linux VMs
-            if self.os_type == 'linux':
-                video_model = 'qxl'
-            elif self.os_version in ['win7', 'win2008r2']:
-                video_model = 'qxl'
-            # win11 and win2022 don't have qxldod driver in virtio-win, but they are unexpectedly
-            # inspected to win10 and win2016 by v2v, so the qxl driver is installed by mistake.
-            # this only affects RHEL8.
-            elif self.os_version in ['win10', 'win2016', 'win2019', 'win11', 'win2022'] and has_qxldod:
-                video_model = 'qxl'
-            else:
-                video_model = 'cirrus'
-
-            # on slow train, video is set to 'cirrus' for windows guest.
-            v2v_av_version = '[virt-v2v-1.42,)'
-            if self.os_type == 'windows' and not utils_v2v.multiple_versions_compare(
-                    v2v_av_version):
-                LOG.debug('video is changed because of slow train')
-                video_model = 'cirrus'
-
-            return video_model
-
-        # Default value
-        video_model = 'cirrus'
-        has_virtio_win, has_qxldod = self.get_virtio_win_config()
-        # Video model will change to QXL for Windows2008r2 and windows7
-        if self.target == 'libvirt':
-            video_model = _when_target_libvirt(has_qxldod)
-        if not has_virtio_win:
-            video_model = 'cirrus'
-
-        if utils_v2v.multiple_versions_compare(V2V_ADAPTE_SPICE_REMOVAL_VER):
-            video_model = 'vga'
-
-        return video_model
+        """Return the expected video model for virt-v2v output."""
+        return 'vga'
 
     def check_metadata_libosinfo(self):
         """
@@ -455,14 +351,6 @@ class VMChecker(object):
         short_id = self.params.get('expect_os_short_id')
         if not short_id:
             reason = 'short_id is not set'
-            LOG.info(
-                'Skip Checking metadata libosinfo parameters: %s' %
-                reason)
-            return
-
-        # Checking if the feature is supported
-        if not utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['libosinfo']):
-            reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['libosinfo']
             LOG.info(
                 'Skip Checking metadata libosinfo parameters: %s' %
                 reason)
@@ -701,16 +589,14 @@ class VMChecker(object):
         root = ET.fromstring(self.vmxml)
 
         LOG.info("Checking cache='none' not existing in VM XML")
-        if self.target == 'libvirt' and utils_v2v.multiple_versions_compare(
-                FEATURE_SUPPORT['cache_none']):
+        if self.target == 'libvirt':
             err_msg = "Checking cache='none' not existing failed"
             for disk in root.findall("./devices/disk/driver[@cache]"):
                 if disk.get('cache') == 'none':
                     self.log_err(err_msg)
 
         LOG.info("Checking model='virtio-transitional' not existing in VM XML")
-        if self.os_type == 'windows' and self.target == 'libvirt' and utils_v2v.multiple_versions_compare(
-                FEATURE_SUPPORT['virtio_model']):
+        if self.os_type == 'windows' and self.target == 'libvirt':
             err_msg = "Checking model='virtio-transitional' not existing failed"
             if root.findall(
                     ".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
@@ -964,14 +850,7 @@ class VMChecker(object):
             self.log_err(err_msg)
 
         # Check Red Hat VirtIO drivers and display adapter
-        if not utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['virtio_skip']):
-            reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['virtio_skip']
-            LOG.info('Skip Checking VirtIO drivers: %s' % reason)
-            return
-
         LOG.info("Checking VirtIO drivers and display adapter")
-        expect_video = self.get_expect_video_model()
-        has_virtio_win, has_qxldod = self.get_virtio_win_config()
         cpu_drivers = ['Intel Processor', 'AMD Processor']
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte",
@@ -979,20 +858,6 @@ class VMChecker(object):
                           "VirtIO Serial",
                           "VirtIO Balloon"]
         expect_adapter = 'Microsoft Basic Display Driver'
-        virtio_win_qxl_os = ['win2008r2', 'win7']
-        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
-        # bz1997446, bz2012658
-        # Those guests are incorrectly inspected to other versions, so
-        # the QXL drivers are installed unexpectedly. This only happens
-        # in RHEL8 and the issue is not going to be fixed. so add a
-        # workaround to pass the checking.
-        unexpected_qxldod_os = ['win11', 'win2022']
-        if has_virtio_win and expect_video == 'qxl':
-            if has_qxldod and self.os_version in virtio_win_qxldod_os + unexpected_qxldod_os:
-                expect_adapter = 'Red Hat QXL controller'
-            elif self.os_version in virtio_win_qxl_os:
-                expect_adapter = 'Red Hat QXL GPU'
-
         expect_drivers.append(expect_adapter)
         check_drivers = expect_drivers[:]
         for check_times in range(10):
@@ -1097,12 +962,6 @@ class VMChecker(object):
         if not has_genid:
             return
 
-        # Checking if the feature is supported
-        if not utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['genid']):
-            reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['genid']
-            LOG.info('Skip Checking genid: %s' % reason)
-            return
-
         supported_output = ['libvirt', 'local', 'qemu']
         # Skip checking if any of them is not in supported list
         if self.params.get('output_mode') not in supported_output:
@@ -1164,10 +1023,7 @@ class VMChecker(object):
         for i in vsock_skiplist:
             if re.match(i, os_version):
                 return False
-        if self.target == 'libvirt' and utils_v2v.multiple_versions_compare(
-                V2V_VSOCK_SUPPORT_LINUX_VER):
-            return True
-        return False
+        return self.target == 'libvirt'
 
 
 def check_local_output(params):
@@ -1199,7 +1055,7 @@ def check_local_output(params):
     if not os.path.exists(xml_file):
         LOG.error('Not found %s' % xml_file)
         result = False
-    elif utils_v2v.multiple_versions_compare(FEATURE_SUPPORT['cache_none']):
+    else:
         # Check 'cache_none' in xml file
         LOG.info("Checking cache='none' not exist in %s" % xml_file)
         root = ET.parse(xml_file).getroot()

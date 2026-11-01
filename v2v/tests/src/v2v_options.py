@@ -26,8 +26,6 @@ def run(test, params, env):
     """
     Test various options of virt-v2v.
     """
-    V2V_UNSUPPORT_GLANCE_VER = "[virt-v2v-1.45.2-1,)"
-
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     for v in list(params.values()):
@@ -330,8 +328,7 @@ def run(test, params, env):
                 with open(example_file) as f:
                     for line in f:
                         if line.strip() not in output_stdout.strip():
-                            if utils_v2v.multiple_versions_compare(
-                                    V2V_UNSUPPORT_GLANCE_VER) and 'glance' in line:
+                            if 'glance' in line:
                                 continue
             if checkpoint == 'compress':
                 img_path = get_img_path()
