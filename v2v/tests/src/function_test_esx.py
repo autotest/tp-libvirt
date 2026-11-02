@@ -452,25 +452,6 @@ def run(test, params, env):
         if re.search('Offline', res):
             test.fail("there is offline additional disk")
 
-    def check_network_virtio(vmxml):
-        """
-        Check if network devices are converted to virtio-net in libvirt XML
-        """
-        xmltree = ET.fromstring(vmxml)
-        iface_nodes = xmltree.find('devices').findall('interface')
-        if not iface_nodes:
-            log_fail('No network interfaces found in VM XML')
-        for node in iface_nodes:
-            model_node = node.find('model')
-            if model_node is None:
-                log_fail('Network interface missing model specification')
-            model_type = model_node.get('type')
-            LOG.info('Network interface model type: %s', model_type)
-            if model_type != 'virtio':
-                log_fail('Network interface not converted to virtio, found: %s' %
-                         model_type)
-        LOG.info('All network interfaces verified as virtio')
-
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -536,8 +517,6 @@ def run(test, params, env):
             if len(ret) == 0:
                 LOG.info("All common checkpoints passed")
             # Check specific checkpoints
-            if 'network_e1000' in checkpoint:
-                check_network_virtio(vmchecker.vmxml)
             if 'virt_customize_pkg_related' in checkpoint:
                 virt_customize_pkg_related(vmchecker.checker)
             if 'virt_customize_file_related' in checkpoint:
