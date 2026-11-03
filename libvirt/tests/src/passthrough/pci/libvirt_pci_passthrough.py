@@ -207,19 +207,83 @@ def run(test, params, env):
             # ping to server from each function
             for val in bus_info:
                 nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
-                session.cmd("ip addr flush dev %s" % nic_name)
-                session.cmd("ip addr add %s/%s dev %s"
-                            % (net_ip, netmask, nic_name))
-                session.cmd("ip link set %s up" % nic_name)
-                # Pinging using nic_name is having issue,
-                # hence replaced with IPAddress
-                s_ping, o_ping = utils_test.ping(server_ip, count=5,
-                                                 interface=net_ip, timeout=30,
-                                                 session=session)
-                logging.info(o_ping)
-                if s_ping != 0:
-                    err_msg = "Ping test fails, error info: '%s'"
-                    test.fail(err_msg % o_ping)
+                # Fallback: If get_interface_from_pci_id returns None, use uevent file
+                if nic_name == "None" or not nic_name:
+                    logging.warning("get_interface_from_pci_id returned None for %s, trying uevent method", val)
+                    try:
+                        # Get all network interfaces
+                        ifaces_output = session.cmd_output("ip -o link show | awk -F': ' '{print $2}'")
+                        interfaces = [iface.strip() for iface in ifaces_output.strip().split("\n") if iface.strip()]
+
+                        # Find interface matching PCI address using uevent file
+                        for iface in interfaces:
+                            if iface in ["lo", "sit0"]:  # Skip loopback
+                                continue
+                            # Read PCI address from uevent file
+                            pci_cmd = "cat /sys/class/net/{}/device/uevent 2>/dev/null | grep PCI_SLOT_NAME | cut -d= -f2".format(iface)
+                            status, pci_addr = session.cmd_status_output(pci_cmd)
+                            if status == 0 and pci_addr.strip():
+                                # Normalize for comparison (case-insensitive)
+                                pci_normalized = pci_addr.strip().lower()
+                                val_normalized = val.lower()
+                                if pci_normalized in val_normalized or val_normalized in pci_normalized:
+                                    nic_name = iface
+                                    logging.info("Found interface %s for PCI %s using uevent method", nic_name, val)
+                                    break
+                    except Exception as e:
+                        logging.error("Failed to find interface for PCI %s: %s", val, str(e))
+
+                if nic_name == "None" or not nic_name:
+                    test.error("Could not determine interface name for PCI device {}".format(val))
+                    continue
+
+                # Convert netmask to CIDR
+                cidr_mask = netmask_to_cidr(netmask)
+
+                # Clear console port and open a fresh serial session
+                # virsh console only allows one connection at a time on pSeries
+                logging.info("Clearing serial console before login")
+                vm.cleanup_serial_console()
+                vm.create_serial_console()
+                time.sleep(2)
+
+                serial_session = vm.wait_for_serial_login(timeout=60)
+                try:
+                    # Bring interface up
+                    logging.info("Bringing up interface %s", nic_name)
+                    serial_session.cmd("ip link set %s up" % nic_name, timeout=30)
+                    time.sleep(2)
+
+                    # Configure IP
+                    logging.info("Configuring IP %s/%s on %s", net_ip, cidr_mask, nic_name)
+                    serial_session.cmd("ip addr flush dev %s" % nic_name, timeout=30)
+                    serial_session.cmd("ip addr add %s/%s dev %s" % (net_ip, cidr_mask, nic_name), timeout=30)
+
+                    # Verify IP configuration
+                    ip_check = serial_session.cmd_output(
+                        "ip -4 addr show dev %s" % nic_name, timeout=30)
+                    if "inet %s" % net_ip not in ip_check:
+                        test.fail("Failed to configure IP %s on %s" % (net_ip, nic_name))
+                    logging.info("IP configured successfully on %s", nic_name)
+
+                    # Ping via source IP (not -I nic_name).
+                    # -I nic_name forces packets out the physical port which has no path
+                    # to virbr0. Using source IP lets kernel route via enp0s1 -> virbr0.
+                    logging.info("Pinging %s from source IP %s", server_ip, net_ip)
+                    s_ping, o_ping = utils_test.ping(
+                        server_ip,
+                        count=5,
+                        interface=str(net_ip),
+                        timeout=30,
+                        session=serial_session)
+                    logging.info(o_ping)
+                    if s_ping != 0:
+                        test.fail("Ping to %s failed, error info: '%s'" % (server_ip, o_ping))
+                    logging.info("Ping to %s successful", server_ip)
+
+                finally:
+                    serial_session.close()
+
                 # Each interface should have unique IP
                 # For ppc64 arch let's test using one ip only
                 if arch != "ppc64le":
