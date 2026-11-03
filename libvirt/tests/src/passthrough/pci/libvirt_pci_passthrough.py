@@ -81,10 +81,22 @@ def run(test, params, env):
                 libvirt.check_exit_status(result)
         else:
             logging.debug("No operation for the domain")
-        if sorted(vm.get_pci_devices()) != sorted(nic_list_before):
-            logging.debug("Adapter found after lifecycle operation")
-        else:
-            test.fail("Passthroughed adapter not found after lifecycle operation")
+        if device_type == "NIC":
+            if sorted(vm.get_pci_devices()) != sorted(nic_list_before):
+                logging.debug("Adapter found after lifecycle operation")
+            else:
+                test.fail("Passthroughed adapter not found after lifecycle operation")
+        elif device_type == "STORAGE":
+            # Disk list must still differ from the one taken before attach.
+            lifecycle_session = vm.wait_for_login()
+            try:
+                output = lifecycle_session.cmd_output(
+                    "fdisk -l|grep \"Disk identifier:\"")
+            finally:
+                lifecycle_session.close()
+            if output.splitlines() == fdisk_list_before:
+                test.fail("Passthroughed disk not found after lifecycle operation")
+            logging.debug("Disk found after lifecycle operation")
 
     # get the params from params
     vm_name = params.get("main_vm")
