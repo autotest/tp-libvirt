@@ -175,6 +175,9 @@ def run(test, params, env):
         output = session.cmd_output("fdisk -l|grep \"Disk identifier:\"")
         fdisk_list_before = output.splitlines()
 
+        # Accept both "0180:50:00.0" and "pci_0180_50_00_0" label formats.
+        if not pci_dev.startswith("pci_"):
+            pci_dev = "pci_" + pci_dev.replace(":", "_").replace(".", "_")
         pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
         pci_address = pci_xml.cap.get_address_dict()
         vmxml.add_hostdev(pci_address)
