@@ -97,6 +97,7 @@ def run(test, params, env):
     device_type = params.get("libvirt_pci_device_type", "NIC")
     vm_vfs = int(params.get("number_vfs", 2))
     number_of_reboots = int(params.get("number_of_reboots", "1"))
+    test_negative_migration = params.get("test_negative_migration", "no")
     arch = platform.machine()
     pci_dev = None
     pci_address = None
@@ -204,6 +205,12 @@ def run(test, params, env):
                     if len(set(nic_list)) != 1:
                         test.fail("Multifunction Device passthroughed but "
                                   "functions are in different iommu group")
+            if test_negative_migration == "yes":
+                # The migration negative test only needs the VM running with
+                # passthrough active; it does not verify NIC connectivity.
+                logging.info("negative_migration: skipping ping, VM is up "
+                             "with passthrough active")
+                return
             # ping to server from each function
             for val in bus_info:
                 nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
@@ -233,6 +240,75 @@ def run(test, params, env):
             if fdisk_list_after == fdisk_list_before:
                 test.fail("Didn't find the disk attached to guest.")
 
+    def test_negative_migration_with_passthrough():
+        """
+        Negative test: attempt live migration of a guest that has vfio
+        passthrough devices attached.
+
+        VFIO passthrough devices cannot be migrated because the kernel vfio
+        driver does not support dirty-page tracking.  virsh migrate must fail
+        with: "VFIO migration is not supported in kernel"
+
+        This function is called AFTER check_device_status() so the VM is
+        already running with all passthrough devices active.  It uses
+        vm.migrate() exactly as virsh_migrate.py does -- same CmdResult
+        pattern, same ignore_status=True, same stderr check.
+
+        Test flow:
+          1. VM is already running with passthrough (check_device_status done).
+          2. Read remote host IP from negative_migrate_dest_host param.
+          3. Construct dest_uri as qemu+ssh://<host>/system.
+          4. Call vm.migrate() with --live to that URI.
+          5. Assert that migrate FAILS with the expected error fragment.
+          6. VM remains on source -- no cleanup needed.
+
+        The test PASSES when migration fails with "VFIO migration is not
+        supported".
+        """
+        dest_host = params.get("migrate_dest_host",
+                               "ENTER.DEST.HOST.IP")
+        migrate_opts = params.get("negative_migrate_options",
+                                  "--live --p2p --tunnelled")
+        expected_err = params.get("negative_migrate_expected_err",
+                                  "migration is not supported in kernel")
+
+        if "ENTER" in dest_host:
+            test.cancel("negative_migration_with_passthrough: set "
+                        "negative_migrate_dest_host to the remote host IP "
+                        "in the config file")
+
+        dest_uri = "qemu+ssh://%s/system" % dest_host
+        logging.info("Negative test: live migration with passthrough")
+        logging.info("  Remote host     : %s", dest_host)
+        logging.info("  Destination URI : %s", dest_uri)
+        logging.info("  Options         : %s", migrate_opts)
+        logging.info("  Expected error  : '%s'", expected_err)
+
+        if not vm.is_alive():
+            test.error("VM must be running for migration negative test -- "
+                       "run check_device_status first")
+
+        # vm.migrate() is the same pattern as virsh_migrate.py:
+        # wraps virsh.migrate(vm_name, dest_uri, option, extra, ...)
+        # and returns a CmdResult.
+        result = vm.migrate(dest_uri, migrate_opts, "",
+                            ignore_status=True, debug=True)
+        logging.info("virsh migrate exit=%d stderr=%s",
+                     result.exit_status, result.stderr_text.strip())
+
+        if result.exit_status == 0:
+            test.fail("Expected migration to fail with '%s' but it "
+                      "succeeded -- passthrough migration should be blocked"
+                      % expected_err)
+
+        if expected_err not in result.stderr_text:
+            test.fail("Migration failed but not with expected error.\n"
+                      "Expected fragment: '%s'\nActual stderr: %s"
+                      % (expected_err, result.stderr_text.strip()))
+
+        logging.info("Negative test PASSED: migration correctly rejected "
+                     "with: %s", result.stderr_text.strip())
+
     def multiple_reboot(number_of_reboots):
         for reboot_count in range(number_of_reboots):
             logging.info("Performing VM Reboot with device pass-through for reboot count : %s", reboot_count)
@@ -243,6 +319,11 @@ def run(test, params, env):
     try:
         for itr in range(iteration):
             check_device_status(net_ip, server_ip, netmask)
+
+        # Negative test: migration -- runs AFTER check_device_status so
+        # the VM is already running with passthrough devices active.
+        if test_negative_migration == "yes":
+            test_negative_migration_with_passthrough()
 
         # Execute VM Life-cycle Operation with device pass-through
         guest_lifecycle()
