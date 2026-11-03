@@ -97,6 +97,7 @@ def run(test, params, env):
     device_type = params.get("libvirt_pci_device_type", "NIC")
     vm_vfs = int(params.get("number_vfs", 2))
     number_of_reboots = int(params.get("number_of_reboots", "1"))
+    test_negative_split_iommu = params.get("test_negative_split_iommu_group", "no")
     arch = platform.machine()
     pci_dev = None
     pci_address = None
@@ -233,6 +234,65 @@ def run(test, params, env):
             if fdisk_list_after == fdisk_list_before:
                 test.fail("Didn't find the disk attached to guest.")
 
+    def test_negative_split_iommu_group():
+        """
+        before any member can be assigned to a guest.  When a sibling stays on
+        the host driver (e.g. tg3) the IOMMU group is "not viable" and QEMU
+        rejects the VM start.
+
+        Test flow:
+          1. Build a fresh vmxml containing ONLY the single PF device
+             (negative_split_pci) -- not the whole IOMMU group.
+          2. Call split_vmxml.sync() + virsh.start().
+          3. Assert that start FAILS with the expected error fragment.
+          4. Restore backup_xml so the normal test can continue.
+
+        The test PASSES when VM start fails with "is not viable".
+        """
+        split_pci = params.get("split_pci", pci_ids[0])
+        expected_err = params.get("negative_split_expected_err", "is not viable")
+
+        logging.info("Negative test: split IOMMU group")
+        logging.info("  Single device in XML : %s", split_pci)
+        logging.info("  Expected error       : '%s'", expected_err)
+
+        # Build vmxml with only the one PF -- reuses the same add_hostdev()
+        # path the normal setup uses, just with a single device.
+        pci_dev_label = "pci_" + split_pci.replace(":", "_").replace(".", "_")
+        pci_xml_obj = NodedevXML.new_from_dumpxml(pci_dev_label)
+        addr = pci_xml_obj.cap.get_address_dict()
+
+        split_vmxml = backup_xml.copy()
+        split_vmxml.add_hostdev(addr)
+
+        try:
+            if vm.is_alive():
+                vm.destroy()
+            split_vmxml.sync()
+            result = virsh.start(vm_name, ignore_status=True, debug=True)
+            logging.info("virsh start exit=%d stderr=%s",
+                         result.exit_status, result.stderr_text.strip())
+
+            if result.exit_status == 0:
+                vm.destroy()
+                test.fail("Expected VM start to fail with '%s' but it "
+                          "succeeded -- split IOMMU group was not enforced"
+                          % expected_err)
+
+            if expected_err not in result.stderr_text:
+                test.fail("VM start failed but not with expected error.\n"
+                          "Expected fragment: '%s'\nActual stderr: %s"
+                          % (expected_err, result.stderr_text.strip()))
+
+            logging.info("Negative test PASSED: VM start correctly rejected "
+                         "split IOMMU group with: %s",
+                         result.stderr_text.strip())
+        finally:
+            # Restore backup_xml so the normal test flow can continue cleanly.
+            if vm.is_alive():
+                vm.destroy()
+            backup_xml.sync()
+
     def multiple_reboot(number_of_reboots):
         for reboot_count in range(number_of_reboots):
             logging.info("Performing VM Reboot with device pass-through for reboot count : %s", reboot_count)
@@ -241,6 +301,11 @@ def run(test, params, env):
             check_device_status(net_ip, server_ip, netmask)
 
     try:
+        # Negative test 1: split IOMMU group -- runs BEFORE check_device_status
+        # so the VM has not started yet and backup_xml is still clean.
+        if test_negative_split_iommu == "yes":
+            test_negative_split_iommu_group()
+
         for itr in range(iteration):
             check_device_status(net_ip, server_ip, netmask)
 
