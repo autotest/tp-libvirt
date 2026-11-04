@@ -65,9 +65,9 @@ def run(test, params, env):
             guest_os.prepare_smm_xml(vm_name, smm_state, "")
         if "nvram" in loader_dict:
             loader_dict["nvram"] = loader_dict["nvram"].replace("nvram_VARS", f"{vm_name}_VARS")
-        vmxml = guest_os.prepare_os_xml(vm_name, loader_dict, firmware_type)
         if custom_loader_path:
             create_custom_loader(test, loader_path, custom_loader_path)
+        vmxml = guest_os.prepare_os_xml(vm_name, loader_dict, firmware_type)
         # stateless='yes' only use for AMD test, so here we only check the dumpxml for it to avoid the machine issue
         if stateless:
             virsh.start(vm_name, debug=True)
