@@ -690,6 +690,11 @@ class VMChecker(object):
             LOG.warning(
                 "Firstboot log.txt reports: The Plug and Play service is not available")
 
+        for message in re.findall(
+                r'Install failed, retrying in \d+ seconds\.\.\.|'
+                r'Install failed after \d+ attempts', log_content):
+            LOG.warning("Firstboot QEMU Guest Agent installer: %s", message)
+
         scripts_dir = r'"C:\Program Files\Guestfs\Firstboot\scripts"'
         try:
             status, output = self.checker.run_cmd('dir /b %s' % scripts_dir)
