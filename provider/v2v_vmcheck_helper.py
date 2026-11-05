@@ -735,11 +735,7 @@ class VMChecker(object):
         """
         Check windows guest after v2v convert.
         """
-        try:
-            self.checker.create_session()
-        except Exception as detail:
-            raise exceptions.TestError(
-                'Failed to connect to windows guest: %s' % detail)
+        self.checker.create_session()
 
         if utils_v2v.supports_firstboot_sentinel():
             if not self._wait_for_firstboot_complete():
