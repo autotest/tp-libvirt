@@ -225,14 +225,7 @@ class VMChecker(object):
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
-            try:
-                self.check_windows_vm()
-            except ShellError:
-                if utils_v2v.supports_firstboot_sentinel():
-                    raise
-                LOG.debug('Windows guest may be rebooting, try again!')
-                self._reconnect_session()
-                self.check_windows_vm()
+            self.check_windows_vm()
         else:
             LOG.warn("Unsupported os type: %s", self.os_type)
         return self.errors
@@ -648,29 +641,18 @@ class VMChecker(object):
 
         Returns True if firstboot completed, False on timeout.
         """
-        total_timeout = 1800
-        step = 30
+        total_timeout = 300
+        step = 5
         complete_path = r'"C:\Program Files\Guestfs\Firstboot\complete"'
         cmd = 'type %s' % complete_path
         deadline = time.time() + total_timeout
-        last_reboot_count = self._reboot_watcher.reboot_count
 
         LOG.info("Waiting up to %ds for %s", total_timeout, complete_path)
         while time.time() < deadline:
-            try:
-                status, _ = self.checker.run_cmd(cmd)
-                if status == 0:
-                    LOG.info("Found: %s", complete_path)
-                    return True
-            except ShellError:
-                cur_reboots = self._reboot_watcher.reboot_count
-                if cur_reboots > last_reboot_count:
-                    LOG.info("Reboot detected (#%d), reconnecting",
-                             cur_reboots)
-                    last_reboot_count = cur_reboots
-                    time.sleep(step)
-                self._reconnect_session()
-                continue
+            status, _ = self.checker.run_cmd(cmd)
+            if status == 0:
+                LOG.info("Found: %s", complete_path)
+                return True
             time.sleep(step)
 
         LOG.warning("Not found after %ds: %s", total_timeout, complete_path)
@@ -731,28 +713,7 @@ class VMChecker(object):
         else:
             LOG.info("All firstboot scripts completed successfully")
 
-    def check_windows_vm(self):
-        """
-        Check windows guest after v2v convert.
-        """
-        self.checker.create_session()
-
-        if utils_v2v.supports_firstboot_sentinel():
-            if not self._wait_for_firstboot_complete():
-                raise exceptions.TestFail(
-                    "Firstboot did not complete within timeout")
-            self._check_firstboot_failures()
-        else:
-            LOG.info("Wait 60 seconds for installing drivers")
-            time.sleep(60)
-            for retry in range(RETRY_TIMES):
-                try:
-                    self.checker.run_cmd('dir')
-                except ShellError:
-                    self._reconnect_session()
-                else:
-                    break
-
+    def _perform_windows_checks(self):
         # Check boottype of the guest
         self.check_vm_boottype()
 
@@ -834,6 +795,52 @@ class VMChecker(object):
 
         # Check remaining VM XML properties
         self.check_vm_xml()
+
+    def check_windows_vm(self):
+        """
+        Wait for firstboot, then run Windows postboot checks. These might be
+        interrupted by a reboot, in which case we retry the checks.
+        """
+        # create_session() returns after getting to the network `C:\` prompt.
+        # it seems to tolerate windows VMs multiple reboots
+        self.checker.create_session()
+
+        reboot_count = self._reboot_watcher.reboot_count
+
+        def _did_reboot():
+            # Shell may have been closed but VM hasn't officially reported
+            # it is rebooting yet.
+            # Wait 60 seconds, checking every second.
+            return utils_misc.wait_for(
+                lambda: self._reboot_watcher.reboot_count != reboot_count,
+                60, step=1)
+
+        while True:
+            error_count = len(self.errors)
+            try:
+                if utils_v2v.supports_firstboot_sentinel():
+                    if not self._wait_for_firstboot_complete():
+                        raise exceptions.TestFail(
+                            "Firstboot did not complete within timeout")
+                    self._check_firstboot_failures()
+                else:
+                    LOG.info("Wait 60 seconds for VM to perform firstboot actions")
+                    time.sleep(60)
+                    # Sanity test the connection
+                    self.checker.run_cmd('dir')
+
+                self._perform_windows_checks()
+                return
+            except ShellError:
+                if not _did_reboot():
+                    LOG.info("windows checks threw error not caused by reboot. raising")
+                    raise
+
+                LOG.info("Guest rebooted during Windows validation, retrying",
+                         exc_info=True)
+                del self.errors[error_count:]
+                self._reconnect_session()
+                reboot_count = self._reboot_watcher.reboot_count
 
     def check_genid(self):
         """
