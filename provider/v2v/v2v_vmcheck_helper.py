@@ -71,12 +71,18 @@ class _RebootWatcher(object):
         try:
             self._proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            last_reboot_time = time.monotonic()
             for line in self._proc.stdout:
                 line = line.decode('utf-8', errors='replace').strip()
                 if line:
+                    now = time.monotonic()
+                    elapsed = now - last_reboot_time
+                    since = ('previous reboot' if self.reboot_count
+                             else 'watcher started')
                     self.reboot_count += 1
-                    LOG.warning("Guest reboot detected (#%d): %s",
-                                self.reboot_count, line)
+                    LOG.info("Guest reboot detected (#%d), %.1f seconds since %s: %s",
+                             self.reboot_count, elapsed, since, line)
+                    last_reboot_time = now
         except Exception as e:
             LOG.debug("Reboot watcher ended: %s", e)
 
