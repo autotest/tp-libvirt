@@ -81,6 +81,17 @@ def run(test, params, env):
                                          system_info["SKU Number"], system_info["Family"]))
         return entry_type, expected_smbios_data
 
+    def check_host_smbios_mode_eligibility():
+        """
+        Cancel host SMBIOS mode when QEMU cannot use the host SMBIOS data.
+        """
+        host_baseboards = process.run("dmidecode -t 2").stdout_text
+        baseboard_count = len(re.findall(r"^Handle .* DMI type 2,",
+                                         host_baseboards, re.MULTILINE))
+        if baseboard_count > 1:
+            test.cancel("QEMU does not support host SMBIOS mode with more "
+                        f"than one Type 2 (baseboard) entry; found {baseboard_count}")
+
     def compare_smbios_data(entry_type, expected_smbios_data):
         """
         Compare the smbios data for from guest with the guest xml
@@ -115,6 +126,10 @@ def run(test, params, env):
     os_dict = eval(params.get("os_dict", "{}"))
     smbios_mode = params.get("smbios_mode")
     error_msg = params.get("error_msg", "")
+
+    if smbios_mode == "host":
+        check_host_smbios_mode_eligibility()
+
     with_sysinfo = "yes" == params.get("with_sysinfo", "no")
     type_entry = eval(params.get("sysinfo_type", "{}"))
     bios_entry = eval(params.get("sysinfo_bios", "{}"))
