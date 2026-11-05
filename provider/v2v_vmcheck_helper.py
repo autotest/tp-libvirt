@@ -714,6 +714,20 @@ class VMChecker(object):
             LOG.info("All firstboot scripts completed successfully")
 
     def _perform_windows_checks(self):
+        # in virt-v2v, qemu-guest-agent is installed after virtio-win
+        # drivers. so if qemu-guest-agent shows up we know we are
+        # passed the point of driver install.
+        LOG.info("Checking qemu-guest-agent service")
+        res = utils_misc.wait_for(
+            lambda: re.search(
+                'running',
+                self.checker.get_service_info('qemu-ga'),
+                re.I),
+            300,
+            step=5)
+        if not res:
+            self.log_err("qemu-guest-agent service is not running")
+
         # Check boottype of the guest
         self.check_vm_boottype()
 
@@ -740,28 +754,15 @@ class VMChecker(object):
                           "VirtIO Serial",
                           "VirtIO Balloon"]
         check_drivers = expect_drivers[:]
-        for check_times in range(10):
-            LOG.info('Check drivers for the %dth time', check_times + 1)
-            # Windows VM may reboot after drivers are installed, a fresh
-            # session should be created to avoid using invalid session.
-            self.checker.session.close()
-            self.checker.session = None
-            self.checker.create_session()
-            win_dirvers = self.checker.get_driver_info()
-            for driver in expect_drivers:
-                if driver in win_dirvers:
-                    LOG.info("Driver %s found", driver)
-                    check_drivers.remove(driver)
-                else:
-                    err_msg = "Driver %s not found" % driver
-                    LOG.error(err_msg)
-            expect_drivers = check_drivers[:]
-            if not expect_drivers:
-                break
+        win_dirvers = self.checker.get_driver_info()
+        for driver in expect_drivers:
+            if driver in win_dirvers:
+                LOG.info("Driver %s found", driver)
+                check_drivers.remove(driver)
             else:
-                wait = 60
-                LOG.info('Wait another %d seconds...', wait)
-                time.sleep(wait)
+                err_msg = "Driver %s not found" % driver
+                LOG.error(err_msg)
+        expect_drivers = check_drivers[:]
         if expect_drivers:
             for driver in expect_drivers:
                 self.log_err("Not find driver: %s" % driver)
@@ -776,22 +777,6 @@ class VMChecker(object):
         cpu_status = self.checker.get_cpu_status()
         if not re.search(r'OK', cpu_status):
             self.log_err("cpu status is abnormal")
-
-        # Check qemu-guest-agent service is installed and running
-        LOG.info("Checking qemu-guest-agent service")
-        try:
-            res = utils_misc.wait_for(
-                lambda: re.search(
-                    'running',
-                    self.checker.get_service_info('qemu-ga'),
-                    re.I),
-                300,
-                step=30)
-            if not res:
-                self.log_err("qemu-guest-agent service is not running")
-        except Exception as e:
-            LOG.debug('Error checking qemu-ga service: %s', e)
-            self.log_err("qemu-guest-agent service check failed")
 
         # Check remaining VM XML properties
         self.check_vm_xml()
@@ -823,11 +808,6 @@ class VMChecker(object):
                         raise exceptions.TestFail(
                             "Firstboot did not complete within timeout")
                     self._check_firstboot_failures()
-                else:
-                    LOG.info("Wait 60 seconds for VM to perform firstboot actions")
-                    time.sleep(60)
-                    # Sanity test the connection
-                    self.checker.run_cmd('dir')
 
                 self._perform_windows_checks()
                 return
