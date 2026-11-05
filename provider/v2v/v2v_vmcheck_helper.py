@@ -25,6 +25,9 @@ LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 RETRY_TIMES = 10
 
+# max time we expect a single windows boot+configure cycle to take.
+WIN_SINGLE_BOOT_MAX_TIME = 300
+
 
 def detect_source_efi(source_xml):
     """
@@ -641,7 +644,7 @@ class VMChecker(object):
 
         Returns True if firstboot completed, False on timeout.
         """
-        total_timeout = 300
+        total_timeout = WIN_SINGLE_BOOT_MAX_TIME
         step = 5
         complete_path = r'"C:\Program Files\Guestfs\Firstboot\complete"'
         cmd = 'type %s' % complete_path
@@ -723,7 +726,7 @@ class VMChecker(object):
                 'running',
                 self.checker.get_service_info('qemu-ga'),
                 re.I),
-            300,
+            WIN_SINGLE_BOOT_MAX_TIME,
             step=5)
         if not res:
             self.log_err("qemu-guest-agent service is not running")
