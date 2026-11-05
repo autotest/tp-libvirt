@@ -747,24 +747,18 @@ class VMChecker(object):
 
         # Check Red Hat VirtIO drivers
         LOG.info("Checking VirtIO drivers")
-        expect_drivers = ["Red Hat VirtIO SCSI",
-                          "Red Hat VirtIO Ethernet Adapte",
-                          "VirtIO RNG",
-                          "VirtIO Serial",
-                          "VirtIO Balloon"]
-        check_drivers = expect_drivers[:]
-        win_dirvers = self.checker.get_driver_info()
-        for driver in expect_drivers:
-            if driver in win_dirvers:
+        expected_drivers = ["Red Hat VirtIO SCSI",
+                            "Red Hat VirtIO Ethernet Adapte",
+                            "VirtIO RNG",
+                            "VirtIO Serial",
+                            "VirtIO Balloon"]
+        win_drivers = self.checker.get_driver_info()
+        for driver in expected_drivers:
+            if driver in win_drivers:
                 LOG.info("Driver %s found", driver)
-                check_drivers.remove(driver)
             else:
-                err_msg = "Driver %s not found" % driver
-                LOG.error(err_msg)
-        expect_drivers = check_drivers[:]
-        if expect_drivers:
-            for driver in expect_drivers:
                 self.log_err("Not find driver: %s" % driver)
+
         cpu_status = self.checker.get_cpu_status()
         if not re.search(r'OK', cpu_status):
             self.log_err("cpu status is abnormal")
