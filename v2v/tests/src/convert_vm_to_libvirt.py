@@ -9,7 +9,6 @@ from virttest import virsh
 from virttest.utils_conn import update_crypto_policy
 from virttest.utils_test import libvirt as utlv
 from provider.v2v.utils_v2v import params_get
-from virttest.libvirt_xml import vm_xml
 
 from provider.v2v.v2v_vmcheck_helper import VMChecker
 
@@ -130,19 +129,6 @@ def run(test, params, env):
 
         LOG.debug("XML info:\n%s", virsh.dumpxml(vm_name))
         vm = env.create_vm("libvirt", "libvirt", vm_name, params, test.bindir)
-        # Win10 is not supported by some cpu model,
-        # need to modify to 'host-model'
-        unsupport_list = ['win10', 'win2016', 'win2019']
-        if params.get('vm_os_label') in unsupport_list:
-            LOG.info(
-                'Set cpu mode to "host-model" for %s.',
-                unsupport_list)
-            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            cpu_xml = vm_xml.VMCPUXML()
-            cpu_xml.mode = 'host-model'
-            cpu_xml.fallback = 'allow'
-            vmxml['cpu'] = cpu_xml
-            vmxml.sync()
         vm.start()
 
         # Check all checkpoints after convert
