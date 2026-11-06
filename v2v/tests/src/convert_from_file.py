@@ -28,11 +28,7 @@ def run(test, params, env):
     """
     convert specific kvm guest from file
     """
-    for v in list(params.values()):
-        if "V2V_EXAMPLE" in v:
-            test.error("Please set real value for %s" % v)
-    if utils_v2v.V2V_EXEC is None:
-        test.error('Missing command: virt-v2v')
+    utils_v2v.set_defaults(test, params, env)
     # Guest name might be changed, we need a new variant to save the original
     # name
     vm_name = params['original_vm_name'] = params.get('main_vm', 'EXAMPLE')

@@ -27,11 +27,7 @@ def run(test, params, env):
     """
     Convert specific esx guest
     """
-    for v in list(params.values()):
-        if "V2V_EXAMPLE" in v:
-            test.error("Please set real value for %s" % v)
-    if utils_v2v.V2V_EXEC is None:
-        raise ValueError('Missing command: virt-v2v')
+    utils_v2v.set_defaults(test, params, env)
     shell = params.get('shell', 'no') == 'yes'
     implementation_change_ver = params_get(params, 'implementation_change_ver')
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'

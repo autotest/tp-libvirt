@@ -41,6 +41,21 @@ except path.CmdNotFoundError:
 LOG = logging.getLogger("avocado." + __name__)
 
 
+def set_defaults(test, params, env):
+    """
+    Apply common setup and checks for v2v test fixtures.
+
+    :param test: Avocado test object.
+    :param params: Test parameters.
+    :param env: Test environment.
+    """
+    vm_name = params.get("main_vm", "")
+    if "V2V_EXAMPLE" in vm_name:
+        test.error("Please set real value for %s" % vm_name)
+    if V2V_EXEC is None:
+        test.error("Missing command: virt-v2v")
+
+
 class Uri(object):
     """
     This class is used for generating uri.

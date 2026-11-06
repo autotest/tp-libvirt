@@ -20,9 +20,7 @@ def run(test, params, env):
     """
     Convert a remote vm to local libvirt(KVM).
     """
-    for v in list(params.values()):
-        if "V2V_EXAMPLE" in v:
-            test.error("Please set real value for %s" % v)
+    utils_v2v.set_defaults(test, params, env)
 
     enable_legacy_policy = params_get(params, "enable_legacy_policy") == 'yes'
     vm_name = params.get("main_vm")
