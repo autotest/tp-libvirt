@@ -36,8 +36,10 @@ def run(test, params, env):
     v2v_options = params.get("v2v_options", "")
     hypervisor = params.get("hypervisor", "kvm")
     remote_host = params.get("remote_host", "EXAMPLE")
+    if hypervisor == "esx":
+        remote_host = params.get("vpx_hostname")
     vpx_dc = params.get("vpx_dc", "EXAMPLE")
-    esx_ip = params.get("esx_ip", "EXAMPLE")
+    esx_ip = params.get("esx_hostname", "EXAMPLE")
     source_user = params.get("username", "root")
     # For VDDK
     input_transport = params.get("input_transport")
