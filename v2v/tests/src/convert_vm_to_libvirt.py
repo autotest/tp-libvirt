@@ -25,7 +25,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     source_user = params.get("username", "root")
     vpx_ip = params.get("vpx_hostname")
-    vpx_pwd = params.get("vpx_pwd")
+    vpx_pwd = params.get("vpx_password")
     vpx_pwd_file = params.get("vpx_passwd_file")
     vpx_dc = params.get("vpx_dc")
     esx_ip = params.get("esx_hostname")
