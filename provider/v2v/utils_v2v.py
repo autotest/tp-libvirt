@@ -33,6 +33,8 @@ from virttest.utils_misc import asterisk_passwd, compare_md5
 from virttest.utils_test import libvirt
 from virttest.utils_version import VersionInterval
 
+from provider.v2v import defaults
+
 try:
     V2V_EXEC = path.find_command("virt-v2v")
 except path.CmdNotFoundError:
@@ -41,7 +43,32 @@ except path.CmdNotFoundError:
 LOG = logging.getLogger("avocado." + __name__)
 
 
-def set_defaults(test, params, env):
+def _set_default_vmware(test, params):
+    vm_name = params.get("main_vm")
+    if params.get("hypervisor") not in ("esx", "vpx"):
+        return
+    if not vm_name:
+        return
+
+    if "vpx_hostname" in params or "esx_hostname" in params:
+        LOG.info("Skipping ESX VM regex match lookup: vpx_hostname or esx_hostname "
+                 "is already configured")
+        return
+
+    for pattern, connection in (
+            (defaults.esx_70_vmname_regex, defaults.esx_70),
+            (defaults.esx_80_vmname_regex, defaults.esx_80),
+            (defaults.esx_90_vmname_regex, defaults.esx_90)):
+        if not re.match(pattern, vm_name):
+            continue
+
+        LOG.info("main_vm=%s matches regex=%s, setting matching defaults",
+                 vm_name, pattern)
+        params.update(connection)
+        break
+
+
+def set_defaults(test, params, _env):
     """
     Apply common setup and checks for v2v test fixtures.
 
@@ -54,6 +81,8 @@ def set_defaults(test, params, env):
         test.error("Please set real value for %s" % vm_name)
     if V2V_EXEC is None:
         test.error("Missing command: virt-v2v")
+
+    _set_default_vmware(test, params)
 
 
 class Uri(object):
