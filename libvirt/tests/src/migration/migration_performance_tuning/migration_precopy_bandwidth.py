@@ -45,6 +45,7 @@ def run(test, params, env):
         locals() else migration_obj.setup_connection
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         migration_obj.run_migration()
         migration_obj.verify_default()

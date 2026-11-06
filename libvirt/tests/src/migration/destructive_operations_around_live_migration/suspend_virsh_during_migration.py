@@ -25,6 +25,7 @@ def run(test, params, env):
     remote_virsh_session = None
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         migration_obj.setup_connection()
         virsh_session, remote_virsh_session = migration_base.monitor_event(params)
         migration_obj.run_migration()
