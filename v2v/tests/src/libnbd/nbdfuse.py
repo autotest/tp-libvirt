@@ -4,6 +4,7 @@ import time
 from virttest import data_dir
 from virttest import utils_misc
 from avocado.utils import process
+from provider.v2v import utils_v2v
 
 
 def run(test, params, env):
@@ -15,6 +16,7 @@ def run(test, params, env):
     3) check image format is 'raw' in mountpoint/nbdtest/
     4) fusermount -u mountpoint/nbdtest/
     """
+    utils_v2v.set_defaults(test, params, env)
     image_qcow2_size = params.get('image_qcow2_size', '512M')
     image_qcow2_path = params.get('image_qcow2_path')
 

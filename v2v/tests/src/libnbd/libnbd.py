@@ -1,6 +1,7 @@
 import nbd
 
 from avocado.utils import process
+from provider.v2v import utils_v2v
 from provider.v2v.utils_v2v import multiple_versions_compare
 from provider.v2v.utils_v2v import prime_rpm_cache
 
@@ -9,6 +10,7 @@ def run(test, params, env):
     """
     Basic libnbd tests
     """
+    utils_v2v.set_defaults(test, params, env)
     checkpoint = params.get('checkpoint')
     version_required = params.get('version_required')
     prime_rpm_cache(['virt-v2v', 'libnbd'])

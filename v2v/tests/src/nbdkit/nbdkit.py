@@ -20,6 +20,7 @@ def run(test, params, env):
     """
     Basic nbdkit tests
     """
+    utils_v2v.set_defaults(test, params, env)
     checkpoint = params.get('checkpoint')
     version_required = params.get('version_required')
     prime_rpm_cache(['virt-v2v', 'nbdkit', 'nbdkit-server'])
