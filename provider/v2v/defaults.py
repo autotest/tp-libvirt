@@ -1,3 +1,11 @@
+"""VM name patterns and connection defaults for v2v tests.
+
+The first matching ESX profile is applied by utils_v2v.set_defaults.
+"""
+
+esx_70_vmname_regex = r".*esx7\.0.*"
+esx_80_vmname_regex = r".*esx8\.0.*"
+esx_90_vmname_regex = r".*esx9\.0.*"
 
 esx_70 = {
     "datastore": "VPX_70_DATASTORE_V2V_EXAMPLE",
