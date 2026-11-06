@@ -67,10 +67,13 @@ EOF
         if not vm_name:
             test.error('No VM specified')
         # vsphere server's host name or IP address
-        vsphere_host = params_get(params, "vsphere_host")
+        direct_esx = params.get("src_uri_type") == "esx"
+        vsphere_host = params_get(
+            params, "esx_hostname" if direct_esx else "vpx_hostname")
         vsphere_user = params_get(params, "vsphere_user", 'root')
         # vsphere password
-        vsphere_pwd = params_get(params, "vsphere_pwd")
+        vsphere_pwd = params_get(
+            params, "esxi_password" if direct_esx else "vpx_password")
         vsphere_passwd_file = params_get(
             params, "vpx_passwd_file", '/tmp/v2v_vpx_passwd')
         with open(vsphere_passwd_file, 'w') as fd:
