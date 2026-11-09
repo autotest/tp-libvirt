@@ -28,6 +28,8 @@ def run(test, params, env):
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
+    save_path = None
+    virsh_session = None
 
     try:
         vm.start()
@@ -60,7 +62,8 @@ def run(test, params, env):
             test.fail("There is no 'save canceled' words in the domstate outputs!")
         virsh.shutdown(vm_name, debug=True, ignore_status=False)
     finally:
-        virsh_session.close()
+        if virsh_session:
+            virsh_session.close()
         bkxml.sync()
-        if os.path.exists(save_path):
+        if save_path and os.path.exists(save_path):
             os.remove(save_path)
