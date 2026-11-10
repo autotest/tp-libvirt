@@ -240,6 +240,8 @@ def run(test, params, env):
     with_stress = "yes" == params.get("run_stress", "no")
     iterations = int(params.get("test_itr", 1))
     topology_correction = "yes" == params.get("topology_correction", "no")
+    compat_mode = params.get("compat_mode")
+    cpu_model =  params.get("cpu_model")
     # Init expect vcpu count values
     expect_vcpu_num = {'max_config': vcpu_max_num, 'max_live': vcpu_max_num,
                        'cur_config': vcpu_current_num,
@@ -298,6 +300,21 @@ def run(test, params, env):
             vmxml.set_agent_channel()
         else:
             vmxml.remove_agent_channels()
+        if compat_mode:
+            logging.info("Setting compatibility mode with CPU model: %s", cpu_model)
+
+            try:
+                cpu_xml = vmxml.cpu
+            except xcepts.LibvirtXMLNotFoundError:
+                logging.debug("No CPU element found, creating new one")
+                cpu_xml = VMCPUXML()
+
+            # Force mode to host-model when explicit compat model is provided
+            cpu_xml.mode = "host-model"
+            cpu_xml.model = cpu_model
+            vmxml.cpu = cpu_xml
+            logging.info("CPU mode set to 'host-model' with model '%s'", cpu_model)
+
         vmxml.sync()
 
         vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num,
