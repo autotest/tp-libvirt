@@ -116,7 +116,7 @@ def run(test, params, env):
         test.log.info("TEST_STEP: Check NIC device - mac address")
         sriov_check_points.check_mac_addr(
             vm_session, vm.name, nic_device_type, nic_iface_dict)
-    
+
         test.log.info("TEST_STEP: Check GPU and NIC devices in VM")
         time.sleep(5)
         test_devices = eval(params.get("test_devices", '["3D"]'))
@@ -201,7 +201,7 @@ def run(test, params, env):
             managed_disabled=nic_managed_disabled,
             network_dict=nic_network_dict,
             cleanup_ifaces="no")
-        if nic_dev_type != "network_interface": 
+        if nic_dev_type != "network_interface":
             update_nic_bus_info(nic_iface_dict)
         run_test()
 

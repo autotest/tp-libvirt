@@ -33,11 +33,11 @@ def run(test, params, env):
 
         if not error_seen:
             test.fail("VM was defined and started successfully, but should "
-                    "have been rejected due to invalid configuration")
+                      "have been rejected due to invalid configuration")
         elif expected_error and expected_error.lower() not in error_seen.lower():
             test.fail(f"VM was rejected, but not with the expected error. "
-                    f"Expected substring: '{expected_error}'. "
-                    f"Got: {error_seen}")
+                      f"Expected substring: '{expected_error}'. "
+                      f"Got: {error_seen}")
     finally:
         gpu_test.teardown_default(
             managed_disabled=gpu_managed_disabled,
