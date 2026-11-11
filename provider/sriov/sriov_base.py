@@ -97,7 +97,7 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
     if status or not output:
         raise exceptions.TestError("Unable to get VM ip address! status - {}, "
                                    "output - {}.".format(status, output))
-    return re.sub('\d+$', '1', output.strip().splitlines()[-1])
+    return re.sub(r'\d+$', '1', output.strip().splitlines()[-1])
 
 
 class SRIOVTest(object):
