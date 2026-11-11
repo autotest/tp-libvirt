@@ -81,8 +81,8 @@ def run(test, params, env):
             # select_tests
             for s_test in cuda_tests:
                 test.log.debug(f"TEST_STEP: Run {s_test}")
-                s, o = vm_session.cmd_status_output(f"LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH {s_test}", timeout=600)    
-                test.log.debug(f"output: {o}")        
+                s, o = vm_session.cmd_status_output(f"LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH {s_test}", timeout=600)
+                test.log.debug(f"output: {o}")
                 if s:
                     test.fail("Failed to run cuda sanity - %s" % s_test)
 
@@ -90,7 +90,7 @@ def run(test, params, env):
             # all_tests
             s, o = vm_session.cmd_status_output(f"cd {cuda_samples_dir} && export PATH=$PATH:/usr/local/cuda/bin/ && export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH && python3 run_tests.py --dir ./build/cpp --output results", timeout=2000)
             test.log.info(f"run_tests.py output: {o}")
-            
+
             if "Test Summary:" not in o:
                 test.fail("run_tests.py did not complete properly - no Test Summary found")
 
