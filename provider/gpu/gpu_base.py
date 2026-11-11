@@ -33,7 +33,6 @@ from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
 from provider.numa import numa_base
-from provider.viommu import viommu_base
 
 
 LOG = logging.getLogger("avocado." + __name__)
@@ -101,6 +100,7 @@ def pci_to_addr(pci_id):
     pci_list = ["0x%s" % x for x in re.split("[.:]", pci_id)]
     return dict(zip(["domain", "bus", "slot", "function"], pci_list))
 
+
 def verify_pf_not_sole_uplink(test):
     """
     Verify that the host has an independent physical interface besides
@@ -118,6 +118,7 @@ def verify_pf_not_sole_uplink(test):
         linked.remove(pf_name)
     if not linked:
         test.cancel("This test needs at least 1 linked interface (excluding PF) available on the host.")
+
 
 class GPUTest(object):
     """
@@ -289,7 +290,7 @@ class GPUTest(object):
                 pxb_ctrl_attrs = eval(pxb_ctrl_attrs % (str(pxb_index), pcie_root_free_slot))
                 cntl_pxb = libvirt_vmxml.create_vm_device_by_type("controller", pxb_ctrl_attrs)
                 vmxml.add_device(cntl_pxb)
-                pcie_root_free_slot = "%0#4x" % (int(pcie_root_free_slot, 16) +1)
+                pcie_root_free_slot = "%0#4x" % (int(pcie_root_free_slot, 16) + 1)
                 cntl_index.update({"pxb_%d" % count: pxb_index})
                 last_index = pxb_index
                 pcie_root_port_attrs = "pcie_root_port_attrs" if count == 1 else "pcie_root_port_attrs_2"
@@ -444,7 +445,6 @@ class GPUTest(object):
         else:
             self.test.log.info(f"GPU already bound to nvgrace_gpu_vfio_pci")
 
-
     def prepare_guest_xml(self, plug_nic=False):
         """
         Prepare guest XML with GPU and NIC configuration
@@ -482,7 +482,6 @@ class GPUTest(object):
         vmxml.sync()
         self.test.log.debug("After setup, guest xml:\n%s", vm_xml.VMXML.new_from_inactive_dumpxml(self.vm.name))
 
-
     def setup_hugepage(self):
         """
         Setup hugepage configuration for VM
@@ -493,7 +492,7 @@ class GPUTest(object):
             # Convert hugepage_size from MB to KB, mem_value from MB to bytes
             numa_base.adjust_parameters(self.params,
                                         hugepage_size=int(hugepage_size) * 1024,
-                                        hugepage_mem=int(self.params.get("mem_value")) * 1024 *1024)
+                                        hugepage_mem=int(self.params.get("mem_value")) * 1024 * 1024)
             hpc = test_setup.HugePageConfig(self.params)
             hpc.setup()
             utils_libvirtd.Libvirtd().restart()

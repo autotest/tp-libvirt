@@ -14,7 +14,6 @@ from virttest import utils_sys
 from virttest import utils_package
 
 from provider.viommu import viommu_base
-from provider.sriov import sriov_vfio
 
 
 def check_device_iommu_group(test, vm_session, lspci_detail, pci_addr):
@@ -155,6 +154,7 @@ def check_lspci(test, vm_session, test_devices, dev_iommu=True, expect_nic_exist
     if nic_pci_addrs:
         for nic_pci_addr in nic_pci_addrs:
             _check_lspci(nic_pci_addr, is_gpu=False, dev_iommu=dev_iommu)
+
 
 def check_nvidia_smi(test, vm_session):
     """
