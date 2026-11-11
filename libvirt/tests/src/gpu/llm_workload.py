@@ -44,7 +44,7 @@ def run(test, params, env):
 
         test.log.info("TEST_STEP: Install NVIDIA driver")
         gpu_test.install_latest_driver(vm_session)
-        
+
         test.log.info("TEST_STEP: Reboot VM to load NVIDIA kernel modules")
         vm.reboot(timeout=1200)
         vm_session = vm.wait_for_login(timeout=1200)
@@ -74,7 +74,7 @@ def run(test, params, env):
 
         if not create_success:
             test.fail(f"Failed to create model after {max_retries} attempts")
-        
+
         test.log.info("TEST_STEP: Warmup inference run")
         s, o = vm_session.cmd_status_output("ollama run test_model 'hi' 2>&1", timeout=inference_timeout)
         test.log.debug(f"Warm-up status: {s}")

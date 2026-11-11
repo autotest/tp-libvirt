@@ -192,7 +192,7 @@ def run(test, params, env):
                 test.log.warn(f"Ping partially successful but some packets lost")
         else:
             test.log.warn(f"Cannot reach {ping_target} (likely no internet/NAT on host). "
-                        f"Interface {iface_name} is functional (DHCP succeeded, link UP).")
+                          f"Interface {iface_name} is functional (DHCP succeeded, link UP).")
 
         test.log.info("TEST_STEP: Verify GPU still works after network setup")
         check_points.check_nvidia_smi(test, vm_session)

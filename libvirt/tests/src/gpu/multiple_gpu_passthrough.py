@@ -133,7 +133,7 @@ def run(test, params, env):
 
             for i, gpu_pci in enumerate(gpu_pcis[1:], start=1):
                 slot = setup_additional_gpu(vmxml, i, gpu_pci, cntl_index["pxb_1"], cntl_index["pcie_root_port_1"], slot, params)
-        
+
             vmxml.sync()
 
         test.log.info("TEST_STEP: Start VM")
