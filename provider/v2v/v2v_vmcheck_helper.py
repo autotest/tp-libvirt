@@ -538,7 +538,7 @@ class VMChecker(object):
                     ".//*[@model='virtio-transitional']") or root.findall(".//*[@type='virtio-transitional']"):
                 self.log_err(err_msg)
 
-        if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
+        if self.vsock_check_enabled() and self.is_vsock_supported():
             self.check_xml('./devices/vsock')
 
     def check_xml(self, xpath, existence=True):
@@ -598,7 +598,7 @@ class VMChecker(object):
                        "Virtio (memory|1.0) balloon"]
         # Virtio RNG supports from kernel-2.6.26 — all test kernels qualify
         virtio_devs.append("Virtio RNG")
-        if self.vsock_check_enabled() and self.is_vsock_supported(self.os_version):
+        if self.vsock_check_enabled() and self.is_vsock_supported():
             virtio_devs.append("Virtio socket")
         LOG.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
@@ -900,15 +900,15 @@ class VMChecker(object):
         """
         return self.params.get('enable_vsock_check', 'no') == 'yes'
 
-    def is_vsock_supported(self, os_version):
+    def is_vsock_supported(self):
         """
-        :param os_version: the guest's os version. e.g. rhel8.6, win10.
+        Check if vsock is supported for the guest OS version.
         """
         vsock_skiplist = ['rhel6.10', 'opensuse42.\d+', 'rhel5.11']
-        if not os_version or self.os_type != 'linux':
+        if not self.os_version or self.os_type != 'linux':
             return False
         for i in vsock_skiplist:
-            if re.match(i, os_version):
+            if re.match(i, self.os_version):
                 return False
         return self.target == 'libvirt'
 
