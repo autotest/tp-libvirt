@@ -67,7 +67,6 @@ def run(test, params, env):
     src_uri_type = params.get('src_uri_type')
     esxi_password = params.get('esxi_password')
     os_pool = os_storage = params.get('output_storage', 'default')
-    os_version = params.get('os_version')
     os_type = params.get('os_type')
     # qemu-guest-agent path in virtio-win or rhv-guest-tools-iso
     qa_path = params.get('qa_path')
@@ -168,13 +167,10 @@ def run(test, params, env):
         """
         Check the content of grub files meet expectation.
         """
-        if os_version == 'rhel7':
-            chkfiles = [
-                '/etc/default/grub',
-                '/boot/grub2/grub.cfg',
-                '/etc/grub2.cfg']
-        if os_version == 'rhel6':
-            chkfiles = ['/boot/grub/grub.conf', '/etc/grub.conf']
+        chkfiles = [
+            '/etc/default/grub',
+            '/boot/grub2/grub.cfg',
+            '/etc/grub2.cfg']
         for file_i in chkfiles:
             status, content = vmcheck.run_cmd('cat %s' % file_i)
             if status != 0:
