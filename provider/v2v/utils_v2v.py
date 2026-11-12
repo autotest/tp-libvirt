@@ -9,6 +9,7 @@ from __future__ import print_function
 import glob
 import hashlib
 import logging
+import math
 import os
 import pwd
 import random
@@ -81,6 +82,16 @@ def set_defaults(test, params, _env):
         test.error("Please set real value for %s" % vm_name)
     if V2V_EXEC is None:
         test.error("Missing command: virt-v2v")
+
+    params.setdefault("os_type", "linux")
+    if not params["os_type"] in ["windows", "linux"]:
+        test.error("Unsupported os_type=%s" % params["os_type"])
+
+    if params["os_type"] == "windows":
+        default_firstboot_timeout = defaults.FIRSTBOOT_TIMEOUT_WINDOWS
+    else:
+        default_firstboot_timeout = defaults.FIRSTBOOT_TIMEOUT_LINUX
+    params.setdefault("v2v_firstboot_timeout", default_firstboot_timeout)
 
     _set_default_vmware(test, params)
 
@@ -545,6 +556,7 @@ class VMCheck(object):
         self.windows_root = params.get("windows_root", r"C:\WINDOWS")
         # Need create session after create the instance
         self.session = None
+        self._firstboot_deadline = None
 
         if self.name is None:
             LOG.error("vm name not exist")
@@ -558,12 +570,40 @@ class VMCheck(object):
         else:
             raise ValueError("Doesn't support %s target now" % self.target)
 
-    def create_session(self, timeout=None):
-        if timeout is None:
-            timeout = int(self.params.get('v2v_login_timeout', 900))
+    def remaining_firstboot_timeout(self):
+        """Start the firstboot budget on first use and return whole seconds left."""
+        now = time.time()
+        if self._firstboot_deadline is None:
+            timeout = int(self.params['v2v_firstboot_timeout'])
+            self._firstboot_deadline = now + timeout
+            LOG.info("Starting firstboot timeout of %ds", timeout)
+        remaining = self._firstboot_deadline - now
+        if remaining < 0:
+            raise exceptions.TestFail("Firstboot timeout expired")
+        return math.ceil(remaining)
+
+    def firstboot_wait_for(self, func, description, step=5):
+        """Poll within the shared firstboot budget or fail on timeout.
+
+        Return the callback's truthy result. Callback exceptions propagate so
+        shell failures can be handled by the caller's reconnect logic.
+        """
+        timeout = self.remaining_firstboot_timeout()
+        LOG.info("Waiting up to %ds for %s", timeout, description)
+        result = utils_misc.wait_for(func, timeout, step=step)
+        if not result:
+            raise exceptions.TestFail(
+                "Firstboot timeout expired waiting for %s" % description)
+        # The callback may have finished after the deadline, or the rounded
+        # timeout may have allowed an extra fraction of a second.
+        self.remaining_firstboot_timeout()
+        return result
+
+    def create_session(self):
         if self.session:
             LOG.debug("vm session %s exists", self.session)
             return
+        timeout = self.remaining_firstboot_timeout()
         self.session = self.vm.wait_for_login(
             nic_index=self.nic_index,
             timeout=timeout,

@@ -211,15 +211,13 @@ def run(test, params, env):
         :param vmcheck: VMCheck object for vm checking
         :param service_name: a service's name
         """
-        res = utils_misc.wait_for(
+        vmcheck.firstboot_wait_for(
             lambda: re.search(
                 'running',
                 vmcheck.get_service_info(service_name),
                 re.I),
-            900,
+            "running %s service" % service_name,
             step=30)
-        if not res:
-            test.fail('Not found running %s service' % service_name)
 
     def check_linux_ogac(vmcheck):
         """
@@ -239,9 +237,8 @@ def run(test, params, env):
             return True
 
         LOG.debug('Checking qmeu-guest-agent service in VM')
-        res = utils_misc.wait_for(get_service_info, 300, step=30)
-        if not res:
-            log_fail('qemu-guest-agent service exception')
+        vmcheck.firstboot_wait_for(
+            get_service_info, "running qemu-guest-agent service", step=30)
 
     def check_ubuntools(vmcheck):
         """
@@ -321,10 +318,9 @@ def run(test, params, env):
             return True
 
         vmcheck.create_session()
-        res = utils_misc.wait_for(_static_ip_check, 1800, step=300)
+        vmcheck.firstboot_wait_for(
+            _static_ip_check, "expected static IP configuration", step=300)
         vmcheck.run_cmd('ipconfig /all')  # debug msg
-        if not res:
-            test.fail('Checking static IP configuration failed')
 
     def check_rhsrvany_checksums(vmcheck):
         """
@@ -386,21 +382,17 @@ def run(test, params, env):
         :param vmcheck: VMCheck object for vm checking
         """
         def _get_disk_status(cmd):
-
-            for i in range(9):
-                _, res = vmcheck.run_cmd(cmd)
-                if re.search('Offline', res):
-                    time.sleep(100)
-                else:
-                    return res
+            status, res = vmcheck.run_cmd(cmd)
+            if status != 0 or re.search('Offline', res):
+                return False
             return res
 
         cmd = r'cmd /c echo list disk^> "%temp%\answer.tmp" ^& (diskpart ^< "%temp%\answer.tmp") ^& ' \
               r'del "%temp%\answer.tmp"'
-        res = utils_misc.wait_for(lambda: _get_disk_status(cmd), 900)
+        res = vmcheck.firstboot_wait_for(
+            lambda: _get_disk_status(cmd),
+            "all additional disks to become online")
         LOG.info('disk status is %s', res)
-        if re.search('Offline', res):
-            test.fail("there is offline additional disk")
 
     def check_result(result, status_error):
         """

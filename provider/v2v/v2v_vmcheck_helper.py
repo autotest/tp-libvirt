@@ -25,9 +25,6 @@ LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 RETRY_TIMES = 10
 
-# max time we expect a single windows boot+configure cycle to take.
-WIN_SINGLE_BOOT_MAX_TIME = 300
-
 
 def detect_source_efi(source_xml):
     """
@@ -648,24 +645,15 @@ class VMChecker(object):
         """
         Wait for the firstboot 'complete' marker file to appear.
 
-        Returns True if firstboot completed, False on timeout.
+        Raise TestFail if firstboot does not complete within the shared budget.
         """
-        total_timeout = WIN_SINGLE_BOOT_MAX_TIME
-        step = 5
         complete_path = r'"C:\Program Files\Guestfs\Firstboot\complete"'
         cmd = 'type %s' % complete_path
-        deadline = time.time() + total_timeout
 
-        LOG.info("Waiting up to %ds for %s", total_timeout, complete_path)
-        while time.time() < deadline:
-            status, _ = self.checker.run_cmd(cmd)
-            if status == 0:
-                LOG.info("Found: %s", complete_path)
-                return True
-            time.sleep(step)
-
-        LOG.warning("Not found after %ds: %s", total_timeout, complete_path)
-        return False
+        self.checker.firstboot_wait_for(
+            lambda: self.checker.run_cmd(cmd)[0] == 0,
+            "firstboot completion marker %s" % complete_path)
+        LOG.info("Found: %s", complete_path)
 
     def _check_firstboot_failures(self):
         """
@@ -733,15 +721,12 @@ class VMChecker(object):
         # drivers. so if qemu-guest-agent shows up we know we are
         # passed the point of driver install.
         LOG.info("Checking qemu-guest-agent service")
-        res = utils_misc.wait_for(
+        self.checker.firstboot_wait_for(
             lambda: re.search(
                 'running',
                 self.checker.get_service_info('qemu-ga'),
                 re.I),
-            WIN_SINGLE_BOOT_MAX_TIME,
-            step=5)
-        if not res:
-            self.log_err("qemu-guest-agent service is not running")
+            "running qemu-guest-agent service")
 
         # Check boottype of the guest
         self.check_vm_boottype()
@@ -798,15 +783,13 @@ class VMChecker(object):
             # Wait 60 seconds, checking every second.
             return utils_misc.wait_for(
                 lambda: self._reboot_watcher.reboot_count != reboot_count,
-                60, step=1)
+                min(60, self.checker.remaining_firstboot_timeout()), step=1)
 
         while True:
             error_count = len(self.errors)
             try:
                 if utils_v2v.supports_firstboot_sentinel():
-                    if not self._wait_for_firstboot_complete():
-                        raise exceptions.TestFail(
-                            "Firstboot did not complete within timeout")
+                    self._wait_for_firstboot_complete()
                     self._check_firstboot_failures()
 
                 self._perform_windows_checks()
