@@ -768,22 +768,12 @@ class VMChecker(object):
 
     def check_windows_vm(self):
         """
-        Wait for firstboot, then run Windows postboot checks. These might be
-        interrupted by a reboot, in which case we retry the checks.
+        Wait for firstboot, then run Windows postboot checks.
+        Reconnect and retry shell failures within the firstboot timeout.
         """
         # create_session() returns after getting to the network `C:\` prompt.
         # it seems to tolerate windows VMs multiple reboots
         self.checker.create_session()
-
-        reboot_count = self._reboot_watcher.reboot_count
-
-        def _did_reboot():
-            # Shell may have been closed but VM hasn't officially reported
-            # it is rebooting yet.
-            # Wait 60 seconds, checking every second.
-            return utils_misc.wait_for(
-                lambda: self._reboot_watcher.reboot_count != reboot_count,
-                min(60, self.checker.remaining_firstboot_timeout()), step=1)
 
         while True:
             error_count = len(self.errors)
@@ -795,15 +785,10 @@ class VMChecker(object):
                 self._perform_windows_checks()
                 return
             except ShellError:
-                if not _did_reboot():
-                    LOG.info("windows checks threw error not caused by reboot. raising")
-                    raise
-
-                LOG.info("Guest rebooted during Windows validation, retrying",
+                LOG.info("Shell error during Windows validation, reconnecting and retrying",
                          exc_info=True)
                 del self.errors[error_count:]
                 self._reconnect_session()
-                reboot_count = self._reboot_watcher.reboot_count
 
     def check_genid(self):
         """
