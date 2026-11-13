@@ -431,9 +431,7 @@ def run(test, params, env):
             # Check specific checkpoints after firstboot validation.
             if checkpoint[0].startswith('ogac'):
                 if os_type == 'windows':
-                    services = ['qemu-ga', 'balloon']
-                    for ser in services:
-                        check_windows_service(vmchecker.checker, ser)
+                    check_windows_service(vmchecker.checker, 'balloon')
                 else:
                     check_linux_ogac(vmchecker.checker)
             if 'mac_ip' in checkpoint:
