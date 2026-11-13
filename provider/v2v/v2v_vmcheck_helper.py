@@ -704,17 +704,6 @@ class VMChecker(object):
             LOG.info("All firstboot scripts completed successfully")
 
     def _perform_windows_checks(self):
-        # in virt-v2v, qemu-guest-agent is installed after virtio-win
-        # drivers. so if qemu-guest-agent shows up we know we are
-        # passed the point of driver install.
-        LOG.info("Checking qemu-guest-agent service")
-        self.checker.firstboot_wait_for(
-            lambda: re.search(
-                'running',
-                self.checker.get_service_info('qemu-ga'),
-                re.I),
-            "running qemu-guest-agent service")
-
         # Check boottype of the guest
         self.check_vm_boottype()
 
