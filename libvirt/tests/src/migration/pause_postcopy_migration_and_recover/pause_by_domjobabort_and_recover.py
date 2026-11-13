@@ -123,6 +123,7 @@ def run(test, params, env):
 
     try:
         base_steps.setup_network_data_transport(params)
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         # Monitor event on source/target host
         virsh_session, remote_virsh_session = migration_base.monitor_event(params)

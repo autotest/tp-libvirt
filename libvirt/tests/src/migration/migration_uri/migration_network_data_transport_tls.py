@@ -141,6 +141,7 @@ def run(test, params, env):
     local_obj = []
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         migration_obj.run_migration()
         if migrate_again:
