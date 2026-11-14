@@ -1,7 +1,5 @@
 import logging
 
-from avocado.core import exceptions
-from avocado.utils import path as utils_path
 from avocado.utils import process
 
 from virttest import utils_net
@@ -10,6 +8,7 @@ from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_vmxml
+from virttest import utils_misc
 
 LOG = logging.getLogger("avocado." + __name__)
 
@@ -39,20 +38,21 @@ def parse_iface_dict(vf_pci, params):
     return iface_dict
 
 
-def is_linked(pf_name):
+def is_linked(pf_name, vm_session=None):
     """
     Check if the specified pf has linked with a cable
 
     :param pf_name: The name of the pf
+    :param vm_session: VM session (optional, checks on host if None)
     :return: True if pf is linked with a cable, False otherwise.
     """
-    try:
-        utils_path.find_command("ethtool")
-    except utils_path.CmdNotFoundError:
-        raise exceptions.TestFail("ethtool is not found")
     cmd = "ethtool %s| grep \"Link detected:\" | grep \"yes\"" % pf_name
-    ret = process.run(cmd, ignore_status=True, shell=True)
-    return ret.exit_status == 0
+    if vm_session is None:
+        ret = process.run(cmd, ignore_status=True, shell=True)
+        return ret.exit_status == 0
+    else:
+        status, _ = utils_misc.cmd_status_output(cmd, shell=True, session=vm_session)
+        return status == 0
 
 
 def attach_dev(vm, params):
