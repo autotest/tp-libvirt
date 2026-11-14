@@ -3,6 +3,9 @@
 The first matching ESX profile is applied by utils_v2v.set_defaults.
 """
 
+FIRSTBOOT_TIMEOUT_LINUX = 600
+FIRSTBOOT_TIMEOUT_WINDOWS = 2400
+
 esx_70_vmname_regex = r".*esx7\.0.*"
 esx_80_vmname_regex = r".*esx8\.0.*"
 esx_90_vmname_regex = r".*esx9\.0.*"

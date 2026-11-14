@@ -1,4 +1,5 @@
 import glob
+import json
 import logging
 import os
 import re
@@ -24,9 +25,6 @@ from virttest import xml_utils
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
 RETRY_TIMES = 10
-
-# max time we expect a single windows boot+configure cycle to take.
-WIN_SINGLE_BOOT_MAX_TIME = 300
 
 
 def detect_source_efi(source_xml):
@@ -644,29 +642,6 @@ class VMChecker(object):
             self.checker.session = None
         self.checker.create_session()
 
-    def _wait_for_firstboot_complete(self):
-        """
-        Wait for the firstboot 'complete' marker file to appear.
-
-        Returns True if firstboot completed, False on timeout.
-        """
-        total_timeout = WIN_SINGLE_BOOT_MAX_TIME
-        step = 5
-        complete_path = r'"C:\Program Files\Guestfs\Firstboot\complete"'
-        cmd = 'type %s' % complete_path
-        deadline = time.time() + total_timeout
-
-        LOG.info("Waiting up to %ds for %s", total_timeout, complete_path)
-        while time.time() < deadline:
-            status, _ = self.checker.run_cmd(cmd)
-            if status == 0:
-                LOG.info("Found: %s", complete_path)
-                return True
-            time.sleep(step)
-
-        LOG.warning("Not found after %ds: %s", total_timeout, complete_path)
-        return False
-
     def _check_firstboot_failures(self):
         """
         Check if any firstboot scripts failed and dump the log.
@@ -678,7 +653,8 @@ class VMChecker(object):
         """
         log_path = r'"C:\Program Files\Guestfs\Firstboot\log.txt"'
         try:
-            status, log_content = self.checker.run_cmd('type %s' % log_path)
+            status, log_content = self.checker.run_cmd(
+                'type %s' % log_path, debug=False)
         except Exception as e:
             LOG.warning("Could not read firstboot log.txt: %s", e)
             return
@@ -728,20 +704,6 @@ class VMChecker(object):
             LOG.info("All firstboot scripts completed successfully")
 
     def _perform_windows_checks(self):
-        # in virt-v2v, qemu-guest-agent is installed after virtio-win
-        # drivers. so if qemu-guest-agent shows up we know we are
-        # passed the point of driver install.
-        LOG.info("Checking qemu-guest-agent service")
-        res = utils_misc.wait_for(
-            lambda: re.search(
-                'running',
-                self.checker.get_service_info('qemu-ga'),
-                re.I),
-            WIN_SINGLE_BOOT_MAX_TIME,
-            step=5)
-        if not res:
-            self.log_err("qemu-guest-agent service is not running")
-
         # Check boottype of the guest
         self.check_vm_boottype()
 
@@ -780,46 +742,100 @@ class VMChecker(object):
         # Check remaining VM XML properties
         self.check_vm_xml()
 
+    def _wait_for_guest_agent(self):
+        """Wait for the guest agent to reply to guest-ping."""
+        def agent_ready():
+            result = virsh.qemu_agent_command(
+                self.vm_name, '{"execute":"guest-ping"}',
+                uri=self.virsh_session.get("uri"),
+                ignore_status=True, debug=False)
+            return (result.exit_status == 0 and
+                    'return' in json.loads(result.stdout_text))
+
+        self.checker.firstboot_wait_for(
+            agent_ready, "guest-agent reply to guest-ping", step=10)
+        LOG.info("Guest-agent replied to guest-ping, continuing")
+
+    def _wait_for_firstboot_complete(self):
+        """Wait for the firstboot completion marker through the guest agent."""
+        complete_path = r'C:\Program Files\Guestfs\Firstboot\complete'
+        command = json.dumps({
+            'execute': 'guest-file-open',
+            'arguments': {'path': complete_path, 'mode': 'r'}})
+
+        def marker_exists():
+            result = virsh.qemu_agent_command(
+                self.vm_name, command,
+                uri=self.virsh_session.get("uri"),
+                ignore_status=True, debug=False)
+            if result.exit_status != 0:
+                return False
+            reply = json.loads(result.stdout_text)
+            if 'return' not in reply:
+                return False
+
+            # The marker is empty; opening it is enough. Close the returned
+            # handle before reporting completion, including handle 0.
+            close_cmd = json.dumps({
+                'execute': 'guest-file-close',
+                'arguments': {'handle': reply['return']}})
+            result = virsh.qemu_agent_command(
+                self.vm_name, close_cmd,
+                uri=self.virsh_session.get("uri"),
+                ignore_status=True, debug=False)
+            return (result.exit_status == 0 and
+                    'return' in json.loads(result.stdout_text))
+
+        self.checker.firstboot_wait_for(
+            marker_exists, "firstboot completion marker %s" % complete_path,
+            step=10)
+        LOG.info("Firstboot completion marker found: %s, continuing",
+                 complete_path)
+
     def check_windows_vm(self):
         """
-        Wait for firstboot, then run Windows postboot checks. These might be
-        interrupted by a reboot, in which case we retry the checks.
+        Wait for firstboot, then run Windows postboot checks.
+        Reconnect and retry shell failures within the firstboot timeout.
         """
-        # create_session() returns after getting to the network `C:\` prompt.
-        # it seems to tolerate windows VMs multiple reboots
-        self.checker.create_session()
+        # As of Nov 2026, virt-v2v's firstboot scripts run in this order
+        #
+        # + Install virtio drivers
+        # + Configure networking
+        # + Wait for PnP to settle.
+        # + Install QEMU guest agent.
+        # + Install balloon server.
+        # + Uninstall Xen PV, Parallels tools, then VMware Tools.
+        # + Bring additional virtio disks online.
+        #
+        firstboot_complete = False
 
-        reboot_count = self._reboot_watcher.reboot_count
-
-        def _did_reboot():
-            # Shell may have been closed but VM hasn't officially reported
-            # it is rebooting yet.
-            # Wait 60 seconds, checking every second.
-            return utils_misc.wait_for(
-                lambda: self._reboot_watcher.reboot_count != reboot_count,
-                60, step=1)
-
-        while True:
+        while self.checker.remaining_firstboot_timeout():
             error_count = len(self.errors)
             try:
                 if utils_v2v.supports_firstboot_sentinel():
-                    if not self._wait_for_firstboot_complete():
-                        raise exceptions.TestFail(
-                            "Firstboot did not complete within timeout")
+                    self._wait_for_firstboot_complete()
+                    firstboot_complete = True
+                else:
+                    self._wait_for_guest_agent()
+
+                # this returns after getting to the network `C:\` prompt.
+                # it seems to tolerate windows VMs multiple reboots
+                self._reconnect_session()
+
+                if firstboot_complete:
                     self._check_firstboot_failures()
 
                 self._perform_windows_checks()
                 return
             except ShellError:
-                if not _did_reboot():
-                    LOG.info("windows checks threw error not caused by reboot. raising")
+                if firstboot_complete:
+                    LOG.info("firstboot completion file found, but we still hit Shell error. raising")
                     raise
 
-                LOG.info("Guest rebooted during Windows validation, retrying",
+                LOG.info("Shell error during Windows validation, reconnecting and retrying",
                          exc_info=True)
                 del self.errors[error_count:]
-                self._reconnect_session()
-                reboot_count = self._reboot_watcher.reboot_count
+                time.sleep(10)
 
     def check_genid(self):
         """

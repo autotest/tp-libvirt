@@ -16,7 +16,6 @@ from virttest.utils_test import libvirt
 from provider.v2v.utils_v2v import params_get
 from virttest import ssh_key
 from avocado.utils import process
-from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
 from provider.v2v.v2v_vmcheck_helper import VMChecker
 
@@ -212,33 +211,13 @@ def run(test, params, env):
         :param vmcheck: VMCheck object for vm checking
         :param service_name: a service's name
         """
-        try:
-            res = utils_misc.wait_for(
-                lambda: re.search(
-                    'running',
-                    vmcheck.get_service_info(service_name),
-                    re.I),
-                900,
-                step=30)
-        except (ShellProcessTerminatedError, ShellStatusError):
-            # Windows guest may reboot after installing qemu-ga service
-            LOG.debug('Windows guest is rebooting')
-            if vmcheck.session:
-                vmcheck.session.close()
-                vmcheck.session = None
-            # VM boots up is extremely slow when all testing in running on
-            # rhv server simultaneously, so set timeout to 1200.
-            vmcheck.create_session(timeout=1200)
-            res = utils_misc.wait_for(
-                lambda: re.search(
-                    'running',
-                    vmcheck.get_service_info(service_name),
-                    re.I),
-                900,
-                step=30)
-
-        if not res:
-            test.fail('Not found running %s service' % service_name)
+        vmcheck.firstboot_wait_for(
+            lambda: re.search(
+                'running',
+                vmcheck.get_service_info(service_name),
+                re.I),
+            "running %s service" % service_name,
+            step=30)
 
     def check_linux_ogac(vmcheck):
         """
@@ -258,9 +237,8 @@ def run(test, params, env):
             return True
 
         LOG.debug('Checking qmeu-guest-agent service in VM')
-        res = utils_misc.wait_for(get_service_info, 300, step=30)
-        if not res:
-            log_fail('qemu-guest-agent service exception')
+        vmcheck.firstboot_wait_for(
+            get_service_info, "running qemu-guest-agent service", step=30)
 
     def check_ubuntools(vmcheck):
         """
@@ -339,20 +317,10 @@ def run(test, params, env):
                         return False
             return True
 
-        try:
-            vmcheck.create_session()
-            res = utils_misc.wait_for(_static_ip_check, 1800, step=300)
-        except (ShellTimeoutError, ShellProcessTerminatedError):
-            LOG.debug(
-                'Lost connection to windows guest, the static IP may take effect')
-            if vmcheck.session:
-                vmcheck.session.close()
-                vmcheck.session = None
-            vmcheck.create_session()
-            res = utils_misc.wait_for(_static_ip_check, 300, step=30)
+        vmcheck.create_session()
+        vmcheck.firstboot_wait_for(
+            _static_ip_check, "expected static IP configuration", step=300)
         vmcheck.run_cmd('ipconfig /all')  # debug msg
-        if not res:
-            test.fail('Checking static IP configuration failed')
 
     def check_rhsrvany_checksums(vmcheck):
         """
@@ -414,32 +382,17 @@ def run(test, params, env):
         :param vmcheck: VMCheck object for vm checking
         """
         def _get_disk_status(cmd):
-
-            for i in range(9):
-                _, res = vmcheck.run_cmd(cmd)
-                if re.search('Offline', res):
-                    time.sleep(100)
-                else:
-                    return res
+            status, res = vmcheck.run_cmd(cmd)
+            if status != 0 or re.search('Offline', res):
+                return False
             return res
 
         cmd = r'cmd /c echo list disk^> "%temp%\answer.tmp" ^& (diskpart ^< "%temp%\answer.tmp") ^& ' \
               r'del "%temp%\answer.tmp"'
-        try:
-            res = utils_misc.wait_for(lambda: _get_disk_status(cmd), 900)
-        except (ShellProcessTerminatedError, ShellStatusError):
-            # Windows guest may reboot after installing qemu-ga service
-            LOG.debug('Windows guest is rebooting')
-            if vmcheck.session:
-                vmcheck.session.close()
-                vmcheck.session = None
-            # VM boots up is extremely slow when all testing in running on
-            # rhv server simultaneously, so set timeout to 1200.
-            vmcheck.create_session(timeout=1200)
-            res = utils_misc.wait_for(lambda: _get_disk_status(cmd), 900)
+        res = vmcheck.firstboot_wait_for(
+            lambda: _get_disk_status(cmd),
+            "all additional disks to become online")
         LOG.info('disk status is %s', res)
-        if re.search('Offline', res):
-            test.fail("there is offline additional disk")
 
     def check_result(result, status_error):
         """
@@ -471,17 +424,14 @@ def run(test, params, env):
 
             # Check guest following the checkpoint document after conversion
             LOG.info('Checking common checkpoints for v2v')
+            ret = vmchecker.run()
+            if len(ret) == 0:
+                LOG.info("All common checkpoints passed")
+
+            # Check specific checkpoints after firstboot validation.
             if checkpoint[0].startswith('ogac'):
-                # windows guests will reboot at any time after qemu-ga is
-                # installed. The process cannot be controlled. In order to
-                # don't break vmchecker.run() process, It's better to put
-                # check_windows_ogac before vmchecker.run(). Because in
-                # check_windows_ogac, it waits until rebooting completes.
-                vmchecker.checker.create_session()
                 if os_type == 'windows':
-                    services = ['qemu-ga', 'balloon']
-                    for ser in services:
-                        check_windows_service(vmchecker.checker, ser)
+                    check_windows_service(vmchecker.checker, 'balloon')
                 else:
                     check_linux_ogac(vmchecker.checker)
             if 'mac_ip' in checkpoint:
@@ -502,10 +452,6 @@ def run(test, params, env):
                     LOG.info('output dir: %s', output)
                     if not re.search(r'network1', output):
                         test.fail('Not found expected file, fail to test virt-customize upload option')
-            ret = vmchecker.run()
-            if len(ret) == 0:
-                LOG.info("All common checkpoints passed")
-            # Check specific checkpoints
             if 'virt_customize_pkg_related' in checkpoint:
                 virt_customize_pkg_related(vmchecker.checker)
             if 'virt_customize_file_related' in checkpoint:
