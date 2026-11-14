@@ -678,7 +678,8 @@ class VMChecker(object):
         """
         log_path = r'"C:\Program Files\Guestfs\Firstboot\log.txt"'
         try:
-            status, log_content = self.checker.run_cmd('type %s' % log_path)
+            status, log_content = self.checker.run_cmd(
+                'type %s' % log_path, debug=False)
         except Exception as e:
             LOG.warning("Could not read firstboot log.txt: %s", e)
             return
