@@ -65,13 +65,13 @@ def run(test, params, env):
                 test.log.info(f"Binding {gpu_pci} to nvgrace-gpu-vfio-pci")
                 utils_misc.cmd_status_output("modprobe -r nouveau", ignore_status=True)
                 utils_misc.cmd_status_output("modprobe nvgrace-gpu-vfio-pci")
-                utils_misc.cmd_status_output(f"sh -c \"echo '{gpu_id}' > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id\"")
+                utils_misc.cmd_status_output(f"echo '{gpu_id}' > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id", shell=True)
 
         for idx in gpu_vm_indices:
             test.log.info(f"TEST_STEP: Configure GPU passthrough for {vms[idx].name}")
 
             vm_params = params.copy()
-            vm_params['gpu_pci_addr'] = gpu_base.pci_to_addr(gpu_pcis[idx])
+            vm_params['gpu_pci'] = gpu_pcis[idx]
             vm_params['main_vm'] = vms[idx].name
 
             gpu_test = gpu_base.GPUTest(vms[idx], test, vm_params)

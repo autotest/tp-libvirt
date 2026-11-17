@@ -119,7 +119,7 @@ def run(test, params, env):
                 test.log.info(f"Binding {gpu_pci} to nvgrace-gpu-vfio-pci")
                 utils_misc.cmd_status_output("modprobe -r nouveau", ignore_status=True)
                 utils_misc.cmd_status_output("modprobe nvgrace-gpu-vfio-pci")
-                utils_misc.cmd_status_output(f"sh -c \"echo '{gpu_id}' > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id\"")
+                utils_misc.cmd_status_output(f"echo '{gpu_id}' > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id", shell=True)
 
         test.log.info("TEST_STEP: Configure VM XML")
         # setup_default handles first GPU + all controllers/iommu

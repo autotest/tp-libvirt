@@ -11,6 +11,7 @@ import logging
 import os
 import platform
 import re
+import time
 
 import requests
 
@@ -133,7 +134,7 @@ class GPUTest(object):
         self.sriov_helper = sriov_helper
 
         libvirt_version.is_libvirt_feature_supported(self.params)
-        self.gpu_pci = get_gpu_pci(session=self.session)
+        self.gpu_pci = self.params.get('gpu_pci') or get_gpu_pci(session=self.session)
         if not self.gpu_pci:
             test.cancel("NO available gpu found.")
         self.gpu_pci_addr = pci_to_addr(self.gpu_pci)
@@ -432,9 +433,32 @@ class GPUTest(object):
             if not gpu_id:
                 self.test.error(f"Unable to get vendor:device ID for GPU {self.gpu_pci}. Available GPUs: {list(gpu_info.keys())}")
 
+            # If GPU is currently bound to another driver, unbind it first
+            if current_driver:
+                self.test.log.info(f"GPU {self.gpu_pci} currently bound to {current_driver}, unbinding first")
+
+                # If nvidia driver, stop services first
+                if current_driver == 'nvidia':
+                    self.test.log.info("Stopping NVIDIA services before unbind")
+                    utils_misc.cmd_status_output("systemctl stop 'nvidia-*'", ignore_status=True, shell=True)
+                    utils_misc.cmd_status_output("pkill nvidia", ignore_status=True, shell=True)
+                    time.sleep(2)
+
+                unbind_path = f"/sys/bus/pci/drivers/{current_driver}/unbind"
+                status, output = utils_misc.cmd_status_output(f"echo {self.gpu_pci} > {unbind_path}", shell=True, timeout=10)
+                self.test.log.debug(f"Unbind from {current_driver}: status={status}, output={output}")
+                if status != 0:
+                    self.test.log.warning(f"Failed to unbind from {current_driver}, proceeding anyway")
+
+            # Load nvgrace_gpu_vfio_pci module if not loaded
+            utils_misc.cmd_status_output("modprobe nvgrace_gpu_vfio_pci")
+
             self.test.log.info(f"Binding GPU {self.gpu_pci} (ID: {gpu_id}) to nvgrace-gpu-vfio-pci via new_id")
-            status, output = utils_misc.cmd_status_output(f"echo {gpu_id} > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id")
+            status, output = utils_misc.cmd_status_output(f"echo {gpu_id} > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id", shell=True)
             self.test.log.debug(f"Bind GPU via new_id: status={status}, output={output}")
+            if status != 0:
+                self.test.log.info(f"new_id failed (status={status}), attempting manual bind")
+                utils_misc.cmd_status_output(f"echo {self.gpu_pci} > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/bind", shell=True)
 
             # Verify binding succeeded
             gpu_info = get_gpus_info()
