@@ -73,8 +73,8 @@ def run(test, params, env):
         vm_session.cmd(f"mkdir {cuda_samples_dir}/build")
         vm_session.cmd(f"sed -i 's/add_subdirectory(9_CUDA_Tile)/#add_subdirectory(9_CUDA_Tile)/' {cuda_samples_dir}/cpp/CMakeLists.txt || true")
         vm_session.cmd(f"sed -i 's/add_subdirectory(UnifiedMemoryStreams)/#add_subdirectory(UnifiedMemoryStreams)/' {cuda_samples_dir}/Samples/0_Introduction/CMakeLists.txt || true")
-        vm_session.cmd(f"cd {cuda_samples_dir}/build && export PATH=$PATH:/usr/local/cuda/bin/ && cmake -DCMAKE_CUDA_ARCHITECTURES=native -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON ..", timeout=600)
-        vm_session.cmd(f"cd {cuda_samples_dir}/build && make -j 64", timeout=1200)
+        vm_session.cmd(f"cd {cuda_samples_dir}/build && export PATH=$PATH:/usr/local/cuda/bin/ && cmake -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON ..", timeout=600)
+        vm_session.cmd(f"cd {cuda_samples_dir}/build && make -j 64", timeout=1800)
 
         test.log.info("TEST_STEP: Run cuda sanity tests")
         if cuda_tests:
