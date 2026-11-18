@@ -85,6 +85,23 @@ def run(test, params, env):
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
 
+    # Polkit is already set up by the test framework when setup_libvirt_polkit=yes
+    # We just need to ensure virtstoraged is restarted after polkit rules are created
+    if params.get('setup_libvirt_polkit') == 'yes':
+        logging.info("ACL test detected - ensuring virtstoraged is restarted")
+        from virttest.staging import service
+        try:
+            virtstoraged = service.Factory.create_service("virtstoraged")
+            logging.info("Restarting virtstoraged to apply polkit rules")
+            virtstoraged.restart()
+            logging.info("virtstoraged restarted successfully")
+            import time
+            time.sleep(2)
+            logging.info("virtstoraged should now have loaded polkit rules")
+        except Exception as svc_err:
+            logging.warning("Failed to restart virtstoraged: %s", svc_err)
+
+
     acl_dargs = {'uri': uri, 'unprivileged_user': unprivileged_user,
                  'debug': True}
 
