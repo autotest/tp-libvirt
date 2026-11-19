@@ -1,6 +1,5 @@
 import re
 
-from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_libvirt import libvirt_pcicontr
@@ -24,7 +23,7 @@ def setup_additional_gpu(vmxml, gpu_index, gpu_pci, base_pxb, base_root_port, pc
     :param params: Test parameters
     :return: Next available PCIe slot
     """
-    pxb_index = base_pxb + (gpu_index * 2)
+    pxb_index = base_pxb + (gpu_index * 5)
     root_port_index = pxb_index + 1
 
     # Create controllers for topology
@@ -112,14 +111,7 @@ def run(test, params, env):
 
     try:
         test.log.info("TEST_STEP: Bind GPUs on host")
-        for gpu_pci in gpu_pcis:
-            gpu_id = host_gpus[gpu_pci].get('ID')
-            current_driver = host_gpus[gpu_pci].get('driver')
-            if current_driver != 'nvgrace_gpu_vfio_pci':
-                test.log.info(f"Binding {gpu_pci} to nvgrace-gpu-vfio-pci")
-                utils_misc.cmd_status_output("modprobe -r nouveau", ignore_status=True)
-                utils_misc.cmd_status_output("modprobe nvgrace-gpu-vfio-pci")
-                utils_misc.cmd_status_output(f"echo '{gpu_id}' > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id", shell=True)
+        gpu_base.bind_gpus_to_vfio(gpu_pcis, test)
 
         test.log.info("TEST_STEP: Configure VM XML")
         # setup_default handles first GPU + all controllers/iommu
@@ -179,3 +171,6 @@ def run(test, params, env):
             managed_disabled=gpu_managed_disabled,
             dev_name=dev_name
         )
+
+        if num_gpus > 1:
+            gpu_base.rebind_gpus_to_nvidia(gpu_pcis, skip_first=True, test_obj=test)

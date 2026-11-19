@@ -1,9 +1,87 @@
 import re
 
-from virttest import virsh
 from virttest import utils_package
+from virttest import virsh
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_pcicontr
+from virttest.utils_libvirt import libvirt_vmxml
+from virttest.utils_libvirt import libvirt_vfio
 
 from provider.gpu import gpu_base
+
+
+def setup_additional_gpu(vmxml, gpu_index, gpu_pci, base_pxb, base_root_port, pcie_root_slot, params):
+    """
+    Setup additional GPUs with controllers/iommu/hostdev
+
+    :param vmxml: VM XML object
+    :param gpu_index: GPU index (0-based)
+    :param gpu_pci: GPU PCI address
+    :param base_pxb: Base PXB controller index
+    :param base_root_port: Base root port index
+    :param pcie_root_slot: PCIe root slot
+    :param params: Test parameters
+    :return: Next available PCIe slot
+    """
+    pxb_index = base_pxb + (gpu_index * 5)
+    root_port_index = pxb_index + 1
+
+    # Create controllers for topology
+    if params.get("pxb_ctrl_attrs"):
+        pxb_attrs = eval(params.get("pxb_ctrl_attrs") % (str(pxb_index), pcie_root_slot))
+        # Override busNr for additional GPUs to avoid conflicts
+        if 'target' in pxb_attrs and 'busNr' in pxb_attrs['target']:
+            busNr = 241 - (gpu_index * 10)
+            pxb_attrs['target']['busNr'] = str(busNr)
+        vmxml.add_device(libvirt_vmxml.create_vm_device_by_type("controller", pxb_attrs))
+
+        root_port_attrs = eval(params.get("pcie_root_port_attrs") % (str(root_port_index), "%0#4x" % pxb_index))
+        vmxml.add_device(libvirt_vmxml.create_vm_device_by_type("controller", root_port_attrs))
+        last_index = root_port_index
+
+        # Upstream port
+        if params.get("upstream_port_attrs"):
+            upstream_index = last_index + 1
+            upstream_bus = "%0#4x" % last_index
+            upstream_attrs = eval(params.get("upstream_port_attrs") % (upstream_index, upstream_bus))
+            vmxml.add_device(libvirt_vmxml.create_vm_device_by_type("controller", upstream_attrs))
+            last_index = upstream_index
+
+        # Downstream port
+        if params.get("downstream_port_attrs"):
+            downstream_index = last_index + 1
+            downstream_bus = "%0#4x" % last_index
+            downstream_attrs = eval(params.get("downstream_port_attrs") % (downstream_index, downstream_index, downstream_bus))
+            vmxml.add_device(libvirt_vmxml.create_vm_device_by_type("controller", downstream_attrs))
+            last_index = downstream_index
+
+        # Create iommu for this pxb
+        iommu_dict = eval(params.get("iommu_dict") % str(pxb_index))
+        if params.get("cmdqv_mode") == "mixed":
+            iommu_dict['driver']['cmdqv'] = 'off'
+
+        vmxml.add_device(libvirt_vmxml.create_vm_device_by_type("iommu", iommu_dict))
+        gpu_bus = "%0#4x" % last_index
+
+    else:
+        gpu_bus = "%0#4x" % (base_root_port + gpu_index)
+
+    # Get nodeset from cfg
+    nodeset_map = eval(params.get("nodeset_map", "{}"))
+    acpi_nodeset = {'nodeset': nodeset_map[gpu_index]}
+
+    # Build hostdev for this GPU
+    additional_gpu_dict = {
+        'driver': {'driver_attr': {'iommufd': 'yes'}},
+        'acpi': acpi_nodeset,
+        'mode': 'subsystem', 'type': 'pci',
+        'source': {'untyped_address': gpu_base.pci_to_addr(gpu_pci)},
+        'managed': 'no',
+        'address': {'attrs': {'type': 'pci', 'domain': '0x0000', 'bus': gpu_bus, 'slot': '0x00', 'function': '0x0'}}
+    }
+    vmxml.add_device(libvirt_vmxml.create_vm_device_by_type("hostdev", additional_gpu_dict))
+
+    return "%0#4x" % (int(pcie_root_slot, 16) + 1)
 
 
 def run(test, params, env):
@@ -14,12 +92,13 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
+    num_gpus = int(params.get("num_gpus", "1"))
+
     # NCCL parameters
     nccl_test_name = params.get("nccl_test_name", "all_gather_perf")
     nccl_min_bytes = params.get("nccl_min_bytes", "8")
     nccl_max_bytes = params.get("nccl_max_bytes", "4G")
     nccl_step_factor = params.get("nccl_step_factor", "2")
-    nccl_num_gpus = int(params.get("nccl_num_gpus", "1"))
     nccl_test_timeout = int(params.get("nccl_test_timeout", "600"))
     min_nccl_bandwidth = float(params.get("min_nccl_bandwidth", "10"))
 
@@ -41,14 +120,34 @@ def run(test, params, env):
     gpu_hostdev_dict = gpu_test.parse_hostdev_dict()
     gpu_managed_disabled = gpu_hostdev_dict.get('managed') != "yes"
 
-    try:
-        test.log.info("TEST_STEP: Bind GPU on host")
-        gpu_test.setup_nvgrace_host_driver()
+    test.log.info("TEST_SETUP: Check GPU availability")
+    host_gpus = gpu_base.get_gpus_info()
+    available_gpu_count = len(host_gpus)
+    if available_gpu_count < num_gpus:
+        test.cancel(f"Test requires {num_gpus} GPU(s) but only {available_gpu_count} available")
+    test.log.info(f"Found {available_gpu_count} GPU(s), test requires {num_gpus}")
 
-        test.log.info("TEST_STEP: Configure VM XML with GPU")
+    gpu_pcis = list(host_gpus.keys())[:num_gpus]
+    test.log.info(f"Using GPUs: {gpu_pcis}")
+
+    try:
+        test.log.info("TEST_STEP: Bind GPUs on host")
+        gpu_base.bind_gpus_to_vfio(gpu_pcis, test)
+
+        test.log.info("TEST_STEP: Configure VM XML")
         gpu_test.setup_default(dev_name=dev_name, test_hopper_gpu="yes")
 
-        test.log.info("TEST_STEP: Start the VM")
+        if num_gpus > 1:
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            cntl_index = params.get("cntl_index")
+            slot = libvirt_pcicontr.get_free_pci_slot(vmxml)
+
+            for i, gpu_pci in enumerate(gpu_pcis[1:], start=1):
+                slot = setup_additional_gpu(vmxml, i, gpu_pci, cntl_index["pxb_1"], cntl_index["pcie_root_port_1"], slot, params)
+
+            vmxml.sync()
+
+        test.log.info("TEST_STEP: Start VM")
         vm.start()
         vm_session = vm.wait_for_login(timeout=600)
         test.log.debug(f'VMXML of {vm_name}:\n{virsh.dumpxml(vm_name).stdout_text}')
@@ -60,7 +159,29 @@ def run(test, params, env):
         vm.reboot(timeout=1200)
         vm_session = vm.wait_for_login(timeout=1200)
 
+        test.log.info("TEST_STEP: Load nvidia modules")
+        s, o = vm_session.cmd_status_output("modprobe nvidia-uvm || true")
+        test.log.debug(f"modprobe nvidia-uvm: status={s}, output={o}")
+        s, o = vm_session.cmd_status_output("nvidia-modprobe -u -c 0 || true")
+        test.log.debug(f"nvidia-modprobe: status={s}, output={o}")
+        s, o = vm_session.cmd_status_output("modprobe nvidia")
+        test.log.info(f"modprobe nvidia: status={s}, output={o}")
+        s, o = vm_session.cmd_status_output("systemctl start nvidia-persistenced || true")
+        test.log.info(f"start nvidia-persistenced: status={s}, output={o}")
+
+        vm_session.cmd("sleep 30")
+        test.log.info("Waited 30s for nvidia-persistenced to initialize NUMA nodes")
+
+        test.log.info(f"TEST_STEP: Verify {num_gpus} GPU(s) in nvidia-smi")
         gpu_test.nvidia_smi_check(vm_session)
+
+        s, o = vm_session.cmd_status_output("nvidia-smi -L")
+        gpu_count = len(re.findall(r'^GPU \d+:', o, re.MULTILINE))
+        if gpu_count != num_gpus:
+            test.fail(f"nvidia-smi shows {gpu_count} GPU(s), expected {num_gpus}")
+
+        for gpu_pci in gpu_pcis:
+            libvirt_vfio.check_vfio_pci(gpu_pci, exp_driver="nvgrace_gpu_vfio_pci")
 
         test.log.info("TEST_STEP: Install CUDA toolkit")
         gpu_test.install_cuda_toolkit(vm_session)
@@ -81,12 +202,12 @@ def run(test, params, env):
         vm_session.cmd(build_cmd, timeout=build_timeout)
 
         test.log.info(f"TEST_STEP: Run NCCL {nccl_test_name} test")
-        nccl_cmd = f"cd {nccl_dir} && {cuda_env} ./build/{nccl_test_name} -b {nccl_min_bytes} -e {nccl_max_bytes} -f {nccl_step_factor} -g {nccl_num_gpus}"
+        nccl_cmd = f"cd {nccl_dir} && {cuda_env} ./build/{nccl_test_name} -b {nccl_min_bytes} -e {nccl_max_bytes} -f {nccl_step_factor} -g {num_gpus}"
         o = vm_session.cmd_output(nccl_cmd, timeout=nccl_test_timeout)
         test.log.debug(f"NCCL output:\n{o}")
 
         # Parse NCCL output for bandwidth
-        if nccl_num_gpus == 1:
+        if num_gpus == 1:
             # For single GPU, skip bandwidth check (bus bandwidth is always 0)
             if "Out of bounds values : 0 OK" not in o:
                 test.fail("NCCL test did not report 'Out of bounds values : 0 OK'")
@@ -148,7 +269,7 @@ def run(test, params, env):
                 if sum_match:
                     bandwidth = float(sum_match.group(1))
                     test.log.info(f"{test_type} total bandwidth: {bandwidth} GB/s")
-                    if nccl_num_gpus > 1 and bandwidth < min_device_to_device_bandwidth:
+                    if num_gpus > 1 and bandwidth < min_device_to_device_bandwidth:
                         test.fail(f"{test_type} bandwidth {bandwidth} GB/s below threshold {min_device_to_device_bandwidth} GB/s")
                 else:
                     test.log.info(f"{test_type} reported N/A (expected for single GPU or disabled P2P)")
@@ -163,3 +284,6 @@ def run(test, params, env):
             managed_disabled=gpu_managed_disabled,
             dev_name=dev_name
         )
+
+        if num_gpus > 1:
+            gpu_base.rebind_gpus_to_nvidia(gpu_pcis, skip_first=True, test_obj=test)

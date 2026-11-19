@@ -1,6 +1,6 @@
 from virttest import virsh
-from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_vmxml
 
 from provider.gpu import gpu_base
 from provider.gpu import check_points
@@ -43,12 +43,13 @@ def run(test, params, env):
     gpu_tests = []
     managed_disabled_list = []
     dev_names = []
-    sriov_test = None
+    sriov_test_obj = None
     sessions = []
 
     for vm in vms:
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
         vmxml_backups.append(vmxml.copy())
+        libvirt_vmxml.remove_vm_devices_by_type(vm, 'hostdev')
 
     try:
         if scenario == "gpu_gpu":
@@ -57,15 +58,8 @@ def run(test, params, env):
             gpu_vm_indices = [0]  # Only VM1 gets GPU
 
         test.log.info("TEST_STEP: Bind GPUs on host")
-        for idx in gpu_vm_indices:
-            gpu_pci = gpu_pcis[idx]
-            gpu_id = host_gpus[gpu_pci].get('ID')
-            current_driver = host_gpus[gpu_pci].get('driver')
-            if current_driver != 'nvgrace_gpu_vfio_pci':
-                test.log.info(f"Binding {gpu_pci} to nvgrace-gpu-vfio-pci")
-                utils_misc.cmd_status_output("modprobe -r nouveau", ignore_status=True)
-                utils_misc.cmd_status_output("modprobe nvgrace-gpu-vfio-pci")
-                utils_misc.cmd_status_output(f"echo '{gpu_id}' > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id", shell=True)
+        gpus_to_bind = [gpu_pcis[idx] for idx in gpu_vm_indices]
+        gpu_base.bind_gpus_to_vfio(gpus_to_bind, test)
 
         for idx in gpu_vm_indices:
             test.log.info(f"TEST_STEP: Configure GPU passthrough for {vms[idx].name}")
@@ -91,9 +85,9 @@ def run(test, params, env):
             # Verify PF not sole uplink (will cancel if unsafe)
             gpu_base.verify_pf_not_sole_uplink(test)
 
-            sriov_test = sriov_base.SRIOVTest(vms[1], test, params)
-            sriov_test.setup()
-            test.log.info(f"Assigned NIC: {vms[1].name}=SR-IOV PF {sriov_test.pf_name} ({sriov_test.pf_pci_id})")
+            sriov_test_obj = sriov_base.SRIOVTest(vms[1], test, params)
+            sriov_test_obj.setup_default(cleanup_ifaces="no")
+            test.log.info(f"Assigned NIC: {vms[1].name}=SR-IOV PF {sriov_test_obj.pf_name} ({sriov_test_obj.pf_pci})")
 
         test.log.info("TEST_STEP: Start both VMs")
         for vm in vms:
@@ -149,13 +143,16 @@ def run(test, params, env):
     finally:
         test.log.info("TEST_TEARDOWN: Cleanup")
 
+        for vm in vms:
+            libvirt_vmxml.remove_vm_devices_by_type(vm, 'hostdev')
+
         for session in sessions:
             if session:
                 session.close()
 
-        if sriov_test:
+        if sriov_test_obj:
             test.log.info("Tearing down SR-IOV NIC")
-            sriov_test.teardown()
+            sriov_test_obj.teardown_default()
 
         for i, gpu_test in enumerate(gpu_tests):
             if gpu_test and i < len(dev_names):
@@ -163,6 +160,10 @@ def run(test, params, env):
                     managed_disabled=managed_disabled_list[i],
                     dev_name=dev_names[i]
                 )
+
+        gpus_to_rebind = [gpu_pcis[idx] for idx in gpu_vm_indices]
+        if gpus_to_rebind:
+            gpu_base.rebind_gpus_to_nvidia(gpus_to_rebind, skip_first=(0 in gpu_vm_indices), test_obj=test)
 
         for i, vm in enumerate(vms):
             if vm.is_alive():

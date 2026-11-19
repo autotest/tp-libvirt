@@ -121,6 +121,87 @@ def verify_pf_not_sole_uplink(test):
         test.cancel("This test needs at least 1 linked interface (excluding PF) available on the host.")
 
 
+def _bind_to_vfio_driver(gpu_pci):
+    """
+    Bind a single GPU to nvgrace_gpu_vfio_pci driver, and uses new_id method with bind as fallback.
+    GPU must already be unbound from previous driver.
+
+    :param gpu_pci: GPU PCI address
+    """
+    host_gpus = get_gpus_info()
+    gpu_id = host_gpus[gpu_pci].get('ID')
+
+    status, _ = utils_misc.cmd_status_output(
+        f"echo {gpu_id} > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id",
+        shell=True
+    )
+    if status != 0:
+        utils_misc.cmd_status_output(
+            f"echo {gpu_pci} > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/bind",
+            shell=True
+        )
+
+
+def bind_gpus_to_vfio(gpu_pcis, test_obj):
+    """
+    Stops nvidia services for all GPUs, and binds multiple GPUs to nvgrace_gpu_vfio_pci driver
+
+    :param gpu_pcis: List of GPU PCI addresses
+    :param test_obj: Test object for logging
+    """
+    host_gpus = get_gpus_info()
+
+    nvidia_gpus = [pci for pci in gpu_pcis if host_gpus[pci].get('driver') == 'nvidia']
+    if nvidia_gpus:
+        test_obj.log.info("Stopping NVIDIA services before unbinding")
+        utils_misc.cmd_status_output("systemctl stop 'nvidia-*'", ignore_status=True, shell=True)
+        utils_misc.cmd_status_output("pkill nvidia", ignore_status=True, shell=True)
+        time.sleep(2)
+        for gpu_pci in nvidia_gpus:
+            utils_misc.cmd_status_output(
+                f"echo '{gpu_pci}' > /sys/bus/pci/drivers/nvidia/unbind",
+                shell=True, ignore_status=True
+            )
+        time.sleep(2)
+        host_gpus = get_gpus_info()
+
+    utils_misc.cmd_status_output("modprobe nvgrace-gpu-vfio-pci")
+    for gpu_pci in gpu_pcis:
+        current_driver = host_gpus[gpu_pci].get('driver')
+        if current_driver != 'nvgrace_gpu_vfio_pci':
+            test_obj.log.info(f"Binding {gpu_pci} to nvgrace-gpu-vfio-pci")
+            _bind_to_vfio_driver(gpu_pci)
+
+
+def rebind_gpus_to_nvidia(gpu_pcis, skip_first=False, test_obj=None):
+    """
+    Rebind GPUs back to nvidia driver and restart nvidia services
+
+    :param gpu_pcis: List of GPU PCI addresses
+    :param skip_first: Skip first GPU (already handled by teardown_default)
+    :param test_obj: Test object for logging (optional)
+    """
+    host_gpus = get_gpus_info()
+    gpus_to_rebind = gpu_pcis[1:] if skip_first else gpu_pcis
+
+    if test_obj:
+        test_obj.log.info("Rebinding GPUs to nvidia driver")
+
+    for gpu_pci in gpus_to_rebind:
+        utils_misc.cmd_status_output(
+            f"echo '{gpu_pci}' > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/unbind",
+            shell=True, ignore_status=True
+        )
+        utils_misc.cmd_status_output("modprobe nvidia")
+        gpu_id = host_gpus[gpu_pci].get('ID')
+        utils_misc.cmd_status_output(
+            f"echo '{gpu_id}' > /sys/bus/pci/drivers/nvidia/new_id",
+            shell=True, ignore_status=True
+        )
+
+    utils_misc.cmd_status_output("systemctl start 'nvidia-*'", ignore_status=True, shell=True)
+
+
 class GPUTest(object):
     """
     Wrapper class for GPU testing
@@ -187,12 +268,11 @@ class GPUTest(object):
             self.test.fail("Failed to run nvidia-smi command. Status: %s, output: %s."
                            % (s, o))
 
-    def install_latest_driver(self, vm_session, local_rpm=False):
+    def install_latest_driver(self, vm_session):
         """
         Install the latest data centre driver
 
         :param vm_session: vm session object
-        :local_rpm: Install the driver using local rpm
         """
         # Remove any pre-existing CUDA repo configs
         vm_session.cmd("rm -f /etc/yum.repos.d/cuda*.repo || true")
@@ -213,30 +293,19 @@ class GPUTest(object):
             rhel_version = "9"
             distro = "rhel9"
 
-        if local_rpm:
-            url = "https://developer.nvidia.com/datacenter-driver-downloads"
-            with requests.Session() as session:
-                page = session.get(url)
-            pkg_download_cmd = re.findall(rf"(wget https://developer.download.nvidia.com/compute/nvidia-driver/\S+/local_installers/nvidia-driver-local-repo-rhel{rhel_version}-\S+{arch}.rpm)", page.text)
-            if not pkg_download_cmd:
-                self.test.error(f"Unable to find download command for RHEL {rhel_version} on {url}")
-            pkg_name = os.path.basename(pkg_download_cmd[0])
-            vm_session.cmd(pkg_download_cmd[0], timeout=240)
-            vm_session.cmd(f"rpm -i {pkg_name}", timeout=120)
-        else:
-            pkg_mgr = utils_package.package_manager(vm_session, "epel-release")
-            if not pkg_mgr.is_installed("epel-release"):
-                vm_session.cmd_output_safe(f"subscription-manager repos --enable=rhel-{rhel_version}-for-{arch}-appstream-rpms")
-                vm_session.cmd_output_safe(f"subscription-manager repos --enable=rhel-{rhel_version}-for-{arch}-baseos-rpms")
-                vm_session.cmd_output_safe(f"subscription-manager repos --enable=codeready-builder-for-rhel-{rhel_version}-{arch}-rpms")
-                vm_session.cmd_output_safe(f"dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-{rhel_version}.noarch.rpm", timeout=600)
+        pkg_mgr = utils_package.package_manager(vm_session, "epel-release")
+        if not pkg_mgr.is_installed("epel-release"):
+            vm_session.cmd_output_safe(f"subscription-manager repos --enable=rhel-{rhel_version}-for-{arch}-appstream-rpms")
+            vm_session.cmd_output_safe(f"subscription-manager repos --enable=rhel-{rhel_version}-for-{arch}-baseos-rpms")
+            vm_session.cmd_output_safe(f"subscription-manager repos --enable=codeready-builder-for-rhel-{rhel_version}-{arch}-rpms")
+            vm_session.cmd_output_safe(f"dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-{rhel_version}.noarch.rpm", timeout=600)
 
-            if vm_session.cmd_status(f"ls /etc/yum.repos.d/cuda-{distro}.repo"):
-                repo_url = f"https://developer.download.nvidia.com/compute/cuda/repos/{distro}/sbsa/cuda-{distro}.repo"
-                vm_session.cmd(f"dnf config-manager --add-repo {repo_url}")
-                vm_session.cmd(f"sed -i 's/^gpgcheck=1/gpgcheck=0/' /etc/yum.repos.d/cuda-{distro}.repo")
-                vm_session.cmd("dnf clean all")
-            vm_session.cmd("dnf -y module install nvidia-driver:open-dkms --skip-broken", timeout=600)
+        if vm_session.cmd_status(f"ls /etc/yum.repos.d/cuda-{distro}.repo"):
+            repo_url = f"https://developer.download.nvidia.com/compute/cuda/repos/{distro}/sbsa/cuda-{distro}.repo"
+            vm_session.cmd(f"dnf config-manager --add-repo {repo_url}")
+            vm_session.cmd(f"sed -i 's/^gpgcheck=1/gpgcheck=0/' /etc/yum.repos.d/cuda-{distro}.repo")
+            vm_session.cmd("dnf clean all")
+        vm_session.cmd("dnf -y install nvidia-open dkms --skip-broken", timeout=600)
 
     def clone_cuda_samples(self, vm_session):
         """
@@ -381,6 +450,9 @@ class GPUTest(object):
         :return: Updated vmxml
         """
         if self.sriov_helper:
+            # These variables are used by eval() when expanding iface_dict/hostdev_dict
+            pf_pci_addr = self.sriov_helper.pf_pci_addr
+            vf_pci_addr = self.sriov_helper.vf_pci_addr
             pcie_root_port_index = cntl_index.get("pcie_root_port_2")
         if self.params.get('hostdev_dict'):
             iface_dict = self.params.get('hostdev_dict')
@@ -388,6 +460,8 @@ class GPUTest(object):
             nic_hostdev = libvirt_vmxml.create_vm_device_by_type("hostdev", nic_hostdev_dict)
             vmxml.add_device(nic_hostdev)
         elif self.params.get('iface_dict'):
+            # mac_addr is used by eval() when expanding iface_dict
+            mac_addr = utils_net.generate_mac_address_simple()
             iface_dict = self.params.get('iface_dict')
             iface_dict = eval(iface_dict % ("%0#4x" % int(pcie_root_port_index)))
             nic_iface = libvirt_vmxml.create_vm_device_by_type("interface", iface_dict)
@@ -450,15 +524,9 @@ class GPUTest(object):
                 if status != 0:
                     self.test.log.warning(f"Failed to unbind from {current_driver}, proceeding anyway")
 
-            # Load nvgrace_gpu_vfio_pci module if not loaded
-            utils_misc.cmd_status_output("modprobe nvgrace_gpu_vfio_pci")
-
+            # Bind to vfio using shared helper
             self.test.log.info(f"Binding GPU {self.gpu_pci} (ID: {gpu_id}) to nvgrace-gpu-vfio-pci via new_id")
-            status, output = utils_misc.cmd_status_output(f"echo {gpu_id} > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/new_id", shell=True)
-            self.test.log.debug(f"Bind GPU via new_id: status={status}, output={output}")
-            if status != 0:
-                self.test.log.info(f"new_id failed (status={status}), attempting manual bind")
-                utils_misc.cmd_status_output(f"echo {self.gpu_pci} > /sys/bus/pci/drivers/nvgrace_gpu_vfio_pci/bind", shell=True)
+            _bind_to_vfio_driver(self.gpu_pci)
 
             # Verify binding succeeded
             gpu_info = get_gpus_info()
