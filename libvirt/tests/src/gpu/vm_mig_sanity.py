@@ -49,7 +49,7 @@ def run(test, params, env):
         vm_session.cmd(f"sed -i 's/add_subdirectory(UnifiedMemoryStreams)/#add_subdirectory(UnifiedMemoryStreams)/' {cuda_samples_dir}/Samples/0_Introduction/CMakeLists.txt || true")
 
         test.log.info("TEST_STEP: Install the driver")
-        gpu_test.install_latest_driver(vm_session, True)
+        gpu_test.install_latest_driver(vm_session)
         gpu_test.install_cuda_toolkit(vm_session, True)
 
         test.log.info("TEST_STEP: Check initial MIG mode status")
@@ -90,7 +90,7 @@ def run(test, params, env):
             if not compute_instances:
                 test.fail("Failed to get compute instances")
 
-            vm_session.cmd(f"cd {cuda_samples_dir}/build && export PATH=$PATH:/usr/local/cuda/bin/ && cmake -DCMAKE_CUDA_ARCHITECTURES=native -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON ..", timeout=600)
+            vm_session.cmd(f"cd {cuda_samples_dir}/build && export PATH=$PATH:/usr/local/cuda/bin/ && cmake -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON ..", timeout=600)
             vm_session.cmd(f"cd {cuda_samples_dir}/build && make BlackScholes", timeout=1200)
 
             for dev in compute_instances:
