@@ -12,7 +12,8 @@ from virttest import cpu
 from virttest import utils_libvirtd
 from virttest import utils_test
 from virttest.utils_test import libvirt
-from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.libvirt_xml import xcepts
+from virttest.libvirt_xml.vm_xml import VMXML, VMCPUXML
 
 from provider.cpu import patch_total_cpu_count_s390x
 
@@ -46,7 +47,12 @@ def run(test, params, env):
     12. Repeat step 2 to check again.
     13. Repeat step 7 to recover domain.
     14. Repeat step 2 to check again.
-    15. Recover test environment.
+    15. Bringup guest with host-model or host-passthrough.
+    16. Repeat step 3 to plug vcpu.
+    17. Repeat step 2 to check again
+    18. Repeat step 9 to unplug vcpus
+    19. Repeat step 2 to check again
+    20 Recover test environment.
     """
 
     def manipulate_domain(vm_name, vm_operation, recover=False):
@@ -240,6 +246,7 @@ def run(test, params, env):
     with_stress = "yes" == params.get("run_stress", "no")
     iterations = int(params.get("test_itr", 1))
     topology_correction = "yes" == params.get("topology_correction", "no")
+    cpu_mode = params.get("cpu_mode")
     # Init expect vcpu count values
     expect_vcpu_num = {'max_config': vcpu_max_num, 'max_live': vcpu_max_num,
                        'cur_config': vcpu_current_num,
@@ -298,6 +305,28 @@ def run(test, params, env):
             vmxml.set_agent_channel()
         else:
             vmxml.remove_agent_channels()
+        if cpu_mode:
+            logging.info("Setting CPU mode to: %s", cpu_mode)
+            try:
+                cpu_xml = vmxml.cpu
+            except xcepts.LibvirtXMLNotFoundError:
+                logging.debug("No CPU element found, creating new one")
+                cpu_xml = VMCPUXML()
+
+            cpu_xml.mode = cpu_mode
+            vmxml.cpu = cpu_xml
+            # If host-model, convert model name to lowercase
+            if cpu_mode == 'host-model':
+                vmxml.sync()
+                vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
+                cpu_xml = vmxml.cpu
+                if hasattr(cpu_xml, 'model') and cpu_xml.model:
+                    logging.info("Converting CPU model from '%s' to '%s'",
+                                 cpu_xml.model, cpu_xml.model.lower())
+                    cpu_xml.model = cpu_xml.model.lower()
+                    vmxml.cpu = cpu_xml
+            logging.info("CPU mode set successfully")
+
         vmxml.sync()
 
         vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num,
