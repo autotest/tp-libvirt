@@ -22,6 +22,7 @@ def run(test, params, env):
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         migration_obj.setup_connection()
         runner_on_target = remote.RemoteRunner(host=server_ip,
                                                username=server_user,

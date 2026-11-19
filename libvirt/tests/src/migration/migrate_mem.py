@@ -417,16 +417,7 @@ def run_migration(vm, params, test):
     src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
         remove_dict)
 
-    # Ensure the guest CPU is compatible with the destination host before
-    # migration. When the source and destination CPUs differ, compute a
-    # migratable baseline and apply it; the guest must be off to rewrite its
-    # CPU, so it is (re)started below. No-op when the CPUs already match and
-    # on aarch64.
-    if not base_steps.check_cpu_for_mig(params):
-        if vm.is_alive():
-            vm.destroy()
-        base_steps.sync_cpu_for_mig(params)
-
+    base_steps.prepare_cpu_for_mig(vm, params)
     try:
         if not vm.is_alive():
             vm.start()

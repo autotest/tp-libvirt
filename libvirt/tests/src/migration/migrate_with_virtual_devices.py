@@ -12,6 +12,8 @@ from virttest import utils_misc
 from virttest import virsh, libvirt_version
 from virttest import migration_template as mt
 
+from provider.migration import base_steps
+
 
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
@@ -197,6 +199,21 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
         self.bgjobs = []
 
     def _pre_start_vm(self):
+        # Ensure the guest CPU is compatible with the destination host before
+        # migration. When the source and destination CPUs differ, compute a
+        # migratable baseline and apply it. The guest is off here and is
+        # started by the migration template. No-op when the CPUs already
+        # match and on aarch64.
+        cpu_params = self.params.copy()
+        cpu_params.update({
+            'virsh_migrate_desturi': "qemu+ssh://%s/system" % self.migrate_dest_host,
+            'server_ip': self.params.get("server_ip", self.migrate_dest_host),
+            'server_user': self.params.get("server_user", "root"),
+            'server_pwd': self.params.get("server_pwd",
+                                          self.params.get("migrate_dest_pwd"))})
+        if not base_steps.check_cpu_for_mig(cpu_params):
+            base_steps.sync_cpu_for_mig(cpu_params)
+
         # Need to create rng server before vm starts if
         # vm rng mode is 'client'
         if self._vm_rng_mode() == 'client':
