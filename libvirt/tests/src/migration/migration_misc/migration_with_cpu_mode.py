@@ -1,4 +1,5 @@
 import os
+import platform
 
 from virttest import data_dir
 from virttest import virsh
@@ -15,6 +16,21 @@ def run(test, params, env):
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment.
     """
+    def get_host_cpu_model():
+        """Get host CPU model in lowercase"""
+        try:
+            # virsh.capabilities() returns XML string directly
+            caps_xml = virsh.capabilities()
+            import re
+            match = re.search(r'<model>(\w+)</model>', caps_xml)
+            if match:
+                model = match.group(1).lower()
+                test.log.info(f"Detected CPU model: {model}")
+                return model
+        except Exception as e:
+            test.log.warning(f"Failed to detect CPU model: {e}")
+        return None
+
     def setup_test():
         """
         Setup steps
@@ -28,6 +44,13 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         if cpu_mode == "host_model":
             vm_attrs = eval(params.get('vm_attrs', '{}'))
+            arch = platform.machine()
+            if arch in ['ppc64', 'ppc64le'] and 'cpu' in vm_attrs:
+                host_model = get_host_cpu_model()
+                if host_model:
+                    vm_attrs['cpu']['model'] = host_model
+                    vm_attrs['cpu']['fallback'] = params.get('model_fallback', 'forbid')
+                    test.log.info(f"Power arch - added CPU model: {host_model}")
             vmxml.setup_attrs(**vm_attrs)
             vmxml.sync()
         else:
