@@ -229,19 +229,69 @@ def run(test, params, env):
             session = vm.wait_for_login()
             output = session.cmd_output('lspci -nn | grep "%s"' % device_name)
             nic_id = str(output).split(' ', 1)[0]
+            nic_list_after = vm.get_pci_devices()
+            nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
+            pci_address = []
+            for val in range(len(nic_list)):
+                pci_address.append(str(nic_list[val]).split(' ', 1)[0])
+                nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
+            pci_address.sort()
             nic_name = str(utils_misc.get_interface_from_pci_id(nic_id,
                                                                 session))
-            session.cmd("ip addr flush dev %s" % nic_name)
-            session.cmd("ip addr add %s/%s dev %s"
-                        % (net_ip, netmask, nic_name))
-            session.cmd("ip link set %s up" % nic_name)
-            s_ping, o_ping = utils_test.ping(dest=server_ip, count=5,
-                                             interface=net_ip, timeout=30,
-                                             session=session)
-            logging.info(s_ping)
-            logging.info(o_ping)
-            if s_ping:
-                test.fail("Ping test failed")
+            # ping to server from each function
+            ping_success_count = 0
+            for val in pci_address:
+                nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
+
+                # If get_interface_from_pci_id returns None, use uevent file
+                if nic_name == "None" or not nic_name:
+                    logging.warning("get_interface_from_pci_id returned None for %s, trying uevent method", val)
+                    try:
+                        # Get all network interfaces using modern 'ip' command instead of deprecated 'ifconfig'
+                        ifaces_output = session.cmd_output("ip -o link show | awk -F': ' '{print $2}'")
+                        interfaces = [iface.strip() for iface in ifaces_output.strip().split("\n") if iface.strip()]
+
+                        # Find interface matching PCI address using uevent file
+                        for iface in interfaces:
+                            if iface in ["lo", "sit0"]:  # Skip loopback
+                                continue
+                            # Read PCI address from uevent file
+                            pci_cmd = "cat /sys/class/net/{}/device/uevent 2>/dev/null | grep PCI_SLOT_NAME | cut -d= -f2".format(iface)
+                            status, pci_addr = session.cmd_status_output(pci_cmd)
+                            if status == 0 and pci_addr.strip():
+                                # Normalize for comparison (case-insensitive)
+                                pci_normalized = pci_addr.strip().lower()
+                                val_normalized = val.lower()
+                                if pci_normalized == val_normalized:
+                                    nic_name = iface
+                                    logging.info("Found interface %s for PCI %s using uevent method", nic_name, val)
+                                    break
+                    except Exception as e:
+                        logging.error("Failed to find interface for PCI %s: %s", val, str(e))
+
+                carrier = session.cmd_output("cat /sys/class/net/%s/carrier 2>/dev/null || echo 0" % nic_name).strip()
+                if carrier != "1":
+                    logging.info("Interface %s (%s) has no carrier / link down. Skipping ping.", nic_name, val)
+                    continue
+                if nic_name == "None" or not nic_name:
+                    test.error("Could not determine interface name for PCI device {}".format(val))
+                    continue
+                session.cmd("ip addr flush dev %s" % nic_name)
+                session.cmd("ip addr add %s/%s dev %s"
+                            % (net_ip, netmask, nic_name))
+                session.cmd("ip link set %s up" % nic_name)
+                # Pinging using nic_name is having issue,
+                # hence replaced with IPAddress
+                s_ping, o_ping = utils_test.ping(server_ip, count=5,
+                                                 interface=net_ip, timeout=30,
+                                                 session=session)
+                logging.info(o_ping)
+                if s_ping != 0:
+                    err_msg = "Ping test fails, error info: '%s'"
+                    test.fail(err_msg % o_ping)
+                ping_success_count += 1
+            if ping_success_count == 0:
+                test.fail("No interfaces had active link/carrier for ping validation.")
         except aexpect.ShellError as detail:
             test.error("Succeed to set ip on guest, but failed "
                        "to bring up interface.\n"
