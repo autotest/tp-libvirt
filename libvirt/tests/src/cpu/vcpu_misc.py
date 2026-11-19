@@ -1,5 +1,6 @@
 import logging as log
 import os
+import platform
 import re
 
 from avocado.utils import process
@@ -91,6 +92,10 @@ def update_cpu_xml(vmxml, params, test):
     vm_name = params.get('main_vm')
     with_topology = "yes" == params.get("with_topology", "no")
     customize_cpu_features = "yes" == params.get("customize_cpu_features", "no")
+
+    # Check for machine type for mode as maximum
+    if (platform.machine() in ['ppc64', 'ppc64le']) and (cpu_mode == "maximum"):
+        test.cancel("\"maximum\" mode is not supported in power arch")
 
     # Create cpu xml for test
     if vmxml.xmltreefile.find('cpu'):
