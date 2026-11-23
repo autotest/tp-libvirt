@@ -1,13 +1,13 @@
 import nbd
 import os
+import tempfile
 import logging
 
 from avocado.utils import process
+from virttest import data_dir
 from provider.v2v import utils_v2v
 from provider.v2v.utils_v2v import multiple_versions_compare
 from provider.v2v.utils_v2v import prime_rpm_cache
-from virttest import data_dir
-from virttest.utils_v2v import multiple_versions_compare
 
 LOG = logging.getLogger('avocado.v2v.' + __name__)
 
@@ -127,32 +127,40 @@ def run(test, params, env):
         7. Perform a binary comparison (cmp) to ensure data integrity.
         """
         # Configuration
-        SRC_IMG = os.path.join(data_dir.get_tmp_dir(), "src.img")
-        DEST_ZERO = os.path.join(data_dir.get_tmp_dir(), "dest_zero.img")
+        tmp_dir = data_dir.get_tmp_dir()
+        src_fd, SRC_IMG = tempfile.mkstemp(prefix="nbdcopy-src-", suffix=".img", dir=tmp_dir)
+        os.close(src_fd)
+        dest_fd, DEST_ZERO = tempfile.mkstemp(prefix="nbdcopy-dest-zero-", suffix=".img", dir=tmp_dir)
+        os.close(dest_fd)
 
-        # 1. Create source with small data (sparse)
-        process.run(f"truncate -s 100M {SRC_IMG}", shell=True)
-        process.run(f"echo 'HELLO' | dd of={SRC_IMG} bs=1 seek=1M conv=notrunc", shell=True)
+        try:
+            # 1. Create source with small data (sparse)
+            process.run(f"truncate -s 100M {SRC_IMG}", shell=True)
+            process.run(f"echo 'HELLO' | dd of={SRC_IMG} bs=1 seek=1M conv=notrunc", shell=True)
 
-        # 2. Create destination that is FULLY ALLOCATED (non-sparse) zeroes
-        process.run(f"dd if=/dev/zero of={DEST_ZERO} bs=1M count=100", shell=True)
-        LOG.info(f"Initial Dest Usage: {get_disk_usage(DEST_ZERO)}MB (Should be 100MB)")
+            # 2. Create destination that is FULLY ALLOCATED (non-sparse) zeroes
+            process.run(f"dd if=/dev/zero of={DEST_ZERO} bs=1M count=100", shell=True)
+            LOG.info(f"Initial Dest Usage: {get_disk_usage(DEST_ZERO)}MB (Should be 100MB)")
 
-        # 3. Run nbdcopy with --destination-is-zero
-        # This tells nbdcopy it can skip writing zeroes, effectively punching holes
-        process.run(f"nbdcopy --destination-is-zero --synchronous {SRC_IMG} {DEST_ZERO} -v", shell=True)
+            # 3. Run nbdcopy with --destination-is-zero
+            # This tells nbdcopy it can skip writing zeroes, effectively punching holes
+            process.run(f"nbdcopy --destination-is-zero --synchronous {SRC_IMG} {DEST_ZERO} -v", shell=True)
 
-        # 4. Verify
-        dest_usage = get_disk_usage(DEST_ZERO)
-        LOG.info(f"Final Dest Usage: {dest_usage}MB (Should be very small, e.g., <1MB)")
+            # 4. Verify
+            dest_usage = get_disk_usage(DEST_ZERO)
+            LOG.info(f"Final Dest Usage: {dest_usage}MB (Should be very small, e.g., <1MB)")
 
-        if dest_usage > 1:
-            test.fail(f"FAILURE: Destination not sparsified (usage: {dest_usage}MB).")
+            if dest_usage > 1:
+                test.fail(f"FAILURE: Destination not sparsified (usage: {dest_usage}MB).")
 
-        # Compare content
-        result = process.run(f"cmp {SRC_IMG} {DEST_ZERO}", shell=True, ignore_status=True)
-        if result.exit_status != 0:
-            test.fail("FAILURE: Content mismatch between source and destination.")
+            # Compare content
+            result = process.run(f"cmp {SRC_IMG} {DEST_ZERO}", shell=True, ignore_status=True)
+            if result.exit_status != 0:
+                test.fail("FAILURE: Content mismatch between source and destination.")
+        finally:
+            for p in (SRC_IMG, DEST_ZERO):
+                if os.path.exists(p):
+                    os.unlink(p)
 
     def test_nbdcopy_option_allocated():
         """
@@ -169,39 +177,47 @@ def run(test, params, env):
         6. Verify destination and source logical sizes are identical.
         """
         # Configuration
-        SRC_IMG = os.path.join(data_dir.get_tmp_dir(), "src.img")
-        DEST_ALLOC = os.path.join(data_dir.get_tmp_dir(), "dest_alloc.img")
+        tmp_dir = data_dir.get_tmp_dir()
+        src_fd, SRC_IMG = tempfile.mkstemp(prefix="nbdcopy-src-", suffix=".img", dir=tmp_dir)
+        os.close(src_fd)
+        dest_fd, DEST_ALLOC = tempfile.mkstemp(prefix="nbdcopy-dest-alloc-", suffix=".img", dir=tmp_dir)
+        os.close(dest_fd)
 
-        # 1. Create sparse source image (100M)
-        process.run(f"truncate -s 100M {SRC_IMG}", shell=True)
+        try:
+            # 1. Create sparse source image (100M)
+            process.run(f"truncate -s 100M {SRC_IMG}", shell=True)
 
-        # 2. Write random data at specific offsets to keep it sparse
-        process.run(f"dd if=/dev/urandom of={SRC_IMG} bs=1M count=1 seek=10 conv=notrunc", shell=True)
-        process.run(f"dd if=/dev/urandom of={SRC_IMG} bs=1M count=1 seek=50 conv=notrunc", shell=True)
+            # 2. Write random data at specific offsets to keep it sparse
+            process.run(f"dd if=/dev/urandom of={SRC_IMG} bs=1M count=1 seek=10 conv=notrunc", shell=True)
+            process.run(f"dd if=/dev/urandom of={SRC_IMG} bs=1M count=1 seek=50 conv=notrunc", shell=True)
 
-        src_usage = get_disk_usage(SRC_IMG)
-        LOG.info(f"Source Disk Usage: {src_usage}MB (Should be ~2MB)")
+            src_usage = get_disk_usage(SRC_IMG)
+            LOG.info(f"Source Disk Usage: {src_usage}MB (Should be ~2MB)")
 
-        # 3. Run nbdcopy with --allocated
-        cmd_nbdcopy = f"nbdcopy --allocated --synchronous {SRC_IMG} {DEST_ALLOC} -v"
-        process.run(cmd_nbdcopy, shell=True)
+            # 3. Run nbdcopy with --allocated
+            cmd_nbdcopy = f"nbdcopy --allocated --synchronous {SRC_IMG} {DEST_ALLOC} -v"
+            process.run(cmd_nbdcopy, shell=True)
 
-        # 4. Verify destination file usage
-        dest_usage = get_disk_usage(DEST_ALLOC)
-        LOG.info(f"Destination Disk Usage: {dest_usage}MB (Should be 100MB)")
-        if dest_usage < 100:
-            test.fail("FAILURE: Destination is still sparse.")
+            # 4. Verify destination file usage
+            dest_usage = get_disk_usage(DEST_ALLOC)
+            LOG.info(f"Destination Disk Usage: {dest_usage}MB (Should be 100MB)")
+            if dest_usage < 100:
+                test.fail("FAILURE: Destination is still sparse.")
 
-        # 5. Verify logical sizes match
-        src_size = os.path.getsize(SRC_IMG)
-        dest_size = os.path.getsize(DEST_ALLOC)
-        if src_size != dest_size:
-            test.fail(f"FAILURE: Logical size mismatch. Source: {src_size}, Dest: {dest_size}")
+            # 5. Verify logical sizes match
+            src_size = os.path.getsize(SRC_IMG)
+            dest_size = os.path.getsize(DEST_ALLOC)
+            if src_size != dest_size:
+                test.fail(f"FAILURE: Logical size mismatch. Source: {src_size}, Dest: {dest_size}")
 
-        # 6. Verify content
-        result = process.run(f"cmp {SRC_IMG} {DEST_ALLOC}", shell=True, ignore_status=True)
-        if result.exit_status != 0:
-            test.fail("FAILURE: Content mismatch between source and destination.")
+            # 6. Verify content
+            result = process.run(f"cmp {SRC_IMG} {DEST_ALLOC}", shell=True, ignore_status=True)
+            if result.exit_status != 0:
+                test.fail("FAILURE: Content mismatch between source and destination.")
+        finally:
+            for p in (SRC_IMG, DEST_ALLOC):
+                if os.path.exists(p):
+                    os.unlink(p)
 
     if version_required and not multiple_versions_compare(
             version_required):
