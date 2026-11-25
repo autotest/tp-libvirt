@@ -29,6 +29,72 @@ from provider import libvirt_version
 logging = log.getLogger('avocado.' + __name__)
 
 
+def check_flag(file_flags):
+    """
+    Check if file flag include O_DIRECT.
+
+    :param file_flags: The flags of dumped file
+
+    Note, O_DIRECT(direct disk access hint) is defined as:
+    on x86_64:
+    #define O_DIRECT        00040000
+    on ppc64le or arch64:
+    #define O_DIRECT        00200000
+    """
+    arch = platform.machine()
+    file_flag_check = int('00040000', 16)
+    if 'ppc64' in arch or 'aarch64' in arch:
+        file_flag_check = int('00200000', 16)
+
+    if int(file_flags, 16) & file_flag_check == file_flag_check:
+        logging.info("File flags include O_DIRECT")
+        return True
+    else:
+        logging.error("File flags doesn't include O_DIRECT")
+        return False
+
+
+def check_bypass(dump_file, result_dict):
+    """
+    Get the file flags of domain core dump file and check it.
+    """
+    error = ''
+    cmd1 = "lsof -w %s |awk '/libvirt_i/{print $2}'" % dump_file
+    while True:
+        if not os.path.exists(dump_file):
+            time.sleep(0.05)
+            continue
+        ret = process.run(cmd1, shell=True)
+        status, output = ret.exit_status, ret.stdout_text.strip()
+        if status:
+            time.sleep(0.05)
+            continue
+        cmd2 = "cat /proc/%s/fdinfo/1 |grep flags|awk '{print $NF}'" % output
+        ret = process.run(cmd2, shell=True)
+        status, output = ret.exit_status, ret.stdout_text.strip()
+        if status:
+            error = "Fail to get the flags of dumped file"
+            logging.error(error)
+            break
+        if not len(output):
+            continue
+        try:
+            logging.debug("The flag of dumped file: %s", output)
+            if check_flag(output):
+                logging.info("Bypass file system cache "
+                             "successfully when dumping")
+                break
+            else:
+                error = "Bypass file system cache fail when dumping"
+                logging.error(error)
+                break
+        except (ValueError, IndexError) as detail:
+            error = detail
+            logging.error(error)
+            break
+    result_dict['bypass'] = error
+
+
 def run(test, params, env):
     """
     Test command: virsh dump.
@@ -72,70 +138,6 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
-
-    def check_flag(file_flags):
-        """
-        Check if file flag include O_DIRECT.
-
-        :param file_flags: The flags of dumped file
-
-        Note, O_DIRECT(direct disk access hint) is defined as:
-        on x86_64:
-        #define O_DIRECT        00040000
-        on ppc64le or arch64:
-        #define O_DIRECT        00200000
-        """
-        arch = platform.machine()
-        file_flag_check = int('00040000', 16)
-        if 'ppc64' in arch or 'aarch64' in arch:
-            file_flag_check = int('00200000', 16)
-
-        if int(file_flags, 16) & file_flag_check == file_flag_check:
-            logging.info("File flags include O_DIRECT")
-            return True
-        else:
-            logging.error("File flags doesn't include O_DIRECT")
-            return False
-
-    def check_bypass(dump_file, result_dict):
-        """
-        Get the file flags of domain core dump file and check it.
-        """
-        error = ''
-        cmd1 = "lsof -w %s |awk '/libvirt_i/{print $2}'" % dump_file
-        while True:
-            if not os.path.exists(dump_file):
-                time.sleep(0.05)
-                continue
-            ret = process.run(cmd1, shell=True)
-            status, output = ret.exit_status, ret.stdout_text.strip()
-            if status:
-                time.sleep(0.05)
-                continue
-            cmd2 = "cat /proc/%s/fdinfo/1 |grep flags|awk '{print $NF}'" % output
-            ret = process.run(cmd2, shell=True)
-            status, output = ret.exit_status, ret.stdout_text.strip()
-            if status:
-                error = "Fail to get the flags of dumped file"
-                logging.error(error)
-                break
-            if not len(output):
-                continue
-            try:
-                logging.debug("The flag of dumped file: %s", output)
-                if check_flag(output):
-                    logging.info("Bypass file system cache "
-                                 "successfully when dumping")
-                    break
-                else:
-                    error = "Bypass file system cache fail when dumping"
-                    logging.error(error)
-                    break
-            except (ValueError, IndexError) as detail:
-                error = detail
-                logging.error(error)
-                break
-        result_dict['bypass'] = error
 
     def check_domstate(actual, options):
         """
