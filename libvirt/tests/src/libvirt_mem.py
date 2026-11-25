@@ -785,6 +785,18 @@ def run(test, params, env):
                             logging.debug("Known error occurred, while hot"
                                           " unplug: %s", known_error)
             if test_dom_xml and not unplug_failed_with_known_error:
+                def _mem_dev_removed():
+                    """Memory unplug is asynchronous, wait until the device
+                    is gone from the domain xml before comparing sizes."""
+                    if attach_option.count("config"):
+                        dom_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+                    else:
+                        dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                    return not dom_xml.get_devices("memory")
+
+                if not utils_misc.wait_for(_mem_dev_removed, 60, step=3):
+                    logging.warning("Memory device still in domain xml 60s "
+                                    "after detach")
                 check_dom_xml(dt_mem=detach_device)
                 # Remove dmesg temp file
                 if os.path.exists(dmesg_file):
