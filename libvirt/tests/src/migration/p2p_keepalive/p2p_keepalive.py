@@ -215,6 +215,7 @@ def run(test, params, env):
     local_obj = []
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         if tcp_config_list:
             libvirt_network.change_tcp_config(eval(tcp_config_list), params)

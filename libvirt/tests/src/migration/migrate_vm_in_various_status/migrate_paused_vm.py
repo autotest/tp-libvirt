@@ -21,6 +21,7 @@ def run(test, params, env):
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         migration_obj.setup_connection()
         # Pause the guest
         virsh.suspend(vm.name, debug=True, ignore_status=False)

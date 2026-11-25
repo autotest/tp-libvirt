@@ -143,6 +143,7 @@ def run(test, params, env):
     migration_obj = base_steps.MigrationBase(test, vm, params)
 
     try:
+        base_steps.prepare_cpu_for_mig(vm, params)
         setup_test()
         virsh_session, remote_virsh_session = migration_base.monitor_event(params)
         run_test()
