@@ -1,7 +1,5 @@
 import logging
 
-from avocado.core import exceptions
-from avocado.utils import path as utils_path
 from avocado.utils import process
 
 from virttest import utils_net
@@ -46,10 +44,6 @@ def is_linked(pf_name):
     :param pf_name: The name of the pf
     :return: True if pf is linked with a cable, False otherwise.
     """
-    try:
-        utils_path.find_command("ethtool")
-    except utils_path.CmdNotFoundError:
-        raise exceptions.TestFail("ethtool is not found")
     cmd = "ethtool %s| grep \"Link detected:\" | grep \"yes\"" % pf_name
     ret = process.run(cmd, ignore_status=True, shell=True)
     return ret.exit_status == 0

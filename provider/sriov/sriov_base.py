@@ -97,7 +97,7 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
     if status or not output:
         raise exceptions.TestError("Unable to get VM ip address! status - {}, "
                                    "output - {}.".format(status, output))
-    return re.sub('\d+$', '1', output.strip().splitlines()[-1])
+    return re.sub(r'\d+$', '1', output.strip().splitlines()[-1])
 
 
 class SRIOVTest(object):
@@ -273,7 +273,7 @@ class SRIOVTest(object):
         :param iface_dict: Interface dict to create
         :return: Hostdev device or interface device object
         """
-        if dev_type == "hostdev_device":
+        if dev_type in ["hostdev_device", "nic_hostdev"]:
             iface_dev = interface_base.create_hostdev(iface_dict)
         else:
             iface_dev = interface_base.create_iface(dev_type, iface_dict)
