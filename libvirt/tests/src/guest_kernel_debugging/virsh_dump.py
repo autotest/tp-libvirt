@@ -447,7 +447,8 @@ def run(test, params, env):
             status = cmd_result.exit_status
             if 'child_process' in locals():
                 child_process.join(timeout=check_bypass_timeout)
-                params['bypass'] = result_dict['bypass']
+                params['bypass'] = result_dict.get(
+                    'bypass', "Timed out checking the flags of dumped file")
 
             logging.info("Start check result")
             time.sleep(5)
@@ -470,6 +471,15 @@ def run(test, params, env):
 
         else:
             crash_tool = crash_utility(dump_file, vm)
+            if 'child_process' in locals():
+                if crash_tool in (2, 3, 4, 5):
+                    # No dump was taken, so there is no file to check
+                    child_process.terminate()
+                    params['bypass'] = ''
+                else:
+                    child_process.join(timeout=check_bypass_timeout)
+                    params['bypass'] = result_dict.get(
+                        'bypass', "Timed out checking the flags of dumped file")
             if crash_tool == 6:
                 test.fail("Unable to collect guest vmcore")
             if crash_tool == 5:
@@ -484,8 +494,15 @@ def run(test, params, env):
                 test.fail("Unable to analyse guest vmcore using crash")
             else:
                 logging.info("Able to analyse guest vmcore using crash")
+            if params.get('bypass'):
+                test.fail(params['bypass'])
 
     finally:
+        # Do not leave check_bypass running, it would block the test process
+        # from exiting
+        if 'child_process' in locals() and child_process.is_alive():
+            child_process.terminate()
+            child_process.join()
         if backup_xml:
             backup_xml.sync()
         qemu_config.restore()
