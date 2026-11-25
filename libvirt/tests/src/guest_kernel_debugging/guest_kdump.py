@@ -150,120 +150,173 @@ def run(test, params, env):
         vmxml.sync()
         vm.start()
 
-    # Setup kdump packages/configuration before validation
-    if setup_kdump:
+    # Disable bracketed paste in guests, its escape codes in the serial
+    for vm in vms:
+        session = vm.wait_for_login(timeout=240)
+        session.cmd(
+            "grep -qs '^set enable-bracketed-paste off' /etc/inputrc || "
+            "printf '\\nset enable-bracketed-paste off\\n' >> /etc/inputrc"
+        )
+        session.close()
+
+    # Record the initial fadump state of the guests supporting fadump, to
+    # restore it after the test
+    initial_fadump = {}
+    for vm in vms:
+        session = vm.wait_for_login(timeout=240)
+        distro_info = utils_kdump.get_distro_info(session)
+        if utils_kdump.is_fadump_supported(session, distro_info):
+            initial_fadump[vm.name] = utils_kdump.is_fadump_param_enabled(session)
+        session.close()
+
+    try:
+        # Setup kdump packages/configuration before validation
+        if setup_kdump:
+            for vm in vms:
+                session = vm.wait_for_login(timeout=240)
+                distro_info = utils_kdump.get_distro_info(session)
+                session.close()
+                if distro_info["name"] == "unknown":
+                    test.cancel("Guest distro not supported")
+                packages_installed = utils_kdump.ensure_kdump_packages(
+                    vm,
+                    distro_info,
+                    install_missing=install_missing_packages,
+                    test=test,
+                )
+                if packages_installed:
+                    logging.info("Rebooting %s after kdump package installation", vm.name)
+                    vm.reboot(session=None, timeout=240)
+                utils_kdump.configure_kdump(
+                    vm,
+                    distro_info,
+                    crashkernel_value=crashkernel_value,
+                    test=test,
+                )
+
+        # In guests supporting fadump, make sure kdump (not fadump) is what
+        # gets tested, regardless of setup_kdump. This is a no-op, without
+        # reboot, if fadump is not enabled in the guest.
         for vm in vms:
+            if vm.name not in initial_fadump:
+                continue
             session = vm.wait_for_login(timeout=240)
             distro_info = utils_kdump.get_distro_info(session)
             session.close()
             if distro_info["name"] == "unknown":
                 test.cancel("Guest distro not supported")
-            packages_installed = utils_kdump.ensure_kdump_packages(
+            utils_kdump.configure_fadump(
                 vm,
                 distro_info,
-                install_missing=install_missing_packages,
-                test=test,
-            )
-            if packages_installed:
-                logging.info("Rebooting %s after kdump package installation", vm.name)
-                vm.reboot(session=None, timeout=240)
-            utils_kdump.configure_kdump(
-                vm,
-                distro_info,
-                crashkernel_value=crashkernel_value,
+                enable=False,
                 test=test,
             )
 
-    # Check for kdump service if it is operational
-    for vm in vms:
-        check_kdump_service(vm)
-
-    # Check for the present vm-cores in guests
-    pre_vmcores = {}
-    for vm in vms:
-        pre_vmcores[vm.name] = get_vmcores(vm)
-        logging.info("%s vmcores before crash: %s" % (vm.name, pre_vmcores[vm.name]))
-
-    # Load the stress app
-    if guest_stress:
-        load_guest_stress(vms)
-        logging.info("Started running stress app")
-        logging.info("Sleeping for %s seconds" % stress_time)
-        time.sleep(int(stress_time))
-
+        # Check for kdump service if it is operational
         for vm in vms:
-            if utils_kdump.check_guest_status(vm):
+            check_kdump_service(vm)
+
+        # Check for the present vm-cores in guests
+        pre_vmcores = {}
+        for vm in vms:
+            pre_vmcores[vm.name] = get_vmcores(vm)
+            logging.info("%s vmcores before crash: %s" % (vm.name, pre_vmcores[vm.name]))
+
+        # Load the stress app
+        if guest_stress:
+            load_guest_stress(vms)
+            logging.info("Started running stress app")
+            logging.info("Sleeping for %s seconds" % stress_time)
+            time.sleep(int(stress_time))
+
+            for vm in vms:
+                if utils_kdump.check_guest_status(vm):
+                    failed_vms.add(vm.name)
+                    virsh_dump_vms.add(vm)
+            if failed_vms:
+                virsh_dump(virsh_dump_vms)
+                test.fail("Guest %s not running after running stress" % failed_vms)
+
+        # Trigger crash in guests in parallel
+        kdump_threads = []
+        for vm in vms:
+            kdump_threads.append(
+                threading.Thread(
+                    target=utils_kdump.trigger_crash,
+                    args=(vm, None, enable_sysrq_cmd, trigger_crash_cmd, 120, test),
+                )
+            )
+        time.sleep(20)
+        for kdump_thread in kdump_threads:
+            kdump_thread.start()
+        for kdump_thread in kdump_threads:
+            kdump_thread.join()
+
+        # Check guest status after crash
+        for vm in vms:
+            try:
+                if utils_kdump.check_guest_status(vm):
+                    raise Exception("Guest %s not running after triggering crash" % vm.name)
+                session = vm.wait_for_login(timeout=240)
+                logging.info("Able to login into %s" % vm.name)
+                session.close()
+            except Exception as err:
+                logging.debug("Error occured %s" % str(err))
                 failed_vms.add(vm.name)
                 virsh_dump_vms.add(vm)
         if failed_vms:
             virsh_dump(virsh_dump_vms)
-            test.fail("Guest %s not running after running stress" % failed_vms)
+            test.fail("Unable to login into %s after triggering crash" % failed_vms)
 
-    # Trigger crash in guests in parallel
-    kdump_threads = []
-    for vm in vms:
-        kdump_threads.append(
-            threading.Thread(
-                target=utils_kdump.trigger_crash,
-                args=(vm, None, enable_sysrq_cmd, trigger_crash_cmd, 120, test),
-            )
-        )
-    time.sleep(20)
-    for kdump_thread in kdump_threads:
-        kdump_thread.start()
-    for kdump_thread in kdump_threads:
-        kdump_thread.join()
-
-    # Check guest status after crash
-    for vm in vms:
-        try:
-            if utils_kdump.check_guest_status(vm):
-                raise Exception("Guest %s not running after triggering crash" % vm.name)
-            session = vm.wait_for_login(timeout=240)
-            logging.info("Able to login into %s" % vm.name)
-            session.close()
-        except Exception as err:
-            logging.debug("Error occured %s" % str(err))
-            failed_vms.add(vm.name)
-            virsh_dump_vms.add(vm)
-    if failed_vms:
-        virsh_dump(virsh_dump_vms)
-        test.fail("Unable to login into %s after triggering crash" % failed_vms)
-
-    # Check for the vm-cores in guests after crash
-    post_vmcores = {}
-    new_vmcores = {}
-    for vm in vms:
-        post_vmcores[vm.name] = get_vmcores(vm)
-        logging.info("%s vmcores after crash: %s" % (vm.name, post_vmcores[vm.name]))
-        new_vmcores[vm.name] = sorted(
-            list(set(post_vmcores[vm.name]) - set(pre_vmcores[vm.name]))
-        )
-
-    # Check if vm-core got generated after crash in guests
-    for vm in vms:
-        if not new_vmcores[vm.name]:
-            failed_vms.add(vm.name)
-    if failed_vms:
-        test.fail("vmcore not generated in %s" % failed_vms)
-
-    # Debug vm-core using crash utility tool
-    if crash_utility:
+        # Check for the vm-cores in guests after crash
+        post_vmcores = {}
+        new_vmcores = {}
         for vm in vms:
-            session = vm.wait_for_login(timeout=240)
-            distro_info = utils_kdump.get_distro_info(session)
-            session.close()
-            if distro_info["name"] == "unknown":
-                test.cancel("Guest distro not supported")
-            utils_kdump.ensure_crash_utility_packages(
-                vm,
-                distro_info,
-                install_missing=install_missing_packages,
-                upstream_kernel=guest_upstream_kernel,
-                test=test,
+            post_vmcores[vm.name] = get_vmcores(vm)
+            logging.info("%s vmcores after crash: %s" % (vm.name, post_vmcores[vm.name]))
+            new_vmcores[vm.name] = sorted(
+                list(set(post_vmcores[vm.name]) - set(pre_vmcores[vm.name]))
             )
-            crash_utility_tool(vm, new_vmcores[vm.name][-1])
 
-    # Unload the stress app in guests
-    if guest_stress:
-        unload_guest_stress(vms)
+        # Check if vm-core got generated after crash in guests
+        for vm in vms:
+            if not new_vmcores[vm.name]:
+                failed_vms.add(vm.name)
+        if failed_vms:
+            test.fail("vmcore not generated in %s" % failed_vms)
+
+        # Debug vm-core using crash utility tool
+        if crash_utility:
+            for vm in vms:
+                session = vm.wait_for_login(timeout=240)
+                distro_info = utils_kdump.get_distro_info(session)
+                session.close()
+                if distro_info["name"] == "unknown":
+                    test.cancel("Guest distro not supported")
+                utils_kdump.ensure_crash_utility_packages(
+                    vm,
+                    distro_info,
+                    install_missing=install_missing_packages,
+                    upstream_kernel=guest_upstream_kernel,
+                    test=test,
+                )
+                crash_utility_tool(vm, new_vmcores[vm.name][-1])
+
+        # Unload the stress app in guests
+        if guest_stress:
+            unload_guest_stress(vms)
+    finally:
+        # Restore the initial fadump state, a failure here must not hide the
+        # result of the test
+        for vm in vms:
+            if vm.name not in initial_fadump:
+                continue
+            try:
+                session = vm.wait_for_login(timeout=240)
+                distro_info = utils_kdump.get_distro_info(session)
+                session.close()
+                utils_kdump.configure_fadump(
+                    vm, distro_info, enable=initial_fadump[vm.name], test=test
+                )
+            except Exception as err:
+                logging.warning("Unable to restore fadump in %s: %s", vm.name, err)
