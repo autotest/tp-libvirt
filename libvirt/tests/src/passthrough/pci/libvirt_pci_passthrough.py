@@ -97,6 +97,7 @@ def run(test, params, env):
     device_type = params.get("libvirt_pci_device_type", "NIC")
     vm_vfs = int(params.get("number_vfs", 2))
     number_of_reboots = int(params.get("number_of_reboots", "1"))
+    test_vlan = params.get("test_vlan_on_passthrough_nic", "no")
     arch = platform.machine()
     pci_dev = None
     pci_address = None
@@ -220,6 +221,10 @@ def run(test, params, env):
                 if s_ping != 0:
                     err_msg = "Ping test fails, error info: '%s'"
                     test.fail(err_msg % o_ping)
+                # VLAN sub-interface test (only when test_vlan == "yes")
+                if test_vlan == "yes":
+                    logging.info("Testing VLAN sub-interface on %s", nic_name)
+                    test_vlan_on_passthrough_nic(session, nic_name, test)
                 # Each interface should have unique IP
                 # For ppc64 arch let's test using one ip only
                 if arch != "ppc64le":
@@ -232,6 +237,97 @@ def run(test, params, env):
             fdisk_list_after = output.splitlines()
             if fdisk_list_after == fdisk_list_before:
                 test.fail("Didn't find the disk attached to guest.")
+
+    def test_vlan_on_passthrough_nic(serial_session, nic_name, test):
+        """
+        Test 802.1Q VLAN sub-interface creation on a passthrough NIC.
+
+        Steps:
+          1. Create VLAN sub-interface <nic>.<vlan_id> using ip link.
+          2. Assign IP address and bring sub-interface up.
+          3. Verify IP and UP state via ip addr show.
+          4. Verify 802.1Q protocol and VLAN id via ip -d link show.
+          5. Check dmesg for 8021q kernel module activity.
+          6. Delete sub-interface and verify removal (cleanup).
+
+        :param serial_session: Guest serial console session
+        :param nic_name:       Passthrough NIC name (e.g. enP1p0s1)
+        :param test:           Avocado test object
+        """
+        vlan_id = params.get("vlan_id", "1")
+        vlan_ip = params.get("vlan_ip", "20.20.20.1")
+        vlan_prefix = params.get("vlan_prefix", "24")
+        # Linux IFNAMSIZ=16 (15 chars + null). Truncate base name so that
+        # "<base>.<vlan_id>" fits within 15 characters.
+        max_base = 15 - 1 - len(str(vlan_id))  # 1 for the dot
+        base_name = nic_name[:max_base] if len(nic_name) > max_base else nic_name
+        vlan_name = "%s.%s" % (base_name, vlan_id)
+        if base_name != nic_name:
+            logging.warning("NIC name '%s' truncated to '%s' to keep VLAN "
+                            "interface name within 15-char Linux limit",
+                            nic_name, base_name)
+
+        logging.info("Testing VLAN sub-interface %s (id=%s ip=%s/%s)",
+                     vlan_name, vlan_id, vlan_ip, vlan_prefix)
+        try:
+            # Step 1: Create VLAN sub-interface
+            status, output = serial_session.cmd_status_output(
+                "ip link add link %s name %s type vlan id %s"
+                % (nic_name, vlan_name, vlan_id))
+            logging.debug("ip link add: exit=%d output=%s", status, output.strip())
+            if status != 0:
+                test.fail("Failed to create VLAN sub-interface %s: %s"
+                          % (vlan_name, output.strip()))
+
+            # Step 2: Assign IP and bring up
+            serial_session.cmd("ip addr add %s/%s dev %s"
+                               % (vlan_ip, vlan_prefix, vlan_name))
+            serial_session.cmd("ip link set %s up" % vlan_name)
+            logging.info("Assigned %s/%s to %s and brought it up",
+                         vlan_ip, vlan_prefix, vlan_name)
+
+            # Step 3: Verify IP and UP state
+            ip_out = serial_session.cmd_output("ip addr show %s" % vlan_name)
+            logging.debug("ip addr show %s: %s", vlan_name, ip_out.strip())
+            if vlan_ip not in ip_out:
+                test.fail("IP %s not found on %s" % (vlan_ip, vlan_name))
+            if "UP" not in ip_out:
+                test.fail("Interface %s is not UP" % vlan_name)
+
+            # Step 4: Verify 802.1Q protocol and VLAN id
+            detail_out = serial_session.cmd_output("ip -d link show %s" % vlan_name)
+            logging.debug("ip -d link show %s: %s", vlan_name, detail_out.strip())
+            if "vlan protocol 802.1Q" not in detail_out:
+                test.fail("802.1Q protocol not confirmed on %s" % vlan_name)
+            if ("id %s" % vlan_id) not in detail_out:
+                test.fail("VLAN id %s not confirmed on %s" % (vlan_id, vlan_name))
+            logging.info("802.1Q vlan id %s verified on %s", vlan_id, vlan_name)
+
+            # Step 5: Check dmesg for 8021q module activity (informational)
+            # 8021q is loaded on first VLAN creation; already loaded on subsequent
+            # NICs so the initial log line may not appear -- warning only.
+            dmesg_out = serial_session.cmd_output(
+                "dmesg 2>/dev/null | grep -i 8021q | tail -5")
+            if dmesg_out.strip():
+                logging.info("8021q kernel messages: %s", dmesg_out.strip())
+            else:
+                logging.warning("No 8021q dmesg output -- module may already "
+                                "be loaded from a prior iteration (not a failure)")
+
+        finally:
+            # Step 6: Always delete sub-interface to avoid stale state
+            serial_session.cmd_status_output(
+                "ip link delete %s 2>/dev/null" % vlan_name)
+            check_out = serial_session.cmd_output(
+                "ip link show %s 2>&1" % vlan_name)
+            if vlan_name in check_out and "does not exist" not in check_out:
+                logging.warning("VLAN sub-interface %s may not have been "
+                                "fully removed", vlan_name)
+            else:
+                logging.info("VLAN sub-interface %s removed successfully",
+                             vlan_name)
+
+        logging.info("VLAN sub-interface test PASSED for %s", nic_name)
 
     def multiple_reboot(number_of_reboots):
         for reboot_count in range(number_of_reboots):
