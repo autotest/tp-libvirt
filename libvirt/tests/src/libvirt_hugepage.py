@@ -1,11 +1,16 @@
+import importlib.util
 import logging as log
 import os
+import re
 import time
+import urllib.request
 
 from aexpect import ShellError
 
+from avocado.utils import download
 from avocado.utils import process
 
+from virttest import data_dir
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import remote
@@ -21,6 +26,80 @@ from virttest.staging import utils_memory
 # Using as lower capital is not the best way to do, but this is just a
 # workaround to avoid changing the entire file.
 logging = log.getLogger('avocado.' + __name__)
+
+
+def get_unixbench_url(params):
+    """
+    Return the URL of the UnixBench source tarball.
+
+    'unixbench_url' in params wins. Otherwise the latest stable (non-draft,
+    non-prerelease) GitHub release is used, so no URL has to be updated when
+    upstream publishes a new version. It is resolved by following the
+    /releases/latest redirect, which does not use the GitHub API rate limit.
+    If the lookup fails, a known good release is used.
+
+    :param params: test params
+    :return: tarball URL
+    """
+    url = params.get("unixbench_url")
+    if url:
+        return url
+    repo = "https://github.com/kdlucas/byte-unixbench"
+    fallback_tag = "v6.0.1"
+    tag = fallback_tag
+    try:
+        with urllib.request.urlopen("%s/releases/latest" % repo,
+                                    timeout=30) as resp:
+            latest = resp.geturl().rstrip("/").split("/")[-1]
+        if re.match(r"^v?\d+(\.\d+)*$", latest):
+            tag = latest
+        else:
+            logging.warning("Unexpected latest UnixBench release '%s', "
+                            "using %s", latest, fallback_tag)
+    except Exception as details:
+        logging.warning("Cannot get latest UnixBench release: %s, "
+                        "using %s", details, fallback_tag)
+    logging.info("Using UnixBench release %s", tag)
+    return "%s/archive/refs/tags/%s.tar.gz" % (repo, tag)
+
+
+def run_unixbench_without_autotest(test, vm, session, params):
+    """
+    Start UnixBench in the guest directly, for hosts where the legacy
+    'autotest' python package (needed by utils_test.run_autotest) is missing.
+
+    The tarball is downloaded on the host and copied to the guest, so the
+    guest does not need network access.
+
+    :param test: test object
+    :param vm: VM object
+    :param session: guest shell session
+    :param params: test params, 'unixbench_url' overrides the tarball URL
+    """
+    url = get_unixbench_url(params)
+    host_tarball = os.path.join(data_dir.get_tmp_dir(), "unixbench.tar.gz")
+    guest_tarball = "/tmp/unixbench.tar.gz"
+    guest_dir = "/tmp/unixbench"
+
+    try:
+        download.url_download(url, host_tarball,
+                              timeout=int(params.get("download_tests_timeout",
+                                                     "600")))
+    except Exception as details:
+        test.cancel("Cannot download UnixBench from %s: %s" % (url, details))
+    try:
+        vm.copy_files_to(host_tarball, guest_tarball)
+    finally:
+        if os.path.exists(host_tarball):
+            os.remove(host_tarball)
+
+    utils_package.package_install(["gcc", "make", "tar", "gzip"], session, 360)
+    session.cmd("rm -rf %s && mkdir -p %s" % (guest_dir, guest_dir))
+    session.cmd("tar xzf %s -C %s --strip-components=1" %
+                (guest_tarball, guest_dir))
+    # 'Run' is a perl script and builds the benchmarks itself
+    session.cmd("cd %s/UnixBench && (nohup ./Run > /tmp/unixbench.log 2>&1 &)"
+                % guest_dir)
 
 
 def prepare_c_file():
@@ -167,11 +246,17 @@ def run(test, params, env):
                                             unixbench_control_file)
                 # unixbench test need 'patch' and 'perl' commands installed
                 utils_package.package_install(["patch", "perl"], session, 360)
-                command = utils_test.run_autotest(vm, session, control_path,
-                                                  None, None, params,
-                                                  copy_only=True)
-                session.cmd("%s &" % command, ignore_all_errors=True)
-                # wait for autotest running on vm
+                if importlib.util.find_spec("autotest") is not None:
+                    command = utils_test.run_autotest(vm, session,
+                                                      control_path,
+                                                      None, None, params,
+                                                      copy_only=True)
+                    session.cmd("%s &" % command, ignore_all_errors=True)
+                else:
+                    logging.info("autotest package not available, "
+                                 "running UnixBench directly in guest")
+                    run_unixbench_without_autotest(test, vm, session, params)
+                # wait for unixbench running on vm
                 time.sleep(delay)
 
                 def _is_unixbench_running():
